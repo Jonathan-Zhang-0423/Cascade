@@ -1,7 +1,7 @@
 # CodeStart IDE - Development Gameplan
 
 ## Project Overview
-A **browser-based IDE** inspired by Lovable and Replit, targeting complete beginners with no programming experience. The core differentiator is a built-in **"Vibe Coding Agent"** that turns plain-English ideas into working code through friendly conversation.
+A **browser-based IDE** targeting complete beginners with no programming experience. The core differentiator is a built-in **"Vibe Coding Agent"** that turns plain-language ideas into working code through friendly conversation.
 
 ---
 
