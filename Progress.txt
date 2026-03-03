@@ -1,0 +1,85 @@
+====================================
+VIBECODE IDE - DEVELOPMENT PROGRESS
+====================================
+
+Project: Browser-Based IDE with Vibe Coding Agent
+Started: Phase 1
+
+====================================
+PHASE 1: Project Init & Core IDE Shell
+====================================
+Status: COMPLETE
+
+Tasks Completed:
+  [x] Installed @monaco-editor/react for code editing
+  [x] Installed zustand for state management
+  [x] Created Zustand store (client/src/stores/ide-store.ts)
+      - File tree state with default project files
+      - Active file / open files tab management
+      - Chat messages state
+      - Sidebar and chat panel toggle
+      - Theme switching (Dark+, Light+, High Contrast)
+  [x] Built Navbar component (client/src/components/ide/navbar.tsx)
+      - Logo, sidebar toggle, theme switcher, run button, chat toggle
+  [x] Built FileTree component (client/src/components/ide/file-tree.tsx)
+      - Hierarchical file/folder display
+      - File type icons with color coding
+      - Expand/collapse folders
+      - Active file highlighting
+  [x] Built CodeEditor component (client/src/components/ide/code-editor.tsx)
+      - Monaco Editor with JetBrains Mono font
+      - Tab bar for open files with close buttons
+      - Language detection by file extension
+      - Smooth cursor, bracket colorization, minimap
+      - Empty state when no files are open
+  [x] Built ChatPanel component (client/src/components/ide/chat-panel.tsx)
+      - Message bubbles with user/assistant distinction
+      - Welcome message from Vibe Agent
+      - Text input with Enter to send
+      - Placeholder AI response (hardcoded for now)
+  [x] Built PreviewPanel component (client/src/components/ide/preview-panel.tsx)
+      - Live HTML preview using iframe srcDoc
+      - Refresh button
+  [x] Built IDEPage layout (client/src/pages/ide.tsx)
+      - Resizable 3-panel layout (sidebar, editor/preview, chat)
+      - Code/Preview tab switching
+      - Responsive panel toggling
+  [x] Updated App.tsx with routing to IDE page
+  [x] Default "Hello World" HTML file loads in editor
+
+====================================
+PHASE 2: Vibe Coding Agent (AI Logic)
+====================================
+Status: NOT STARTED
+
+Planned:
+  [ ] Set up AI API route on backend
+  [ ] Connect chat panel to AI model
+  [ ] Implement Vibe Agent system prompt
+  [ ] Streaming responses
+  [ ] Code generation from chat
+
+====================================
+PHASE 3: Execution & Preview
+====================================
+Status: NOT STARTED (Preview panel built as placeholder)
+
+Planned:
+  [ ] Integrate WebContainer API for browser-side code execution
+  [ ] Write generated files to WebContainer filesystem
+  [ ] Live preview from WebContainer output
+
+====================================
+PHASE 4: Polish & Themes
+====================================
+Status: PARTIALLY STARTED
+
+Completed:
+  [x] VS Code theme switcher (Dark+, Light+, High Contrast)
+
+Planned:
+  [ ] Additional Monaco themes (Monokai, Solarized, etc.)
+  [ ] Full file tree CRUD (create, rename, delete files/folders)
+  [ ] Responsive mobile layout
+  [ ] Keyboard shortcuts
+  [ ] Settings panel
