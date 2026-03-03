@@ -1,4 +1,4 @@
-# VibeCode IDE
+# CodeStart IDE
 
 ## Overview
 A browser-based IDE inspired by Lovable and Replit, featuring a built-in "Vibe Coding Agent" that helps complete beginners build apps through natural language conversation.

@@ -1,5 +1,5 @@
 ====================================
-VIBECODE IDE - DEVELOPMENT PROGRESS
+CODESTART IDE - DEVELOPMENT PROGRESS
 ====================================
 
 Project: Browser-Based IDE with Vibe Coding Agent

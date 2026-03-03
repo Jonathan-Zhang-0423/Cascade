@@ -52,7 +52,7 @@ export function Navbar() {
             <Code2 className="w-4 h-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-sm tracking-tight" data-testid="text-logo">
-            VibeCode
+            CodeStart
           </span>
         </div>
       </div>

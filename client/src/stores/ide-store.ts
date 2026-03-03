@@ -106,7 +106,7 @@ const defaultFiles: FileNode[] = [
 <body>
   <div class="container">
     <h1>Hello World!</h1>
-    <p>Welcome to your first app built with VibeCode IDE</p>
+    <p>Welcome to your first app built with CodeStart IDE</p>
     <button class="btn" onclick="alert('You clicked the button!')">
       Click Me
     </button>
@@ -130,7 +130,7 @@ body {
         path: "/project/app.js",
         type: "file",
         content: `// Your JavaScript code goes here
-console.log("Hello from VibeCode IDE!");`,
+console.log("Hello from CodeStart IDE!");`,
       },
     ],
   },
