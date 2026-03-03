@@ -15,13 +15,22 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface ConsoleEntry {
+  id: string;
+  level: "log" | "warn" | "error" | "info";
+  message: string;
+  timestamp: number;
+}
+
 interface IDEState {
   files: FileNode[];
   activeFile: string | null;
   openFiles: string[];
   chatMessages: ChatMessage[];
+  consoleEntries: ConsoleEntry[];
   isSidebarOpen: boolean;
   isChatOpen: boolean;
+  isConsoleOpen: boolean;
   theme: "vs-dark" | "vs-light" | "hc-black";
 
   setActiveFile: (path: string) => void;
@@ -29,9 +38,15 @@ interface IDEState {
   closeFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
+  addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
+  clearConsole: () => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
+  toggleConsole: () => void;
   setTheme: (theme: "vs-dark" | "vs-light" | "hc-black") => void;
+  addFile: (parentPath: string, name: string, type: "file" | "folder") => void;
+  renameFile: (oldPath: string, newName: string) => void;
+  deleteFile: (path: string) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -111,6 +126,12 @@ const defaultFiles: FileNode[] = [
       Click Me
     </button>
   </div>
+
+  <script>
+    console.log("Hello from CodeStart IDE!");
+    console.log("Your app is running successfully.");
+    console.warn("This is a sample warning message.");
+  </script>
 </body>
 </html>`,
       },
@@ -149,8 +170,10 @@ export const useIDEStore = create<IDEState>((set) => ({
       timestamp: Date.now(),
     },
   ],
+  consoleEntries: [],
   isSidebarOpen: true,
   isChatOpen: true,
+  isConsoleOpen: true,
   theme: "vs-dark",
 
   setActiveFile: (path) =>
@@ -198,9 +221,71 @@ export const useIDEStore = create<IDEState>((set) => ({
       ],
     })),
 
+  addConsoleEntry: (entry) =>
+    set((state) => ({
+      consoleEntries: [
+        ...state.consoleEntries,
+        {
+          ...entry,
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+        },
+      ],
+    })),
+
+  clearConsole: () => set({ consoleEntries: [] }),
+
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+  toggleConsole: () => set((state) => ({ isConsoleOpen: !state.isConsoleOpen })),
   setTheme: (theme) => set({ theme }),
+
+  addFile: (parentPath, name, type) =>
+    set((state) => ({
+      files: addFileToTree(state.files, parentPath, name, type),
+    })),
+
+  renameFile: (oldPath, newName) =>
+    set((state) => {
+      const newFiles = renameFileInTree(state.files, oldPath, newName);
+      const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
+      const newPath = `${parentPath}/${newName}`;
+      const newOpenFiles = state.openFiles.map((f) => {
+        if (f === oldPath) return newPath;
+        if (f.startsWith(oldPath + "/")) return newPath + f.substring(oldPath.length);
+        return f;
+      });
+      let newActiveFile = state.activeFile;
+      if (newActiveFile === oldPath) {
+        newActiveFile = newPath;
+      } else if (newActiveFile && newActiveFile.startsWith(oldPath + "/")) {
+        newActiveFile = newPath + newActiveFile.substring(oldPath.length);
+      }
+      return {
+        files: newFiles,
+        openFiles: newOpenFiles,
+        activeFile: newActiveFile,
+      };
+    }),
+
+  deleteFile: (path) =>
+    set((state) => {
+      const newFiles = deleteFileFromTree(state.files, path);
+      const newOpenFiles = state.openFiles.filter(
+        (f) => f !== path && !f.startsWith(path + "/")
+      );
+      const activeGone =
+        state.activeFile === path ||
+        (state.activeFile && state.activeFile.startsWith(path + "/"));
+      const newActiveFile = activeGone
+        ? newOpenFiles[newOpenFiles.length - 1] || null
+        : state.activeFile;
+      return {
+        files: newFiles,
+        openFiles: newOpenFiles,
+        activeFile: newActiveFile,
+      };
+    }),
 }));
 
 function updateFileInTree(
@@ -217,6 +302,93 @@ function updateFileInTree(
     }
     return file;
   });
+}
+
+function addFileToTree(
+  files: FileNode[],
+  parentPath: string,
+  name: string,
+  type: "file" | "folder"
+): FileNode[] {
+  return files.map((file) => {
+    if (file.path === parentPath && file.type === "folder") {
+      const newNode: FileNode = {
+        name,
+        path: `${parentPath}/${name}`,
+        type,
+        ...(type === "folder" ? { children: [] } : { content: "" }),
+      };
+      return {
+        ...file,
+        children: [...(file.children || []), newNode],
+      };
+    }
+    if (file.children) {
+      return {
+        ...file,
+        children: addFileToTree(file.children, parentPath, name, type),
+      };
+    }
+    return file;
+  });
+}
+
+function renameFileInTree(
+  files: FileNode[],
+  oldPath: string,
+  newName: string
+): FileNode[] {
+  return files.map((file) => {
+    if (file.path === oldPath) {
+      const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
+      const newPath = `${parentPath}/${newName}`;
+      const renamed = {
+        ...file,
+        name: newName,
+        path: newPath,
+      };
+      if (renamed.children) {
+        renamed.children = updateChildPaths(renamed.children, oldPath, newPath);
+      }
+      return renamed;
+    }
+    if (file.children) {
+      return {
+        ...file,
+        children: renameFileInTree(file.children, oldPath, newName),
+      };
+    }
+    return file;
+  });
+}
+
+function updateChildPaths(
+  children: FileNode[],
+  oldParentPath: string,
+  newParentPath: string
+): FileNode[] {
+  return children.map((child) => {
+    const updatedPath = newParentPath + child.path.substring(oldParentPath.length);
+    const updated = { ...child, path: updatedPath };
+    if (updated.children) {
+      updated.children = updateChildPaths(updated.children, oldParentPath, newParentPath);
+    }
+    return updated;
+  });
+}
+
+function deleteFileFromTree(files: FileNode[], path: string): FileNode[] {
+  return files
+    .filter((file) => file.path !== path)
+    .map((file) => {
+      if (file.children) {
+        return {
+          ...file,
+          children: deleteFileFromTree(file.children, path),
+        };
+      }
+      return file;
+    });
 }
 
 export function findFileContent(
@@ -247,4 +419,17 @@ export function getFileLanguage(path: string): string {
     py: "python",
   };
   return langMap[ext || ""] || "plaintext";
+}
+
+export function flattenFiles(files: FileNode[]): FileNode[] {
+  const result: FileNode[] = [];
+  for (const file of files) {
+    if (file.type === "file") {
+      result.push(file);
+    }
+    if (file.children) {
+      result.push(...flattenFiles(file.children));
+    }
+  }
+  return result;
 }

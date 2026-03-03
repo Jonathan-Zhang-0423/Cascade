@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessageSquare,
+  Terminal,
   Play,
   Code2,
   Sun,
@@ -19,8 +20,16 @@ import {
 } from "lucide-react";
 
 export function Navbar() {
-  const { isSidebarOpen, toggleSidebar, isChatOpen, toggleChat, theme: editorTheme, setTheme: setEditorTheme } =
-    useIDEStore();
+  const {
+    isSidebarOpen,
+    toggleSidebar,
+    isChatOpen,
+    toggleChat,
+    isConsoleOpen,
+    toggleConsole,
+    theme: editorTheme,
+    setTheme: setEditorTheme,
+  } = useIDEStore();
   const { theme: appTheme, toggleTheme } = useTheme();
 
   const handleEditorThemeChange = (v: string) => {
@@ -82,6 +91,16 @@ export function Navbar() {
         <Button size="sm" className="gap-1.5" data-testid="button-run">
           <Play className="w-3.5 h-3.5" />
           Run
+        </Button>
+
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={toggleConsole}
+          aria-label={isConsoleOpen ? "Hide console" : "Show console"}
+          data-testid="button-toggle-console"
+        >
+          <Terminal className="w-4 h-4" />
         </Button>
 
         <Button
