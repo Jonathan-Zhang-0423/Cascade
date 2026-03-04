@@ -5,4 +5,4 @@ export const doubaoClient = new OpenAI({
   apiKey: process.env.DOUBAO_API_KEY,
 });
 
-export const DOUBAO_MODEL = "doubao-1.5-pro-256k";
+export const DOUBAO_MODEL = process.env.DOUBAO_MODEL || "Doubao-Seed-2.0-Code";
