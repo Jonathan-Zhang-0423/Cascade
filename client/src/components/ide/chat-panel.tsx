@@ -297,10 +297,14 @@ export function ChatPanel() {
   }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleCompositionStart = () => {
+    // Some browsers might need explicit state tracking, but isComposing on the event is standard
   };
 
   return (
@@ -340,6 +344,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
             placeholder="Describe what you want to build..."
             className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
             rows={1}
