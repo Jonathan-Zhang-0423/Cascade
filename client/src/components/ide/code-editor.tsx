@@ -1,11 +1,22 @@
 import Editor from "@monaco-editor/react";
 import { useIDEStore, findFileContent, getFileLanguage } from "@/stores/ide-store";
-import { X, FileCode } from "lucide-react";
+import { X, FileCode, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export function CodeEditor() {
   const { activeFile, openFiles, files, theme, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
+
+  const openCommandPalette = () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "p",
+      metaKey: true,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    document.dispatchEvent(event);
+  };
 
   const content = activeFile ? findFileContent(files, activeFile) : "";
   const language = activeFile ? getFileLanguage(activeFile) : "plaintext";
@@ -56,6 +67,18 @@ export function CodeEditor() {
                 </button>
               </div>
             ))}
+            <div className="flex items-center px-1 border-l border-border/30">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={openCommandPalette}
+                aria-label="Open file"
+                data-testid="button-open-file-palette"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 min-h-0">
