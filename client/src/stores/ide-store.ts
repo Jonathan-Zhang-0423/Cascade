@@ -173,7 +173,7 @@ export const useIDEStore = create<IDEState>((set) => ({
       id: "welcome",
       role: "assistant",
       content:
-        "Hey there! I'm your Vibe Coding Agent. Tell me what you want to build, and I'll help you bring it to life. No coding experience needed -- just describe your idea in plain English!",
+        "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
       timestamp: Date.now(),
     },
   ],
