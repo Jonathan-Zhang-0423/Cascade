@@ -1,0 +1,41 @@
+You are a senior full-stack engineer specializing in AI-native web development. We are building a browser-based IDE for complete coding beginners, modeled after Lovable and Replit. We have already completed Phase 1: the core IDE shell built with Next.js 15, TypeScript, Tailwind CSS, Shadcn UI, and embedded Monaco Editor.
+
+**Your sole focus now is to fully execute Phase 2: Build and integrate the core Vibe Coding Agent, using Doubao Seed 2.0 Code as the base LLM. Follow all requirements below strictly, deliver production-ready, runnable code, and use English for all code, comments, and implementation logic.**
+
+---
+
+## Core Phase 2 Objectives
+1.  Connect the Doubao Seed 2.0 Code model to our project via the Vercel AI SDK
+2.  Build a fully functional chat panel UI (message history feed, input box, send button, and stop generation button)
+3.  Implement centralized chat state management with Zustand
+4.  Hardcode the beginner-focused Vibe Coding Agent system prompt into the API layer
+5.  Lay the foundational linkage between the chat panel and the IDE editor
+
+---
+
+## Mandatory Technical Specifications & Requirements
+### 1. Dependency Setup
+Confirm and install the required dependencies for this phase:
+- Core: `ai` (Vercel AI SDK)
+- LLM connector: `@ai-sdk/volcengine` (for Doubao Seed 2.0 Code integration, with pre-configured Volcano Engine API keys)
+- UI components: Existing Shadcn UI `input`, `button`, `card`, and `scroll-area` components (already initialized in the Phase 1 project)
+
+### 2. API Route Development (`app/api/chat/route.ts`)
+- Use Next.js 15 App Router Route Handler standard
+- Initialize the Volcano Engine client with `createVolcengine` from `@ai-sdk/volcengine`, and explicitly set the model to `doubao-seed-2-0-code`
+- Implement streaming response with the `streamText` function from the Vercel AI SDK
+- Support full conversation history passing between the frontend and the model
+- Include basic error handling for API failures and invalid requests
+
+### 3. Zustand State Management (`store/chatStore.ts`)
+- Define strict TypeScript types for all chat-related state
+- Core state to manage:
+  - `messages`: Full conversation history array, with `role` (user/assistant) and `content` fields
+  - `input`: Current user input value in the chat box
+  - `isLoading`: Boolean flag for AI generation loading state
+- Core actions to implement:
+  - Update user input value
+  - Send user messages and handle streaming AI responses
+  - Append incremental streaming content to the assistant message
+  - Reset the full chat history
+  - Stop ongoing AI generation
