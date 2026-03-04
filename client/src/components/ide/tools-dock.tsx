@@ -70,12 +70,6 @@ export function ToolsDock() {
       </div>
 
       <div className="flex flex-col items-center gap-1">
-        <DockButton
-          icon={theme === "dark" ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
-          label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={toggleTheme}
-          testId="dock-theme-toggle"
-        />
       </div>
     </div>
   );

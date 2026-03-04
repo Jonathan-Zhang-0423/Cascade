@@ -1,4 +1,5 @@
 import { useIDEStore } from "@/stores/ide-store";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -7,13 +8,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Code2 } from "lucide-react";
+import { Play, Code2, Sun, Moon } from "lucide-react";
 
 export function Navbar() {
   const {
     theme: editorTheme,
     setTheme: setEditorTheme,
   } = useIDEStore();
+  const { theme, toggleTheme } = useTheme();
 
   const handleEditorThemeChange = (v: string) => {
     setEditorTheme(v as "vs-dark" | "vs-light" | "hc-black");
@@ -50,6 +52,17 @@ export function Navbar() {
             <SelectItem value="hc-black">High Contrast</SelectItem>
           </SelectContent>
         </Select>
+
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          data-testid="navbar-theme-toggle"
+        >
+          {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+        </Button>
 
         <Button size="sm" className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-run">
           <Play className="w-3 h-3 fill-current" />
