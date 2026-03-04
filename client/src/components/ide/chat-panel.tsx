@@ -348,7 +348,6 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            onCompositionStart={handleCompositionStart}
             placeholder="Describe what you want to build..."
             className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
             rows={1}
