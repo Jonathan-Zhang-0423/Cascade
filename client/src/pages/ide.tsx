@@ -17,11 +17,24 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
 export default function IDEPage() {
   const { isSidebarOpen, isChatOpen, isConsoleOpen, toggleSidebar, toggleConsole, activeFile } =
     useIDEStore();
   const [mainTab, setMainTab] = useState<"editor" | "preview">("editor");
   const { toast } = useToast();
+
+  const openCommandPalette = () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "p",
+      metaKey: true,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    document.dispatchEvent(event);
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -80,7 +93,7 @@ export default function IDEPage() {
               <ResizablePanel defaultSize={isConsoleOpen ? 70 : 100} minSize={30} id="editor-area" order={1}>
                 <div className="h-full flex flex-col">
                   <div className="flex items-center border-b border-border/50 bg-card/20 shrink-0">
-                    <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "editor" | "preview")} className="w-full">
+                    <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "editor" | "preview")} className="flex-1">
                       <TabsList className="h-9 bg-transparent rounded-none border-0 p-0 gap-0">
                         <TabsTrigger
                           value="editor"
@@ -98,6 +111,18 @@ export default function IDEPage() {
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
+                    <div className="flex items-center px-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={openCommandPalette}
+                        aria-label="Open file"
+                        data-testid="button-open-file-palette"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   {breadcrumb && mainTab === "editor" && (
