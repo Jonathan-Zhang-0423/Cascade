@@ -62,7 +62,7 @@ Lives inside the IDE as a chat panel. Key behaviors:
 - [x] Replit-inspired UI redesign: tools dock, side-by-side panes, workspace aesthetic
 
 ### Phase 2: Vibe Coding Agent (Prompt & AI Integration) - COMPLETE
-- [x] Set up Doubao API (doubao-1.5-pro-256k) via OpenAI-compatible SDK
+- [x] Set up Doubao API (doubao-seed-2-0-code) via OpenAI-compatible SDK
 - [x] Build chat panel UI: message history, input, send button, streaming display
 - [x] Hardcode Vibe Agent system prompt with rules (demand clarity, confirm, no jargon, iterative)
 - [x] Connect chat to Doubao model (SSE streaming responses)

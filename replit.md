@@ -9,7 +9,7 @@ A browser-based IDE inspired by Replit, featuring a built-in "Vibe Coding Agent"
 - **State Management**: Zustand
 - **Code Editor**: Monaco Editor (`@monaco-editor/react`)
 - **AI Provider**: Doubao (ByteDance/Volcengine) via OpenAI-compatible SDK
-- **AI Model**: `doubao-1.5-pro-256k` for chat + code generation
+- **AI Model**: `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) for chat + code generation
 - **Routing**: wouter
 
 ## Project Structure
@@ -43,7 +43,7 @@ shared/
 
 ## AI Integration (Phase 2)
 - **Provider**: Doubao (ByteDance) via `https://ark.cn-beijing.volces.com/api/v3`
-- **Model**: `doubao-1.5-pro-256k` (256k context, handles both conversation and code generation)
+- **Model**: `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code, handles both conversation and code generation)
 - **API Route**: `POST /api/chat` — accepts messages + file context, returns SSE stream
 - **System Prompt**: Encodes Vibe Agent behavioral rules (demand clarity, confirm before building, no jargon, iterative)
 - **Code Apply Flow**: AI outputs code blocks with `file="..."` annotations → chat renders "Apply" buttons → clicking writes code to IDE filesystem → preview updates automatically

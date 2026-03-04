@@ -250,8 +250,9 @@ export function ChatPanel() {
       const decoder = new TextDecoder();
       let accumulated = "";
       let buffer = "";
+      let streamDone = false;
 
-      while (true) {
+      while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -263,7 +264,10 @@ export function ChatPanel() {
           const trimmedLine = line.trim();
           if (trimmedLine.startsWith("data: ")) {
             const data = trimmedLine.slice(6).trim();
-            if (data === "[DONE]") break;
+            if (data === "[DONE]") {
+              streamDone = true;
+              break;
+            }
 
             try {
               const parsed = JSON.parse(data);
