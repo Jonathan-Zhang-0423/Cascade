@@ -60,6 +60,21 @@ export default function IDEPage() {
 
       <div className="flex-1 min-h-0">
         <ResizablePanelGroup direction="horizontal">
+          {isChatOpen && (
+            <>
+              <ResizablePanel
+                defaultSize={25}
+                minSize={20}
+                maxSize={40}
+                id="chat"
+                order={1}
+              >
+                <ChatPanel />
+              </ResizablePanel>
+              <ResizableHandle />
+            </>
+          )}
+
           {isSidebarOpen && (
             <>
               <ResizablePanel
@@ -67,7 +82,7 @@ export default function IDEPage() {
                 minSize={12}
                 maxSize={25}
                 id="sidebar"
-                order={1}
+                order={2}
               >
                 <FileTree />
               </ResizablePanel>
@@ -75,7 +90,7 @@ export default function IDEPage() {
             </>
           )}
 
-          <ResizablePanel defaultSize={isChatOpen ? 55 : 85} minSize={30} id="main" order={2}>
+          <ResizablePanel defaultSize={60} minSize={30} id="main" order={3}>
             <ResizablePanelGroup direction="vertical">
               <ResizablePanel defaultSize={isConsoleOpen ? 70 : 100} minSize={30} id="editor-area" order={1}>
                 <div className="h-full flex flex-col">
@@ -130,21 +145,6 @@ export default function IDEPage() {
               )}
             </ResizablePanelGroup>
           </ResizablePanel>
-
-          {isChatOpen && (
-            <>
-              <ResizableHandle />
-              <ResizablePanel
-                defaultSize={30}
-                minSize={20}
-                maxSize={45}
-                id="chat"
-                order={3}
-              >
-                <ChatPanel />
-              </ResizablePanel>
-            </>
-          )}
         </ResizablePanelGroup>
       </div>
 
