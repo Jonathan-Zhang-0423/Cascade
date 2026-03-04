@@ -18,13 +18,17 @@ Tasks Completed:
       - Active file / open files tab management
       - Chat messages state
       - Console entries state
-      - Sidebar, chat, and console panel toggle
+      - Tool panel toggling (activeTool: files/chat/null)
+      - Console panel toggle
       - Theme switching (Dark+, Light+, High Contrast)
       - File CRUD operations (add, rename, delete)
   [x] Built Navbar component (client/src/components/ide/navbar.tsx)
-      - Logo, sidebar toggle, theme switcher, run button, console toggle, chat toggle
+      - Slim header bar with logo, project name, theme selector, Run button
+  [x] Built ToolsDock component (client/src/components/ide/tools-dock.tsx)
+      - Vertical icon strip: Files, AI Chat, Console, Theme toggle
+      - Active tool indicator with left border highlight
   [x] Built FileTree component (client/src/components/ide/file-tree.tsx)
-      - Hierarchical file/folder display with icons
+      - Tool panel with close button, hierarchical file/folder display
       - Expand/collapse folders, active file highlighting
       - New File / New Folder buttons in header
       - Right-click context menu (New File, New Folder, Rename, Duplicate, Delete)
@@ -33,49 +37,54 @@ Tasks Completed:
   [x] Built CodeEditor component (client/src/components/ide/code-editor.tsx)
       - Monaco Editor with JetBrains Mono font
       - Tab bar with close buttons, language detection
-      - Smooth cursor, bracket colorization, minimap
+      - Plus button to open command palette for file search
+      - Smooth cursor, bracket colorization, no minimap
       - Empty state when no files open
   [x] Built ChatPanel component (client/src/components/ide/chat-panel.tsx)
+      - Tool panel with close button
       - Message bubbles with user/assistant distinction
       - Welcome message from Vibe Agent
       - Text input with Enter to send
       - Placeholder AI response (hardcoded for now)
   [x] Built PreviewPanel component (client/src/components/ide/preview-panel.tsx)
-      - Live HTML preview using iframe srcDoc
+      - Webview-style pane with URL bar display
       - Console interceptor injected into iframe (captures console.log/warn/error/info)
       - postMessage bridge to send console output to IDE
-      - Refresh button clears console and reloads
+      - Refresh button
   [x] Built ConsolePanel component (client/src/components/ide/console-panel.tsx)
       - Displays log/info/warn/error entries with timestamps
       - Color-coded entries (white/blue/yellow/red)
       - Monospace font, auto-scroll to latest entry
       - Error/warning count badges in header
-      - Clear console button
-      - Collapsible via header click
-      - Resizable vertically within editor area
-  [x] Built StatusBar component (client/src/components/ide/status-bar.tsx)
-      - Git branch indicator (main)
-      - Error/warning counts from console
-      - Active file language, encoding (UTF-8), indentation (Spaces: 2)
+      - Clear console button, close button
   [x] Built CommandPalette component (client/src/components/ide/command-palette.tsx)
       - Ctrl+Shift+P / Cmd+Shift+P to open
       - File search (fuzzy search all project files)
-      - View commands: Toggle Sidebar, Chat, Console
+      - View commands: Toggle Files panel, AI Chat, Console
       - Theme commands: Toggle dark/light, switch editor themes
-      - Keyboard shortcut hints shown
   [x] Added keyboard shortcuts
       - Ctrl+S / Cmd+S: Save feedback (toast notification)
-      - Ctrl+B / Cmd+B: Toggle sidebar
+      - Ctrl+B / Cmd+B: Toggle sidebar/files panel
       - Ctrl+J / Cmd+J: Toggle console
       - Ctrl+Shift+P / Cmd+Shift+P: Command palette
-  [x] Added breadcrumb navigation above editor
   [x] Built IDEPage layout (client/src/pages/ide.tsx)
-      - Resizable 3-panel horizontal layout (sidebar, editor/preview, chat)
-      - Resizable vertical split (editor + console)
-      - Code/Preview tab switching
-      - Responsive panel toggling
+      - Replit-inspired workspace layout
+      - Tools dock on far left
+      - Tool panels (files/chat) slide in from dock
+      - Editor and Preview panes side-by-side
+      - Console at bottom
+      - Rounded pane containers with gap spacing
   [x] Updated App.tsx with routing to IDE page
   [x] Default "Hello World" HTML file loads in editor
+
+UI REDESIGN (Replit-inspired):
+  [x] Replaced traditional navbar with slim project-centric header
+  [x] Created tools dock (vertical icon strip on far left)
+  [x] Changed from tabbed Code/Preview to side-by-side panes
+  [x] Tool panels (Files, AI Chat) open from dock, not fixed columns
+  [x] Rounded pane containers with workspace gaps
+  [x] Removed status bar (replaced by tools dock approach)
+  [x] Webview-style preview with URL bar
 
 ====================================
 PHASE 2: Vibe Coding Agent (AI Logic)
@@ -95,7 +104,7 @@ PHASE 3: Execution & Preview
 Status: PARTIALLY STARTED
 
 Completed:
-  [x] Preview panel with iframe rendering
+  [x] Preview panel with iframe rendering (side-by-side with editor)
   [x] Console output capture from iframe via postMessage
 
 Planned:
@@ -114,8 +123,7 @@ Completed:
   [x] Command palette
   [x] File CRUD operations
   [x] Keyboard shortcuts
-  [x] Status bar
-  [x] Breadcrumb navigation
+  [x] Replit-inspired UI redesign
 
 Planned:
   [ ] Additional Monaco themes (Monokai, Solarized, etc.)

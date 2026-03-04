@@ -1,15 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useIDEStore, type ConsoleEntry } from "@/stores/ide-store";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Trash2,
   Terminal,
   AlertTriangle,
   XCircle,
   Info,
-  ChevronUp,
-  ChevronDown,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +64,7 @@ function ConsoleEntryRow({ entry }: { entry: ConsoleEntry }) {
 }
 
 export function ConsolePanel() {
-  const { consoleEntries, clearConsole, isConsoleOpen, toggleConsole } =
+  const { consoleEntries, clearConsole, toggleConsole } =
     useIDEStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -80,22 +78,13 @@ export function ConsolePanel() {
   const warnCount = consoleEntries.filter((e) => e.level === "warn").length;
 
   return (
-    <div className="h-full flex flex-col bg-background" data-testid="console-panel">
+    <div className="h-full flex flex-col" data-testid="console-panel">
       <div className="flex items-center justify-between gap-2 px-3 h-9 border-b border-border/50 shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-            onClick={toggleConsole}
-            data-testid="button-toggle-console-collapse"
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            Console
-            {isConsoleOpen ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronUp className="w-3 h-3" />
-            )}
-          </button>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5">
+            <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-foreground">Console</span>
+          </div>
 
           {(errorCount > 0 || warnCount > 0) && (
             <div className="flex items-center gap-2">
@@ -115,32 +104,43 @@ export function ConsolePanel() {
           )}
         </div>
 
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={clearConsole}
-          aria-label="Clear console"
-          data-testid="button-clear-console"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={clearConsole}
+            aria-label="Clear console"
+            data-testid="button-clear-console"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={toggleConsole}
+            aria-label="Close console"
+            data-testid="button-close-console"
+          >
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
       </div>
 
-      {isConsoleOpen && (
-        <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
-          {consoleEntries.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-xs text-muted-foreground/50 font-mono">
-                No console output yet. Run your code to see results here.
-              </p>
-            </div>
-          ) : (
-            consoleEntries.map((entry) => (
-              <ConsoleEntryRow key={entry.id} entry={entry} />
-            ))
-          )}
-        </div>
-      )}
+      <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
+        {consoleEntries.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-xs text-muted-foreground/50 font-mono">
+              No console output yet. Run your code to see results here.
+            </p>
+          </div>
+        ) : (
+          consoleEntries.map((entry) => (
+            <ConsoleEntryRow key={entry.id} entry={entry} />
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -33,6 +33,7 @@ import {
   Pencil,
   Trash2,
   Copy,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -297,19 +298,20 @@ function FileTreeItem({
 }
 
 export function FileTree() {
-  const { files, addFile } = useIDEStore();
+  const { files, addFile, setActiveTool } = useIDEStore();
   const [newItemType, setNewItemType] = useState<"file" | "folder" | null>(null);
 
   return (
-    <div className="h-full flex flex-col bg-sidebar" data-testid="file-tree">
-      <div className="flex items-center justify-between gap-1 px-3 h-10 border-b border-sidebar-border shrink-0">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Explorer
+    <div className="h-full flex flex-col" data-testid="file-tree">
+      <div className="flex items-center justify-between gap-1 px-3 h-9 border-b border-border/50 shrink-0">
+        <span className="text-xs font-medium text-foreground">
+          Files
         </span>
         <div className="flex items-center gap-0.5">
           <Button
             size="icon"
             variant="ghost"
+            className="h-6 w-6"
             onClick={() => setNewItemType("file")}
             aria-label="New file"
             data-testid="button-new-file"
@@ -319,11 +321,22 @@ export function FileTree() {
           <Button
             size="icon"
             variant="ghost"
+            className="h-6 w-6"
             onClick={() => setNewItemType("folder")}
             aria-label="New folder"
             data-testid="button-new-folder"
           >
             <FolderPlus className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={() => setActiveTool(null)}
+            aria-label="Close panel"
+            data-testid="button-close-files"
+          >
+            <X className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>

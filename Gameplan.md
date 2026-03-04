@@ -56,11 +56,10 @@ Lives inside the IDE as a chat panel. Key behaviors:
 - [x] Preview panel with live HTML rendering
 - [x] Chat panel placeholder UI with welcome message
 - [x] Console panel with log capture from preview iframe
-- [x] Status bar with file info, git branch, error/warning counts
 - [x] Command palette (Ctrl+Shift+P)
 - [x] Keyboard shortcuts (Ctrl+S, Ctrl+B, Ctrl+J)
-- [x] Breadcrumb navigation
 - [x] File CRUD: create, rename, delete, duplicate via context menu
+- [x] Replit-inspired UI redesign: tools dock, side-by-side panes, workspace aesthetic
 
 ### Phase 2: Vibe Coding Agent (Prompt & AI Integration) - NOT STARTED
 - [ ] Set up Vercel AI SDK in API routes
@@ -94,28 +93,31 @@ Lives inside the IDE as a chat panel. Key behaviors:
 
 ```
 client/src/
-  stores/ide-store.ts            - Zustand state (files, tabs, chat, console, theme, CRUD)
+  stores/ide-store.ts            - Zustand state (files, tabs, chat, console, theme, activeTool, CRUD)
   components/ide/
-    navbar.tsx                    - Top nav (logo, theme, toggles for sidebar/console/chat)
-    file-tree.tsx                 - Explorer sidebar with CRUD + context menus
+    navbar.tsx                    - Slim header bar (logo, project name, theme selector, Run button)
+    tools-dock.tsx                - Vertical icon dock (Files, AI Chat, Console, Theme toggle)
+    file-tree.tsx                 - File explorer tool panel with CRUD + context menus
     code-editor.tsx               - Monaco + tab management
-    chat-panel.tsx                - Vibe Agent chat UI
-    preview-panel.tsx             - Live HTML preview with console interceptor
+    chat-panel.tsx                - Vibe Agent chat tool panel
+    preview-panel.tsx             - Webview-style preview with URL bar + console interceptor
     console-panel.tsx             - Console output (log/warn/error/info)
-    status-bar.tsx                - Bottom status bar (branch, lang, encoding, errors)
     command-palette.tsx           - Command palette (Ctrl+Shift+P)
   components/theme-provider.tsx   - Light/dark mode provider
-  pages/ide.tsx                   - Main IDE layout (resizable panels + keyboard shortcuts)
+  pages/ide.tsx                   - Replit-inspired workspace (dock + tool panels + side-by-side panes)
   App.tsx                         - Root with routing + providers
 ```
 
 ---
 
 ## Key Decisions Made
-1. Using `react-resizable-panels` for the multi-panel IDE layout
+1. Replit-inspired workspace layout with tools dock + side-by-side panes
 2. Dark mode as default (matches IDE conventions)
 3. Zustand for state management (lightweight, no boilerplate)
 4. srcDoc-based iframe preview with postMessage console bridge
 5. Monaco with JetBrains Mono font and bracket colorization
 6. Console captures logs from iframe via injected script interceptor
 7. Context menus for file operations using shadcn ContextMenu
+8. Tools dock replaces traditional sidebar/status bar toggles
+9. Editor and Preview shown simultaneously (not behind tabs)
+10. Rounded pane containers with gaps for workspace aesthetic

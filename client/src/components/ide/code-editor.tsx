@@ -24,11 +24,11 @@ export function CodeEditor() {
   const getFileName = (path: string) => path.split("/").pop() || path;
 
   return (
-    <div className="h-full flex flex-col bg-background" data-testid="code-editor">
+    <div className="h-full flex flex-col" data-testid="code-editor">
       {openFiles.length > 0 ? (
         <>
           <div
-            className="flex items-center border-b border-border/50 bg-card/30 shrink-0 overflow-x-auto"
+            className="flex items-center border-b border-border/50 shrink-0 overflow-x-auto h-9"
             role="tablist"
             aria-label="Open files"
           >
@@ -39,10 +39,10 @@ export function CodeEditor() {
                 aria-selected={filePath === activeFile}
                 tabIndex={filePath === activeFile ? 0 : -1}
                 className={cn(
-                  "group flex items-center gap-1.5 px-3 py-2 text-xs cursor-pointer border-r border-border/30 transition-colors min-w-fit",
+                  "group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-r border-border/30 transition-colors min-w-fit",
                   filePath === activeFile
-                    ? "bg-background text-foreground border-b-2 border-b-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                    ? "bg-background text-foreground"
+                    : "bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 )}
                 onClick={() => setActiveFile(filePath)}
                 onKeyDown={(e) => {
@@ -67,18 +67,14 @@ export function CodeEditor() {
                 </button>
               </div>
             ))}
-            <div className="flex items-center px-1 border-l border-border/30">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={openCommandPalette}
-                aria-label="Open file"
-                data-testid="button-open-file-palette"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            <button
+              className="flex items-center justify-center h-full px-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              onClick={openCommandPalette}
+              aria-label="Open file"
+              data-testid="button-open-file-palette"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           </div>
 
           <div className="flex-1 min-h-0">
@@ -96,7 +92,7 @@ export function CodeEditor() {
                 fontSize: 14,
                 fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 fontLigatures: true,
-                minimap: { enabled: true, scale: 1 },
+                minimap: { enabled: false },
                 scrollBeyondLastLine: false,
                 smoothScrolling: true,
                 cursorBlinking: "smooth",
@@ -115,13 +111,13 @@ export function CodeEditor() {
       ) : (
         <div className="flex-1 flex items-center justify-center" data-testid="editor-empty">
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto">
-              <FileCode className="w-8 h-8 text-muted-foreground" />
+            <div className="w-14 h-14 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto">
+              <FileCode className="w-7 h-7 text-muted-foreground/50" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">No file open</p>
-              <p className="text-xs text-muted-foreground/60">
-                Select a file from the explorer to start editing
+              <p className="text-xs text-muted-foreground/50">
+                Select a file from the explorer
               </p>
             </div>
           </div>

@@ -1,26 +1,18 @@
 import { useEffect } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { Navbar } from "@/components/ide/navbar";
+import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
 import { CodeEditor } from "@/components/ide/code-editor";
 import { ChatPanel } from "@/components/ide/chat-panel";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
-import { StatusBar } from "@/components/ide/status-bar";
 import { CommandPalette } from "@/components/ide/command-palette";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/components/ui/resizable";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function IDEPage() {
-  const { isSidebarOpen, isChatOpen, isConsoleOpen, toggleSidebar, toggleConsole, activeFile } =
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile } =
     useIDEStore();
-  const [mainTab, setMainTab] = useState<"editor" | "preview">("editor");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,109 +38,43 @@ export default function IDEPage() {
     return () => document.removeEventListener("keydown", handler);
   }, [activeFile, toggleSidebar, toggleConsole, toast]);
 
-  const breadcrumb = activeFile
-    ? activeFile
-        .split("/")
-        .filter(Boolean)
-        .join(" / ")
-    : null;
-
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background" data-testid="ide-page">
       <Navbar />
       <CommandPalette />
 
-      <div className="flex-1 min-h-0">
-        <ResizablePanelGroup direction="horizontal">
-          {isSidebarOpen && (
-            <>
-              <ResizablePanel
-                defaultSize={15}
-                minSize={12}
-                maxSize={25}
-                id="sidebar"
-                order={1}
-              >
-                <FileTree />
-              </ResizablePanel>
-              <ResizableHandle />
-            </>
-          )}
+      <div className="flex-1 min-h-0 flex">
+        <ToolsDock />
 
-          <ResizablePanel defaultSize={isChatOpen ? 55 : 85} minSize={30} id="main" order={2}>
-            <ResizablePanelGroup direction="vertical">
-              <ResizablePanel defaultSize={isConsoleOpen ? 70 : 100} minSize={30} id="editor-area" order={1}>
-                <div className="h-full flex flex-col">
-                  <div className="flex items-center border-b border-border/50 bg-card/20 shrink-0">
-                    <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "editor" | "preview")} className="w-full">
-                      <TabsList className="h-9 bg-transparent rounded-none border-0 p-0 gap-0">
-                        <TabsTrigger
-                          value="editor"
-                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4 h-9"
-                          data-testid="tab-editor"
-                        >
-                          Code
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="preview"
-                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4 h-9"
-                          data-testid="tab-preview"
-                        >
-                          Preview
-                        </TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  </div>
+        <div className="flex-1 min-w-0 p-1.5 bg-sidebar">
+          <div className="h-full flex gap-1.5">
+            {activeTool && (
+              <div className="w-[260px] shrink-0 bg-background rounded-lg border border-border/50 overflow-hidden">
+                {activeTool === "files" && <FileTree />}
+                {activeTool === "chat" && <ChatPanel />}
+              </div>
+            )}
 
-                  {breadcrumb && mainTab === "editor" && (
-                    <div className="flex items-center px-3 h-7 border-b border-border/30 bg-card/10 shrink-0" data-testid="breadcrumb">
-                      <span className="text-[11px] text-muted-foreground truncate">
-                        {breadcrumb}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-h-0">
-                    {mainTab === "editor" ? <CodeEditor /> : <PreviewPanel />}
-                  </div>
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+              <div className="flex-1 min-h-0 flex gap-1.5">
+                <div className="flex-1 min-w-0 bg-background rounded-lg border border-border/50 overflow-hidden">
+                  <CodeEditor />
                 </div>
-              </ResizablePanel>
+
+                <div className="flex-1 min-w-0 bg-background rounded-lg border border-border/50 overflow-hidden">
+                  <PreviewPanel />
+                </div>
+              </div>
 
               {isConsoleOpen && (
-                <>
-                  <ResizableHandle />
-                  <ResizablePanel
-                    defaultSize={30}
-                    minSize={10}
-                    maxSize={60}
-                    id="console-area"
-                    order={2}
-                  >
-                    <ConsolePanel />
-                  </ResizablePanel>
-                </>
+                <div className="h-[200px] shrink-0 bg-background rounded-lg border border-border/50 overflow-hidden">
+                  <ConsolePanel />
+                </div>
               )}
-            </ResizablePanelGroup>
-          </ResizablePanel>
-
-          {isChatOpen && (
-            <>
-              <ResizableHandle />
-              <ResizablePanel
-                defaultSize={30}
-                minSize={20}
-                maxSize={45}
-                id="chat"
-                order={3}
-              >
-                <ChatPanel />
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <StatusBar />
     </div>
   );
 }

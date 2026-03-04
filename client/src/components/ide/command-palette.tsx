@@ -11,9 +11,8 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  MessageSquare,
+  FolderClosed,
+  Sparkles,
   Terminal,
   Sun,
   Moon,
@@ -25,11 +24,9 @@ import { useTheme } from "@/components/theme-provider";
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const {
-    toggleSidebar,
-    toggleChat,
+    setActiveTool,
     toggleConsole,
-    isSidebarOpen,
-    isChatOpen,
+    activeTool,
     isConsoleOpen,
     files,
     setActiveFile,
@@ -80,24 +77,20 @@ export function CommandPalette() {
 
         <CommandGroup heading="View">
           <CommandItem
-            onSelect={() => runCommand(toggleSidebar)}
+            onSelect={() => runCommand(() => setActiveTool("files"))}
             data-testid="cmd-toggle-sidebar"
           >
-            {isSidebarOpen ? (
-              <PanelLeftClose className="w-4 h-4" />
-            ) : (
-              <PanelLeftOpen className="w-4 h-4" />
-            )}
-            <span>{isSidebarOpen ? "Hide" : "Show"} Sidebar</span>
+            <FolderClosed className="w-4 h-4" />
+            <span>{activeTool === "files" ? "Hide" : "Show"} Files Panel</span>
             <CommandShortcut>Ctrl+B</CommandShortcut>
           </CommandItem>
 
           <CommandItem
-            onSelect={() => runCommand(toggleChat)}
+            onSelect={() => runCommand(() => setActiveTool("chat"))}
             data-testid="cmd-toggle-chat"
           >
-            <MessageSquare className="w-4 h-4" />
-            <span>{isChatOpen ? "Hide" : "Show"} Chat Panel</span>
+            <Sparkles className="w-4 h-4" />
+            <span>{activeTool === "chat" ? "Hide" : "Show"} AI Chat</span>
           </CommandItem>
 
           <CommandItem

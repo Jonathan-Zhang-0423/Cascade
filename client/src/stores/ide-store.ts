@@ -22,15 +22,18 @@ export interface ConsoleEntry {
   timestamp: number;
 }
 
+export type ToolPanel = "files" | "chat" | null;
+
 interface IDEState {
   files: FileNode[];
   activeFile: string | null;
   openFiles: string[];
   chatMessages: ChatMessage[];
   consoleEntries: ConsoleEntry[];
+  activeTool: ToolPanel;
+  isConsoleOpen: boolean;
   isSidebarOpen: boolean;
   isChatOpen: boolean;
-  isConsoleOpen: boolean;
   theme: "vs-dark" | "vs-light" | "hc-black";
 
   setActiveFile: (path: string) => void;
@@ -40,6 +43,7 @@ interface IDEState {
   addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
   addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
   clearConsole: () => void;
+  setActiveTool: (tool: ToolPanel) => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
@@ -171,9 +175,10 @@ export const useIDEStore = create<IDEState>((set) => ({
     },
   ],
   consoleEntries: [],
-  isSidebarOpen: true,
-  isChatOpen: true,
+  activeTool: "files" as ToolPanel,
   isConsoleOpen: true,
+  isSidebarOpen: true,
+  isChatOpen: false,
   theme: "vs-dark",
 
   setActiveFile: (path) =>
@@ -235,8 +240,23 @@ export const useIDEStore = create<IDEState>((set) => ({
 
   clearConsole: () => set({ consoleEntries: [] }),
 
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+  setActiveTool: (tool) =>
+    set((state) => ({
+      activeTool: state.activeTool === tool ? null : tool,
+      isSidebarOpen: tool === "files" ? state.activeTool !== "files" : false,
+      isChatOpen: tool === "chat" ? state.activeTool !== "chat" : false,
+    })),
+
+  toggleSidebar: () =>
+    set((state) => ({
+      isSidebarOpen: !state.isSidebarOpen,
+      activeTool: !state.isSidebarOpen ? "files" : state.activeTool === "files" ? null : state.activeTool,
+    })),
+  toggleChat: () =>
+    set((state) => ({
+      isChatOpen: !state.isChatOpen,
+      activeTool: !state.isChatOpen ? "chat" : state.activeTool === "chat" ? null : state.activeTool,
+    })),
   toggleConsole: () => set((state) => ({ isConsoleOpen: !state.isConsoleOpen })),
   setTheme: (theme) => set({ theme }),
 

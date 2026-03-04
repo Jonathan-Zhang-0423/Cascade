@@ -1,6 +1,6 @@
 import { useIDEStore, findFileContent } from "@/stores/ide-store";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Globe, RefreshCw } from "lucide-react";
+import { Globe, RefreshCw, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function PreviewPanel() {
@@ -79,22 +79,22 @@ export function PreviewPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-background" data-testid="preview-panel">
-      <div className="flex items-center justify-between gap-2 px-3 h-10 border-b border-border/50 shrink-0">
-        <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Preview
-          </span>
+    <div className="h-full flex flex-col" data-testid="preview-panel">
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-border/50 shrink-0">
+        <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <div className="flex-1 flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-muted/40 border border-border/30 text-[11px] text-muted-foreground truncate">
+          <Lock className="w-2.5 h-2.5 shrink-0" />
+          <span className="truncate">localhost:3000</span>
         </div>
         <Button
           size="icon"
           variant="ghost"
+          className="h-6 w-6 shrink-0"
           onClick={handleRefresh}
           aria-label="Refresh preview"
           data-testid="button-refresh-preview"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
+          <RefreshCw className="w-3 h-3" />
         </Button>
       </div>
       <div className="flex-1 min-h-0 bg-white">
