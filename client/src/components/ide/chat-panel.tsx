@@ -1,9 +1,134 @@
-import { useState, useRef, useEffect } from "react";
-import { useIDEStore, type ChatMessage } from "@/stores/ide-store";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Sparkles, X } from "lucide-react";
+import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface CodeBlock {
+  language: string;
+  filePath: string;
+  code: string;
+}
+
+function parseCodeBlocks(content: string): Array<string | CodeBlock> {
+  const parts: Array<string | CodeBlock> = [];
+  const regex = /```(\w*)\s+file="([^"]+)"\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+    parts.push({
+      language: match[1] || "text",
+      filePath: match[2],
+      code: match[3].trimEnd(),
+    });
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function CodeBlockView({ block }: { block: CodeBlock }) {
+  const [applied, setApplied] = useState(false);
+  const { updateFileContent, files, addFile, openFile } = useIDEStore();
+
+  const handleApply = () => {
+    const allFiles = flattenFiles(files);
+    const exists = allFiles.some((f) => f.path === block.filePath);
+
+    if (exists) {
+      updateFileContent(block.filePath, block.code);
+    } else {
+      const lastSlash = block.filePath.lastIndexOf("/");
+      const parentPath = block.filePath.substring(0, lastSlash);
+      const fileName = block.filePath.substring(lastSlash + 1);
+      addFile(parentPath, fileName, "file");
+      setTimeout(() => {
+        updateFileContent(block.filePath, block.code);
+      }, 50);
+    }
+
+    openFile(block.filePath);
+    setApplied(true);
+    setTimeout(() => setApplied(false), 2000);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(block.code);
+  };
+
+  return (
+    <div className="my-2 rounded-md border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border/50">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <FileCode className="w-3 h-3" />
+          <span>{block.filePath}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-5 w-5"
+            onClick={handleCopy}
+            data-testid={`button-copy-${block.filePath}`}
+          >
+            <Copy className="w-3 h-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant={applied ? "outline" : "default"}
+            className="h-5 px-2 text-[10px] gap-1"
+            onClick={handleApply}
+            disabled={applied}
+            data-testid={`button-apply-${block.filePath}`}
+          >
+            {applied ? (
+              <>
+                <Check className="w-3 h-3" />
+                Applied
+              </>
+            ) : (
+              "Apply"
+            )}
+          </Button>
+        </div>
+      </div>
+      <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed bg-background/50">
+        <code>{block.code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function MessageContent({ content }: { content: string }) {
+  const parts = parseCodeBlocks(content);
+
+  if (parts.length === 1 && typeof parts[0] === "string") {
+    return <span className="whitespace-pre-wrap">{parts[0]}</span>;
+  }
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        typeof part === "string" ? (
+          <span key={i} className="whitespace-pre-wrap">
+            {part}
+          </span>
+        ) : (
+          <CodeBlockView key={i} block={part} />
+        )
+      )}
+    </>
+  );
+}
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
@@ -31,7 +156,21 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : "bg-primary text-primary-foreground"
         )}
       >
-        {message.content}
+        <MessageContent content={message.content} />
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex gap-2.5 px-3" data-testid="typing-indicator">
+      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-primary/10 text-primary">
+        <Bot className="w-3.5 h-3.5" />
+      </div>
+      <div className="rounded-lg px-3 py-2 bg-muted/50 flex items-center gap-1.5">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Thinking...</span>
       </div>
     </div>
   );
@@ -39,9 +178,18 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
-  const { chatMessages, addChatMessage, setActiveTool } = useIDEStore();
+  const {
+    chatMessages,
+    addChatMessage,
+    updateLastAssistantMessage,
+    setActiveTool,
+    isAiResponding,
+    setAiResponding,
+    files,
+  } = useIDEStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -49,21 +197,100 @@ export function ChatPanel() {
     }
   }, [chatMessages]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isAiResponding) return;
 
     addChatMessage({ role: "user", content: trimmed });
     setInput("");
 
-    setTimeout(() => {
-      addChatMessage({
-        role: "assistant",
-        content:
-          "Thanks for sharing that idea! I'd love to help you build it. Let me ask a few quick questions so I can understand exactly what you're going for. Could you tell me a bit more about what this should look like? For example, what colors or style do you have in mind?",
+    const allFiles = flattenFiles(files);
+    const fileContext = allFiles.map((f) => ({
+      path: f.path,
+      content: f.content || "",
+    }));
+
+    const messagesForApi = [
+      ...chatMessages
+        .filter((m) => m.id !== "welcome")
+        .map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: trimmed },
+    ];
+
+    setAiResponding(true);
+    addChatMessage({ role: "assistant", content: "" });
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        signal: controller.signal,
       });
-    }, 1000);
-  };
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Request failed" }));
+        updateLastAssistantMessage(
+          `Sorry, something went wrong: ${err.error || "Unknown error"}. Please try again!`
+        );
+        setAiResponding(false);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        updateLastAssistantMessage("Sorry, couldn't read the response. Please try again!");
+        setAiResponding(false);
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith("data: ")) {
+            const data = trimmedLine.slice(6).trim();
+            if (data === "[DONE]") break;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                accumulated += parsed.content;
+                updateLastAssistantMessage(accumulated);
+              }
+              if (parsed.error) {
+                accumulated += `\n\nError: ${parsed.error}`;
+                updateLastAssistantMessage(accumulated);
+              }
+            } catch {
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        updateLastAssistantMessage(
+          "Sorry, I had trouble connecting. Please check your connection and try again!"
+        );
+      }
+    } finally {
+      setAiResponding(false);
+      abortRef.current = null;
+    }
+  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -97,6 +324,9 @@ export function ChatPanel() {
         {chatMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
+          <TypingIndicator />
+        )}
       </div>
 
       <div className="p-2.5 border-t border-border/50 shrink-0">
@@ -115,10 +345,14 @@ export function ChatPanel() {
             size="icon"
             className="h-9 w-9 shrink-0"
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isAiResponding}
             data-testid="button-send-chat"
           >
-            <Send className="w-3.5 h-3.5" />
+            {isAiResponding ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
+            )}
           </Button>
         </div>
         <p className="text-[10px] text-muted-foreground/40 mt-1.5 text-center">

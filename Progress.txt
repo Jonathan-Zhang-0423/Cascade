@@ -89,14 +89,18 @@ UI REDESIGN (Replit-inspired):
 ====================================
 PHASE 2: Vibe Coding Agent (AI Logic)
 ====================================
-Status: NOT STARTED
+Status: COMPLETE
 
-Planned:
-  [ ] Set up AI API route on backend
-  [ ] Connect chat panel to AI model
-  [ ] Implement Vibe Agent system prompt
-  [ ] Streaming responses
-  [ ] Code generation from chat
+Completed:
+  [x] Set up AI API route on backend (POST /api/chat with SSE streaming)
+  [x] Connect chat panel to Doubao AI model (doubao-1.5-pro-256k)
+  [x] Implement Vibe Agent system prompt (demand clarity, confirm before building, no jargon, iterative)
+  [x] Streaming responses (SSE stream with progressive message updates)
+  [x] Code generation from chat (code blocks with file annotations + "Apply" button)
+  [x] Code block rendering with syntax highlighting and file path labels
+  [x] "Apply to file" feature (writes AI-generated code to IDE filesystem)
+  [x] Loading/typing indicator during AI responses
+  [x] Error handling for API failures
 
 ====================================
 PHASE 3: Execution & Preview

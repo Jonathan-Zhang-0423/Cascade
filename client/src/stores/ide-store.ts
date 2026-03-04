@@ -34,6 +34,7 @@ interface IDEState {
   isConsoleOpen: boolean;
   isSidebarOpen: boolean;
   isChatOpen: boolean;
+  isAiResponding: boolean;
   theme: "vs-dark" | "vs-light" | "hc-black";
 
   setActiveFile: (path: string) => void;
@@ -41,9 +42,11 @@ interface IDEState {
   closeFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
+  updateLastAssistantMessage: (content: string) => void;
   addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
   clearConsole: () => void;
   setActiveTool: (tool: ToolPanel) => void;
+  setAiResponding: (v: boolean) => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
@@ -179,6 +182,7 @@ export const useIDEStore = create<IDEState>((set) => ({
   isConsoleOpen: true,
   isSidebarOpen: true,
   isChatOpen: false,
+  isAiResponding: false,
   theme: "vs-dark",
 
   setActiveFile: (path) =>
@@ -225,6 +229,20 @@ export const useIDEStore = create<IDEState>((set) => ({
         },
       ],
     })),
+
+  updateLastAssistantMessage: (content) =>
+    set((state) => {
+      const msgs = [...state.chatMessages];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "assistant") {
+          msgs[i] = { ...msgs[i], content };
+          break;
+        }
+      }
+      return { chatMessages: msgs };
+    }),
+
+  setAiResponding: (v) => set({ isAiResponding: v }),
 
   addConsoleEntry: (entry) =>
     set((state) => ({

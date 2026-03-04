@@ -61,12 +61,14 @@ Lives inside the IDE as a chat panel. Key behaviors:
 - [x] File CRUD: create, rename, delete, duplicate via context menu
 - [x] Replit-inspired UI redesign: tools dock, side-by-side panes, workspace aesthetic
 
-### Phase 2: Vibe Coding Agent (Prompt & AI Integration) - NOT STARTED
-- [ ] Set up Vercel AI SDK in API routes
-- [ ] Build chat panel UI: message history, input, send button
-- [ ] Hardcode Vibe Agent system prompt with rules
-- [ ] Connect chat to AI model (streaming responses)
-- [ ] Agent follows all behavioral rules (clarity, confirmation, no jargon, iterative)
+### Phase 2: Vibe Coding Agent (Prompt & AI Integration) - COMPLETE
+- [x] Set up Doubao API (doubao-1.5-pro-256k) via OpenAI-compatible SDK
+- [x] Build chat panel UI: message history, input, send button, streaming display
+- [x] Hardcode Vibe Agent system prompt with rules (demand clarity, confirm, no jargon, iterative)
+- [x] Connect chat to Doubao model (SSE streaming responses)
+- [x] Agent follows all behavioral rules (clarity, confirmation, no jargon, iterative)
+- [x] Code block rendering with file annotations and "Apply to file" buttons
+- [x] Loading indicator and error handling
 
 ### Phase 3: Execution & Preview - PARTIALLY STARTED
 - [x] Preview panel with iframe + console capture
