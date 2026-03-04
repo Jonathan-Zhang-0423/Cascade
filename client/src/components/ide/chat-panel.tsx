@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2 } from "lucide-react";
+import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CodeBlock {
@@ -303,9 +303,13 @@ export function ChatPanel() {
     }
   };
 
-  const handleCompositionStart = () => {
-    // Some browsers might need explicit state tracking, but isComposing on the event is standard
-  };
+  const handleStop = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setAiResponding(false);
+  }, [setAiResponding]);
 
   return (
     <div className="h-full flex flex-col" data-testid="chat-panel">
@@ -350,19 +354,27 @@ export function ChatPanel() {
             rows={1}
             data-testid="input-chat"
           />
-          <Button
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={handleSend}
-            disabled={!input.trim() || isAiResponding}
-            data-testid="button-send-chat"
-          >
-            {isAiResponding ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
+          {isAiResponding ? (
+            <Button
+              size="icon"
+              variant="destructive"
+              className="h-9 w-9 shrink-0"
+              onClick={handleStop}
+              data-testid="button-stop-chat"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={handleSend}
+              disabled={!input.trim()}
+              data-testid="button-send-chat"
+            >
               <Send className="w-3.5 h-3.5" />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
         <p className="text-[10px] text-muted-foreground/40 mt-1.5 text-center">
           Enter to send · Shift+Enter for new line
