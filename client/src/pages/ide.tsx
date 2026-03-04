@@ -93,7 +93,7 @@ export default function IDEPage() {
               <ResizablePanel defaultSize={isConsoleOpen ? 70 : 100} minSize={30} id="editor-area" order={1}>
                 <div className="h-full flex flex-col">
                   <div className="flex items-center border-b border-border/50 bg-card/20 shrink-0">
-                    <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "editor" | "preview")} className="flex-1">
+                    <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "editor" | "preview")}>
                       <TabsList className="h-9 bg-transparent rounded-none border-0 p-0 gap-0">
                         <TabsTrigger
                           value="editor"
@@ -111,7 +111,7 @@ export default function IDEPage() {
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
-                    <div className="flex items-center px-2">
+                    <div className="flex items-center px-1 border-l border-border/30">
                       <Button
                         variant="ghost"
                         size="icon"
