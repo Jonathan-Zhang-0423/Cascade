@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface FileNode {
   name: string;
@@ -159,7 +160,9 @@ document.getElementById("myButton").addEventListener("click", function() {
   },
 ];
 
-export const useIDEStore = create<IDEState>((set) => ({
+export const useIDEStore = create<IDEState>()(
+  persist(
+    (set) => ({
   files: defaultFiles,
   activeFile: "/project/index.html",
   openFiles: ["/project/index.html"],
@@ -325,7 +328,20 @@ export const useIDEStore = create<IDEState>((set) => ({
   setPreviewFile: (path) => set({ previewFile: path, previewRefreshKey: Date.now() }),
 
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
-}));
+}),
+    {
+      name: "codestart-ide-state",
+      partialize: (state) => ({
+        files: state.files,
+        openFiles: state.openFiles,
+        activeFile: state.activeFile,
+        previewFile: state.previewFile,
+        chatMessages: state.chatMessages,
+        theme: state.theme,
+      }),
+    }
+  )
+);
 
 function updateFileInTree(
   files: FileNode[],

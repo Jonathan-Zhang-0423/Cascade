@@ -6,7 +6,7 @@ A browser-based IDE inspired by Replit, featuring a built-in "Vibe Coding Agent"
 ## Architecture
 - **Frontend**: React + TypeScript + Tailwind CSS + Shadcn UI
 - **Backend**: Express.js (API routes)
-- **State Management**: Zustand
+- **State Management**: Zustand (with `persist` middleware for localStorage persistence)
 - **Code Editor**: Monaco Editor (`@monaco-editor/react`)
 - **AI Provider**: Doubao (ByteDance/Volcengine) via OpenAI-compatible SDK
 - **AI Model**: `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) for chat + code generation
