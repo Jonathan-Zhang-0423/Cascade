@@ -57,16 +57,23 @@ shared/
 - **Panes**: Editor and Preview shown simultaneously, not behind tabs
 - **No status bar**: Removed in favor of tools dock approach
 
+## Preview System (Phase 3)
+- **Multi-file support**: Preview panel parses HTML for `<script src="...">` and `<link href="...">` references, resolves them from the IDE virtual filesystem, and inlines their contents
+- **Console interceptor**: Injected into HTML to capture `console.log/warn/error/info` calls via `postMessage`
+- **Fallback**: External URLs (http/https) are left as-is; only local project files are inlined
+- **Default template**: `index.html` references `style.css` and `app.js` via standard HTML tags, demonstrating multi-file support
+
 ## Features
 - Monaco code editor with theme switching (Dark+, Light+, High Contrast)
 - File tree with create, rename, delete, duplicate (via context menu)
-- Live HTML preview with console output capture (side-by-side with editor)
+- Live HTML preview with multi-file resolution and console output capture
 - Console panel showing log/warn/error from preview iframe
 - Tools dock for switching between Files panel and AI Chat panel
 - AI Chat with Doubao streaming responses and code block Apply buttons
 - Command palette (Ctrl+Shift+P) for quick actions
 - Keyboard shortcuts: Ctrl+S (save), Ctrl+B (sidebar), Ctrl+J (console)
 - Resizable panels for all IDE sections
+- Stop button to abort AI responses mid-stream
 
 ## Running
 ```

@@ -72,73 +72,16 @@ const defaultFiles: FileNode[] = [
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My First App</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .container {
-      text-align: center;
-      color: white;
-      padding: 2rem;
-    }
-
-    h1 {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    }
-
-    p {
-      font-size: 1.25rem;
-      opacity: 0.9;
-      margin-bottom: 2rem;
-    }
-
-    .btn {
-      background: rgba(255,255,255,0.2);
-      border: 2px solid rgba(255,255,255,0.4);
-      color: white;
-      padding: 12px 32px;
-      font-size: 1rem;
-      border-radius: 50px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      backdrop-filter: blur(10px);
-    }
-
-    .btn:hover {
-      background: rgba(255,255,255,0.3);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
     <h1>Hello World!</h1>
     <p>Welcome to your first app built with CodeStart IDE</p>
-    <button class="btn" onclick="alert('You clicked the button!')">
-      Click Me
-    </button>
+    <button class="btn" id="myButton">Click Me</button>
   </div>
 
-  <script>
-    console.log("Hello from CodeStart IDE!");
-    console.log("Your app is running successfully.");
-    console.warn("This is a sample warning message.");
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>`,
       },
@@ -146,19 +89,67 @@ const defaultFiles: FileNode[] = [
         name: "style.css",
         path: "/project/style.css",
         type: "file",
-        content: `/* Your styles go here */
-body {
-  font-family: system-ui, sans-serif;
+        content: `* {
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  text-align: center;
+  color: white;
+  padding: 2rem;
+}
+
+h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+p {
+  font-size: 1.25rem;
+  opacity: 0.9;
+  margin-bottom: 2rem;
+}
+
+.btn {
+  background: rgba(255,255,255,0.2);
+  border: 2px solid rgba(255,255,255,0.4);
+  color: white;
+  padding: 12px 32px;
+  font-size: 1rem;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.btn:hover {
+  background: rgba(255,255,255,0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
 }`,
       },
       {
         name: "app.js",
         path: "/project/app.js",
         type: "file",
-        content: `// Your JavaScript code goes here
-console.log("Hello from CodeStart IDE!");`,
+        content: `console.log("Hello from CodeStart IDE!");
+console.log("Your app is running successfully.");
+
+document.getElementById("myButton").addEventListener("click", function() {
+  alert("You clicked the button!");
+});`,
       },
     ],
   },

@@ -1,7 +1,69 @@
-import { useIDEStore, findFileContent } from "@/stores/ide-store";
+import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Globe, RefreshCw, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+function resolveFilePath(src: string, basePath: string): string {
+  if (src.startsWith("/project/")) return src;
+
+  let resolved: string;
+  if (src.startsWith("/")) {
+    resolved = `/project${src}`;
+  } else {
+    const baseDir = basePath.substring(0, basePath.lastIndexOf("/"));
+    resolved = `${baseDir}/${src}`;
+  }
+
+  const parts = resolved.split("/");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (part === "" && normalized.length > 0) continue;
+    if (part === ".") continue;
+    if (part === ".." && normalized.length > 1) {
+      normalized.pop();
+    } else {
+      normalized.push(part);
+    }
+  }
+  return normalized.join("/");
+}
+
+function isExternalUrl(url: string): boolean {
+  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("//");
+}
+
+function inlineExternalFiles(html: string, files: FileNode[], entryPath = "/project/index.html"): string {
+  let result = html;
+
+  result = result.replace(
+    /<link\s+([^>]*?)(?:rel=["']stylesheet["'][^>]*?href=["']([^"']+)["']|href=["']([^"']+)["'][^>]*?rel=["']stylesheet["'])[^>]*\/?>/gi,
+    (match, _attrs, href1, href2) => {
+      const href = href1 || href2;
+      if (!href || isExternalUrl(href)) return match;
+      const filePath = resolveFilePath(href, entryPath);
+      const content = findFileContent(files, filePath);
+      if (content !== undefined) {
+        return `<style>/* ${href} */\n${content}\n</style>`;
+      }
+      return match;
+    }
+  );
+
+  result = result.replace(
+    /<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi,
+    (match, src) => {
+      if (isExternalUrl(src)) return match;
+      const filePath = resolveFilePath(src, entryPath);
+      const content = findFileContent(files, filePath);
+      if (content !== undefined) {
+        return `<script>/* ${src} */\n${content}\n</script>`;
+      }
+      return match;
+    }
+  );
+
+  return result;
+}
 
 export function PreviewPanel() {
   const { files, addConsoleEntry, clearConsole } = useIDEStore();
@@ -46,11 +108,13 @@ export function PreviewPanel() {
 })();
 </script>`;
 
-    if (htmlContent.includes('<head>')) {
-      return htmlContent.replace('<head>', '<head>' + consoleInterceptor);
+    const resolved = inlineExternalFiles(htmlContent, files);
+
+    if (resolved.includes('<head>')) {
+      return resolved.replace('<head>', '<head>' + consoleInterceptor);
     }
-    return consoleInterceptor + htmlContent;
-  }, [htmlContent]);
+    return consoleInterceptor + resolved;
+  }, [htmlContent, files]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
