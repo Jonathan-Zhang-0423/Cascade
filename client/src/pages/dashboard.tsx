@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useProjectStore, migrateOldState } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar } from "lucide-react";
+import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send } from "lucide-react";
 
 migrateOldState();
 
@@ -28,16 +29,16 @@ export default function DashboardPage() {
   const { projects, createProject, deleteProject, renameProject } = useProjectStore();
   const [, navigate] = useLocation();
   const [showNewDialog, setShowNewDialog] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [ideaText, setIdeaText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
 
   const handleCreate = () => {
-    const name = newName.trim();
-    if (!name) return;
-    const id = createProject(name);
-    setNewName("");
+    const idea = ideaText.trim();
+    if (!idea) return;
+    const id = createProject("New Project", idea);
+    setIdeaText("");
     setShowNewDialog(false);
     navigate(`/project/${id}`);
   };
@@ -97,7 +98,7 @@ export default function DashboardPage() {
             </div>
             <h2 className="text-lg font-semibold text-foreground mb-2">No projects yet</h2>
             <p className="text-muted-foreground mb-6 max-w-sm">
-              Click "New Project" to create your first app. No coding experience needed!
+              Tell us what you want to build and we'll get started right away!
             </p>
             <Button
               onClick={() => setShowNewDialog(true)}
@@ -105,7 +106,7 @@ export default function DashboardPage() {
               data-testid="button-new-project-empty"
             >
               <Plus className="w-4 h-4" />
-              Create Your First Project
+              Start Building
             </Button>
           </div>
         ) : (
@@ -163,24 +164,31 @@ export default function DashboardPage() {
       </main>
 
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
-        <DialogContent data-testid="dialog-new-project">
+        <DialogContent className="sm:max-w-md" data-testid="dialog-new-project">
           <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
+            <DialogTitle className="text-lg">What do you want to build today? 😉</DialogTitle>
           </DialogHeader>
-          <Input
-            placeholder="My Awesome App"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleCreate()}
+          <Textarea
+            placeholder="e.g. A snake game, a personal portfolio, a to-do list..."
+            value={ideaText}
+            onChange={(e) => setIdeaText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                handleCreate();
+              }
+            }}
             autoFocus
-            data-testid="input-project-name"
+            className="min-h-[80px] resize-none"
+            data-testid="input-project-idea"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewDialog(false)} data-testid="button-cancel-new">
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!newName.trim()} data-testid="button-create-project">
-              Create
+            <Button onClick={handleCreate} disabled={!ideaText.trim()} className="gap-2" data-testid="button-create-project">
+              <Send className="w-3.5 h-3.5" />
+              Let's Go!
             </Button>
           </DialogFooter>
         </DialogContent>

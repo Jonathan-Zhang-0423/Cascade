@@ -1,9 +1,18 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store";
+import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
+
+const PROJECT_NAME_REGEX_GLOBAL = /\[\[PROJECT_NAME:[^\]]+\]\]/g;
+
+function stripProjectNameMarker(text: string): string {
+  return text.replace(PROJECT_NAME_REGEX_GLOBAL, "").trim();
+}
 
 interface CodeBlock {
   language: string;
@@ -186,10 +195,16 @@ export function ChatPanel() {
     isAiResponding,
     setAiResponding,
     files,
+    pendingPrompt,
+    clearPendingPrompt,
+    projectId,
   } = useIDEStore();
+  const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingHandled = useRef(false);
+  const projectNameExtracted = useRef(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -197,12 +212,12 @@ export function ChatPanel() {
     }
   }, [chatMessages]);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = input.trim();
+  const handleSend = useCallback(async (overrideMessage?: string) => {
+    const trimmed = overrideMessage?.trim() || input.trim();
     if (!trimmed || isAiResponding) return;
 
     addChatMessage({ role: "user", content: trimmed });
-    setInput("");
+    if (!overrideMessage) setInput("");
 
     const allFiles = flattenFiles(files);
     const fileContext = allFiles.map((f) => ({
@@ -219,6 +234,7 @@ export function ChatPanel() {
 
     setAiResponding(true);
     addChatMessage({ role: "assistant", content: "" });
+    projectNameExtracted.current = false;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -273,11 +289,20 @@ export function ChatPanel() {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 accumulated += parsed.content;
-                updateLastAssistantMessage(accumulated);
+
+                if (!projectNameExtracted.current) {
+                  const nameMatch = accumulated.match(PROJECT_NAME_REGEX);
+                  if (nameMatch && projectId) {
+                    projectNameExtracted.current = true;
+                    renameProject(projectId, nameMatch[1].trim());
+                  }
+                }
+
+                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
               }
               if (parsed.error) {
                 accumulated += `\n\nError: ${parsed.error}`;
-                updateLastAssistantMessage(accumulated);
+                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
               }
             } catch {
             }
@@ -294,7 +319,21 @@ export function ChatPanel() {
       setAiResponding(false);
       abortRef.current = null;
     }
-  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding]);
+  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject]);
+
+  useEffect(() => {
+    pendingHandled.current = false;
+  }, [projectId]);
+
+  useEffect(() => {
+    if (pendingPrompt && !pendingHandled.current && !isAiResponding) {
+      pendingHandled.current = true;
+      const prompt = pendingPrompt;
+      handleSend(prompt).then(() => {
+        clearPendingPrompt();
+      });
+    }
+  }, [pendingPrompt, isAiResponding, clearPendingPrompt, handleSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

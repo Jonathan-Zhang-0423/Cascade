@@ -39,9 +39,11 @@ interface IDEState {
   theme: "vs-dark" | "vs-light" | "hc-black";
   previewFile: string;
   previewRefreshKey: number;
+  pendingPrompt: string | null;
 
   loadProject: (id: string) => void;
   saveProject: () => void;
+  clearPendingPrompt: () => void;
   setActiveFile: (path: string) => void;
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
@@ -78,15 +80,10 @@ const defaultFiles: FileNode[] = [
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My First App</title>
+  <title>My App</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Hello World!</h1>
-    <p>Welcome to your first app built with CodeStart IDE</p>
-    <button class="btn" id="myButton">Click Me</button>
-  </div>
 
   <script src="app.js"></script>
 </body>
@@ -96,67 +93,13 @@ const defaultFiles: FileNode[] = [
         name: "style.css",
         path: "/project/style.css",
         type: "file",
-        content: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.container {
-  text-align: center;
-  color: white;
-  padding: 2rem;
-}
-
-h1 {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  text-shadow: 0 2px 10px rgba(0,0,0,0.2);
-}
-
-p {
-  font-size: 1.25rem;
-  opacity: 0.9;
-  margin-bottom: 2rem;
-}
-
-.btn {
-  background: rgba(255,255,255,0.2);
-  border: 2px solid rgba(255,255,255,0.4);
-  color: white;
-  padding: 12px 32px;
-  font-size: 1rem;
-  border-radius: 50px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-}
-
-.btn:hover {
-  background: rgba(255,255,255,0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-}`,
+        content: "",
       },
       {
         name: "app.js",
         path: "/project/app.js",
         type: "file",
-        content: `console.log("Hello from CodeStart IDE!");
-console.log("Your app is running successfully.");
-
-document.getElementById("myButton").addEventListener("click", function() {
-  alert("You clicked the button!");
-});`,
+        content: "",
       },
     ],
   },
@@ -179,6 +122,7 @@ function persistState(state: IDEState) {
     previewFile: state.previewFile,
     chatMessages: state.chatMessages,
     theme: state.theme,
+    pendingPrompt: state.pendingPrompt,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
@@ -209,6 +153,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   theme: "vs-dark",
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
+  pendingPrompt: null,
 
   loadProject: (id) => {
     const current = get();
@@ -217,6 +162,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     }
 
     const saved = getPersistedState(id);
+    const defaultChat = [
+      {
+        id: "welcome",
+        role: "assistant" as const,
+        content:
+          "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+        timestamp: Date.now(),
+      },
+    ];
+
     if (saved) {
       set({
         projectId: id,
@@ -224,19 +179,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         openFiles: saved.openFiles || ["/project/index.html"],
         activeFile: saved.activeFile || "/project/index.html",
         previewFile: saved.previewFile || "/project/index.html",
-        chatMessages: saved.chatMessages || [
-          {
-            id: "welcome",
-            role: "assistant",
-            content:
-              "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
-            timestamp: Date.now(),
-          },
-        ],
+        chatMessages: saved.chatMessages || defaultChat,
         theme: saved.theme || "vs-dark",
+        pendingPrompt: saved.pendingPrompt || null,
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
+        activeTool: saved.pendingPrompt ? "chat" as ToolPanel : "files" as ToolPanel,
+        isChatOpen: !!saved.pendingPrompt,
+        isSidebarOpen: !saved.pendingPrompt,
       });
     } else {
       set({
@@ -245,16 +196,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         openFiles: ["/project/index.html"],
         activeFile: "/project/index.html",
         previewFile: "/project/index.html",
-        chatMessages: [
-          {
-            id: "welcome",
-            role: "assistant",
-            content:
-              "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
-            timestamp: Date.now(),
-          },
-        ],
+        chatMessages: defaultChat,
         theme: "vs-dark",
+        pendingPrompt: null,
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
@@ -264,6 +208,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   saveProject: () => {
     persistState(get());
+  },
+
+  clearPendingPrompt: () => {
+    set({ pendingPrompt: null });
+    const state = get();
+    persistState(state);
   },
 
   setActiveFile: (path) =>

@@ -45,9 +45,12 @@ shared/
 
 ## Multi-Project Architecture
 - **Dashboard** (`/`): Shows all projects as cards in a grid. Users can create, rename, and delete projects. Clicking a project card opens its IDE.
+- **New Project Flow**: "New Project" dialog asks "What do you want to build today? 😉" with a textarea. User describes their idea → project is created with name "New Project" and blank starter files → navigated to IDE → chat panel auto-opens → user's description is auto-sent as the first AI prompt → AI responds with code and auto-names the project via `[[PROJECT_NAME:name]]` marker (stripped from display).
 - **IDE** (`/project/:id`): Full IDE scoped to one project. Each project has isolated files, chat history, open tabs, active file, preview file, and theme.
 - **Storage**: Project list persisted via Zustand persist middleware (`codestart-projects`). Each project's IDE state stored separately in localStorage (`codestart-project-{id}`).
 - **Project switching**: IDE auto-saves state on unmount/navigation. Loading a new project reads its saved state from localStorage or initializes defaults.
+- **Pending Prompt**: New projects carry a `pendingPrompt` in their localStorage state. When IDE loads, it reads the pending prompt, auto-opens chat, auto-sends it, then clears it.
+- **AI Auto-Naming**: System prompt instructs AI to include `[[PROJECT_NAME:name]]` in first response. Chat panel parses this during streaming and calls `renameProject()`. Marker is stripped from displayed text.
 - **Migration**: On first load, if old single-project state (`codestart-ide-state`) exists, it's migrated to a new project entry. Migration is idempotent (guarded by `codestart-migrated` flag).
 
 ## AI Integration
