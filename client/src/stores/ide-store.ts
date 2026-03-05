@@ -36,6 +36,8 @@ interface IDEState {
   isChatOpen: boolean;
   isAiResponding: boolean;
   theme: "vs-dark" | "vs-light" | "hc-black";
+  previewFile: string;
+  previewRefreshKey: number;
 
   setActiveFile: (path: string) => void;
   openFile: (path: string) => void;
@@ -54,6 +56,8 @@ interface IDEState {
   addFile: (parentPath: string, name: string, type: "file" | "folder") => void;
   renameFile: (oldPath: string, newName: string) => void;
   deleteFile: (path: string) => void;
+  setPreviewFile: (path: string) => void;
+  refreshPreview: () => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -175,6 +179,8 @@ export const useIDEStore = create<IDEState>((set) => ({
   isChatOpen: false,
   isAiResponding: false,
   theme: "vs-dark",
+  previewFile: "/project/index.html",
+  previewRefreshKey: 0,
 
   setActiveFile: (path) =>
     set((state) => ({
@@ -315,6 +321,10 @@ export const useIDEStore = create<IDEState>((set) => ({
         activeFile: newActiveFile,
       };
     }),
+
+  setPreviewFile: (path) => set({ previewFile: path, previewRefreshKey: Date.now() }),
+
+  refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
 }));
 
 function updateFileInTree(

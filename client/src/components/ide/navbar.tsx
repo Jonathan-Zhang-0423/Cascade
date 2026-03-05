@@ -14,6 +14,9 @@ export function Navbar() {
   const {
     theme: editorTheme,
     setTheme: setEditorTheme,
+    activeFile,
+    setPreviewFile,
+    refreshPreview,
   } = useIDEStore();
   const { theme, toggleTheme } = useTheme();
 
@@ -64,7 +67,18 @@ export function Navbar() {
           {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </Button>
 
-        <Button size="sm" className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-run">
+        <Button
+          size="sm"
+          className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white"
+          data-testid="button-run"
+          onClick={() => {
+            if (activeFile && activeFile.endsWith(".html")) {
+              setPreviewFile(activeFile);
+            } else {
+              refreshPreview();
+            }
+          }}
+        >
           <Play className="w-3 h-3 fill-current" />
           Run
         </Button>

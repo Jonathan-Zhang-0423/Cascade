@@ -66,13 +66,15 @@ function inlineExternalFiles(html: string, files: FileNode[], entryPath = "/proj
 }
 
 export function PreviewPanel() {
-  const { files, addConsoleEntry, clearConsole } = useIDEStore();
+  const { files, addConsoleEntry, clearConsole, previewFile, previewRefreshKey } = useIDEStore();
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const effectiveRefresh = refreshKey + previewRefreshKey;
+
   const htmlContent = useMemo(() => {
-    return findFileContent(files, "/project/index.html") || "";
-  }, [files, refreshKey]);
+    return findFileContent(files, previewFile) || "";
+  }, [files, previewFile, effectiveRefresh]);
 
   const injectedHtml = useMemo(() => {
     const consoleInterceptor = `
@@ -108,13 +110,13 @@ export function PreviewPanel() {
 })();
 </script>`;
 
-    const resolved = inlineExternalFiles(htmlContent, files);
+    const resolved = inlineExternalFiles(htmlContent, files, previewFile);
 
     if (resolved.includes('<head>')) {
       return resolved.replace('<head>', '<head>' + consoleInterceptor);
     }
     return consoleInterceptor + resolved;
-  }, [htmlContent, files]);
+  }, [htmlContent, files, previewFile]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -148,7 +150,7 @@ export function PreviewPanel() {
         <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         <div className="flex-1 flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-muted/40 border border-border/30 text-[11px] text-muted-foreground truncate">
           <Lock className="w-2.5 h-2.5 shrink-0" />
-          <span className="truncate">localhost:3000</span>
+          <span className="truncate">localhost:3000/{previewFile.replace("/project/", "")}</span>
         </div>
         <Button
           size="icon"
@@ -164,7 +166,7 @@ export function PreviewPanel() {
       <div className="flex-1 min-h-0 bg-white">
         <iframe
           ref={iframeRef}
-          key={refreshKey}
+          key={effectiveRefresh}
           srcDoc={injectedHtml}
           className="w-full h-full border-0"
           title="Preview"

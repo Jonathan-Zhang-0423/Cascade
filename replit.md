@@ -59,6 +59,7 @@ shared/
 
 ## Preview System (Phase 3)
 - **Multi-file support**: Preview panel parses HTML for `<script src="...">` and `<link href="...">` references, resolves them from the IDE virtual filesystem, and inlines their contents
+- **Dynamic preview file**: Users can preview any HTML file (not just index.html) via the Run button or file tree context menu. Store tracks `previewFile` and `previewRefreshKey`
 - **Console interceptor**: Injected into HTML to capture `console.log/warn/error/info` calls via `postMessage`
 - **Fallback**: External URLs (http/https) are left as-is; only local project files are inlined
 - **Default template**: `index.html` references `style.css` and `app.js` via standard HTML tags, demonstrating multi-file support
@@ -74,6 +75,7 @@ shared/
 - Keyboard shortcuts: Ctrl+S (save), Ctrl+B (sidebar), Ctrl+J (console)
 - Resizable panels for all IDE sections
 - Stop button to abort AI responses mid-stream
+- Run button previews active HTML file; right-click "Preview" option on HTML files in file tree
 
 ## Running
 ```

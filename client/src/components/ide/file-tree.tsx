@@ -34,6 +34,7 @@ import {
   Trash2,
   Copy,
   X,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -110,7 +111,7 @@ function FileTreeItem({
   const [isOpen, setIsOpen] = useState(true);
   const [isRenaming, setIsRenaming] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const { activeFile, setActiveFile, addFile, renameFile, deleteFile } =
+  const { activeFile, setActiveFile, addFile, renameFile, deleteFile, setPreviewFile } =
     useIDEStore();
   const isActive = activeFile === node.path;
   const isFolder = node.type === "folder";
@@ -198,6 +199,18 @@ function FileTreeItem({
               >
                 <FolderPlus className="w-4 h-4 mr-2" />
                 New Folder
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {!isFolder && node.name.endsWith(".html") && (
+            <>
+              <ContextMenuItem
+                onClick={() => setPreviewFile(node.path)}
+                data-testid="ctx-preview"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Preview
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
