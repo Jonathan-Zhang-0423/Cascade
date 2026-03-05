@@ -343,33 +343,71 @@ function updateFileInTree(
   });
 }
 
+function ensureDirectoryExists(
+  files: FileNode[],
+  dirPath: string
+): FileNode[] {
+  const segments = dirPath.split("/").filter(Boolean);
+  let current = files;
+  let builtPath = "";
+
+  for (const segment of segments) {
+    builtPath = builtPath ? `${builtPath}/${segment}` : `/${segment}`;
+    const found = current.find(
+      (f) => f.path === builtPath && f.type === "folder"
+    );
+    if (!found) {
+      const newFolder: FileNode = {
+        name: segment,
+        path: builtPath,
+        type: "folder",
+        children: [],
+      };
+      current.push(newFolder);
+      current = newFolder.children!;
+    } else {
+      current = found.children || [];
+    }
+  }
+
+  return files;
+}
+
 function addFileToTree(
   files: FileNode[],
   parentPath: string,
   name: string,
   type: "file" | "folder"
 ): FileNode[] {
-  return files.map((file) => {
-    if (file.path === parentPath && file.type === "folder") {
-      const newNode: FileNode = {
-        name,
-        path: `${parentPath}/${name}`,
-        type,
-        ...(type === "folder" ? { children: [] } : { content: "" }),
-      };
-      return {
-        ...file,
-        children: [...(file.children || []), newNode],
-      };
-    }
-    if (file.children) {
-      return {
-        ...file,
-        children: addFileToTree(file.children, parentPath, name, type),
-      };
-    }
-    return file;
-  });
+  const cloned = structuredClone(files);
+  ensureDirectoryExists(cloned, parentPath);
+
+  function insertInto(nodes: FileNode[]): FileNode[] {
+    return nodes.map((file) => {
+      if (file.path === parentPath && file.type === "folder") {
+        const already = (file.children || []).some(
+          (c) => c.name === name && c.type === type
+        );
+        if (already) return file;
+        const newNode: FileNode = {
+          name,
+          path: `${parentPath}/${name}`,
+          type,
+          ...(type === "folder" ? { children: [] } : { content: "" }),
+        };
+        return {
+          ...file,
+          children: [...(file.children || []), newNode],
+        };
+      }
+      if (file.children) {
+        return { ...file, children: insertInto(file.children) };
+      }
+      return file;
+    });
+  }
+
+  return insertInto(cloned);
 }
 
 function renameFileInTree(
