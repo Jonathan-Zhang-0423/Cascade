@@ -1,5 +1,7 @@
 import { useEffect } from "react";
+import { useParams, useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
+import { useProjectStore } from "@/stores/project-store";
 import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
@@ -16,9 +18,31 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 export default function IDEPage() {
-  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile } =
+  const { id } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId } =
     useIDEStore();
+  const { projects } = useProjectStore();
   const { toast } = useToast();
+
+  const project = projects.find((p) => p.id === id);
+
+  useEffect(() => {
+    if (!project) {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (projectId !== id) {
+      loadProject(id!);
+    }
+
+    return () => {
+      const current = useIDEStore.getState();
+      if (current.projectId) {
+        current.saveProject();
+      }
+    };
+  }, [id, project, projectId, loadProject, navigate]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -43,9 +67,17 @@ export default function IDEPage() {
     return () => document.removeEventListener("keydown", handler);
   }, [activeFile, toggleSidebar, toggleConsole, toast]);
 
+  if (!project || projectId !== id) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <div className="text-muted-foreground text-sm">Loading project...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background" data-testid="ide-page">
-      <Navbar />
+      <Navbar projectName={project.name} />
       <CommandPalette />
 
       <div className="flex-1 min-h-0 flex">

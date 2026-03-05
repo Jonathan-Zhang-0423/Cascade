@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 export interface FileNode {
   name: string;
@@ -26,6 +25,7 @@ export interface ConsoleEntry {
 export type ToolPanel = "files" | "chat" | null;
 
 interface IDEState {
+  projectId: string | null;
   files: FileNode[];
   activeFile: string | null;
   openFiles: string[];
@@ -40,6 +40,8 @@ interface IDEState {
   previewFile: string;
   previewRefreshKey: number;
 
+  loadProject: (id: string) => void;
+  saveProject: () => void;
   setActiveFile: (path: string) => void;
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
@@ -160,9 +162,32 @@ document.getElementById("myButton").addEventListener("click", function() {
   },
 ];
 
-export const useIDEStore = create<IDEState>()(
-  persist(
-    (set) => ({
+function getPersistedState(projectId: string) {
+  try {
+    const data = localStorage.getItem(`codestart-project-${projectId}`);
+    if (data) return JSON.parse(data);
+  } catch {}
+  return null;
+}
+
+function persistState(state: IDEState) {
+  if (!state.projectId) return;
+  const toSave = {
+    files: state.files,
+    openFiles: state.openFiles,
+    activeFile: state.activeFile,
+    previewFile: state.previewFile,
+    chatMessages: state.chatMessages,
+    theme: state.theme,
+  };
+  localStorage.setItem(
+    `codestart-project-${state.projectId}`,
+    JSON.stringify(toSave)
+  );
+}
+
+export const useIDEStore = create<IDEState>((set, get) => ({
+  projectId: null,
   files: defaultFiles,
   activeFile: "/project/index.html",
   openFiles: ["/project/index.html"],
@@ -185,50 +210,129 @@ export const useIDEStore = create<IDEState>()(
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
 
+  loadProject: (id) => {
+    const current = get();
+    if (current.projectId) {
+      persistState(current);
+    }
+
+    const saved = getPersistedState(id);
+    if (saved) {
+      set({
+        projectId: id,
+        files: saved.files || defaultFiles,
+        openFiles: saved.openFiles || ["/project/index.html"],
+        activeFile: saved.activeFile || "/project/index.html",
+        previewFile: saved.previewFile || "/project/index.html",
+        chatMessages: saved.chatMessages || [
+          {
+            id: "welcome",
+            role: "assistant",
+            content:
+              "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+            timestamp: Date.now(),
+          },
+        ],
+        theme: saved.theme || "vs-dark",
+        consoleEntries: [],
+        isAiResponding: false,
+        previewRefreshKey: Date.now(),
+      });
+    } else {
+      set({
+        projectId: id,
+        files: defaultFiles,
+        openFiles: ["/project/index.html"],
+        activeFile: "/project/index.html",
+        previewFile: "/project/index.html",
+        chatMessages: [
+          {
+            id: "welcome",
+            role: "assistant",
+            content:
+              "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+            timestamp: Date.now(),
+          },
+        ],
+        theme: "vs-dark",
+        consoleEntries: [],
+        isAiResponding: false,
+        previewRefreshKey: Date.now(),
+      });
+    }
+  },
+
+  saveProject: () => {
+    persistState(get());
+  },
+
   setActiveFile: (path) =>
-    set((state) => ({
-      activeFile: path,
-      openFiles: state.openFiles.includes(path)
-        ? state.openFiles
-        : [...state.openFiles, path],
-    })),
+    set((state) => {
+      const next = {
+        ...state,
+        activeFile: path,
+        openFiles: state.openFiles.includes(path)
+          ? state.openFiles
+          : [...state.openFiles, path],
+      };
+      persistState(next);
+      return next;
+    }),
 
   openFile: (path) =>
-    set((state) => ({
-      activeFile: path,
-      openFiles: state.openFiles.includes(path)
-        ? state.openFiles
-        : [...state.openFiles, path],
-    })),
+    set((state) => {
+      const next = {
+        ...state,
+        activeFile: path,
+        openFiles: state.openFiles.includes(path)
+          ? state.openFiles
+          : [...state.openFiles, path],
+      };
+      persistState(next);
+      return next;
+    }),
 
   closeFile: (path) =>
     set((state) => {
       const newOpenFiles = state.openFiles.filter((f) => f !== path);
-      return {
+      const next = {
+        ...state,
         openFiles: newOpenFiles,
         activeFile:
           state.activeFile === path
             ? newOpenFiles[newOpenFiles.length - 1] || null
             : state.activeFile,
       };
+      persistState(next);
+      return next;
     }),
 
   updateFileContent: (path, content) =>
-    set((state) => ({
-      files: updateFileInTree(state.files, path, content),
-    })),
+    set((state) => {
+      const next = {
+        ...state,
+        files: updateFileInTree(state.files, path, content),
+      };
+      persistState(next);
+      return next;
+    }),
 
   addChatMessage: (message) =>
-    set((state) => ({
-      chatMessages: [
-        ...state.chatMessages,
-        {
-          ...message,
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-        },
-      ],
-    })),
+    set((state) => {
+      const next = {
+        ...state,
+        chatMessages: [
+          ...state.chatMessages,
+          {
+            ...message,
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      persistState(next);
+      return next;
+    }),
 
   updateLastAssistantMessage: (content) =>
     set((state) => {
@@ -239,7 +343,9 @@ export const useIDEStore = create<IDEState>()(
           break;
         }
       }
-      return { chatMessages: msgs };
+      const next = { ...state, chatMessages: msgs };
+      persistState(next);
+      return next;
     }),
 
   setAiResponding: (v) => set({ isAiResponding: v }),
@@ -276,12 +382,22 @@ export const useIDEStore = create<IDEState>()(
       activeTool: !state.isChatOpen ? "chat" : state.activeTool === "chat" ? null : state.activeTool,
     })),
   toggleConsole: () => set((state) => ({ isConsoleOpen: !state.isConsoleOpen })),
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) =>
+    set((state) => {
+      const next = { ...state, theme };
+      persistState(next);
+      return next;
+    }),
 
   addFile: (parentPath, name, type) =>
-    set((state) => ({
-      files: addFileToTree(state.files, parentPath, name, type),
-    })),
+    set((state) => {
+      const next = {
+        ...state,
+        files: addFileToTree(state.files, parentPath, name, type),
+      };
+      persistState(next);
+      return next;
+    }),
 
   renameFile: (oldPath, newName) =>
     set((state) => {
@@ -299,11 +415,14 @@ export const useIDEStore = create<IDEState>()(
       } else if (newActiveFile && newActiveFile.startsWith(oldPath + "/")) {
         newActiveFile = newPath + newActiveFile.substring(oldPath.length);
       }
-      return {
+      const next = {
+        ...state,
         files: newFiles,
         openFiles: newOpenFiles,
         activeFile: newActiveFile,
       };
+      persistState(next);
+      return next;
     }),
 
   deleteFile: (path) =>
@@ -318,30 +437,25 @@ export const useIDEStore = create<IDEState>()(
       const newActiveFile = activeGone
         ? newOpenFiles[newOpenFiles.length - 1] || null
         : state.activeFile;
-      return {
+      const next = {
+        ...state,
         files: newFiles,
         openFiles: newOpenFiles,
         activeFile: newActiveFile,
       };
+      persistState(next);
+      return next;
     }),
 
-  setPreviewFile: (path) => set({ previewFile: path, previewRefreshKey: Date.now() }),
+  setPreviewFile: (path) =>
+    set((state) => {
+      const next = { ...state, previewFile: path, previewRefreshKey: Date.now() };
+      persistState(next);
+      return next;
+    }),
 
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
-}),
-    {
-      name: "codestart-ide-state",
-      partialize: (state) => ({
-        files: state.files,
-        openFiles: state.openFiles,
-        activeFile: state.activeFile,
-        previewFile: state.previewFile,
-        chatMessages: state.chatMessages,
-        theme: state.theme,
-      }),
-    }
-  )
-);
+}));
 
 function updateFileInTree(
   files: FileNode[],

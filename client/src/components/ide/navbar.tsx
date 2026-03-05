@@ -1,5 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { useTheme } from "@/components/theme-provider";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -8,20 +9,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Code2, Sun, Moon } from "lucide-react";
+import { Play, Code2, Sun, Moon, ChevronLeft } from "lucide-react";
 
-export function Navbar() {
+interface NavbarProps {
+  projectName: string;
+}
+
+export function Navbar({ projectName }: NavbarProps) {
   const {
     theme: editorTheme,
     setTheme: setEditorTheme,
     activeFile,
     setPreviewFile,
     refreshPreview,
+    saveProject,
   } = useIDEStore();
   const { theme, toggleTheme } = useTheme();
+  const [, navigate] = useLocation();
 
   const handleEditorThemeChange = (v: string) => {
     setEditorTheme(v as "vs-dark" | "vs-light" | "hc-black");
+  };
+
+  const handleBack = () => {
+    saveProject();
+    navigate("/");
   };
 
   return (
@@ -30,6 +42,16 @@ export function Navbar() {
       data-testid="navbar"
     >
       <div className="flex items-center gap-2.5">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={handleBack}
+          aria-label="Back to dashboard"
+          data-testid="button-back-dashboard"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
             <Code2 className="w-3.5 h-3.5 text-primary-foreground" />
@@ -40,7 +62,7 @@ export function Navbar() {
         </div>
         <span className="text-muted-foreground/40 text-sm">/</span>
         <span className="text-sm text-muted-foreground" data-testid="text-project-name">
-          My First App
+          {projectName}
         </span>
       </div>
 

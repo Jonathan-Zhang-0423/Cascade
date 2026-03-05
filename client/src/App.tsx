@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import IDEPage from "@/pages/ide";
+import DashboardPage from "@/pages/dashboard";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={IDEPage} />
+      <Route path="/" component={DashboardPage} />
+      <Route path="/project/:id" component={IDEPage} />
     </Switch>
   );
 }
