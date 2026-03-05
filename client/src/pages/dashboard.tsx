@@ -171,7 +171,7 @@ export default function DashboardPage() {
             placeholder="My Awesome App"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleCreate()}
             autoFocus
             data-testid="input-project-name"
           />
@@ -195,7 +195,7 @@ export default function DashboardPage() {
             placeholder="New name"
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleRename()}
+            onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleRename()}
             autoFocus
             data-testid="input-rename-project"
           />
