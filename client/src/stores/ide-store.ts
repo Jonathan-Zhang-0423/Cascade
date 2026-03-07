@@ -185,9 +185,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
-        activeTool: saved.pendingPrompt ? "chat" as ToolPanel : "files" as ToolPanel,
-        isChatOpen: !!saved.pendingPrompt,
-        isSidebarOpen: !saved.pendingPrompt,
+        activeTool: "chat",
+        isChatOpen: true,
+        isSidebarOpen: false,
       });
     } else {
       set({
