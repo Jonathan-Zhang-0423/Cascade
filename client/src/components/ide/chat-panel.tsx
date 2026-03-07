@@ -490,7 +490,6 @@ export function ChatPanel() {
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-
       <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-3" ref={scrollRef}>
         {chatMessages.map((msg) =>
           msg.role === "checkpoint" ? (
@@ -507,8 +506,7 @@ export function ChatPanel() {
           <TypingIndicator />
         )}
       </div>
-
-      <div className="p-2.5 border-t border-border/50 shrink-0">
+      <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
         <div className="flex gap-2 items-end">
           <Textarea
             ref={textareaRef}
