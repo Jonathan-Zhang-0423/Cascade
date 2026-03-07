@@ -45,8 +45,15 @@ function parseCodeBlocks(content: string): Array<string | CodeBlock> {
   return parts;
 }
 
-function CodeBlockView({ block }: { block: CodeBlock }) {
-  const [applied, setApplied] = useState(false);
+function extractCodeBlocks(content: string): CodeBlock[] {
+  return parseCodeBlocks(content).filter(
+    (part): part is CodeBlock => typeof part !== "string"
+  );
+}
+
+
+function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
+  const [applied, setApplied] = useState(autoApplied || false);
   const { updateFileContent, files, addFile, openFile } = useIDEStore();
 
   const handleApply = () => {
@@ -91,23 +98,27 @@ function CodeBlockView({ block }: { block: CodeBlock }) {
           >
             <Copy className="w-3 h-3" />
           </Button>
-          <Button
-            size="sm"
-            variant={applied ? "outline" : "default"}
-            className="h-5 px-2 text-[10px] gap-1"
-            onClick={handleApply}
-            disabled={applied}
-            data-testid={`button-apply-${block.filePath}`}
+          <span
+            className="h-5 px-2 text-[10px] gap-1 inline-flex items-center text-muted-foreground"
+            data-testid={`status-applied-${block.filePath}`}
           >
             {applied ? (
               <>
-                <Check className="w-3 h-3" />
+                <Check className="w-3 h-3 mr-0.5" />
                 Applied
               </>
             ) : (
-              "Apply"
+              <Button
+                size="sm"
+                variant="default"
+                className="h-5 px-2 text-[10px] gap-1"
+                onClick={handleApply}
+                data-testid={`button-apply-${block.filePath}`}
+              >
+                Apply
+              </Button>
             )}
-          </Button>
+          </span>
         </div>
       </div>
       <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed bg-background/50">
@@ -117,7 +128,7 @@ function CodeBlockView({ block }: { block: CodeBlock }) {
   );
 }
 
-function MessageContent({ content }: { content: string }) {
+function MessageContent({ content, autoApplied }: { content: string; autoApplied?: boolean }) {
   const parts = parseCodeBlocks(content);
 
   if (parts.length === 1 && typeof parts[0] === "string") {
@@ -132,14 +143,14 @@ function MessageContent({ content }: { content: string }) {
             {part}
           </span>
         ) : (
-          <CodeBlockView key={i} block={part} />
+          <CodeBlockView key={i} block={part} autoApplied={autoApplied} />
         )
       )}
     </>
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, autoApplied }: { message: ChatMessage; autoApplied?: boolean }) {
   const isAssistant = message.role === "assistant";
 
   return (
@@ -165,7 +176,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : "bg-primary text-primary-foreground"
         )}
       >
-        <MessageContent content={message.content} />
+        <MessageContent content={message.content} autoApplied={isAssistant ? autoApplied : undefined} />
       </div>
     </div>
   );
@@ -198,6 +209,7 @@ export function ChatPanel() {
     pendingPrompt,
     clearPendingPrompt,
     projectId,
+    refreshPreview,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -205,6 +217,7 @@ export function ChatPanel() {
   const abortRef = useRef<AbortController | null>(null);
   const pendingHandled = useRef(false);
   const projectNameExtracted = useRef(false);
+  const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -309,6 +322,37 @@ export function ChatPanel() {
           }
         }
       }
+
+      const finalContent = stripProjectNameMarker(accumulated);
+      const codeBlocks = extractCodeBlocks(finalContent);
+      if (codeBlocks.length > 0) {
+        for (const block of codeBlocks) {
+          const currentState = useIDEStore.getState();
+          const currentFiles = flattenFiles(currentState.files);
+          const exists = currentFiles.some((f) => f.path === block.filePath);
+
+          if (exists) {
+            currentState.updateFileContent(block.filePath, block.code);
+          } else {
+            const lastSlash = block.filePath.lastIndexOf("/");
+            if (lastSlash > 0) {
+              const parentPath = block.filePath.substring(0, lastSlash);
+              const fileName = block.filePath.substring(lastSlash + 1);
+              currentState.addFile(parentPath, fileName, "file");
+              await new Promise((r) => setTimeout(r, 80));
+              useIDEStore.getState().updateFileContent(block.filePath, block.code);
+            }
+          }
+        }
+
+        const currentMessages = useIDEStore.getState().chatMessages;
+        const lastAssistantMsg = [...currentMessages].reverse().find((m) => m.role === "assistant");
+        if (lastAssistantMsg) {
+          setAutoAppliedMessageIds((prev) => new Set(prev).add(lastAssistantMsg.id));
+        }
+
+        refreshPreview();
+      }
     } catch (error: any) {
       if (error.name !== "AbortError") {
         updateLastAssistantMessage(
@@ -319,7 +363,7 @@ export function ChatPanel() {
       setAiResponding(false);
       abortRef.current = null;
     }
-  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject]);
+  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview]);
 
   useEffect(() => {
     pendingHandled.current = false;
@@ -373,7 +417,11 @@ export function ChatPanel() {
 
       <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-3" ref={scrollRef}>
         {chatMessages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            autoApplied={autoAppliedMessageIds.has(msg.id)}
+          />
         ))}
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
           <TypingIndicator />

@@ -58,7 +58,7 @@ shared/
 - **Model**: `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code, handles both conversation and code generation)
 - **API Route**: `POST /api/chat` — accepts messages + file context, returns SSE stream
 - **System Prompt**: Encodes Vibe Agent behavioral rules (demand clarity, confirm before building, no jargon, iterative). Agent is scoped to one project at a time.
-- **Code Apply Flow**: AI outputs code blocks with `file="..."` annotations → chat renders "Apply" buttons → clicking writes code to IDE filesystem → preview updates automatically. Nested paths auto-create intermediate directories.
+- **Code Auto-Apply**: AI outputs code blocks with `file="..."` annotations → after streaming completes, all code blocks are automatically applied to the project files → preview refreshes automatically. Code blocks show "Applied" status in chat. Manual "Apply" button available as fallback. Nested paths auto-create intermediate directories.
 - **Code Annotations**: System prompt requires beginner-friendly, no-jargon inline comments on every line of generated code, matching the user's language
 - **Emojis**: Agent includes 1-3 emojis in ~90% of responses for warmth
 - **API Key**: Stored in `DOUBAO_API_KEY` environment secret
