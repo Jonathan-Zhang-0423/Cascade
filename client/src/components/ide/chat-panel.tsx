@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw } from "lucide-react";
+import { Send, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -184,30 +184,21 @@ function MessageContent({ content, autoApplied }: { content: string; autoApplied
 function MessageBubble({ message, autoApplied }: { message: ChatMessage; autoApplied?: boolean }) {
   const isAssistant = message.role === "assistant";
 
-  return (
-    <div
-      className={cn("flex gap-2.5 px-3", isAssistant ? "flex-row" : "flex-row-reverse")}
-      data-testid={`chat-message-${message.id}`}
-    >
+  if (isAssistant) {
+    return (
       <div
-        className={cn(
-          "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-          isAssistant
-            ? "bg-primary/10 text-primary"
-            : "bg-muted text-muted-foreground"
-        )}
+        className="px-3 text-[13px] leading-relaxed text-foreground"
+        data-testid={`chat-message-${message.id}`}
       >
-        {isAssistant ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+        <MessageContent content={message.content} autoApplied={autoApplied} />
       </div>
-      <div
-        className={cn(
-          "rounded-lg px-3 py-2 text-[13px] leading-relaxed max-w-[85%]",
-          isAssistant
-            ? "bg-muted/50 text-foreground"
-            : "bg-primary text-primary-foreground"
-        )}
-      >
-        <MessageContent content={message.content} autoApplied={isAssistant ? autoApplied : undefined} />
+    );
+  }
+
+  return (
+    <div className="flex justify-end px-3" data-testid={`chat-message-${message.id}`}>
+      <div className="rounded-full px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+        <MessageContent content={message.content} />
       </div>
     </div>
   );
@@ -270,14 +261,9 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
 
 function TypingIndicator() {
   return (
-    <div className="flex gap-2.5 px-3" data-testid="typing-indicator">
-      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-primary/10 text-primary">
-        <Bot className="w-3.5 h-3.5" />
-      </div>
-      <div className="rounded-lg px-3 py-2 bg-muted/50 flex items-center gap-1.5">
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Thinking...</span>
-      </div>
+    <div className="px-3 flex items-center gap-1.5" data-testid="typing-indicator">
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">Thinking...</span>
     </div>
   );
 }
