@@ -86,7 +86,7 @@ function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?:
   };
 
   return (
-    <div className="my-2 rounded-md border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
+    <div className="my-0.5 rounded-md border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
       <div
         className="flex items-center justify-between px-2 py-1.5 bg-muted/50 cursor-pointer select-none hover:bg-muted/70 transition-colors"
         onClick={() => setCollapsed((c) => !c)}
@@ -435,7 +435,7 @@ export function ChatPanel() {
         </Button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-3" ref={scrollRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-1" ref={scrollRef}>
         {chatMessages.map((msg) => (
           <MessageBubble
             key={msg.id}
