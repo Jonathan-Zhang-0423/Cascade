@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, History, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -63,99 +63,19 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
-  const [applied, setApplied] = useState(autoApplied || false);
-  const [collapsed, setCollapsed] = useState(true);
-  const { updateFileContent, files, addFile, openFile } = useIDEStore();
-
-  const lineCount = block.code.split("\n").length;
-
-  const handleApply = () => {
-    const allFiles = flattenFiles(files);
-    const exists = allFiles.some((f) => f.path === block.filePath);
-
-    if (exists) {
-      updateFileContent(block.filePath, block.code);
-    } else {
-      const lastSlash = block.filePath.lastIndexOf("/");
-      const parentPath = block.filePath.substring(0, lastSlash);
-      const fileName = block.filePath.substring(lastSlash + 1);
-      addFile(parentPath, fileName, "file");
-      setTimeout(() => {
-        updateFileContent(block.filePath, block.code);
-      }, 50);
-    }
-
-    openFile(block.filePath);
-    setApplied(true);
-    setTimeout(() => setApplied(false), 2000);
-  };
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(block.code);
-  };
+function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
+  const { openFile } = useIDEStore();
+  const fileName = block.filePath.split("/").pop() || block.filePath;
 
   return (
-    <div className="my-0.5 rounded-md border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
-      <div
-        className="flex items-center justify-between px-2 py-1.5 bg-muted/50 cursor-pointer select-none hover:bg-muted/70 transition-colors mt-[0px] mb-[0px] pt-[5px] pb-[5px] pl-[8px] pr-[8px]"
-        onClick={() => setCollapsed((c) => !c)}
-        data-testid={`toggle-code-${block.filePath}`}
-      >
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
-          {collapsed ? (
-            <ChevronRight className="w-3 h-3 shrink-0" />
-          ) : (
-            <ChevronDown className="w-3 h-3 shrink-0" />
-          )}
-          <FileCode className="w-3 h-3 shrink-0" />
-          <span className="truncate">{block.filePath}</span>
-          {collapsed && (
-            <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-1">
-              {lineCount} lines
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={handleCopy}
-            data-testid={`button-copy-${block.filePath}`}
-          >
-            <Copy className="w-3 h-3" />
-          </Button>
-          <span
-            className="h-5 px-2 text-[10px] gap-1 inline-flex items-center text-muted-foreground"
-            data-testid={`status-applied-${block.filePath}`}
-          >
-            {applied ? (
-              <>
-                <Check className="w-3 h-3 mr-0.5" />
-                Applied
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="default"
-                className="h-5 px-2 text-[10px] gap-1"
-                onClick={(e) => { e.stopPropagation(); handleApply(); }}
-                data-testid={`button-apply-${block.filePath}`}
-              >
-                Apply
-              </Button>
-            )}
-          </span>
-        </div>
-      </div>
-      {!collapsed && (
-        <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed bg-background/50 border-t border-border/50">
-          <code>{block.code}</code>
-        </pre>
-      )}
-    </div>
+    <span
+      className="inline-flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary cursor-pointer transition-colors mr-1"
+      onClick={() => openFile(block.filePath)}
+      data-testid={`code-block-${block.filePath}`}
+    >
+      <FileCode className="w-3 h-3 shrink-0" />
+      <span className="underline underline-offset-2 decoration-primary/30">{fileName}</span>
+    </span>
   );
 }
 
@@ -221,40 +141,39 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
   };
 
   return (
-    <div className="px-3 py-0.5" data-testid={`checkpoint-${message.checkpointId}`}>
-      <div className={cn(
-        "flex items-center gap-2 px-2.5 py-1 rounded-md border border-border/40 group transition-colors",
-        isAvailable ? "bg-muted/30 hover:bg-muted/50" : "bg-muted/15 opacity-50"
-      )}>
-        <History className="w-3 h-3 text-muted-foreground/60 shrink-0" />
-        <span className="text-[11px] text-muted-foreground/70 truncate flex-1">
-          {message.content}
-        </span>
-        <span className="text-[10px] text-muted-foreground/40 shrink-0">
-          {formatRelativeTime(message.timestamp)}
-        </span>
-        {isAvailable && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-5 px-1.5 text-[10px] gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-foreground"
+    <div
+      className={cn("px-3 flex items-center gap-1.5 text-[11px]", isAvailable ? "text-muted-foreground/60" : "text-muted-foreground/30")}
+      data-testid={`checkpoint-${message.checkpointId}`}
+    >
+      <History className="w-3 h-3 shrink-0" />
+      <span className="truncate">{message.content}</span>
+      <span className="shrink-0">·</span>
+      <span className="shrink-0">{formatRelativeTime(message.timestamp)}</span>
+      {isAvailable && (
+        <>
+          <span className="shrink-0">·</span>
+          <span
+            className={cn(
+              "shrink-0 cursor-pointer transition-colors",
+              restored ? "text-green-500" : "hover:text-foreground"
+            )}
             onClick={handleRestore}
             data-testid={`button-restore-${message.checkpointId}`}
           >
             {restored ? (
-              <>
+              <span className="inline-flex items-center gap-0.5">
                 <Check className="w-3 h-3" />
                 Restored
-              </>
+              </span>
             ) : (
-              <>
-                <RotateCcw className="w-3 h-3" />
+              <span className="inline-flex items-center gap-0.5 underline underline-offset-2">
+                <RotateCcw className="w-2.5 h-2.5" />
                 Restore
-              </>
+              </span>
             )}
-          </Button>
-        )}
-      </div>
+          </span>
+        </>
+      )}
     </div>
   );
 }
