@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square } from "lucide-react";
+import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -54,7 +54,10 @@ function extractCodeBlocks(content: string): CodeBlock[] {
 
 function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
   const [applied, setApplied] = useState(autoApplied || false);
+  const [collapsed, setCollapsed] = useState(true);
   const { updateFileContent, files, addFile, openFile } = useIDEStore();
+
+  const lineCount = block.code.split("\n").length;
 
   const handleApply = () => {
     const allFiles = flattenFiles(files);
@@ -77,18 +80,33 @@ function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?:
     setTimeout(() => setApplied(false), 2000);
   };
 
-  const handleCopy = () => {
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(block.code);
   };
 
   return (
     <div className="my-2 rounded-md border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border/50">
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <FileCode className="w-3 h-3" />
-          <span>{block.filePath}</span>
+      <div
+        className="flex items-center justify-between px-2 py-1.5 bg-muted/50 cursor-pointer select-none hover:bg-muted/70 transition-colors"
+        onClick={() => setCollapsed((c) => !c)}
+        data-testid={`toggle-code-${block.filePath}`}
+      >
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3 h-3 shrink-0" />
+          )}
+          <FileCode className="w-3 h-3 shrink-0" />
+          <span className="truncate">{block.filePath}</span>
+          {collapsed && (
+            <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-1">
+              {lineCount} lines
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             size="icon"
             variant="ghost"
@@ -112,7 +130,7 @@ function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?:
                 size="sm"
                 variant="default"
                 className="h-5 px-2 text-[10px] gap-1"
-                onClick={handleApply}
+                onClick={(e) => { e.stopPropagation(); handleApply(); }}
                 data-testid={`button-apply-${block.filePath}`}
               >
                 Apply
@@ -121,9 +139,11 @@ function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?:
           </span>
         </div>
       </div>
-      <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed bg-background/50">
-        <code>{block.code}</code>
-      </pre>
+      {!collapsed && (
+        <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed bg-background/50 border-t border-border/50">
+          <code>{block.code}</code>
+        </pre>
+      )}
     </div>
   );
 }
