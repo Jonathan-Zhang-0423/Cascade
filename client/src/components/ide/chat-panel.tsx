@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, History, RotateCcw } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -64,18 +64,37 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
+  const [collapsed, setCollapsed] = useState(true);
   const { openFile } = useIDEStore();
   const fileName = block.filePath.split("/").pop() || block.filePath;
+  const lineCount = block.code.split("\n").length;
 
   return (
-    <span
-      className="inline-flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary cursor-pointer transition-colors mr-1"
-      onClick={() => openFile(block.filePath)}
-      data-testid={`code-block-${block.filePath}`}
-    >
-      <FileCode className="w-3 h-3 shrink-0" />
-      <span className="underline underline-offset-2 decoration-primary/30">{fileName}</span>
-    </span>
+    <div className="my-1 rounded-md border border-border/40 overflow-hidden inline-block max-w-full" data-testid={`code-block-${block.filePath}`}>
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 bg-muted/40 cursor-pointer select-none hover:bg-muted/60 transition-colors text-[11px] text-muted-foreground"
+        onClick={() => setCollapsed((c) => !c)}
+        data-testid={`toggle-code-${block.filePath}`}
+      >
+        {collapsed ? <ChevronRight className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
+        <FileCode className="w-3 h-3 shrink-0" />
+        <span>{fileName}</span>
+        <span className="text-muted-foreground/50">{lineCount} lines</span>
+        <button
+          className="ml-auto inline-flex items-center gap-0.5 text-primary/70 hover:text-primary transition-colors"
+          onClick={(e) => { e.stopPropagation(); openFile(block.filePath); }}
+          data-testid={`button-open-${block.filePath}`}
+        >
+          <ExternalLink className="w-3 h-3" />
+          <span>Open</span>
+        </button>
+      </div>
+      {!collapsed && (
+        <pre className="p-2.5 overflow-x-auto text-[11px] leading-relaxed bg-background/50 border-t border-border/30 max-h-[200px] overflow-y-auto">
+          <code>{block.code}</code>
+        </pre>
+      )}
+    </div>
   );
 }
 
