@@ -10,9 +10,10 @@ export interface FileNode {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "checkpoint";
   content: string;
   timestamp: number;
+  checkpointId?: string;
 }
 
 export interface ConsoleEntry {
@@ -23,6 +24,132 @@ export interface ConsoleEntry {
 }
 
 export type ToolPanel = "files" | "chat" | null;
+
+interface FlatFile {
+  path: string;
+  content: string;
+}
+
+interface FileDiff {
+  path: string;
+  action: "add" | "modify" | "delete";
+  content?: string;
+}
+
+export interface Checkpoint {
+  id: string;
+  label: string;
+  timestamp: number;
+  snapshot?: FlatFile[];
+  diff?: FileDiff[];
+}
+
+function flattenToFlatFiles(files: FileNode[]): FlatFile[] {
+  const result: FlatFile[] = [];
+  for (const file of files) {
+    if (file.type === "file") {
+      result.push({ path: file.path, content: file.content || "" });
+    }
+    if (file.children) {
+      result.push(...flattenToFlatFiles(file.children));
+    }
+  }
+  return result;
+}
+
+function computeReverseDiff(olderFiles: FlatFile[], newerFiles: FlatFile[]): FileDiff[] {
+  const diffs: FileDiff[] = [];
+  const olderMap = new Map(olderFiles.map((f) => [f.path, f.content]));
+  const newerMap = new Map(newerFiles.map((f) => [f.path, f.content]));
+
+  for (const [path, content] of olderMap) {
+    if (!newerMap.has(path)) {
+      diffs.push({ path, action: "add", content });
+    } else if (newerMap.get(path) !== content) {
+      diffs.push({ path, action: "modify", content });
+    }
+  }
+
+  for (const [path] of newerMap) {
+    if (!olderMap.has(path)) {
+      diffs.push({ path, action: "delete" });
+    }
+  }
+
+  return diffs;
+}
+
+function applyReverseDiff(files: FlatFile[], diff: FileDiff[]): FlatFile[] {
+  const fileMap = new Map(files.map((f) => [f.path, f.content]));
+
+  for (const d of diff) {
+    if (d.action === "add") {
+      fileMap.set(d.path, d.content || "");
+    } else if (d.action === "modify") {
+      fileMap.set(d.path, d.content || "");
+    } else if (d.action === "delete") {
+      fileMap.delete(d.path);
+    }
+  }
+
+  return Array.from(fileMap.entries()).map(([path, content]) => ({ path, content }));
+}
+
+function rebuildFileTree(flatFiles: FlatFile[]): FileNode[] {
+  const root: FileNode[] = [];
+
+  for (const { path, content } of flatFiles) {
+    const segments = path.split("/").filter(Boolean);
+    let currentLevel = root;
+    let builtPath = "";
+
+    for (let i = 0; i < segments.length; i++) {
+      builtPath = builtPath ? `${builtPath}/${segments[i]}` : `/${segments[i]}`;
+      const isFile = i === segments.length - 1;
+
+      let existing = currentLevel.find((n) => n.path === builtPath);
+      if (!existing) {
+        if (isFile) {
+          existing = { name: segments[i], path: builtPath, type: "file", content };
+          currentLevel.push(existing);
+        } else {
+          existing = { name: segments[i], path: builtPath, type: "folder", children: [] };
+          currentLevel.push(existing);
+        }
+      }
+      if (!isFile) {
+        if (!existing.children) existing.children = [];
+        currentLevel = existing.children;
+      }
+    }
+  }
+
+  return root;
+}
+
+function reconstructCheckpointFiles(checkpoints: Checkpoint[], targetId: string): FlatFile[] | null {
+  const lastIdx = checkpoints.length - 1;
+  if (lastIdx < 0) return null;
+
+  const last = checkpoints[lastIdx];
+  if (!last.snapshot) return null;
+
+  if (last.id === targetId) return [...last.snapshot];
+
+  let current = [...last.snapshot];
+
+  for (let i = lastIdx - 1; i >= 0; i--) {
+    const cp = checkpoints[i];
+    if (cp.diff) {
+      current = applyReverseDiff(current, cp.diff);
+    } else if (cp.snapshot) {
+      current = [...cp.snapshot];
+    }
+    if (cp.id === targetId) return current;
+  }
+
+  return null;
+}
 
 interface IDEState {
   projectId: string | null;
@@ -40,6 +167,7 @@ interface IDEState {
   previewFile: string;
   previewRefreshKey: number;
   pendingPrompt: string | null;
+  checkpoints: Checkpoint[];
 
   loadProject: (id: string) => void;
   saveProject: () => void;
@@ -63,6 +191,8 @@ interface IDEState {
   deleteFile: (path: string) => void;
   setPreviewFile: (path: string) => void;
   refreshPreview: () => void;
+  createCheckpoint: (label: string) => void;
+  restoreCheckpoint: (id: string) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -130,6 +260,38 @@ function persistState(state: IDEState) {
   );
 }
 
+function loadCheckpoints(projectId: string): Checkpoint[] {
+  try {
+    const data = localStorage.getItem(`codestart-checkpoints-${projectId}`);
+    if (data) {
+      const parsed: Checkpoint[] = JSON.parse(data);
+      if (parsed.length > 0 && !parsed[parsed.length - 1].snapshot) {
+        return [];
+      }
+      return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function persistCheckpoints(projectId: string, checkpoints: Checkpoint[]) {
+  try {
+    localStorage.setItem(
+      `codestart-checkpoints-${projectId}`,
+      JSON.stringify(checkpoints)
+    );
+  } catch (e: any) {
+    if (e?.name === "QuotaExceededError" && checkpoints.length > 1) {
+      const reconstructed = reconstructCheckpointFiles(checkpoints, checkpoints[1].id);
+      const trimmed = checkpoints.slice(1);
+      if (trimmed.length > 0 && reconstructed) {
+        trimmed[0] = { ...trimmed[0], snapshot: reconstructed, diff: undefined };
+      }
+      persistCheckpoints(projectId, trimmed);
+    }
+  }
+}
+
 export const useIDEStore = create<IDEState>((set, get) => ({
   projectId: null,
   files: defaultFiles,
@@ -154,6 +316,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
   pendingPrompt: null,
+  checkpoints: [],
 
   loadProject: (id) => {
     const current = get();
@@ -162,6 +325,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     }
 
     const saved = getPersistedState(id);
+    const savedCheckpoints = loadCheckpoints(id);
     const defaultChat = [
       {
         id: "welcome",
@@ -182,6 +346,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         chatMessages: saved.chatMessages || defaultChat,
         theme: saved.theme || "vs-dark",
         pendingPrompt: saved.pendingPrompt || null,
+        checkpoints: savedCheckpoints,
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
@@ -199,6 +364,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         chatMessages: defaultChat,
         theme: "vs-dark",
         pendingPrompt: null,
+        checkpoints: [],
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
@@ -214,6 +380,82 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set({ pendingPrompt: null });
     const state = get();
     persistState(state);
+  },
+
+  createCheckpoint: (label) => {
+    const state = get();
+    if (!state.projectId) return;
+
+    const currentFlat = flattenToFlatFiles(state.files);
+    const checkpointId = crypto.randomUUID();
+    const newCheckpoint: Checkpoint = {
+      id: checkpointId,
+      label,
+      timestamp: Date.now(),
+      snapshot: currentFlat,
+    };
+
+    const oldCheckpoints = [...state.checkpoints];
+
+    if (oldCheckpoints.length > 0) {
+      const prevLast = oldCheckpoints[oldCheckpoints.length - 1];
+      if (prevLast.snapshot) {
+        const reverseDiff = computeReverseDiff(prevLast.snapshot, currentFlat);
+        oldCheckpoints[oldCheckpoints.length - 1] = {
+          ...prevLast,
+          diff: reverseDiff,
+          snapshot: undefined,
+        };
+      }
+    }
+
+    const updatedCheckpoints = [...oldCheckpoints, newCheckpoint];
+
+    const checkpointMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "checkpoint",
+      content: label,
+      timestamp: Date.now(),
+      checkpointId,
+    };
+
+    const next = {
+      ...state,
+      checkpoints: updatedCheckpoints,
+      chatMessages: [...state.chatMessages, checkpointMessage],
+    };
+
+    set(next);
+    persistState(next);
+    persistCheckpoints(state.projectId, updatedCheckpoints);
+  },
+
+  restoreCheckpoint: (id) => {
+    const state = get();
+    if (!state.projectId) return;
+
+    const restoredFlat = reconstructCheckpointFiles(state.checkpoints, id);
+    if (!restoredFlat) return;
+
+    const restoredTree = rebuildFileTree(restoredFlat);
+    const allPaths = restoredFlat.map((f) => f.path);
+    const htmlFile = allPaths.find((p) => p.endsWith(".html")) || allPaths[0] || "/project/index.html";
+    const validOpenFiles = state.openFiles.filter((f) => allPaths.includes(f));
+    if (validOpenFiles.length === 0 && allPaths.length > 0) {
+      validOpenFiles.push(htmlFile);
+    }
+
+    const next = {
+      ...state,
+      files: restoredTree,
+      openFiles: validOpenFiles,
+      activeFile: validOpenFiles[0] || null,
+      previewFile: htmlFile,
+      previewRefreshKey: Date.now(),
+    };
+
+    set(next);
+    persistState(next);
   },
 
   setActiveFile: (path) =>

@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown } from "lucide-react";
+import { Send, Bot, User, Sparkles, X, Check, Copy, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -51,6 +51,17 @@ function extractCodeBlocks(content: string): CodeBlock[] {
   );
 }
 
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = Math.floor((now - timestamp) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return `${diff}s ago`;
+  const mins = Math.floor(diff / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 function CodeBlockView({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
   const [applied, setApplied] = useState(autoApplied || false);
@@ -202,6 +213,61 @@ function MessageBubble({ message, autoApplied }: { message: ChatMessage; autoApp
   );
 }
 
+function CheckpointMarker({ message }: { message: ChatMessage }) {
+  const { restoreCheckpoint, refreshPreview, checkpoints } = useIDEStore();
+  const [restored, setRestored] = useState(false);
+
+  const isAvailable = message.checkpointId
+    ? checkpoints.some((cp) => cp.id === message.checkpointId)
+    : false;
+
+  const handleRestore = () => {
+    if (!message.checkpointId || !isAvailable) return;
+    restoreCheckpoint(message.checkpointId);
+    refreshPreview();
+    setRestored(true);
+    setTimeout(() => setRestored(false), 2000);
+  };
+
+  return (
+    <div className="px-3 py-0.5" data-testid={`checkpoint-${message.checkpointId}`}>
+      <div className={cn(
+        "flex items-center gap-2 px-2.5 py-1 rounded-md border border-border/40 group transition-colors",
+        isAvailable ? "bg-muted/30 hover:bg-muted/50" : "bg-muted/15 opacity-50"
+      )}>
+        <History className="w-3 h-3 text-muted-foreground/60 shrink-0" />
+        <span className="text-[11px] text-muted-foreground/70 truncate flex-1">
+          {message.content}
+        </span>
+        <span className="text-[10px] text-muted-foreground/40 shrink-0">
+          {formatRelativeTime(message.timestamp)}
+        </span>
+        {isAvailable && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-5 px-1.5 text-[10px] gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={handleRestore}
+            data-testid={`button-restore-${message.checkpointId}`}
+          >
+            {restored ? (
+              <>
+                <Check className="w-3 h-3" />
+                Restored
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-3 h-3" />
+                Restore
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TypingIndicator() {
   return (
     <div className="flex gap-2.5 px-3" data-testid="typing-indicator">
@@ -230,6 +296,7 @@ export function ChatPanel() {
     clearPendingPrompt,
     projectId,
     refreshPreview,
+    createCheckpoint,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -260,8 +327,8 @@ export function ChatPanel() {
 
     const messagesForApi = [
       ...chatMessages
-        .filter((m) => m.id !== "welcome")
-        .map((m) => ({ role: m.role, content: m.content })),
+        .filter((m) => m.id !== "welcome" && m.role !== "checkpoint")
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       { role: "user" as const, content: trimmed },
     ];
 
@@ -372,6 +439,9 @@ export function ChatPanel() {
         }
 
         refreshPreview();
+
+        const checkpointLabel = trimmed.length > 40 ? trimmed.slice(0, 40) + "..." : trimmed;
+        createCheckpoint(checkpointLabel);
       }
     } catch (error: any) {
       if (error.name !== "AbortError") {
@@ -383,7 +453,7 @@ export function ChatPanel() {
       setAiResponding(false);
       abortRef.current = null;
     }
-  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview]);
+  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview, createCheckpoint]);
 
   useEffect(() => {
     pendingHandled.current = false;
@@ -436,13 +506,17 @@ export function ChatPanel() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-3" ref={scrollRef}>
-        {chatMessages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            autoApplied={autoAppliedMessageIds.has(msg.id)}
-          />
-        ))}
+        {chatMessages.map((msg) =>
+          msg.role === "checkpoint" ? (
+            <CheckpointMarker key={msg.id} message={msg} />
+          ) : (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              autoApplied={autoAppliedMessageIds.has(msg.id)}
+            />
+          )
+        )}
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
           <TypingIndicator />
         )}
@@ -474,7 +548,7 @@ export function ChatPanel() {
             <Button
               size="icon"
               className="h-9 w-9 shrink-0"
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!input.trim()}
               data-testid="button-send-chat"
             >

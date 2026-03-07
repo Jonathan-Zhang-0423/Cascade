@@ -76,6 +76,16 @@ shared/
 - **Console interceptor**: Injected into HTML to capture `console.log/warn/error/info` calls via `postMessage`
 - **Fallback**: External URLs (http/https) are left as-is; only local project files are inlined
 
+## Checkpoint/Rollback System
+- **Inline checkpoints**: After AI applies code blocks, a checkpoint marker appears inline in the chat stream (slim horizontal bar with save icon, label, relative time, and Restore button)
+- **Auto-creation**: Checkpoints are automatically created every time the AI applies code changes
+- **Incremental diffs**: Storage uses reverse diffs for efficiency. The newest checkpoint stores a full file snapshot; older checkpoints store only the reverse diff (what changed). To restore checkpoint N, start from the newest snapshot and apply reverse diffs backward.
+- **Separate storage**: Checkpoints stored in `codestart-checkpoints-{projectId}` localStorage key (separate from main project state)
+- **Unlimited**: No cap on number of checkpoints. If localStorage quota is exceeded, oldest checkpoints are trimmed and the new oldest gets its snapshot reconstructed from the diff chain.
+- **Restore**: Clicking "Restore" on any checkpoint replaces project files with that checkpoint's state, resets open tabs, and refreshes preview. Chat history is preserved (not rolled back).
+- **Orphaned markers**: If a checkpoint is trimmed from storage, its chat marker becomes dimmed and the Restore button is hidden.
+- **Data model**: `Checkpoint { id, label, timestamp, snapshot?, diff? }` — `snapshot` is `FlatFile[]`, `diff` is `FileDiff[]` with actions add/modify/delete.
+
 ## Features
 - Multi-project dashboard with create/rename/delete
 - Per-project isolated files, chat history, and preview
