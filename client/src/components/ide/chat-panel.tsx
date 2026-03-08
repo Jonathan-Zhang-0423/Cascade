@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink, Code2, EyeOff } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -360,8 +360,8 @@ function tokenizeLine(code: string, lang: "html" | "css" | "js" | "text"): Token
   return tokens;
 }
 
-function CodeBlockView({ block, defaultExpanded }: { block: CodeBlock; autoApplied?: boolean; defaultExpanded?: boolean }) {
-  const [collapsed, setCollapsed] = useState(!defaultExpanded);
+function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
+  const [collapsed, setCollapsed] = useState(true);
   const { openFile, theme } = useIDEStore();
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
@@ -458,95 +458,6 @@ function CodeBlockView({ block, defaultExpanded }: { block: CodeBlock; autoAppli
   );
 }
 
-interface TextGroup {
-  type: "textWithBlocks";
-  text: string;
-  followingBlocks: CodeBlock[];
-}
-
-interface StandaloneBlock {
-  type: "standaloneBlock";
-  block: CodeBlock;
-}
-
-type RichPart = TextGroup | StandaloneBlock;
-
-function buildRichParts(parts: Array<string | CodeBlock>): RichPart[] {
-  const rich: RichPart[] = [];
-
-  let i = 0;
-  while (i < parts.length) {
-    const part = parts[i];
-    if (typeof part === "string") {
-      const followingBlocks: CodeBlock[] = [];
-      let j = i + 1;
-      while (j < parts.length && typeof parts[j] !== "string") {
-        followingBlocks.push(parts[j] as CodeBlock);
-        j++;
-      }
-      if (followingBlocks.length > 0 && part.trim().length > 0) {
-        rich.push({ type: "textWithBlocks", text: part, followingBlocks });
-        i = j;
-      } else {
-        if (part.trim().length > 0 || followingBlocks.length === 0) {
-          rich.push({ type: "textWithBlocks", text: part, followingBlocks: [] });
-        }
-        for (const block of followingBlocks) {
-          rich.push({ type: "standaloneBlock", block });
-        }
-        i = j;
-      }
-    } else {
-      rich.push({ type: "standaloneBlock", block: part });
-      i++;
-    }
-  }
-
-  return rich;
-}
-
-function ViewCodeToggle({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
-  const [showCode, setShowCode] = useState(false);
-  const blockFileName = block.filePath.split("/").pop() || block.filePath;
-
-  return (
-    <span className="block">
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium align-middle",
-          showCode ? "text-primary" : "text-primary/60 hover:text-primary"
-        )}
-        onClick={() => setShowCode((v) => !v)}
-        data-testid={`button-view-code-${block.filePath}`}
-      >
-        {showCode ? <EyeOff className="w-3 h-3" /> : <Code2 className="w-3 h-3" />}
-        <span className="underline underline-offset-2">{showCode ? "Hide Code" : "View Code"}</span>
-        <span className="text-muted-foreground/50 no-underline ml-0.5">({blockFileName})</span>
-      </span>
-      {showCode && (
-        <span className="block mt-1">
-          <CodeBlockView block={block} autoApplied={autoApplied} defaultExpanded />
-        </span>
-      )}
-    </span>
-  );
-}
-
-function TextWithViewCode({ text, followingBlocks, autoApplied }: { text: string; followingBlocks: CodeBlock[]; autoApplied?: boolean }) {
-  if (followingBlocks.length === 0) {
-    return <span className="whitespace-pre-wrap">{text}</span>;
-  }
-
-  return (
-    <span className="whitespace-pre-wrap">
-      {text}
-      {followingBlocks.map((block, idx) => (
-        <ViewCodeToggle key={idx} block={block} autoApplied={autoApplied} />
-      ))}
-    </span>
-  );
-}
-
 function MessageContent({ content, autoApplied }: { content: string; autoApplied?: boolean }) {
   const parts = parseCodeBlocks(content);
 
@@ -554,23 +465,17 @@ function MessageContent({ content, autoApplied }: { content: string; autoApplied
     return <span className="whitespace-pre-wrap">{parts[0]}</span>;
   }
 
-  const richParts = buildRichParts(parts);
-
   return (
     <>
-      {richParts.map((rp, i) => {
-        if (rp.type === "textWithBlocks") {
-          return (
-            <TextWithViewCode
-              key={i}
-              text={rp.text}
-              followingBlocks={rp.followingBlocks}
-              autoApplied={autoApplied}
-            />
-          );
-        }
-        return <CodeBlockView key={i} block={rp.block} autoApplied={autoApplied} />;
-      })}
+      {parts.map((part, i) =>
+        typeof part === "string" ? (
+          <span key={i} className="whitespace-pre-wrap">
+            {part}
+          </span>
+        ) : (
+          <CodeBlockView key={i} block={part} autoApplied={autoApplied} />
+        )
+      )}
     </>
   );
 }
