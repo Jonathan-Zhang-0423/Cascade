@@ -360,7 +360,7 @@ function tokenizeLine(code: string, lang: "html" | "css" | "js" | "text"): Token
   return tokens;
 }
 
-function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
+function CodeBlockView({ block, applied }: { block: CodeBlock; autoApplied?: boolean; applied?: boolean }) {
   const [collapsed, setCollapsed] = useState(true);
   const { openFile, theme } = useIDEStore();
   const fileName = block.filePath.split("/").pop() || block.filePath;
@@ -413,14 +413,22 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
           <span className="truncate text-foreground/80">{fileName}</span>
           <span className="shrink-0 text-muted-foreground/50">{lineCount}L</span>
         </div>
-        <button
-          className="ml-auto inline-flex items-center gap-1 text-primary/70 hover:text-primary hover:bg-primary/10 px-2 py-1 rounded transition-all text-[10px] font-medium"
-          onClick={(e) => { e.stopPropagation(); openFile(block.filePath); }}
-          data-testid={`button-open-${block.filePath}`}
-        >
-          <ExternalLink className="w-3 h-3" />
-          <span>Open</span>
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          {applied && (
+            <span className="inline-flex items-center gap-0.5 text-green-500/80 text-[10px] font-medium" data-testid={`applied-${block.filePath}`}>
+              <Check className="w-3 h-3" />
+              Applied
+            </span>
+          )}
+          <button
+            className="inline-flex items-center gap-1 text-primary/70 hover:text-primary hover:bg-primary/10 px-2 py-1 rounded transition-all text-[10px] font-medium"
+            onClick={(e) => { e.stopPropagation(); openFile(block.filePath); }}
+            data-testid={`button-open-${block.filePath}`}
+          >
+            <ExternalLink className="w-3 h-3" />
+            <span>Open</span>
+          </button>
+        </div>
       </div>
       {!collapsed && (
         <div
@@ -564,27 +572,35 @@ function TextWithSummary({ text }: { text: string }) {
   );
 }
 
-function MessageContent({ content, autoApplied }: { content: string; autoApplied?: boolean }) {
+function MessageContent({ content, autoApplied, appliedBlockIndices }: { content: string; autoApplied?: boolean; appliedBlockIndices?: Set<number> }) {
   const parts = parseCodeBlocks(content);
 
   if (parts.length === 1 && typeof parts[0] === "string") {
     return <TextWithSummary text={parts[0]} />;
   }
 
+  let blockIdx = 0;
   return (
     <>
-      {parts.map((part, i) =>
-        typeof part === "string" ? (
-          <TextWithSummary key={i} text={part} />
-        ) : (
-          <CodeBlockView key={i} block={part} autoApplied={autoApplied} />
-        )
-      )}
+      {parts.map((part, i) => {
+        if (typeof part === "string") {
+          return <TextWithSummary key={i} text={part} />;
+        }
+        const currentBlockIdx = blockIdx++;
+        return (
+          <CodeBlockView
+            key={i}
+            block={part}
+            autoApplied={autoApplied}
+            applied={autoApplied || appliedBlockIndices?.has(currentBlockIdx)}
+          />
+        );
+      })}
     </>
   );
 }
 
-function MessageBubble({ message, autoApplied }: { message: ChatMessage; autoApplied?: boolean }) {
+function MessageBubble({ message, autoApplied, appliedBlockIndices }: { message: ChatMessage; autoApplied?: boolean; appliedBlockIndices?: Set<number> }) {
   const isAssistant = message.role === "assistant";
 
   if (isAssistant) {
@@ -593,7 +609,7 @@ function MessageBubble({ message, autoApplied }: { message: ChatMessage; autoApp
         className="px-3 text-[13px] leading-relaxed text-foreground"
         data-testid={`chat-message-${message.id}`}
       >
-        <MessageContent content={message.content} autoApplied={autoApplied} />
+        <MessageContent content={message.content} autoApplied={autoApplied} appliedBlockIndices={appliedBlockIndices} />
       </div>
     );
   }
@@ -693,12 +709,32 @@ export function ChatPanel() {
   const pendingHandled = useRef(false);
   const projectNameExtracted = useRef(false);
   const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
+  const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chatMessages]);
+
+  const applyCodeBlock = useCallback(async (block: CodeBlock) => {
+    const currentState = useIDEStore.getState();
+    const currentFiles = flattenFiles(currentState.files);
+    const exists = currentFiles.some((f) => f.path === block.filePath);
+
+    if (exists) {
+      currentState.updateFileContent(block.filePath, block.code);
+    } else {
+      const lastSlash = block.filePath.lastIndexOf("/");
+      if (lastSlash > 0) {
+        const parentPath = block.filePath.substring(0, lastSlash);
+        const fileName = block.filePath.substring(lastSlash + 1);
+        currentState.addFile(parentPath, fileName, "file");
+        await new Promise((r) => setTimeout(r, 80));
+        useIDEStore.getState().updateFileContent(block.filePath, block.code);
+      }
+    }
+  }, []);
 
   const handleSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
@@ -723,9 +759,13 @@ export function ChatPanel() {
     setAiResponding(true);
     addChatMessage({ role: "assistant", content: "" });
     projectNameExtracted.current = false;
+    setAppliedBlockIndices(new Set());
 
     const controller = new AbortController();
     abortRef.current = controller;
+    const appliedBlockCount = { current: 0 };
+    const appliedIndices = new Set<number>();
+    let anyBlockApplied = false;
 
     try {
       const response = await fetch("/api/chat", {
@@ -787,6 +827,19 @@ export function ChatPanel() {
                 }
 
                 updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+
+                const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
+                if (currentBlocks.length > appliedBlockCount.current) {
+                  for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
+                    const block = currentBlocks[bi];
+                    anyBlockApplied = true;
+                    await applyCodeBlock(block);
+                    appliedIndices.add(bi);
+                    setAppliedBlockIndices(new Set(appliedIndices));
+                    refreshPreview();
+                  }
+                  appliedBlockCount.current = currentBlocks.length;
+                }
               }
               if (parsed.error) {
                 accumulated += `\n\nError: ${parsed.error}`;
@@ -798,35 +851,12 @@ export function ChatPanel() {
         }
       }
 
-      const finalContent = stripProjectNameMarker(accumulated);
-      const codeBlocks = extractCodeBlocks(finalContent);
-      if (codeBlocks.length > 0) {
-        for (const block of codeBlocks) {
-          const currentState = useIDEStore.getState();
-          const currentFiles = flattenFiles(currentState.files);
-          const exists = currentFiles.some((f) => f.path === block.filePath);
-
-          if (exists) {
-            currentState.updateFileContent(block.filePath, block.code);
-          } else {
-            const lastSlash = block.filePath.lastIndexOf("/");
-            if (lastSlash > 0) {
-              const parentPath = block.filePath.substring(0, lastSlash);
-              const fileName = block.filePath.substring(lastSlash + 1);
-              currentState.addFile(parentPath, fileName, "file");
-              await new Promise((r) => setTimeout(r, 80));
-              useIDEStore.getState().updateFileContent(block.filePath, block.code);
-            }
-          }
-        }
-
+      if (anyBlockApplied) {
         const currentMessages = useIDEStore.getState().chatMessages;
         const lastAssistantMsg = [...currentMessages].reverse().find((m) => m.role === "assistant");
         if (lastAssistantMsg) {
           setAutoAppliedMessageIds((prev) => new Set(prev).add(lastAssistantMsg.id));
         }
-
-        refreshPreview();
 
         const checkpointLabel = trimmed.length > 40 ? trimmed.slice(0, 40) + "..." : trimmed;
         createCheckpoint(checkpointLabel);
@@ -841,7 +871,7 @@ export function ChatPanel() {
       setAiResponding(false);
       abortRef.current = null;
     }
-  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview, createCheckpoint]);
+  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview, createCheckpoint, applyCodeBlock]);
 
   useEffect(() => {
     pendingHandled.current = false;
@@ -893,17 +923,19 @@ export function ChatPanel() {
         </Button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
-        {chatMessages.map((msg) =>
-          msg.role === "checkpoint" ? (
+        {chatMessages.map((msg, idx) => {
+          const isLastAssistant = msg.role === "assistant" && idx === chatMessages.length - 1;
+          return msg.role === "checkpoint" ? (
             <CheckpointMarker key={msg.id} message={msg} />
           ) : (
             <MessageBubble
               key={msg.id}
               message={msg}
               autoApplied={autoAppliedMessageIds.has(msg.id)}
+              appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
             />
-          )
-        )}
+          );
+        })}
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
           <TypingIndicator />
         )}
