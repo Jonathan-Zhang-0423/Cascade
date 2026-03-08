@@ -63,50 +63,347 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const THEME_COLORS = {
+  "vs-dark": {
+    keyword: "#569CD6",
+    string: "#CE9178",
+    comment: "#6A9955",
+    tag: "#569CD6",
+    property: "#9CDCFE",
+    number: "#B5CEA8",
+    attr: "#92C5F7",
+    foreground: "#D4D4D4",
+    lineNum: "#858585",
+    bg: "#1E1E1E",
+    lineBorder: "#333333",
+    lineHover: "rgba(255,255,255,0.04)",
+  },
+  "vs-light": {
+    keyword: "#0000FF",
+    string: "#A31515",
+    comment: "#008000",
+    tag: "#800000",
+    property: "#001080",
+    number: "#098658",
+    attr: "#FF0000",
+    foreground: "#000000",
+    lineNum: "#999999",
+    bg: "#FFFFFF",
+    lineBorder: "#E8E8E8",
+    lineHover: "rgba(0,0,0,0.03)",
+  },
+  "hc-black": {
+    keyword: "#569CD6",
+    string: "#CE9178",
+    comment: "#7CA668",
+    tag: "#569CD6",
+    property: "#9CDCFE",
+    number: "#B5CEA8",
+    attr: "#92C5F7",
+    foreground: "#FFFFFF",
+    lineNum: "#AAAAAA",
+    bg: "#000000",
+    lineBorder: "#6FC3DF",
+    lineHover: "rgba(255,255,255,0.08)",
+  },
+};
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+interface Token { type: string; text: string; }
+
+function findTagEnd(code: string, start: number): number {
+  let j = start;
+  while (j < code.length) {
+    if (code[j] === '"' || code[j] === "'") {
+      const q = code[j];
+      j++;
+      while (j < code.length && code[j] !== q) j++;
+      j++;
+      continue;
+    }
+    if (code[j] === ">") return j;
+    j++;
+  }
+  return -1;
+}
+
+function tokenizeLine(code: string, lang: "html" | "css" | "js" | "text"): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  let inCssBlock = false;
+  for (let ci = 0; ci < i && ci < code.length; ci++) {
+    if (code[ci] === "{") inCssBlock = true;
+    if (code[ci] === "}") inCssBlock = false;
+  }
+
+  while (i < code.length) {
+    if (lang === "html" && code.slice(i, i + 4) === "<!--") {
+      const end = code.indexOf("-->", i + 4);
+      if (end !== -1) {
+        tokens.push({ type: "comment", text: code.slice(i, end + 3) });
+        i = end + 3;
+        continue;
+      } else {
+        tokens.push({ type: "comment", text: code.slice(i) });
+        return tokens;
+      }
+    }
+
+    if ((lang === "js" || lang === "css") && code[i] === "/" && code[i + 1] === "*") {
+      const end = code.indexOf("*/", i + 2);
+      if (end !== -1) {
+        tokens.push({ type: "comment", text: code.slice(i, end + 2) });
+        i = end + 2;
+        continue;
+      } else {
+        tokens.push({ type: "comment", text: code.slice(i) });
+        return tokens;
+      }
+    }
+
+    if ((lang === "js" || lang === "css") && code[i] === "/" && code[i + 1] === "/") {
+      tokens.push({ type: "comment", text: code.slice(i) });
+      return tokens;
+    }
+
+    if (code[i] === '"' || code[i] === "'") {
+      const quote = code[i];
+      let j = i + 1;
+      while (j < code.length && code[j] !== quote) {
+        if (code[j] === "\\") j++;
+        j++;
+      }
+      if (lang === "html" && i > 0) {
+        let prev = i - 1;
+        while (prev >= 0 && code[prev] === " ") prev--;
+        if (code[prev] === "=") {
+          tokens.push({ type: "string", text: code.slice(i, j + 1) });
+          i = j + 1;
+          continue;
+        }
+      }
+      tokens.push({ type: "string", text: code.slice(i, j + 1) });
+      i = j + 1;
+      continue;
+    }
+
+    if (lang === "js" && code[i] === "`") {
+      let j = i + 1;
+      while (j < code.length && code[j] !== "`") {
+        if (code[j] === "\\") j++;
+        j++;
+      }
+      tokens.push({ type: "string", text: code.slice(i, j + 1) });
+      i = j + 1;
+      continue;
+    }
+
+    if (lang === "html" && code[i] === "<") {
+      if (code.slice(i, i + 9).toLowerCase() === "<!doctype") {
+        const end = findTagEnd(code, i + 1);
+        if (end !== -1) {
+          tokens.push({ type: "tag", text: code.slice(i, end + 1) });
+          i = end + 1;
+          continue;
+        }
+      }
+
+      const end = findTagEnd(code, i + 1);
+      if (end !== -1) {
+        tokens.push({ type: "tag", text: "<" });
+        const inner = code.slice(i + 1, end);
+        let k = 0;
+        let nameStart = 0;
+        if (inner[0] === "/") {
+          tokens.push({ type: "tag", text: "/" });
+          nameStart = 1;
+          k = 1;
+        }
+        let nameEnd = k;
+        while (nameEnd < inner.length && /[a-zA-Z0-9_:-]/.test(inner[nameEnd])) nameEnd++;
+        if (nameEnd > k) {
+          tokens.push({ type: "tag", text: inner.slice(k, nameEnd) });
+        }
+        k = nameEnd;
+
+        while (k < inner.length) {
+          if (inner[k] === " " || inner[k] === "\t" || inner[k] === "\n") {
+            let ws = k;
+            while (ws < inner.length && (inner[ws] === " " || inner[ws] === "\t" || inner[ws] === "\n")) ws++;
+            tokens.push({ type: "plain", text: inner.slice(k, ws) });
+            k = ws;
+            continue;
+          }
+          if (inner[k] === "/" && k === inner.length - 1) {
+            tokens.push({ type: "tag", text: "/" });
+            k++;
+            continue;
+          }
+          if (/[a-zA-Z_@:]/.test(inner[k])) {
+            let ae = k;
+            while (ae < inner.length && /[a-zA-Z0-9_:.-]/.test(inner[ae])) ae++;
+            const attrName = inner.slice(k, ae);
+            tokens.push({ type: "attr", text: attrName });
+            k = ae;
+            let ws = k;
+            while (ws < inner.length && inner[ws] === " ") ws++;
+            if (inner[ws] === "=") {
+              tokens.push({ type: "plain", text: inner.slice(k, ws + 1) });
+              k = ws + 1;
+              while (k < inner.length && inner[k] === " ") {
+                tokens.push({ type: "plain", text: " " });
+                k++;
+              }
+              if (k < inner.length && (inner[k] === '"' || inner[k] === "'")) {
+                const q = inner[k];
+                let qe = k + 1;
+                while (qe < inner.length && inner[qe] !== q) qe++;
+                tokens.push({ type: "string", text: inner.slice(k, qe + 1) });
+                k = qe + 1;
+              }
+            }
+            continue;
+          }
+          tokens.push({ type: "plain", text: inner[k] });
+          k++;
+        }
+        tokens.push({ type: "tag", text: ">" });
+        i = end + 1;
+        continue;
+      }
+    }
+
+    if ((lang === "js" || lang === "css") && /[0-9]/.test(code[i])) {
+      let j = i;
+      while (j < code.length && /[0-9a-fA-Fx.%emsvwrhin]/.test(code[j])) j++;
+      tokens.push({ type: "number", text: code.slice(i, j) });
+      i = j;
+      continue;
+    }
+
+    if (lang === "js" && /[a-zA-Z_$]/.test(code[i])) {
+      let j = i;
+      while (j < code.length && /[a-zA-Z0-9_$]/.test(code[j])) j++;
+      const word = code.slice(i, j);
+      const keywords = new Set([
+        "function", "const", "let", "var", "if", "else", "return", "class",
+        "import", "export", "async", "await", "true", "false", "null",
+        "undefined", "new", "this", "super", "for", "while", "do", "switch",
+        "case", "break", "continue", "default", "try", "catch", "finally",
+        "throw", "typeof", "instanceof", "in", "of", "from", "extends",
+        "yield", "void", "delete", "debugger", "with",
+      ]);
+      tokens.push({ type: keywords.has(word) ? "keyword" : "plain", text: word });
+      i = j;
+      continue;
+    }
+
+    if (lang === "css" && code[i] === "@") {
+      tokens.push({ type: "keyword", text: "@" });
+      i++;
+      let j = i;
+      while (j < code.length && /[a-zA-Z-]/.test(code[j])) j++;
+      if (j > i) {
+        tokens.push({ type: "keyword", text: code.slice(i, j) });
+        i = j;
+      }
+      continue;
+    }
+
+    if (lang === "css" && /[a-zA-Z_-]/.test(code[i])) {
+      let j = i;
+      while (j < code.length && /[a-zA-Z0-9_-]/.test(code[j])) j++;
+      const word = code.slice(i, j);
+      let afterWord = j;
+      while (afterWord < code.length && code[afterWord] === " ") afterWord++;
+      const lineBeforeWord = code.slice(0, i);
+      const hasOpenBrace = lineBeforeWord.includes("{") || lineBeforeWord.trimStart().match(/^[a-z-]+\s*:/);
+      if (code[afterWord] === ":" && code[afterWord + 1] !== ":" && hasOpenBrace) {
+        tokens.push({ type: "property", text: word });
+      } else {
+        tokens.push({ type: "plain", text: word });
+      }
+      i = j;
+      continue;
+    }
+
+    if (lang === "css" && code[i] === "#") {
+      let j = i + 1;
+      while (j < code.length && /[0-9a-fA-F]/.test(code[j])) j++;
+      if (j - i > 1 && (j - i === 4 || j - i === 7 || j - i === 9)) {
+        tokens.push({ type: "number", text: code.slice(i, j) });
+        i = j;
+        continue;
+      }
+    }
+
+    if (lang === "html" && code[i] === "&") {
+      let j = i + 1;
+      while (j < code.length && j - i < 10 && code[j] !== ";") j++;
+      if (code[j] === ";") {
+        tokens.push({ type: "plain", text: code.slice(i, j + 1) });
+        i = j + 1;
+        continue;
+      }
+    }
+
+    tokens.push({ type: "plain", text: code[i] });
+    i++;
+  }
+
+  return tokens;
+}
+
 function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   const [collapsed, setCollapsed] = useState(true);
   const { openFile, theme } = useIDEStore();
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
 
-  const syntaxHighlight = (code: string, language: string) => {
-    const normalizedLang = language.toLowerCase();
-    const isHTML = normalizedLang === "html" || fileName.endsWith(".html");
-    const isCSS = normalizedLang === "css" || fileName.endsWith(".css");
-    const isJS = normalizedLang === "javascript" || normalizedLang === "js" || fileName.endsWith(".js");
+  const colors = THEME_COLORS[theme] || THEME_COLORS["vs-dark"];
 
-    let result = code;
+  const detectLang = (): "html" | "css" | "js" | "text" => {
+    const lang = block.language.toLowerCase();
+    if (lang === "html" || fileName.endsWith(".html")) return "html";
+    if (lang === "css" || fileName.endsWith(".css")) return "css";
+    if (lang === "javascript" || lang === "js" || lang === "jsx" || lang === "ts" || lang === "tsx" ||
+        fileName.endsWith(".js") || fileName.endsWith(".jsx") || fileName.endsWith(".ts") || fileName.endsWith(".tsx"))
+      return "js";
+    return "text";
+  };
 
-    if (isHTML) {
-      result = result
-        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
-        .replace(/(&lt;[^&]*?&gt;)/g, (match) => `<span class="code-tag">${match}</span>`)
-        .replace(/(".*?")/g, (match) => `<span class="code-string">${match}</span>`)
-        .replace(/(=)/g, (match) => `<span class="code-operator">${match}</span>`);
-    } else if (isCSS) {
-      result = result
-        .replace(/\/\*[\s\S]*?\*\//g, (match) => `<span class="code-comment">${match}</span>`)
-        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
-        .replace(/([a-z-]+)(?=\s*:)/g, (match) => `<span class="code-property">${match}</span>`)
-        .replace(/(:)/g, (match) => `<span class="code-operator">${match}</span>`)
-        .replace(/(".*?"|#[0-9a-f]{3,6}|\d+px)/gi, (match) => `<span class="code-string">${match}</span>`)
-        .replace(/([{}])/g, (match) => `<span class="code-brace">${match}</span>`);
-    } else if (isJS) {
-      result = result
-        .replace(/\/\*[\s\S]*?\*\//g, (match) => `<span class="code-comment">${match}</span>`)
-        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
-        .replace(/\b(function|const|let|var|if|else|return|class|import|export|async|await|true|false|null|undefined|new|this|super)\b/g, (match) => `<span class="code-keyword">${match}</span>`)
-        .replace(/(".*?"|'.*?'|`.*?`)/g, (match) => `<span class="code-string">${match}</span>`)
-        .replace(/(\{|\}|\(|\)|\[|\])/g, (match) => `<span class="code-brace">${match}</span>`)
-        .replace(/([+\-*/%=<>!&|^~?:;,.])/g, (match) => `<span class="code-operator">${match}</span>`);
-    }
-    return result;
+  const lang = detectLang();
+
+  const highlightLine = (line: string): string => {
+    if (lang === "text") return escapeHtml(line);
+    const tokens = tokenizeLine(line, lang);
+    return tokens.map((t) => {
+      const escaped = escapeHtml(t.text);
+      const colorMap: Record<string, string> = {
+        keyword: colors.keyword,
+        string: colors.string,
+        comment: colors.comment,
+        tag: colors.tag,
+        property: colors.property,
+        number: colors.number,
+        attr: colors.attr,
+      };
+      const c = colorMap[t.type];
+      if (c) return `<span style="color:${c}">${escaped}</span>`;
+      return escaped;
+    }).join("");
   };
 
   return (
-    <div className="w-full my-2 rounded-lg border border-border/50 overflow-hidden bg-muted/20" data-testid={`code-block-${block.filePath}`}>
+    <div className="w-full my-2 rounded-lg border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
       <div
-        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium pl-[14px] pr-[14px] pt-[5px] pb-[5px]"
+        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
@@ -126,16 +423,30 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
         </button>
       </div>
       {!collapsed && (
-        <div className="overflow-x-auto text-[11px] leading-relaxed bg-background/80 border-t border-border/20 max-h-[240px] overflow-y-auto font-mono">
-          <table className="w-full">
+        <div
+          className="overflow-x-auto text-[11px] leading-[1.6] border-t border-border/20 max-h-[240px] overflow-y-auto font-mono"
+          style={{ backgroundColor: colors.bg, color: colors.foreground }}
+        >
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
             <tbody>
               {block.code.split("\n").map((line, idx) => (
-                <tr key={idx} className="hover:bg-muted/20 transition-colors">
-                  <td className="pl-3 pr-3 py-0 select-none text-muted-foreground/50 text-right w-12 border-r border-border/20 sticky left-0 bg-background/60">
+                <tr key={idx} style={{ height: "20px" }}>
+                  <td
+                    className="select-none text-right sticky left-0"
+                    style={{
+                      padding: "0 8px",
+                      color: colors.lineNum,
+                      width: "44px",
+                      minWidth: "44px",
+                      borderRight: `1px solid ${colors.lineBorder}`,
+                      backgroundColor: colors.bg,
+                      userSelect: "none",
+                    }}
+                  >
                     {idx + 1}
                   </td>
-                  <td className="pl-3 pr-3 py-0">
-                    <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(line, block.language) }} />
+                  <td style={{ padding: "0 12px", whiteSpace: "pre" }}>
+                    <code dangerouslySetInnerHTML={{ __html: highlightLine(line) }} />
                   </td>
                 </tr>
               ))}

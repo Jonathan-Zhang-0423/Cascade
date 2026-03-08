@@ -43,13 +43,6 @@
   --chart-3: 197 37% 24%;
   --chart-4: 43 74% 49%;
   --chart-5: 27 87% 55%;
-  --code-keyword: 200 100% 35%;
-  --code-string: 163 72% 40%;
-  --code-comment: 120 100% 28%;
-  --code-tag: 15 100% 45%;
-  --code-property: 200 100% 35%;
-  --code-operator: 200 100% 35%;
-  --code-brace: 200 100% 35%;
   --font-sans: Open Sans, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
@@ -134,13 +127,6 @@
   --chart-3: 197 37% 75%;
   --chart-4: 43 74% 70%;
   --chart-5: 27 87% 70%;
-  --code-keyword: 220 100% 50%;
-  --code-string: 14 99% 45%;
-  --code-comment: 120 100% 25%;
-  --code-tag: 200 100% 50%;
-  --code-property: 200 100% 50%;
-  --code-operator: 60 100% 50%;
-  --code-brace: 280 100% 50%;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
@@ -300,32 +286,4 @@
     inset: -1px;
   }
 
-  /* Syntax highlighting colors for code blocks */
-  .code-keyword {
-    color: hsl(var(--code-keyword));
-  }
-
-  .code-string {
-    color: hsl(var(--code-string));
-  }
-
-  .code-comment {
-    color: hsl(var(--code-comment));
-  }
-
-  .code-tag {
-    color: hsl(var(--code-tag));
-  }
-
-  .code-property {
-    color: hsl(var(--code-property));
-  }
-
-  .code-operator {
-    color: hsl(var(--code-operator));
-  }
-
-  .code-brace {
-    color: hsl(var(--code-brace));
-  }
 }
