@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store"
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink, Code2, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -458,6 +458,36 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   );
 }
 
+function ViewCodeToggle({ block, autoApplied }: { block: CodeBlock; autoApplied?: boolean }) {
+  const [showCode, setShowCode] = useState(false);
+  const blockFileName = block.filePath.split("/").pop() || block.filePath;
+
+  return (
+    <div>
+      <div
+        className={cn(
+          "inline-flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium",
+          showCode ? "text-primary" : "text-primary/60 hover:text-primary"
+        )}
+        role="button"
+        tabIndex={0}
+        onClick={() => setShowCode((v) => !v)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowCode((v) => !v); } }}
+        data-testid={`button-view-code-${block.filePath}`}
+      >
+        {showCode ? <EyeOff className="w-3 h-3" /> : <Code2 className="w-3 h-3" />}
+        <span className="underline underline-offset-2">{showCode ? "Hide Code" : "View Code"}</span>
+        <span className="text-muted-foreground/50 ml-0.5">({blockFileName})</span>
+      </div>
+      {showCode && (
+        <div className="mt-1">
+          <CodeBlockView block={block} autoApplied={autoApplied} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageContent({ content, autoApplied }: { content: string; autoApplied?: boolean }) {
   const parts = parseCodeBlocks(content);
 
@@ -465,17 +495,49 @@ function MessageContent({ content, autoApplied }: { content: string; autoApplied
     return <span className="whitespace-pre-wrap">{parts[0]}</span>;
   }
 
+  const grouped: Array<{ text: string; blocks: CodeBlock[] } | { standalone: CodeBlock }> = [];
+  let i = 0;
+  while (i < parts.length) {
+    const part = parts[i];
+    if (typeof part === "string") {
+      const blocks: CodeBlock[] = [];
+      let j = i + 1;
+      while (j < parts.length && typeof parts[j] !== "string") {
+        blocks.push(parts[j] as CodeBlock);
+        j++;
+      }
+      if (blocks.length > 0 && part.trim().length > 0) {
+        grouped.push({ text: part, blocks });
+      } else {
+        if (part.trim().length > 0) {
+          grouped.push({ text: part, blocks: [] });
+        }
+        for (const b of blocks) {
+          grouped.push({ standalone: b });
+        }
+      }
+      i = j;
+    } else {
+      grouped.push({ standalone: part });
+      i++;
+    }
+  }
+
   return (
     <>
-      {parts.map((part, i) =>
-        typeof part === "string" ? (
-          <span key={i} className="whitespace-pre-wrap">
-            {part}
-          </span>
-        ) : (
-          <CodeBlockView key={i} block={part} autoApplied={autoApplied} />
-        )
-      )}
+      {grouped.map((item, idx) => {
+        if ("standalone" in item) {
+          return <CodeBlockView key={idx} block={item.standalone} autoApplied={autoApplied} />;
+        }
+        return (
+          <div key={idx}>
+            <span className="whitespace-pre-wrap">{item.text}</span>
+            {item.blocks.map((block, bIdx) => (
+              <ViewCodeToggle key={bIdx} block={block} autoApplied={autoApplied} />
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }

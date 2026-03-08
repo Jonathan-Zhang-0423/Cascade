@@ -61,6 +61,7 @@ shared/
 - **Code Auto-Apply**: AI outputs code blocks with `file="..."` annotations → after streaming completes, all code blocks are automatically applied to the project files → preview refreshes automatically. Code blocks show "Applied" status in chat. Manual "Apply" button available as fallback. Nested paths auto-create intermediate directories.
 - **Code Annotations**: System prompt requires beginner-friendly, no-jargon inline comments on every line of generated code, matching the user's language
 - **Syntax Highlighting in Chat**: Code blocks in chat use a single-pass tokenizer (not regex replace chains) with HTML escaping. Colors match the Monaco editor theme exactly (vs-dark/vs-light/hc-black) using inline styles derived from `THEME_COLORS` map in `chat-panel.tsx`. Supports HTML tags/attributes, CSS properties, JS keywords/strings/comments, and line numbers.
+- **View Code Feature**: When the AI explains changes with text followed by code blocks (structured via system prompt's "Explanation→Code Pairing" rule), each explanation gets inline "View Code" toggles. Clicking reveals the relevant code block; clicking "Hide Code" collapses it. Code blocks without preceding text render as standard collapsible `CodeBlockView`. This teaches beginners how explanations map to actual code.
 - **Emojis**: Agent includes 1-3 emojis in ~90% of responses for warmth
 - **API Key**: Stored in `DOUBAO_API_KEY` environment secret
 
