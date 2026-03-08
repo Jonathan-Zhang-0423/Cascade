@@ -100,7 +100,7 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   return (
     <div className="w-full my-2 rounded-lg border border-border/50 overflow-hidden bg-muted/20" data-testid={`code-block-${block.filePath}`}>
       <div
-        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
+        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium pl-[14px] pr-[14px] pt-[5px] pb-[5px]"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
