@@ -512,6 +512,26 @@ function renderBoldMarkdown(str: string) {
   });
 }
 
+function splitSummaryBody(text: string): { body: string; trailing: string } {
+  const lines = text.split("\n");
+  let lastBulletIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
+      lastBulletIdx = i;
+    }
+  }
+
+  if (lastBulletIdx === -1) {
+    return { body: text, trailing: "" };
+  }
+
+  const body = lines.slice(0, lastBulletIdx + 1).join("\n");
+  const trailing = lines.slice(lastBulletIdx + 1).join("\n");
+  return { body, trailing };
+}
+
 function TextWithSummary({ text }: { text: string }) {
   const match = findSummaryHeader(text);
 
@@ -522,6 +542,7 @@ function TextWithSummary({ text }: { text: string }) {
   const before = text.slice(0, match.index);
   const headerText = text.slice(match.index, match.index + match.length);
   const after = text.slice(match.index + match.length);
+  const { body, trailing } = splitSummaryBody(after);
 
   return (
     <div>
@@ -535,9 +556,10 @@ function TextWithSummary({ text }: { text: string }) {
           {headerText}
         </div>
         <div className="text-[12.5px] leading-relaxed">
-          {renderBoldMarkdown(after)}
+          {renderBoldMarkdown(body)}
         </div>
       </div>
+      {trailing.trim().length > 0 && <div className="whitespace-pre-wrap mt-1">{trailing}</div>}
     </div>
   );
 }
