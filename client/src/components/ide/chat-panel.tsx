@@ -69,19 +69,49 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
 
+  const getFileExtension = (path: string) => path.split(".").pop()?.toLowerCase() || "";
+
+  const syntaxHighlight = (code: string, language: string) => {
+    const isHTML = language === "html" || fileName.endsWith(".html");
+    const isCSS = language === "css" || fileName.endsWith(".css");
+    const isJS = language === "javascript" || language === "js" || fileName.endsWith(".js");
+
+    if (isHTML) {
+      return code
+        .replace(/(&lt;[^&]*&gt;)/g, '<span class="text-blue-400">$1</span>')
+        .replace(/(".*?")/g, '<span class="text-green-400">$1</span>')
+        .replace(/(=)/g, '<span class="text-yellow-400">$1</span>');
+    } else if (isCSS) {
+      return code
+        .replace(/([a-z-]+)(?=\s*:)/g, '<span class="text-blue-400">$1</span>')
+        .replace(/(:)/g, '<span class="text-yellow-400">$1</span>')
+        .replace(/(".*?"|#[0-9a-f]{3,6}|\d+px)/gi, '<span class="text-green-400">$1</span>')
+        .replace(/([{}])/g, '<span class="text-orange-400">$1</span>');
+    } else if (isJS) {
+      return code
+        .replace(/\b(function|const|let|var|if|else|return|class|import|export|async|await|true|false|null|undefined)\b/g, '<span class="text-purple-400">$1</span>')
+        .replace(/(".*?"|\'.*?\'|`.*?`)/g, '<span class="text-green-400">$1</span>')
+        .replace(/\/\/.*/g, '<span class="text-gray-500">$1</span>')
+        .replace(/(\{|\}|\(|\))/g, '<span class="text-orange-400">$1</span>');
+    }
+    return code;
+  };
+
   return (
-    <div className="my-1 rounded-md border border-border/40 overflow-hidden inline-block max-w-full" data-testid={`code-block-${block.filePath}`}>
+    <div className="w-full my-2 rounded-lg border border-border/50 overflow-hidden bg-muted/20" data-testid={`code-block-${block.filePath}`}>
       <div
-        className="flex items-center gap-1.5 px-2 py-1 bg-muted/40 cursor-pointer select-none hover:bg-muted/60 transition-colors text-[11px] text-muted-foreground"
+        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
-        {collapsed ? <ChevronRight className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
-        <FileCode className="w-3 h-3 shrink-0" />
-        <span>{fileName}</span>
-        <span className="text-muted-foreground/50">{lineCount} lines</span>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {collapsed ? <ChevronRight className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
+          <FileCode className="w-3 h-3 shrink-0" />
+          <span className="truncate text-foreground/80">{fileName}</span>
+          <span className="shrink-0 text-muted-foreground/50">{lineCount}L</span>
+        </div>
         <button
-          className="ml-auto inline-flex items-center gap-0.5 text-primary/70 hover:text-primary transition-colors"
+          className="ml-auto inline-flex items-center gap-1 text-primary/70 hover:text-primary hover:bg-primary/10 px-2 py-1 rounded transition-all text-[10px] font-medium"
           onClick={(e) => { e.stopPropagation(); openFile(block.filePath); }}
           data-testid={`button-open-${block.filePath}`}
         >
@@ -90,8 +120,8 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
         </button>
       </div>
       {!collapsed && (
-        <pre className="p-2.5 overflow-x-auto text-[11px] leading-relaxed bg-background/50 border-t border-border/30 max-h-[200px] overflow-y-auto">
-          <code>{block.code}</code>
+        <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed bg-background/80 border-t border-border/20 max-h-[240px] overflow-y-auto font-mono">
+          <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(block.code, block.language) }} />
         </pre>
       )}
     </div>
