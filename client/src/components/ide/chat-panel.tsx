@@ -65,36 +65,42 @@ function formatRelativeTime(timestamp: number): string {
 
 function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   const [collapsed, setCollapsed] = useState(true);
-  const { openFile } = useIDEStore();
+  const { openFile, theme } = useIDEStore();
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
 
-  const getFileExtension = (path: string) => path.split(".").pop()?.toLowerCase() || "";
-
   const syntaxHighlight = (code: string, language: string) => {
-    const isHTML = language === "html" || fileName.endsWith(".html");
-    const isCSS = language === "css" || fileName.endsWith(".css");
-    const isJS = language === "javascript" || language === "js" || fileName.endsWith(".js");
+    const normalizedLang = language.toLowerCase();
+    const isHTML = normalizedLang === "html" || fileName.endsWith(".html");
+    const isCSS = normalizedLang === "css" || fileName.endsWith(".css");
+    const isJS = normalizedLang === "javascript" || normalizedLang === "js" || fileName.endsWith(".js");
+
+    let result = code;
 
     if (isHTML) {
-      return code
-        .replace(/(&lt;[^&]*&gt;)/g, '<span class="text-blue-400">$1</span>')
-        .replace(/(".*?")/g, '<span class="text-green-400">$1</span>')
-        .replace(/(=)/g, '<span class="text-yellow-400">$1</span>');
+      result = result
+        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
+        .replace(/(&lt;[^&]*?&gt;)/g, (match) => `<span class="code-tag">${match}</span>`)
+        .replace(/(".*?")/g, (match) => `<span class="code-string">${match}</span>`)
+        .replace(/(=)/g, (match) => `<span class="code-operator">${match}</span>`);
     } else if (isCSS) {
-      return code
-        .replace(/([a-z-]+)(?=\s*:)/g, '<span class="text-blue-400">$1</span>')
-        .replace(/(:)/g, '<span class="text-yellow-400">$1</span>')
-        .replace(/(".*?"|#[0-9a-f]{3,6}|\d+px)/gi, '<span class="text-green-400">$1</span>')
-        .replace(/([{}])/g, '<span class="text-orange-400">$1</span>');
+      result = result
+        .replace(/\/\*[\s\S]*?\*\//g, (match) => `<span class="code-comment">${match}</span>`)
+        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
+        .replace(/([a-z-]+)(?=\s*:)/g, (match) => `<span class="code-property">${match}</span>`)
+        .replace(/(:)/g, (match) => `<span class="code-operator">${match}</span>`)
+        .replace(/(".*?"|#[0-9a-f]{3,6}|\d+px)/gi, (match) => `<span class="code-string">${match}</span>`)
+        .replace(/([{}])/g, (match) => `<span class="code-brace">${match}</span>`);
     } else if (isJS) {
-      return code
-        .replace(/\b(function|const|let|var|if|else|return|class|import|export|async|await|true|false|null|undefined)\b/g, '<span class="text-purple-400">$1</span>')
-        .replace(/(".*?"|\'.*?\'|`.*?`)/g, '<span class="text-green-400">$1</span>')
-        .replace(/\/\/.*/g, '<span class="text-gray-500">$1</span>')
-        .replace(/(\{|\}|\(|\))/g, '<span class="text-orange-400">$1</span>');
+      result = result
+        .replace(/\/\*[\s\S]*?\*\//g, (match) => `<span class="code-comment">${match}</span>`)
+        .replace(/\/\/.*$/gm, (match) => `<span class="code-comment">${match}</span>`)
+        .replace(/\b(function|const|let|var|if|else|return|class|import|export|async|await|true|false|null|undefined|new|this|super)\b/g, (match) => `<span class="code-keyword">${match}</span>`)
+        .replace(/(".*?"|'.*?'|`.*?`)/g, (match) => `<span class="code-string">${match}</span>`)
+        .replace(/(\{|\}|\(|\)|\[|\])/g, (match) => `<span class="code-brace">${match}</span>`)
+        .replace(/([+\-*/%=<>!&|^~?:;,.])/g, (match) => `<span class="code-operator">${match}</span>`);
     }
-    return code;
+    return result;
   };
 
   return (
