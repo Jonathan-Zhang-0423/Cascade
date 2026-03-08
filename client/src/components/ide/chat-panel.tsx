@@ -120,9 +120,22 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
         </button>
       </div>
       {!collapsed && (
-        <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed bg-background/80 border-t border-border/20 max-h-[240px] overflow-y-auto font-mono">
-          <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(block.code, block.language) }} />
-        </pre>
+        <div className="overflow-x-auto text-[11px] leading-relaxed bg-background/80 border-t border-border/20 max-h-[240px] overflow-y-auto font-mono">
+          <table className="w-full">
+            <tbody>
+              {block.code.split("\n").map((line, idx) => (
+                <tr key={idx} className="hover:bg-muted/20 transition-colors">
+                  <td className="pl-3 pr-3 py-0 select-none text-muted-foreground/50 text-right w-12 border-r border-border/20 sticky left-0 bg-background/60">
+                    {idx + 1}
+                  </td>
+                  <td className="pl-3 pr-3 py-0">
+                    <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(line, block.language) }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
