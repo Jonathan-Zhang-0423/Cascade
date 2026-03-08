@@ -458,20 +458,102 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   );
 }
 
+const SUMMARY_HEADERS = [
+  "Here's what I did:",
+  "Here's what I did：",
+  "Here's what I changed:",
+  "Here's what I changed：",
+  "Here's what I built:",
+  "Here's what I built：",
+  "Here's what I accomplished:",
+  "Here's what I accomplished：",
+  "以下是我做的改动：",
+  "以下是我做的改动:",
+  "我做了以下改动：",
+  "我做了以下改动:",
+  "以下是我的改动：",
+  "以下是我的改动:",
+];
+
+function findSummaryHeader(text: string): { index: number; length: number } | null {
+  for (const header of SUMMARY_HEADERS) {
+    const pattern = new RegExp(`(^|\\n)${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, "m");
+    const match = pattern.exec(text);
+    if (match) {
+      const offset = match[0].startsWith("\n") ? 1 : 0;
+      return { index: match.index + offset, length: header.length };
+    }
+  }
+  return null;
+}
+
+function renderBoldMarkdown(str: string) {
+  const lines = str.split("\n");
+  return lines.map((line, lineIdx) => {
+    const parts: Array<{ text: string; bold: boolean }> = [];
+    const boldRegex = /\*\*(.+?)\*\*/g;
+    let last = 0;
+    let m;
+    while ((m = boldRegex.exec(line)) !== null) {
+      if (m.index > last) parts.push({ text: line.slice(last, m.index), bold: false });
+      parts.push({ text: m[1], bold: true });
+      last = boldRegex.lastIndex;
+    }
+    if (last < line.length) parts.push({ text: line.slice(last), bold: false });
+    if (parts.length === 0) parts.push({ text: "", bold: false });
+
+    return (
+      <div key={lineIdx}>
+        {parts.map((p, i) =>
+          p.bold ? <strong key={i} className="font-semibold text-foreground">{p.text}</strong> : <span key={i}>{p.text}</span>
+        )}
+      </div>
+    );
+  });
+}
+
+function TextWithSummary({ text }: { text: string }) {
+  const match = findSummaryHeader(text);
+
+  if (!match) {
+    return <div className="whitespace-pre-wrap">{text}</div>;
+  }
+
+  const before = text.slice(0, match.index);
+  const headerText = text.slice(match.index, match.index + match.length);
+  const after = text.slice(match.index + match.length);
+
+  return (
+    <div>
+      {before.trim().length > 0 && <div className="whitespace-pre-wrap">{before}</div>}
+      <div
+        className="mt-2 rounded-lg border border-primary/15 bg-primary/[0.03] px-3 py-2.5"
+        data-testid="changes-summary"
+      >
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-primary/80 mb-1.5">
+          <Check className="w-3.5 h-3.5" />
+          {headerText}
+        </div>
+        <div className="text-[12.5px] leading-relaxed">
+          {renderBoldMarkdown(after)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageContent({ content, autoApplied }: { content: string; autoApplied?: boolean }) {
   const parts = parseCodeBlocks(content);
 
   if (parts.length === 1 && typeof parts[0] === "string") {
-    return <span className="whitespace-pre-wrap">{parts[0]}</span>;
+    return <TextWithSummary text={parts[0]} />;
   }
 
   return (
     <>
       {parts.map((part, i) =>
         typeof part === "string" ? (
-          <span key={i} className="whitespace-pre-wrap">
-            {part}
-          </span>
+          <TextWithSummary key={i} text={part} />
         ) : (
           <CodeBlockView key={i} block={part} autoApplied={autoApplied} />
         )
