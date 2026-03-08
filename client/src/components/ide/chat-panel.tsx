@@ -401,7 +401,7 @@ function CodeBlockView({ block }: { block: CodeBlock; autoApplied?: boolean }) {
   };
 
   return (
-    <div className="w-full my-2 rounded-lg border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
+    <div className="w-full my-1 rounded-lg border border-border/50 overflow-hidden" data-testid={`code-block-${block.filePath}`}>
       <div
         className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
         onClick={() => setCollapsed((c) => !c)}
@@ -527,7 +527,7 @@ function TextWithSummary({ text }: { text: string }) {
     <div>
       {before.trim().length > 0 && <div className="whitespace-pre-wrap">{before}</div>}
       <div
-        className="mt-2 rounded-lg border border-primary/15 bg-primary/[0.03] px-3 py-2.5"
+        className="mt-1 rounded-lg border border-primary/15 bg-primary/[0.03] px-3 py-2.5"
         data-testid="changes-summary"
       >
         <div className="flex items-center gap-1.5 text-[12px] font-semibold text-primary/80 mb-1.5">
@@ -870,7 +870,7 @@ export function ChatPanel() {
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-3" ref={scrollRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
         {chatMessages.map((msg) =>
           msg.role === "checkpoint" ? (
             <CheckpointMarker key={msg.id} message={msg} />
