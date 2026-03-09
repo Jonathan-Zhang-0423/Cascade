@@ -24,6 +24,33 @@ export interface ConsoleEntry {
 }
 
 export type ToolPanel = "files" | "chat" | null;
+export type ChatMode = "direct" | "manager";
+
+export interface ManagerSubTask {
+  sub_task_id: string;
+  description: string;
+  assignee: string;
+  priority: "High" | "Medium" | "Low";
+  acceptance_criteria: string;
+}
+
+export interface ManagerPlan {
+  task_id: string;
+  user_requirement: string;
+  sub_tasks: ManagerSubTask[];
+  current_progress: string;
+  next_step: string;
+  user_confirmation_needed: string[];
+  feedback_processing: string;
+}
+
+export interface ManagerMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  plan?: ManagerPlan;
+  timestamp: number;
+}
 
 interface FlatFile {
   path: string;
@@ -169,6 +196,13 @@ interface IDEState {
   pendingPrompt: string | null;
   checkpoints: Checkpoint[];
 
+  chatMode: ChatMode;
+  managerPlan: ManagerPlan | null;
+  managerMessages: ManagerMessage[];
+  executingTaskIndex: number | null;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  isManagerResponding: boolean;
+
   loadProject: (id: string) => void;
   saveProject: () => void;
   clearPendingPrompt: () => void;
@@ -193,6 +227,14 @@ interface IDEState {
   refreshPreview: () => void;
   createCheckpoint: (label: string) => void;
   restoreCheckpoint: (id: string) => void;
+
+  setChatMode: (mode: ChatMode) => void;
+  setManagerPlan: (plan: ManagerPlan | null) => void;
+  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
+  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed") => void;
+  setExecutingTaskIndex: (index: number | null) => void;
+  setManagerResponding: (v: boolean) => void;
+  clearManagerPlan: () => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -253,6 +295,8 @@ function persistState(state: IDEState) {
     chatMessages: state.chatMessages,
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
+    chatMode: state.chatMode,
+    managerMessages: state.managerMessages,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
@@ -318,6 +362,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   pendingPrompt: null,
   checkpoints: [],
 
+  chatMode: "direct",
+  managerPlan: null,
+  managerMessages: [],
+  executingTaskIndex: null,
+  taskStatuses: {},
+  isManagerResponding: false,
+
   loadProject: (id) => {
     const current = get();
     if (current.projectId) {
@@ -353,6 +404,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeTool: "chat",
         isChatOpen: true,
         isSidebarOpen: false,
+        chatMode: saved.chatMode || "direct",
+        managerMessages: saved.managerMessages || [],
+        managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
+        executingTaskIndex: null,
+        taskStatuses: {},
+        isManagerResponding: false,
       });
     } else {
       set({
@@ -368,6 +425,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
+        chatMode: "direct",
+        managerMessages: [],
+        managerPlan: null,
+        executingTaskIndex: null,
+        taskStatuses: {},
+        isManagerResponding: false,
       });
     }
   },
@@ -647,6 +710,48 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     }),
 
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
+
+  setChatMode: (mode) =>
+    set((state) => {
+      const next = { ...state, chatMode: mode };
+      persistState(next);
+      return next;
+    }),
+
+  setManagerPlan: (plan) => set({ managerPlan: plan }),
+
+  addManagerMessage: (message) =>
+    set((state) => {
+      const next = {
+        ...state,
+        managerMessages: [
+          ...state.managerMessages,
+          {
+            ...message,
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      persistState(next);
+      return next;
+    }),
+
+  updateTaskStatus: (subTaskId, status) =>
+    set((state) => ({
+      taskStatuses: { ...state.taskStatuses, [subTaskId]: status },
+    })),
+
+  setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
+
+  setManagerResponding: (v) => set({ isManagerResponding: v }),
+
+  clearManagerPlan: () =>
+    set({
+      managerPlan: null,
+      executingTaskIndex: null,
+      taskStatuses: {},
+    }),
 }));
 
 function updateFileInTree(

@@ -88,6 +88,26 @@ shared/
 - **Orphaned markers**: If a checkpoint is trimmed from storage, its chat marker becomes dimmed and the Restore button is hidden.
 - **Data model**: `Checkpoint { id, label, timestamp, snapshot?, diff? }` — `snapshot` is `FlatFile[]`, `diff` is `FileDiff[]` with actions add/modify/delete.
 
+## Manager Agent
+- **Mode Toggle**: Chat panel header has Direct/Manager tabs for switching between coding agent and planning agent
+- **Manager Agent**: A project-management AI that breaks user requirements into atomic subtasks (≤20 lines each), does NOT write code
+- **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with task plans
+- **API Endpoint**: `POST /api/manager-chat` — non-streaming, returns parsed JSON task plan
+- **Task Plan UI**: Manager JSON responses render as visual `TaskPlanCard` components with:
+  - Subtask list with status indicators (pending ○, running ◉, done ✓, failed ✗)
+  - Priority badges (High/Medium/Low with color coding)
+  - Progress bar and completion count
+  - User confirmation items (highlighted with warning icon)
+  - "Execute Plan" button to start automated execution
+- **Automated Execution**: Clicking "Execute Plan" iterates subtasks sequentially:
+  1. Each subtask is sent to the Editor Agent via `/api/chat` (streaming + incremental apply)
+  2. Status updates in real-time on the task plan card
+  3. On failure, sends feedback to Manager Agent for re-planning
+  4. Checkpoint created after each subtask's code is applied
+- **State**: `chatMode`, `managerPlan`, `managerMessages`, `executingTaskIndex`, `taskStatuses`, `isManagerResponding` in `ide-store.ts`
+- **Persistence**: `chatMode` and `managerMessages` are persisted to localStorage per project
+- **Stop Execution**: User can halt automated execution at any time
+
 ## Features
 - Multi-project dashboard with create/rename/delete
 - Per-project isolated files, chat history, and preview
@@ -97,6 +117,7 @@ shared/
 - Console panel showing log/warn/error from preview iframe
 - Tools dock for switching between Files panel and AI Chat panel
 - AI Chat with Doubao streaming responses and code block Apply buttons
+- Manager Agent mode for automated task planning and execution
 - Command palette (Ctrl+Shift+P) for quick actions
 - Keyboard shortcuts: Ctrl+S (save), Ctrl+B (sidebar), Ctrl+J (console)
 - Resizable panels for all IDE sections

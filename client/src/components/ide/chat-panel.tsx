@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useIDEStore, type ChatMessage, flattenFiles } from "@/stores/ide-store";
+import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -677,11 +677,202 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ text }: { text?: string }) {
   return (
     <div className="px-3 flex items-center gap-1.5" data-testid="typing-indicator">
       <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-      <span className="text-xs text-muted-foreground">Thinking...</span>
+      <span className="text-xs text-muted-foreground">{text || "Thinking..."}</span>
+    </div>
+  );
+}
+
+function SubTaskItem({ task, status }: { task: ManagerSubTask; status?: "pending" | "running" | "done" | "failed" }) {
+  const currentStatus = status || "pending";
+  const statusIcons = {
+    pending: <Circle className="w-3.5 h-3.5 text-muted-foreground/50" />,
+    running: <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />,
+    done: <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />,
+    failed: <XCircle className="w-3.5 h-3.5 text-red-500" />,
+  };
+  const priorityColors = {
+    High: "bg-red-500/15 text-red-400 border-red-500/20",
+    Medium: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
+    Low: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2 px-2.5 py-2 rounded-md border transition-colors",
+        currentStatus === "running" ? "border-blue-500/30 bg-blue-500/5" :
+        currentStatus === "done" ? "border-green-500/20 bg-green-500/5" :
+        currentStatus === "failed" ? "border-red-500/20 bg-red-500/5" :
+        "border-border/30 bg-muted/20"
+      )}
+      data-testid={`subtask-${task.sub_task_id}`}
+    >
+      <div className="mt-0.5 shrink-0">{statusIcons[currentStatus]}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-[10px] font-mono text-muted-foreground">{task.sub_task_id}</span>
+          <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-medium", priorityColors[task.priority])}>
+            {task.priority}
+          </span>
+        </div>
+        <p className="text-[12px] text-foreground/90 leading-snug">{task.description}</p>
+        <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
+          {task.acceptance_criteria}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TaskPlanCard({
+  plan,
+  taskStatuses,
+  onExecute,
+  isExecuting,
+  onStop,
+}: {
+  plan: ManagerPlan;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  onExecute?: () => void;
+  isExecuting?: boolean;
+  onStop?: () => void;
+}) {
+  const doneCount = plan.sub_tasks.filter((t) => taskStatuses[t.sub_task_id] === "done").length;
+  const failedCount = plan.sub_tasks.filter((t) => taskStatuses[t.sub_task_id] === "failed").length;
+  const total = plan.sub_tasks.length;
+  const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const allDone = doneCount === total && total > 0;
+
+  return (
+    <div className="mx-3 my-1 rounded-lg border border-border/50 bg-card overflow-hidden" data-testid="task-plan-card">
+      <div className="px-3 py-2 border-b border-border/30 bg-muted/30">
+        <div className="flex items-center gap-1.5 mb-1">
+          <ClipboardList className="w-3.5 h-3.5 text-primary" />
+          <span className="text-[11px] font-semibold text-foreground">{plan.task_id}</span>
+        </div>
+        <p className="text-[12px] text-foreground/80 leading-snug">{plan.user_requirement}</p>
+      </div>
+
+      <div className="px-3 py-2 space-y-1.5">
+        {plan.sub_tasks.map((task) => (
+          <SubTaskItem key={task.sub_task_id} task={task} status={taskStatuses[task.sub_task_id]} />
+        ))}
+      </div>
+
+      <div className="px-3 py-2 border-t border-border/30 space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                allDone ? "bg-green-500" : failedCount > 0 ? "bg-yellow-500" : "bg-primary"
+              )}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+            {doneCount}/{total}
+          </span>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground/80">{plan.current_progress}</p>
+
+        {plan.next_step && (
+          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-primary/5 border border-primary/10">
+            <Zap className="w-3 h-3 text-primary mt-0.5 shrink-0" />
+            <p className="text-[11px] text-primary/80 leading-snug">{plan.next_step}</p>
+          </div>
+        )}
+
+        {plan.user_confirmation_needed && plan.user_confirmation_needed.length > 0 && plan.user_confirmation_needed[0] !== "" && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-yellow-500" />
+              <span className="text-[10px] font-medium text-yellow-500">Needs your input:</span>
+            </div>
+            {plan.user_confirmation_needed.map((item, i) => (
+              <p key={i} className="text-[11px] text-foreground/70 pl-4 leading-snug">• {item}</p>
+            ))}
+          </div>
+        )}
+
+        {plan.feedback_processing && plan.feedback_processing !== "None" && (
+          <p className="text-[10px] text-muted-foreground/60 italic">{plan.feedback_processing}</p>
+        )}
+      </div>
+
+      {onExecute && !allDone && (
+        <div className="px-3 py-2 border-t border-border/30">
+          {isExecuting ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="w-full h-7 text-[11px]"
+              onClick={onStop}
+              data-testid="button-stop-execution"
+            >
+              <StopCircle className="w-3 h-3 mr-1" />
+              Stop Execution
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="w-full h-7 text-[11px]"
+              onClick={onExecute}
+              data-testid="button-execute-plan"
+            >
+              <Play className="w-3 h-3 mr-1" />
+              Execute Plan
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManagerMessageBubble({
+  message,
+  taskStatuses,
+  onExecute,
+  isExecuting,
+  onStop,
+}: {
+  message: { role: string; content: string; plan?: ManagerPlan };
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  onExecute?: () => void;
+  isExecuting?: boolean;
+  onStop?: () => void;
+}) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end px-3">
+        <div className="rounded-full px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+          {message.content}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.plan) {
+    return (
+      <TaskPlanCard
+        plan={message.plan}
+        taskStatuses={taskStatuses}
+        onExecute={onExecute}
+        isExecuting={isExecuting}
+        onStop={onStop}
+      />
+    );
+  }
+
+  return (
+    <div className="px-3 text-[13px] leading-relaxed text-foreground">
+      <p className="text-muted-foreground/70 italic">{message.content}</p>
     </div>
   );
 }
@@ -701,13 +892,28 @@ export function ChatPanel() {
     projectId,
     refreshPreview,
     createCheckpoint,
+    chatMode,
+    setChatMode,
+    managerPlan,
+    setManagerPlan,
+    managerMessages,
+    addManagerMessage,
+    taskStatuses,
+    updateTaskStatus,
+    executingTaskIndex,
+    setExecutingTaskIndex,
+    isManagerResponding,
+    setManagerResponding,
+    clearManagerPlan,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const managerScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingHandled = useRef(false);
   const projectNameExtracted = useRef(false);
+  const executionAbortRef = useRef(false);
   const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
 
@@ -716,6 +922,12 @@ export function ChatPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (managerScrollRef.current) {
+      managerScrollRef.current.scrollTop = managerScrollRef.current.scrollHeight;
+    }
+  }, [managerMessages]);
 
   const applyCodeBlock = useCallback(async (block: CodeBlock) => {
     const currentState = useIDEStore.getState();
@@ -735,6 +947,222 @@ export function ChatPanel() {
       }
     }
   }, []);
+
+  const handleManagerSend = useCallback(async (overrideMessage?: string) => {
+    const trimmed = overrideMessage?.trim() || input.trim();
+    if (!trimmed || isManagerResponding) return;
+
+    addManagerMessage({ role: "user", content: trimmed });
+    if (!overrideMessage) setInput("");
+
+    const allFiles = flattenFiles(files);
+    const fileContext = allFiles.map((f) => ({
+      path: f.path,
+      content: f.content || "",
+    }));
+
+    const currentMsgs = useIDEStore.getState().managerMessages;
+    const messagesForApi = currentMsgs.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.plan ? JSON.stringify(m.plan) : m.content,
+    }));
+
+    setManagerResponding(true);
+
+    try {
+      const response = await fetch("/api/manager-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+      });
+
+      const data = await response.json();
+
+      if (data.error && !data.plan) {
+        addManagerMessage({ role: "assistant", content: data.raw || data.error });
+      } else if (data.plan) {
+        setManagerPlan(data.plan);
+        const statuses: Record<string, "pending"> = {};
+        for (const t of data.plan.sub_tasks) {
+          statuses[t.sub_task_id] = "pending";
+        }
+        clearManagerPlan();
+        for (const t of data.plan.sub_tasks) {
+          updateTaskStatus(t.sub_task_id, "pending");
+        }
+        addManagerMessage({ role: "assistant", content: "", plan: data.plan });
+      }
+    } catch (error: any) {
+      addManagerMessage({ role: "assistant", content: "Failed to reach the Manager Agent. Please try again." });
+    } finally {
+      setManagerResponding(false);
+    }
+  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus]);
+
+  const executeSubTask = useCallback(async (description: string, acceptanceCriteria: string): Promise<boolean> => {
+    const prompt = `${description}\n\nAcceptance criteria: ${acceptanceCriteria}`;
+
+    const allFiles = flattenFiles(useIDEStore.getState().files);
+    const fileContext = allFiles.map((f) => ({
+      path: f.path,
+      content: f.content || "",
+    }));
+
+    const editorMessages = [{ role: "user" as const, content: prompt }];
+
+    addChatMessage({ role: "user", content: prompt });
+    addChatMessage({ role: "assistant", content: "" });
+    setAiResponding(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: editorMessages, files: fileContext }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        updateLastAssistantMessage("Failed to execute subtask.");
+        return false;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        updateLastAssistantMessage("Could not read response.");
+        return false;
+      }
+
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let buffer = "";
+      let streamDone = false;
+      const appliedBlockCount = { current: 0 };
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith("data: ")) {
+            const data = trimmedLine.slice(6).trim();
+            if (data === "[DONE]") {
+              streamDone = true;
+              break;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                accumulated += parsed.content;
+                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+
+                const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
+                if (currentBlocks.length > appliedBlockCount.current) {
+                  for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
+                    await applyCodeBlock(currentBlocks[bi]);
+                    refreshPreview();
+                  }
+                  appliedBlockCount.current = currentBlocks.length;
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+
+      const finalBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
+      if (finalBlocks.length > 0) {
+        createCheckpoint(description.length > 40 ? description.slice(0, 40) + "..." : description);
+      }
+
+      return true;
+    } catch (error: any) {
+      if (error.name === "AbortError") return false;
+      updateLastAssistantMessage("Error executing subtask.");
+      return false;
+    } finally {
+      setAiResponding(false);
+      abortRef.current = null;
+    }
+  }, [addChatMessage, updateLastAssistantMessage, setAiResponding, refreshPreview, createCheckpoint, applyCodeBlock]);
+
+  const handleExecutePlan = useCallback(async () => {
+    const plan = useIDEStore.getState().managerPlan;
+    if (!plan) return;
+
+    executionAbortRef.current = false;
+
+    for (let i = 0; i < plan.sub_tasks.length; i++) {
+      if (executionAbortRef.current) break;
+
+      const task = plan.sub_tasks[i];
+      const currentStatus = useIDEStore.getState().taskStatuses[task.sub_task_id];
+      if (currentStatus === "done") continue;
+
+      setExecutingTaskIndex(i);
+      updateTaskStatus(task.sub_task_id, "running");
+
+      const success = await executeSubTask(task.description, task.acceptance_criteria);
+
+      if (executionAbortRef.current) {
+        updateTaskStatus(task.sub_task_id, "pending");
+        break;
+      }
+
+      updateTaskStatus(task.sub_task_id, success ? "done" : "failed");
+
+      if (!success) {
+        const allFiles = flattenFiles(useIDEStore.getState().files);
+        const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+        const feedbackMsg = `Subtask ${task.sub_task_id} failed. Please adjust the plan.`;
+        addManagerMessage({ role: "user", content: feedbackMsg });
+
+        const currentMsgs = useIDEStore.getState().managerMessages;
+        const messagesForApi = currentMsgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.plan ? JSON.stringify(m.plan) : m.content,
+        }));
+
+        try {
+          const resp = await fetch("/api/manager-chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+          });
+          const data = await resp.json();
+          if (data.plan) {
+            setManagerPlan(data.plan);
+            for (const t of data.plan.sub_tasks) {
+              const existing = useIDEStore.getState().taskStatuses[t.sub_task_id];
+              if (!existing) updateTaskStatus(t.sub_task_id, "pending");
+            }
+            addManagerMessage({ role: "assistant", content: "", plan: data.plan });
+          }
+        } catch {}
+        break;
+      }
+    }
+
+    setExecutingTaskIndex(null);
+  }, [executeSubTask, setExecutingTaskIndex, updateTaskStatus, setManagerPlan, addManagerMessage]);
+
+  const handleStopExecution = useCallback(() => {
+    executionAbortRef.current = true;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setAiResponding(false);
+    setExecutingTaskIndex(null);
+  }, [setAiResponding, setExecutingTaskIndex]);
 
   const handleSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
@@ -887,13 +1315,6 @@ export function ChatPanel() {
     }
   }, [pendingPrompt, isAiResponding, clearPendingPrompt, handleSend]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const handleStop = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -901,6 +1322,25 @@ export function ChatPanel() {
     }
     setAiResponding(false);
   }, [setAiResponding]);
+
+  const isExecuting = executingTaskIndex !== null;
+
+  const handleCurrentSend = useCallback(() => {
+    if (chatMode === "manager") {
+      handleManagerSend();
+    } else {
+      handleSend();
+    }
+  }, [chatMode, handleManagerSend, handleSend]);
+
+  const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      handleCurrentSend();
+    }
+  };
+
+  const isBusy = chatMode === "manager" ? (isManagerResponding || isExecuting || isAiResponding) : isAiResponding;
 
   return (
     <div className="h-full flex flex-col" data-testid="chat-panel">
@@ -922,37 +1362,98 @@ export function ChatPanel() {
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
-        {chatMessages.map((msg, idx) => {
-          const isLastAssistant = msg.role === "assistant" && idx === chatMessages.length - 1;
-          return msg.role === "checkpoint" ? (
-            <CheckpointMarker key={msg.id} message={msg} />
-          ) : (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              autoApplied={autoAppliedMessageIds.has(msg.id)}
-              appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
-            />
-          );
-        })}
-        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
-          <TypingIndicator />
-        )}
+
+      <div className="flex items-center border-b border-border/30 shrink-0">
+        <button
+          className={cn(
+            "flex-1 py-1.5 text-[11px] font-medium text-center transition-colors",
+            chatMode === "direct"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => setChatMode("direct")}
+          data-testid="tab-direct-mode"
+        >
+          <Zap className="w-3 h-3 inline mr-1" />
+          Direct
+        </button>
+        <button
+          className={cn(
+            "flex-1 py-1.5 text-[11px] font-medium text-center transition-colors",
+            chatMode === "manager"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => setChatMode("manager")}
+          data-testid="tab-manager-mode"
+        >
+          <ClipboardList className="w-3 h-3 inline mr-1" />
+          Manager
+        </button>
       </div>
+
+      {chatMode === "direct" ? (
+        <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
+          {chatMessages.map((msg, idx) => {
+            const isLastAssistant = msg.role === "assistant" && idx === chatMessages.length - 1;
+            return msg.role === "checkpoint" ? (
+              <CheckpointMarker key={msg.id} message={msg} />
+            ) : (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                autoApplied={autoAppliedMessageIds.has(msg.id)}
+                appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
+              />
+            );
+          })}
+          {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
+            <TypingIndicator />
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={managerScrollRef}>
+          {managerMessages.length === 0 && (
+            <div className="px-3 py-6 text-center">
+              <ClipboardList className="w-8 h-8 mx-auto text-muted-foreground/30 mb-2" />
+              <p className="text-[12px] text-muted-foreground/60 leading-snug">
+                Describe what you want to build.<br />
+                The Manager will break it into subtasks and execute them automatically.
+              </p>
+            </div>
+          )}
+          {managerMessages.map((msg, idx) => {
+            const isLastPlan = msg.plan && idx === managerMessages.length - 1;
+            return (
+              <ManagerMessageBubble
+                key={msg.id}
+                message={msg}
+                taskStatuses={taskStatuses}
+                onExecute={isLastPlan ? handleExecutePlan : undefined}
+                isExecuting={isLastPlan ? isExecuting : undefined}
+                onStop={isLastPlan ? handleStopExecution : undefined}
+              />
+            );
+          })}
+          {isManagerResponding && (
+            <TypingIndicator text="Planning..." />
+          )}
+        </div>
+      )}
+
       <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
         <div className="flex gap-2 items-end">
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Describe what you want to build..."
+            onKeyDown={handleCurrentKeyDown}
+            placeholder={chatMode === "manager" ? "Describe your project requirements..." : "Describe what you want to build..."}
             className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
             rows={1}
             data-testid="input-chat"
           />
-          {isAiResponding ? (
+          {isBusy ? (
             <Button
               size="icon"
               variant="destructive"
@@ -966,7 +1467,7 @@ export function ChatPanel() {
             <Button
               size="icon"
               className="h-9 w-9 shrink-0"
-              onClick={() => handleSend()}
+              onClick={handleCurrentSend}
               disabled={!input.trim()}
               data-testid="button-send-chat"
             >
