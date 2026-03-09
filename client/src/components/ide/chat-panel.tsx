@@ -1372,8 +1372,6 @@ export function ChatPanel() {
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-
-
       {chatMode === "build" ? (
         <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
           {chatMessages.map((msg, idx) => {
@@ -1422,7 +1420,6 @@ export function ChatPanel() {
           )}
         </div>
       )}
-
       <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
         <div className="flex gap-2 items-end">
           <Textarea
@@ -1460,7 +1457,7 @@ export function ChatPanel() {
         <div className="flex items-center mt-1.5">
           <div className="relative" ref={modeDropdownRef}>
             <button
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px] font-medium"
               onClick={() => setModeDropdownOpen((v) => !v)}
               data-testid="dropdown-chat-mode"
             >
