@@ -24,7 +24,7 @@ export interface ConsoleEntry {
 }
 
 export type ToolPanel = "files" | "chat" | null;
-export type ChatMode = "direct" | "manager";
+export type ChatMode = "build" | "manager";
 
 export interface ManagerSubTask {
   sub_task_id: string;
@@ -362,7 +362,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   pendingPrompt: null,
   checkpoints: [],
 
-  chatMode: "direct",
+  chatMode: "build",
   managerPlan: null,
   managerMessages: [],
   executingTaskIndex: null,
@@ -404,7 +404,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeTool: "chat",
         isChatOpen: true,
         isSidebarOpen: false,
-        chatMode: saved.chatMode || "direct",
+        chatMode: (saved.chatMode === "manager" ? "manager" : "build"),
         managerMessages: saved.managerMessages || [],
         managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
         executingTaskIndex: null,
@@ -425,7 +425,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         consoleEntries: [],
         isAiResponding: false,
         previewRefreshKey: Date.now(),
-        chatMode: "direct",
+        chatMode: "build",
         managerMessages: [],
         managerPlan: null,
         executingTaskIndex: null,

@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, t
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
@@ -879,6 +879,8 @@ function ManagerMessageBubble({
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
+  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const {
     chatMessages,
     addChatMessage,
@@ -928,6 +930,18 @@ export function ChatPanel() {
       managerScrollRef.current.scrollTop = managerScrollRef.current.scrollHeight;
     }
   }, [managerMessages]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setModeDropdownOpen(false);
+      }
+    };
+    if (modeDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [modeDropdownOpen]);
 
   const applyCodeBlock = useCallback(async (block: CodeBlock) => {
     const currentState = useIDEStore.getState();
@@ -1359,36 +1373,8 @@ export function ChatPanel() {
         </Button>
       </div>
 
-      <div className="flex items-center border-b border-border/30 shrink-0">
-        <button
-          className={cn(
-            "flex-1 py-1.5 text-[11px] font-medium text-center transition-colors",
-            chatMode === "direct"
-              ? "text-primary border-b-2 border-primary bg-primary/5"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          onClick={() => setChatMode("direct")}
-          data-testid="tab-direct-mode"
-        >
-          <Zap className="w-3 h-3 inline mr-1" />
-          Direct
-        </button>
-        <button
-          className={cn(
-            "flex-1 py-1.5 text-[11px] font-medium text-center transition-colors",
-            chatMode === "manager"
-              ? "text-primary border-b-2 border-primary bg-primary/5"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          onClick={() => setChatMode("manager")}
-          data-testid="tab-manager-mode"
-        >
-          <ClipboardList className="w-3 h-3 inline mr-1" />
-          Manager
-        </button>
-      </div>
 
-      {chatMode === "direct" ? (
+      {chatMode === "build" ? (
         <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
           {chatMessages.map((msg, idx) => {
             const isLastAssistant = msg.role === "assistant" && idx === chatMessages.length - 1;
@@ -1471,9 +1457,64 @@ export function ChatPanel() {
             </Button>
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground/40 mt-1.5 text-center">
-          Enter to send · Shift+Enter for new line
-        </p>
+        <div className="flex items-center mt-1.5">
+          <div className="relative" ref={modeDropdownRef}>
+            <button
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              onClick={() => setModeDropdownOpen((v) => !v)}
+              data-testid="dropdown-chat-mode"
+            >
+              {chatMode === "build" ? (
+                <Zap className="w-3 h-3" />
+              ) : (
+                <ClipboardList className="w-3 h-3" />
+              )}
+              <span>{chatMode === "build" ? "Build" : "Manager"}</span>
+              {modeDropdownOpen ? (
+                <ChevronUp className="w-2.5 h-2.5" />
+              ) : (
+                <ChevronDown className="w-2.5 h-2.5" />
+              )}
+            </button>
+            {modeDropdownOpen && (
+              <div className="absolute bottom-full left-0 mb-1 w-36 rounded-md border border-border bg-popover shadow-md py-1 z-50">
+                <button
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors text-left",
+                    chatMode === "build" ? "text-primary bg-primary/5" : "text-foreground hover:bg-muted/50"
+                  )}
+                  onClick={() => { setChatMode("build"); setModeDropdownOpen(false); }}
+                  data-testid="option-build-mode"
+                >
+                  <Zap className="w-3 h-3" />
+                  <div>
+                    <div className="font-medium">Build</div>
+                    <div className="text-[9px] text-muted-foreground">Code directly</div>
+                  </div>
+                  {chatMode === "build" && <Check className="w-3 h-3 ml-auto" />}
+                </button>
+                <button
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors text-left",
+                    chatMode === "manager" ? "text-primary bg-primary/5" : "text-foreground hover:bg-muted/50"
+                  )}
+                  onClick={() => { setChatMode("manager"); setModeDropdownOpen(false); }}
+                  data-testid="option-manager-mode"
+                >
+                  <ClipboardList className="w-3 h-3" />
+                  <div>
+                    <div className="font-medium">Manager</div>
+                    <div className="text-[9px] text-muted-foreground">Plan & execute</div>
+                  </div>
+                  {chatMode === "manager" && <Check className="w-3 h-3 ml-auto" />}
+                </button>
+              </div>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground/40 ml-auto">
+            Enter to send · Shift+Enter for new line
+          </p>
+        </div>
       </div>
     </div>
   );
