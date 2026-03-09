@@ -981,12 +981,8 @@ export function ChatPanel() {
       if (data.error && !data.plan) {
         addManagerMessage({ role: "assistant", content: data.raw || data.error });
       } else if (data.plan) {
-        setManagerPlan(data.plan);
-        const statuses: Record<string, "pending"> = {};
-        for (const t of data.plan.sub_tasks) {
-          statuses[t.sub_task_id] = "pending";
-        }
         clearManagerPlan();
+        setManagerPlan(data.plan);
         for (const t of data.plan.sub_tasks) {
           updateTaskStatus(t.sub_task_id, "pending");
         }
