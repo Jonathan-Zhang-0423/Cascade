@@ -89,7 +89,7 @@ shared/
 - **Data model**: `Checkpoint { id, label, timestamp, snapshot?, diff? }` — `snapshot` is `FlatFile[]`, `diff` is `FileDiff[]` with actions add/modify/delete.
 
 ## Manager Agent
-- **Mode Toggle**: Dropdown selector next to the input bar (similar to Replit's model picker) for switching between Build mode and Manager mode
+- **Mode Toggle**: Dropdown selector next to the input bar for switching between Build mode and Manager mode; both modes share a single unified chat stream sorted chronologically
 - **Manager Agent**: A project-management AI that breaks user requirements into atomic subtasks (≤20 lines each), does NOT write code
 - **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with task plans
 - **API Endpoint**: `POST /api/manager-chat` — non-streaming, returns parsed JSON task plan

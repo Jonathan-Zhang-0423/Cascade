@@ -910,7 +910,6 @@ export function ChatPanel() {
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const managerScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingHandled = useRef(false);
@@ -923,13 +922,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages]);
-
-  useEffect(() => {
-    if (managerScrollRef.current) {
-      managerScrollRef.current.scrollTop = managerScrollRef.current.scrollHeight;
-    }
-  }, [managerMessages]);
+  }, [chatMessages, managerMessages]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1325,15 +1318,19 @@ export function ChatPanel() {
     }
   }, [pendingPrompt, isAiResponding, clearPendingPrompt, handleSend]);
 
+  const isExecuting = executingTaskIndex !== null;
+
   const handleStop = useCallback(() => {
+    if (isExecuting) {
+      executionAbortRef.current = true;
+    }
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
     setAiResponding(false);
-  }, [setAiResponding]);
-
-  const isExecuting = executingTaskIndex !== null;
+    setManagerResponding(false);
+  }, [setAiResponding, setManagerResponding, isExecuting]);
 
   const handleCurrentSend = useCallback(() => {
     if (chatMode === "manager") {
@@ -1350,7 +1347,7 @@ export function ChatPanel() {
     }
   };
 
-  const isBusy = chatMode === "manager" ? (isManagerResponding || isExecuting || isAiResponding) : isAiResponding;
+  const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
     <div className="h-full flex flex-col" data-testid="chat-panel">
@@ -1372,54 +1369,55 @@ export function ChatPanel() {
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-      {chatMode === "build" ? (
-        <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
-          {chatMessages.map((msg, idx) => {
-            const isLastAssistant = msg.role === "assistant" && idx === chatMessages.length - 1;
-            return msg.role === "checkpoint" ? (
-              <CheckpointMarker key={msg.id} message={msg} />
-            ) : (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                autoApplied={autoAppliedMessageIds.has(msg.id)}
-                appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
-              />
-            );
-          })}
-          {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
-            <TypingIndicator />
-          )}
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={managerScrollRef}>
-          {managerMessages.length === 0 && (
-            <div className="px-3 py-6 text-center">
-              <ClipboardList className="w-8 h-8 mx-auto text-muted-foreground/30 mb-2" />
-              <p className="text-[12px] text-muted-foreground/60 leading-snug">
-                Describe what you want to build.<br />
-                The Manager will break it into subtasks and execute them automatically.
-              </p>
-            </div>
-          )}
-          {managerMessages.map((msg, idx) => {
-            const isLastPlan = msg.plan && idx === managerMessages.length - 1;
-            return (
-              <ManagerMessageBubble
-                key={msg.id}
-                message={msg}
-                taskStatuses={taskStatuses}
-                onExecute={isLastPlan ? handleExecutePlan : undefined}
-                isExecuting={isLastPlan ? isExecuting : undefined}
-                onStop={isLastPlan ? handleStopExecution : undefined}
-              />
-            );
-          })}
-          {isManagerResponding && (
-            <TypingIndicator text="Planning..." />
-          )}
-        </div>
-      )}
+      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
+        {(() => {
+          const lastPlanMsgId = [...managerMessages].reverse().find((m) => m.plan)?.id;
+          const lastChatIdx = chatMessages.length - 1;
+          type MergedItem =
+            | { kind: "chat"; msg: ChatMessage; idx: number; order: number }
+            | { kind: "manager"; msg: typeof managerMessages[number]; order: number };
+          const merged: MergedItem[] = [
+            ...chatMessages.map((msg, idx) => ({ kind: "chat" as const, msg, idx, order: idx })),
+            ...managerMessages.map((msg, idx) => ({ kind: "manager" as const, msg, order: idx })),
+          ].sort((a, b) => a.msg.timestamp - b.msg.timestamp || a.order - b.order);
+
+          return merged.map((item) => {
+            if (item.kind === "chat") {
+              const { msg, idx } = item;
+              const isLastAssistant = msg.role === "assistant" && idx === lastChatIdx;
+              return msg.role === "checkpoint" ? (
+                <CheckpointMarker key={`c-${msg.id}`} message={msg} />
+              ) : (
+                <MessageBubble
+                  key={`c-${msg.id}`}
+                  message={msg}
+                  autoApplied={autoAppliedMessageIds.has(msg.id)}
+                  appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
+                />
+              );
+            } else {
+              const { msg } = item;
+              const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
+              return (
+                <ManagerMessageBubble
+                  key={`m-${msg.id}`}
+                  message={msg}
+                  taskStatuses={taskStatuses}
+                  onExecute={isLastPlan ? handleExecutePlan : undefined}
+                  isExecuting={isLastPlan ? isExecuting : undefined}
+                  onStop={isLastPlan ? handleStopExecution : undefined}
+                />
+              );
+            }
+          });
+        })()}
+        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
+          <TypingIndicator />
+        )}
+        {isManagerResponding && (
+          <TypingIndicator text="Planning..." />
+        )}
+      </div>
       <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
         <div className="flex gap-2 items-end">
           <Textarea
