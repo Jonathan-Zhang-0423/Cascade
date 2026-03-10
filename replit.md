@@ -105,7 +105,7 @@ shared/
   3. On failure, sends feedback to Manager Agent for re-planning
   4. Checkpoint created after each subtask's code is applied
 - **State**: `chatMode`, `managerPlan`, `managerMessages`, `executingTaskIndex`, `taskStatuses`, `isManagerResponding` in `ide-store.ts`
-- **Persistence**: `chatMode` and `managerMessages` are persisted to localStorage per project
+- **Persistence**: `chatMode` and `managerMessages` are persisted to localStorage per project; writes are debounced (500ms) to avoid blocking the UI; chat history is trimmed to last 200 messages and manager messages to last 50 when persisting
 - **Stop Execution**: User can halt automated execution at any time
 
 ## Features

@@ -285,6 +285,9 @@ function getPersistedState(projectId: string) {
   return null;
 }
 
+const MAX_PERSISTED_CHAT_MESSAGES = 200;
+const MAX_PERSISTED_MANAGER_MESSAGES = 50;
+
 function persistState(state: IDEState) {
   if (!state.projectId) return;
   const toSave = {
@@ -292,16 +295,30 @@ function persistState(state: IDEState) {
     openFiles: state.openFiles,
     activeFile: state.activeFile,
     previewFile: state.previewFile,
-    chatMessages: state.chatMessages,
+    chatMessages: state.chatMessages.length > MAX_PERSISTED_CHAT_MESSAGES
+      ? state.chatMessages.slice(-MAX_PERSISTED_CHAT_MESSAGES)
+      : state.chatMessages,
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
     chatMode: state.chatMode,
-    managerMessages: state.managerMessages,
+    managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
+      ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
+      : state.managerMessages,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
     JSON.stringify(toSave)
   );
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedPersist(state: IDEState) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistState(state);
+    persistTimer = null;
+  }, 500);
 }
 
 function loadCheckpoints(projectId: string): Checkpoint[] {
@@ -442,7 +459,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   clearPendingPrompt: () => {
     set({ pendingPrompt: null });
     const state = get();
-    persistState(state);
+    debouncedPersist(state);
   },
 
   createCheckpoint: (label) => {
@@ -489,7 +506,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     };
 
     set(next);
-    persistState(next);
+    debouncedPersist(next);
     persistCheckpoints(state.projectId, updatedCheckpoints);
   },
 
@@ -518,7 +535,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     };
 
     set(next);
-    persistState(next);
+    debouncedPersist(next);
   },
 
   setActiveFile: (path) =>
@@ -530,7 +547,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
           ? state.openFiles
           : [...state.openFiles, path],
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -543,7 +560,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
           ? state.openFiles
           : [...state.openFiles, path],
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -558,7 +575,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
             ? newOpenFiles[newOpenFiles.length - 1] || null
             : state.activeFile,
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -568,7 +585,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state,
         files: updateFileInTree(state.files, path, content),
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -585,7 +602,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
           },
         ],
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -599,7 +616,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         }
       }
       const next = { ...state, chatMessages: msgs };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -640,7 +657,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setTheme: (theme) =>
     set((state) => {
       const next = { ...state, theme };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -650,7 +667,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state,
         files: addFileToTree(state.files, parentPath, name, type),
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -676,7 +693,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         openFiles: newOpenFiles,
         activeFile: newActiveFile,
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -698,14 +715,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         openFiles: newOpenFiles,
         activeFile: newActiveFile,
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
   setPreviewFile: (path) =>
     set((state) => {
       const next = { ...state, previewFile: path, previewRefreshKey: Date.now() };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -714,7 +731,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setChatMode: (mode) =>
     set((state) => {
       const next = { ...state, chatMode: mode };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
@@ -733,7 +750,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
           },
         ],
       };
-      persistState(next);
+      debouncedPersist(next);
       return next;
     }),
 
