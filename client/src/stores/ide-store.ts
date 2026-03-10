@@ -27,21 +27,15 @@ export type ToolPanel = "files" | "chat" | null;
 export type ChatMode = "build" | "manager";
 
 export interface ManagerSubTask {
-  sub_task_id: string;
+  step: number;
+  title: string;
   description: string;
-  assignee: string;
-  priority: "High" | "Medium" | "Low";
-  acceptance_criteria: string;
 }
 
 export interface ManagerPlan {
-  task_id: string;
-  user_requirement: string;
-  sub_tasks: ManagerSubTask[];
-  current_progress: string;
-  next_step: string;
-  user_confirmation_needed: string[];
-  feedback_processing: string;
+  summary: string;
+  steps: ManagerSubTask[];
+  needs_input: string[];
 }
 
 export interface ManagerMessage {

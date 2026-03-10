@@ -6,6 +6,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function normalizeSteps(plan: any): ManagerSubTask[] {
+  const raw = plan?.steps ?? plan?.sub_tasks;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((t: any, i: number) => ({
+    step: t.step ?? i + 1,
+    title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
+    description: t.description ?? "",
+  }));
+}
+
 const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
 
 const PROJECT_NAME_REGEX_GLOBAL = /\[\[PROJECT_NAME:[^\]]+\]\]/g;
@@ -686,44 +696,27 @@ function TypingIndicator({ text }: { text?: string }) {
   );
 }
 
-function SubTaskItem({ task, status }: { task: ManagerSubTask; status?: "pending" | "running" | "done" | "failed" }) {
-  const currentStatus = status || "pending";
-  const statusIcons = {
-    pending: <Circle className="w-3.5 h-3.5 text-muted-foreground/50" />,
-    running: <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />,
-    done: <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />,
-    failed: <XCircle className="w-3.5 h-3.5 text-red-500" />,
-  };
-  const priorityColors = {
-    High: "bg-red-500/15 text-red-400 border-red-500/20",
-    Medium: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
-    Low: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+function StepItem({ task, status }: { task: ManagerSubTask; status?: "pending" | "running" | "done" | "failed" }) {
+  const s = status || "pending";
+  const icons = {
+    pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
+    running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
+    done: <CheckCircle2 className="w-3 h-3 text-green-500" />,
+    failed: <XCircle className="w-3 h-3 text-red-500" />,
   };
 
   return (
-    <div
-      className={cn(
-        "flex items-start gap-2 px-2.5 py-2 rounded-md border transition-colors",
-        currentStatus === "running" ? "border-blue-500/30 bg-blue-500/5" :
-        currentStatus === "done" ? "border-green-500/20 bg-green-500/5" :
-        currentStatus === "failed" ? "border-red-500/20 bg-red-500/5" :
-        "border-border/30 bg-muted/20"
-      )}
-      data-testid={`subtask-${task.sub_task_id}`}
-    >
-      <div className="mt-0.5 shrink-0">{statusIcons[currentStatus]}</div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-[10px] font-mono text-muted-foreground">{task.sub_task_id}</span>
-          <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-medium", priorityColors[task.priority])}>
-            {task.priority}
-          </span>
-        </div>
-        <p className="text-[12px] text-foreground/90 leading-snug">{task.description}</p>
-        <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
-          {task.acceptance_criteria}
-        </p>
-      </div>
+    <div className="flex items-center gap-2 py-1" data-testid={`step-${task.step}`}>
+      <div className="shrink-0">{icons[s]}</div>
+      <span className={cn(
+        "text-[12px] leading-snug",
+        s === "done" ? "text-muted-foreground line-through" :
+        s === "failed" ? "text-red-400" :
+        s === "running" ? "text-foreground font-medium" :
+        "text-foreground/80"
+      )}>
+        {task.title}
+      </span>
     </div>
   );
 }
@@ -741,69 +734,45 @@ function TaskPlanCard({
   isExecuting?: boolean;
   onStop?: () => void;
 }) {
-  const doneCount = plan.sub_tasks.filter((t) => taskStatuses[t.sub_task_id] === "done").length;
-  const failedCount = plan.sub_tasks.filter((t) => taskStatuses[t.sub_task_id] === "failed").length;
-  const total = plan.sub_tasks.length;
-  const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const steps = normalizeSteps(plan);
+  const doneCount = steps.filter((t) => taskStatuses[String(t.step)] === "done").length;
+  const total = steps.length;
   const allDone = doneCount === total && total > 0;
 
   return (
-    <div className="mx-3 my-1 rounded-lg border border-border/50 bg-card overflow-hidden" data-testid="task-plan-card">
-      <div className="px-3 py-2 border-b border-border/30 bg-muted/30">
-        <div className="flex items-center gap-1.5 mb-1">
-          <ClipboardList className="w-3.5 h-3.5 text-primary" />
-          <span className="text-[11px] font-semibold text-foreground">{plan.task_id}</span>
-        </div>
-        <p className="text-[12px] text-foreground/80 leading-snug">{plan.user_requirement}</p>
+    <div className="mx-3 my-1 rounded-lg border border-border/40 bg-card/50 overflow-hidden" data-testid="task-plan-card">
+      <div className="px-3 pt-2.5 pb-1.5">
+        <p className="text-[13px] text-foreground leading-snug">{plan.summary || (plan as any).user_requirement || ""}</p>
       </div>
 
-      <div className="px-3 py-2 space-y-1.5">
-        {plan.sub_tasks.map((task) => (
-          <SubTaskItem key={task.sub_task_id} task={task} status={taskStatuses[task.sub_task_id]} />
+      <div className="px-3 pb-2 space-y-0">
+        {steps.map((task: ManagerSubTask) => (
+          <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} />
         ))}
       </div>
 
-      <div className="px-3 py-2 border-t border-border/30 space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                allDone ? "bg-green-500" : failedCount > 0 ? "bg-yellow-500" : "bg-primary"
-              )}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-            {doneCount}/{total}
+      {doneCount > 0 && (
+        <div className="px-3 pb-2">
+          <span className="text-[10px] text-muted-foreground">
+            {allDone ? "All done ✓" : `${doneCount}/${total} steps done`}
           </span>
         </div>
+      )}
 
-        <p className="text-[11px] text-muted-foreground/80">{plan.current_progress}</p>
-
-        {plan.next_step && (
-          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-primary/5 border border-primary/10">
-            <Zap className="w-3 h-3 text-primary mt-0.5 shrink-0" />
-            <p className="text-[11px] text-primary/80 leading-snug">{plan.next_step}</p>
-          </div>
-        )}
-
-        {plan.user_confirmation_needed && plan.user_confirmation_needed.length > 0 && plan.user_confirmation_needed[0] !== "" && (
-          <div className="space-y-1">
-            <div className="flex items-center gap-1">
+      {(() => {
+        const inputs: string[] = plan.needs_input || (plan as any).user_confirmation_needed || [];
+        return inputs.length > 0 && inputs[0] !== "" ? (
+          <div className="px-3 pb-2">
+            <div className="flex items-center gap-1 mb-0.5">
               <AlertTriangle className="w-3 h-3 text-yellow-500" />
               <span className="text-[10px] font-medium text-yellow-500">Needs your input:</span>
             </div>
-            {plan.user_confirmation_needed.map((item, i) => (
+            {inputs.map((item, i) => (
               <p key={i} className="text-[11px] text-foreground/70 pl-4 leading-snug">• {item}</p>
             ))}
           </div>
-        )}
-
-        {plan.feedback_processing && plan.feedback_processing !== "None" && (
-          <p className="text-[10px] text-muted-foreground/60 italic">{plan.feedback_processing}</p>
-        )}
-      </div>
+        ) : null;
+      })()}
 
       {onExecute && !allDone && (
         <div className="px-3 py-2 border-t border-border/30">
@@ -816,7 +785,7 @@ function TaskPlanCard({
               data-testid="button-stop-execution"
             >
               <StopCircle className="w-3 h-3 mr-1" />
-              Stop Execution
+              Stop
             </Button>
           ) : (
             <Button
@@ -990,8 +959,8 @@ export function ChatPanel() {
       } else if (data.plan) {
         clearManagerPlan();
         setManagerPlan(data.plan);
-        for (const t of data.plan.sub_tasks) {
-          updateTaskStatus(t.sub_task_id, "pending");
+        for (const t of normalizeSteps(data.plan)) {
+          updateTaskStatus(String(t.step), "pending");
         }
         addManagerMessage({ role: "assistant", content: "", plan: data.plan });
       }
@@ -1002,8 +971,8 @@ export function ChatPanel() {
     }
   }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus]);
 
-  const executeSubTask = useCallback(async (description: string, acceptanceCriteria: string): Promise<boolean> => {
-    const prompt = `${description}\n\nAcceptance criteria: ${acceptanceCriteria}`;
+  const executeSubTask = useCallback(async (description: string, title: string): Promise<boolean> => {
+    const prompt = description;
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const fileContext = allFiles.map((f) => ({
@@ -1083,7 +1052,7 @@ export function ChatPanel() {
 
       const finalBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
       if (finalBlocks.length > 0) {
-        createCheckpoint(description.length > 40 ? description.slice(0, 40) + "..." : description);
+        createCheckpoint(title);
       }
 
       return true;
@@ -1101,31 +1070,34 @@ export function ChatPanel() {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
 
+    const normalizedSteps = normalizeSteps(plan);
+
     executionAbortRef.current = false;
 
-    for (let i = 0; i < plan.sub_tasks.length; i++) {
+    for (let i = 0; i < normalizedSteps.length; i++) {
       if (executionAbortRef.current) break;
 
-      const task = plan.sub_tasks[i];
-      const currentStatus = useIDEStore.getState().taskStatuses[task.sub_task_id];
+      const task = normalizedSteps[i];
+      const key = String(task.step);
+      const currentStatus = useIDEStore.getState().taskStatuses[key];
       if (currentStatus === "done") continue;
 
       setExecutingTaskIndex(i);
-      updateTaskStatus(task.sub_task_id, "running");
+      updateTaskStatus(key, "running");
 
-      const success = await executeSubTask(task.description, task.acceptance_criteria);
+      const success = await executeSubTask(task.description, task.title);
 
       if (executionAbortRef.current) {
-        updateTaskStatus(task.sub_task_id, "pending");
+        updateTaskStatus(key, "pending");
         break;
       }
 
-      updateTaskStatus(task.sub_task_id, success ? "done" : "failed");
+      updateTaskStatus(key, success ? "done" : "failed");
 
       if (!success) {
         const allFiles = flattenFiles(useIDEStore.getState().files);
         const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-        const feedbackMsg = `Subtask ${task.sub_task_id} failed. Please adjust the plan.`;
+        const feedbackMsg = `Step ${task.step} ("${task.title}") failed. Please adjust the plan.`;
         addManagerMessage({ role: "user", content: feedbackMsg });
 
         const currentMsgs = useIDEStore.getState().managerMessages;
@@ -1143,9 +1115,9 @@ export function ChatPanel() {
           const data = await resp.json();
           if (data.plan) {
             setManagerPlan(data.plan);
-            for (const t of data.plan.sub_tasks) {
-              const existing = useIDEStore.getState().taskStatuses[t.sub_task_id];
-              if (!existing) updateTaskStatus(t.sub_task_id, "pending");
+            for (const t of normalizeSteps(data.plan)) {
+              const existing = useIDEStore.getState().taskStatuses[String(t.step)];
+              if (!existing) updateTaskStatus(String(t.step), "pending");
             }
             addManagerMessage({ role: "assistant", content: "", plan: data.plan });
           }

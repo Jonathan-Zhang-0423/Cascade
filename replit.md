@@ -90,21 +90,24 @@ shared/
 
 ## Manager Agent
 - **Mode Toggle**: Dropdown selector next to the input bar for switching between Build mode and Manager mode; both modes share a single unified chat stream sorted chronologically
-- **Manager Agent**: A project-management AI that breaks user requirements into atomic subtasks (≤20 lines each), does NOT write code
-- **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with task plans
+- **Manager Agent**: A project-management AI that breaks user requirements into atomic steps (≤20 lines each), does NOT write code. Warm, friendly tone matching the vibe agent.
+- **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with simplified plan schema
 - **API Endpoint**: `POST /api/manager-chat` — non-streaming, returns parsed JSON task plan
-- **Task Plan UI**: Manager JSON responses render as visual `TaskPlanCard` components with:
-  - Subtask list with status indicators (pending ○, running ◉, done ✓, failed ✗)
-  - Priority badges (High/Medium/Low with color coding)
-  - Progress bar and completion count
-  - User confirmation items (highlighted with warning icon)
-  - "Execute Plan" button to start automated execution
-- **Automated Execution**: Clicking "Execute Plan" iterates subtasks sequentially:
-  1. Each subtask is sent to the Editor Agent via `/api/chat` (streaming + incremental apply)
+- **Plan Schema**: `{ summary: string, steps: ManagerSubTask[], needs_input: string[] }` where `ManagerSubTask = { step: number, title: string, description: string }`
+- **Task Plan UI**: Manager JSON responses render as minimal `TaskPlanCard` components with:
+  - Summary text at top (friendly one-liner)
+  - Step list with status dots (○ pending, ◉ running, ✓ done, ✗ failed)
+  - Compact progress indicator ("2/5 steps done")
+  - `needs_input` items with warning icon (if any)
+  - "Execute Plan" / "Stop" buttons
+- **Backward Compatibility**: Old persisted plans with `sub_tasks` field are normalized to `steps` format at render/execute time
+- **Automated Execution**: Clicking "Execute Plan" iterates steps sequentially:
+  1. Each step's description is sent to the Build Agent via `/api/chat` (streaming + incremental apply)
   2. Status updates in real-time on the task plan card
   3. On failure, sends feedback to Manager Agent for re-planning
-  4. Checkpoint created after each subtask's code is applied
+  4. Checkpoint created after each step's code is applied
 - **State**: `chatMode`, `managerPlan`, `managerMessages`, `executingTaskIndex`, `taskStatuses`, `isManagerResponding` in `ide-store.ts`
+- **Task status keys**: Use `String(task.step)` (e.g., "1", "2") as keys in `taskStatuses`
 - **Persistence**: `chatMode` and `managerMessages` are persisted to localStorage per project; writes are debounced (500ms) to avoid blocking the UI; chat history is trimmed to last 200 messages and manager messages to last 50 when persisting
 - **Stop Execution**: User can halt automated execution at any time
 
