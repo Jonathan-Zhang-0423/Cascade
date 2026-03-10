@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type ChatMode, flattenFiles } from "@/stores/ide-store";
+import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle } from "lucide-react";
+import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function normalizeSteps(plan: any): ManagerSubTask[] {
@@ -11,8 +11,10 @@ function normalizeSteps(plan: any): ManagerSubTask[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((t: any, i: number) => ({
     step: t.step ?? i + 1,
+    sub_task_id: t.sub_task_id ?? "",
     title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
     description: t.description ?? "",
+    acceptance_criteria: t.acceptance_criteria ?? "",
   }));
 }
 
@@ -696,27 +698,50 @@ function TypingIndicator({ text }: { text?: string }) {
   );
 }
 
-function StepItem({ task, status }: { task: ManagerSubTask; status?: "pending" | "running" | "done" | "failed" }) {
+function StepItem({ task, status, verification }: {
+  task: ManagerSubTask;
+  status?: "pending" | "running" | "done" | "failed" | "verifying" | "needs-input";
+  verification?: VerificationResult;
+}) {
   const s = status || "pending";
-  const icons = {
+  const icons: Record<string, JSX.Element> = {
     pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
     running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
+    verifying: <Search className="w-3 h-3 text-amber-400 animate-pulse" />,
     done: <CheckCircle2 className="w-3 h-3 text-green-500" />,
     failed: <XCircle className="w-3 h-3 text-red-500" />,
+    "needs-input": <HelpCircle className="w-3 h-3 text-yellow-500" />,
   };
 
+  const matchPercent = verification?.requirement_match_percent;
+
   return (
-    <div className="flex items-center gap-2 py-1" data-testid={`step-${task.step}`}>
-      <div className="shrink-0">{icons[s]}</div>
-      <span className={cn(
-        "text-[12px] leading-snug",
-        s === "done" ? "text-muted-foreground line-through" :
-        s === "failed" ? "text-red-400" :
-        s === "running" ? "text-foreground font-medium" :
-        "text-foreground/80"
-      )}>
-        {task.title}
-      </span>
+    <div className="py-1" data-testid={`step-${task.step}`}>
+      <div className="flex items-center gap-2">
+        <div className="shrink-0">{icons[s] || icons.pending}</div>
+        <span className={cn(
+          "text-[12px] leading-snug flex-1",
+          s === "done" ? "text-muted-foreground line-through" :
+          s === "failed" ? "text-red-400" :
+          s === "running" ? "text-foreground font-medium" :
+          s === "verifying" ? "text-amber-400 font-medium" :
+          s === "needs-input" ? "text-yellow-500" :
+          "text-foreground/80"
+        )}>
+          {task.title}
+        </span>
+        {matchPercent != null && s === "done" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 font-medium" data-testid={`match-${task.step}`}>
+            {matchPercent}%
+          </span>
+        )}
+        {s === "verifying" && (
+          <span className="text-[10px] text-amber-400">Verifying...</span>
+        )}
+      </div>
+      {verification?.error_summary && s === "failed" && (
+        <p className="text-[10px] text-red-400/80 pl-5 mt-0.5 leading-snug">{verification.error_summary}</p>
+      )}
     </div>
   );
 }
@@ -724,20 +749,26 @@ function StepItem({ task, status }: { task: ManagerSubTask; status?: "pending" |
 function TaskPlanCard({
   plan,
   taskStatuses,
+  verificationResults,
   onExecute,
   isExecuting,
   onStop,
+  onContinue,
 }: {
   plan: ManagerPlan;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
+  verificationResults?: Record<string, VerificationResult>;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
+  onContinue?: () => void;
 }) {
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((t) => taskStatuses[String(t.step)] === "done").length;
   const total = steps.length;
   const allDone = doneCount === total && total > 0;
+  const hasNeedsInput = steps.some((t) => taskStatuses[String(t.step)] === "needs-input");
+  const isVerifying = steps.some((t) => taskStatuses[String(t.step)] === "verifying");
 
   return (
     <div className="mx-3 my-1 rounded-lg border border-border/40 bg-card/50 overflow-hidden" data-testid="task-plan-card">
@@ -746,16 +777,32 @@ function TaskPlanCard({
       </div>
 
       <div className="px-3 pb-2 space-y-0">
-        {steps.map((task: ManagerSubTask) => (
-          <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} />
-        ))}
+        {steps.map((task: ManagerSubTask) => {
+          const key = task.sub_task_id || String(task.step);
+          return (
+            <StepItem
+              key={task.step}
+              task={task}
+              status={taskStatuses[String(task.step)]}
+              verification={verificationResults?.[key]}
+            />
+          );
+        })}
       </div>
 
       {doneCount > 0 && (
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2 flex items-center gap-1.5">
+          {allDone && <ShieldCheck className="w-3 h-3 text-green-500" />}
           <span className="text-[10px] text-muted-foreground">
-            {allDone ? "All done ✓" : `${doneCount}/${total} steps done`}
+            {allDone ? "All steps verified ✓" : `${doneCount}/${total} steps done`}
           </span>
+        </div>
+      )}
+
+      {isVerifying && (
+        <div className="px-3 pb-2 flex items-center gap-1.5">
+          <Search className="w-3 h-3 text-amber-400 animate-pulse" />
+          <span className="text-[10px] text-amber-400">Verifier is checking...</span>
         </div>
       )}
 
@@ -787,6 +834,16 @@ function TaskPlanCard({
               <StopCircle className="w-3 h-3 mr-1" />
               Stop
             </Button>
+          ) : hasNeedsInput && onContinue ? (
+            <Button
+              size="sm"
+              className="w-full h-7 text-[11px]"
+              onClick={onContinue}
+              data-testid="button-continue-execution"
+            >
+              <Play className="w-3 h-3 mr-1" />
+              Continue
+            </Button>
           ) : (
             <Button
               size="sm"
@@ -807,15 +864,19 @@ function TaskPlanCard({
 function ManagerMessageBubble({
   message,
   taskStatuses,
+  verificationResults,
   onExecute,
   isExecuting,
   onStop,
+  onContinue,
 }: {
   message: { role: string; content: string; plan?: ManagerPlan };
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
+  verificationResults?: Record<string, VerificationResult>;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
+  onContinue?: () => void;
 }) {
   if (message.role === "user") {
     return (
@@ -832,9 +893,11 @@ function ManagerMessageBubble({
       <TaskPlanCard
         plan={message.plan}
         taskStatuses={taskStatuses}
+        verificationResults={verificationResults}
         onExecute={onExecute}
         isExecuting={isExecuting}
         onStop={onStop}
+        onContinue={onContinue}
       />
     );
   }
@@ -871,6 +934,7 @@ export function ChatPanel() {
     addManagerMessage,
     taskStatuses,
     updateTaskStatus,
+    verificationResults,
     executingTaskIndex,
     setExecutingTaskIndex,
     isManagerResponding,
@@ -971,8 +1035,24 @@ export function ChatPanel() {
     }
   }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus]);
 
-  const executeSubTask = useCallback(async (description: string, title: string): Promise<boolean> => {
-    const prompt = description;
+  const executeSubTask = useCallback(async (
+    description: string,
+    title: string,
+    managerContext?: { sub_task_id: string; acceptance_criteria: string }
+  ): Promise<boolean> => {
+    let prompt = description;
+
+    if (managerContext && (managerContext.sub_task_id || managerContext.acceptance_criteria)) {
+      const contextLines: string[] = [];
+      contextLines.push(`[Manager Mode] You are executing subtask ${managerContext.sub_task_id || title}: ${title}`);
+      contextLines.push(`Task description: ${description}`);
+      if (managerContext.acceptance_criteria) {
+        contextLines.push(`Acceptance criteria: ${managerContext.acceptance_criteria}`);
+      }
+      contextLines.push("");
+      contextLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
+      prompt = contextLines.join("\n");
+    }
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const fileContext = allFiles.map((f) => ({
@@ -1066,11 +1146,77 @@ export function ChatPanel() {
     }
   }, [addChatMessage, updateLastAssistantMessage, setAiResponding, refreshPreview, createCheckpoint, applyCodeBlock]);
 
+  const MAX_RETRIES_PER_STEP = 2;
+
+  const verifySubTask = useCallback(async (
+    task: ManagerSubTask,
+    editorOutput: string,
+  ): Promise<VerificationResult | null> => {
+    const allFiles = flattenFiles(useIDEStore.getState().files);
+    const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+
+    try {
+      const resp = await fetch("/api/verifier-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sub_task_id: task.sub_task_id || `T001-${String(task.step).padStart(2, "0")}`,
+          task_description: task.description,
+          acceptance_criteria: task.acceptance_criteria || task.title,
+          files: fileContext,
+          editor_output: editorOutput,
+        }),
+      });
+      const data = await resp.json();
+      if (data.verification) return data.verification as VerificationResult;
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const requestReplan = useCallback(async (
+    task: ManagerSubTask,
+    verificationResult: VerificationResult | null,
+  ) => {
+    const allFiles = flattenFiles(useIDEStore.getState().files);
+    const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+
+    const suggestion = verificationResult?.suggestion || "";
+    const errorSummary = verificationResult?.error_summary || "Unknown error";
+    const feedbackMsg = `Step ${task.step} ("${task.title}") failed verification.\nError: ${errorSummary}${suggestion ? `\nSuggestion: ${suggestion}` : ""}\nPlease adjust the plan.`;
+    addManagerMessage({ role: "user", content: feedbackMsg });
+
+    const currentMsgs = useIDEStore.getState().managerMessages;
+    const messagesForApi = currentMsgs.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.plan ? JSON.stringify(m.plan) : m.content,
+    }));
+
+    try {
+      const resp = await fetch("/api/manager-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+      });
+      const data = await resp.json();
+      if (data.plan) {
+        clearManagerPlan();
+        setManagerPlan(data.plan);
+        for (const t of normalizeSteps(data.plan)) {
+          updateTaskStatus(String(t.step), "pending");
+        }
+        addManagerMessage({ role: "assistant", content: "", plan: data.plan });
+      }
+    } catch {}
+  }, [addManagerMessage, setManagerPlan, updateTaskStatus, clearManagerPlan]);
+
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
 
     const normalizedSteps = normalizeSteps(plan);
+    const updateVerificationResult = useIDEStore.getState().updateVerificationResult;
 
     executionAbortRef.current = false;
 
@@ -1082,52 +1228,101 @@ export function ChatPanel() {
       const currentStatus = useIDEStore.getState().taskStatuses[key];
       if (currentStatus === "done") continue;
 
-      setExecutingTaskIndex(i);
-      updateTaskStatus(key, "running");
+      let retries = 0;
+      let stepPassed = false;
 
-      const success = await executeSubTask(task.description, task.title);
+      while (retries <= MAX_RETRIES_PER_STEP && !stepPassed && !executionAbortRef.current) {
+        setExecutingTaskIndex(i);
+        updateTaskStatus(key, "running");
 
-      if (executionAbortRef.current) {
-        updateTaskStatus(key, "pending");
-        break;
-      }
+        const success = await executeSubTask(task.description, task.title, {
+          sub_task_id: task.sub_task_id || "",
+          acceptance_criteria: task.acceptance_criteria || "",
+        });
 
-      updateTaskStatus(key, success ? "done" : "failed");
+        if (executionAbortRef.current) {
+          updateTaskStatus(key, "pending");
+          break;
+        }
 
-      if (!success) {
-        const allFiles = flattenFiles(useIDEStore.getState().files);
-        const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-        const feedbackMsg = `Step ${task.step} ("${task.title}") failed. Please adjust the plan.`;
-        addManagerMessage({ role: "user", content: feedbackMsg });
+        if (!success) {
+          updateTaskStatus(key, "failed");
+          await requestReplan(task, null);
+          break;
+        }
 
-        const currentMsgs = useIDEStore.getState().managerMessages;
-        const messagesForApi = currentMsgs.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.plan ? JSON.stringify(m.plan) : m.content,
-        }));
+        updateTaskStatus(key, "verifying");
 
-        try {
-          const resp = await fetch("/api/manager-chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
-          });
-          const data = await resp.json();
-          if (data.plan) {
-            setManagerPlan(data.plan);
-            for (const t of normalizeSteps(data.plan)) {
-              const existing = useIDEStore.getState().taskStatuses[String(t.step)];
-              if (!existing) updateTaskStatus(String(t.step), "pending");
-            }
-            addManagerMessage({ role: "assistant", content: "", plan: data.plan });
+        const lastAssistant = useIDEStore.getState().chatMessages
+          .filter(m => m.role === "assistant")
+          .pop();
+        const editorOutput = lastAssistant?.content || "";
+
+        const verification = await verifySubTask(task, editorOutput);
+
+        if (executionAbortRef.current) {
+          updateTaskStatus(key, "pending");
+          break;
+        }
+
+        if (verification) {
+          updateVerificationResult(task.sub_task_id || key, verification);
+
+          const allPassed = verification.verification_items?.every(
+            (item) => item.result === "pass" || item.result === "warning"
+          );
+          const matchPercent = verification.requirement_match_percent ?? 100;
+
+          if (verification.user_confirmation_needed?.length > 0 &&
+              verification.user_confirmation_needed[0] !== "") {
+            updateTaskStatus(key, "needs-input");
+            addManagerMessage({
+              role: "assistant",
+              content: `Step ${task.step} needs your input:\n${verification.user_confirmation_needed.map(item => `• ${item}`).join("\n")}`,
+            });
+            setExecutingTaskIndex(null);
+            return;
           }
-        } catch {}
-        break;
+
+          if (allPassed && matchPercent >= 70) {
+            updateTaskStatus(key, "done");
+            stepPassed = true;
+          } else {
+            retries++;
+            if (retries > MAX_RETRIES_PER_STEP) {
+              updateTaskStatus(key, "failed");
+              await requestReplan(task, verification);
+              setExecutingTaskIndex(null);
+              return;
+            }
+            updateTaskStatus(key, "failed");
+            const retryMsg = `Retrying step ${task.step} (attempt ${retries + 1}/${MAX_RETRIES_PER_STEP + 1}). Issues: ${verification.error_summary || "Verification checks did not pass."}`;
+            addManagerMessage({ role: "assistant", content: retryMsg });
+          }
+        } else {
+          retries++;
+          if (retries > MAX_RETRIES_PER_STEP) {
+            updateTaskStatus(key, "failed");
+            await requestReplan(task, null);
+            setExecutingTaskIndex(null);
+            return;
+          }
+          updateTaskStatus(key, "failed");
+          addManagerMessage({ role: "assistant", content: `Verifier could not validate step ${task.step}. Retrying (attempt ${retries + 1}/${MAX_RETRIES_PER_STEP + 1})...` });
+        }
       }
+
+      if (!stepPassed && !executionAbortRef.current) break;
+    }
+
+    const finalStatuses = useIDEStore.getState().taskStatuses;
+    const allDone = normalizedSteps.every(t => finalStatuses[String(t.step)] === "done");
+    if (allDone) {
+      addManagerMessage({ role: "assistant", content: "All steps completed and verified! Your project is ready. 🎉" });
     }
 
     setExecutingTaskIndex(null);
-  }, [executeSubTask, setExecutingTaskIndex, updateTaskStatus, setManagerPlan, addManagerMessage]);
+  }, [executeSubTask, verifySubTask, requestReplan, setExecutingTaskIndex, updateTaskStatus, addManagerMessage, setManagerPlan]);
 
   const handleStopExecution = useCallback(() => {
     executionAbortRef.current = true;
@@ -1138,6 +1333,19 @@ export function ChatPanel() {
     setAiResponding(false);
     setExecutingTaskIndex(null);
   }, [setAiResponding, setExecutingTaskIndex]);
+
+  const handleContinueExecution = useCallback(() => {
+    const plan = useIDEStore.getState().managerPlan;
+    if (!plan) return;
+    const steps = normalizeSteps(plan);
+    for (const t of steps) {
+      const key = String(t.step);
+      if (useIDEStore.getState().taskStatuses[key] === "needs-input") {
+        updateTaskStatus(key, "pending");
+      }
+    }
+    handleExecutePlan();
+  }, [handleExecutePlan, updateTaskStatus]);
 
   const handleSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
@@ -1375,9 +1583,11 @@ export function ChatPanel() {
                   key={`m-${msg.id}`}
                   message={msg}
                   taskStatuses={taskStatuses}
+                  verificationResults={verificationResults}
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}
                   onStop={isLastPlan ? handleStopExecution : undefined}
+                  onContinue={isLastPlan ? handleContinueExecution : undefined}
                 />
               );
             }

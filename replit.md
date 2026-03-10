@@ -35,9 +35,11 @@ client/src/
     ide.tsx                     # Main IDE layout (resizable dock + tool panels + side-by-side panes)
   App.tsx                       # Root app with routing (/ = dashboard, /project/:id = IDE)
 server/
-  routes.ts                     # API endpoints (POST /api/chat with SSE streaming)
+  routes.ts                     # API endpoints (POST /api/chat, /api/manager-chat, /api/verifier-chat)
   doubao-client.ts              # Doubao API client (OpenAI SDK pointed at Volcengine)
-  vibe-prompt.ts                # Vibe Agent system prompt + file context builder
+  vibe-prompt.ts                # Vibe/Editor Agent system prompt + file context builder
+  manager-prompt.ts             # Manager Agent system prompt + context builder
+  verifier-prompt.ts            # Verifier Agent system prompt + context builder
   storage.ts                    # Data storage interface
 shared/
   schema.ts                     # Data schemas
@@ -88,27 +90,48 @@ shared/
 - **Orphaned markers**: If a checkpoint is trimmed from storage, its chat marker becomes dimmed and the Restore button is hidden.
 - **Data model**: `Checkpoint { id, label, timestamp, snapshot?, diff? }` — `snapshot` is `FlatFile[]`, `diff` is `FileDiff[]` with actions add/modify/delete.
 
-## Manager Agent
+## Manager Agent (3-Agent System)
 - **Mode Toggle**: Dropdown selector next to the input bar for switching between Build mode and Manager mode; both modes share a single unified chat stream sorted chronologically
-- **Manager Agent**: A project-management AI that breaks user requirements into atomic steps (≤20 lines each), does NOT write code. Warm, friendly tone matching the vibe agent.
-- **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with simplified plan schema
+- **3 Agents in Manager Mode**:
+  1. **Manager Agent** — Plans and breaks down tasks; does NOT write code
+  2. **Editor Agent** — Executes coding for each step (uses the Build/Vibe agent via `/api/chat`)
+  3. **Verifier Agent** — Validates code after each step; checks runnability and requirement matching
+- **Build Mode** still uses only the Editor/Vibe Agent directly (no Manager or Verifier)
+
+### Manager Agent
+- **System Prompt**: `server/manager-prompt.ts` — enforces JSON-only output with plan schema including `sub_task_id` and `acceptance_criteria`
 - **API Endpoint**: `POST /api/manager-chat` — non-streaming, returns parsed JSON task plan
-- **Plan Schema**: `{ summary: string, steps: ManagerSubTask[], needs_input: string[] }` where `ManagerSubTask = { step: number, title: string, description: string }`
-- **Task Plan UI**: Manager JSON responses render as minimal `TaskPlanCard` components with:
-  - Summary text at top (friendly one-liner)
-  - Step list with status dots (○ pending, ◉ running, ✓ done, ✗ failed)
-  - Compact progress indicator ("2/5 steps done")
-  - `needs_input` items with warning icon (if any)
-  - "Execute Plan" / "Stop" buttons
-- **Backward Compatibility**: Old persisted plans with `sub_tasks` field are normalized to `steps` format at render/execute time
-- **Automated Execution**: Clicking "Execute Plan" iterates steps sequentially:
-  1. Each step's description is sent to the Build Agent via `/api/chat` (streaming + incremental apply)
-  2. Status updates in real-time on the task plan card
-  3. On failure, sends feedback to Manager Agent for re-planning
-  4. Checkpoint created after each step's code is applied
-- **State**: `chatMode`, `managerPlan`, `managerMessages`, `executingTaskIndex`, `taskStatuses`, `isManagerResponding` in `ide-store.ts`
-- **Task status keys**: Use `String(task.step)` (e.g., "1", "2") as keys in `taskStatuses`
-- **Persistence**: `chatMode` and `managerMessages` are persisted to localStorage per project; writes are debounced (500ms) to avoid blocking the UI; chat history is trimmed to last 200 messages and manager messages to last 50 when persisting
+- **Plan Schema**: `{ summary, steps: ManagerSubTask[], needs_input: string[] }` where `ManagerSubTask = { step, sub_task_id, title, description, acceptance_criteria }`
+
+### Editor Agent (in Manager Mode context)
+- When executing plan steps, the prompt is enriched with `[Manager Mode]` context including `sub_task_id`, task description, and `acceptance_criteria`
+- Uses the same `/api/chat` streaming endpoint as Build mode
+
+### Verifier Agent
+- **System Prompt**: `server/verifier-prompt.ts` — QA engineer that validates code and checks requirement matching
+- **API Endpoint**: `POST /api/verifier-chat` — non-streaming, accepts `{ sub_task_id, task_description, acceptance_criteria, files, editor_output }`
+- **Output Schema**: `{ sub_task_id, verification_items: [{item, result: pass|fail|warning, details}], requirement_match_percent, error_summary, user_confirmation_needed, suggestion }`
+
+### Execution Flow (Editor → Verifier → Manager cycle)
+1. For each step: Editor executes coding (streaming + incremental code apply)
+2. Verifier validates the result (runnability + requirement match)
+3. If verification passes (all items pass/warning, match ≥ 70%) → step marked "done", proceed
+4. If verification fails → retry up to 2 times, then request Manager to re-plan
+5. If `user_confirmation_needed` items exist → pause execution, show items to user, "Continue" button resumes
+6. After all steps verified → completion message shown
+
+### Task Plan UI
+- `TaskPlanCard` shows: summary, step list with status indicators, progress count, needs-input items, Execute/Stop/Continue buttons
+- **Step statuses**: pending (○), running (spinner), verifying (🔍 pulse), done (✓ + match% badge), failed (✗ + error), needs-input (?)
+- **Verification results** shown inline: match percentage badge on done steps, error summary on failed steps
+
+### State
+- `chatMode`, `managerPlan`, `managerMessages`, `executingTaskIndex`, `taskStatuses`, `verificationResults`, `isManagerResponding` in `ide-store.ts`
+- `taskStatuses` includes: `"pending" | "running" | "verifying" | "done" | "failed" | "needs-input"`
+- `verificationResults: Record<string, VerificationResult>` stores per-step verification data
+- **Task status keys**: Use `String(task.step)` as keys in `taskStatuses`
+- **Backward Compatibility**: Old persisted plans with `sub_tasks` field normalized to `steps` format
+- **Persistence**: `chatMode` and `managerMessages` persisted to localStorage per project; debounced at 500ms
 - **Stop Execution**: User can halt automated execution at any time
 
 ## Features

@@ -25,12 +25,25 @@ You MUST output ONLY valid JSON — no markdown, no extra text. Use this exact f
   "steps": [
     {
       "step": 1,
+      "sub_task_id": "T001-01",
       "title": "Short action title (e.g., 'Create the page layout')",
-      "description": "Clear description of what the coding agent should do, including file paths"
+      "description": "Clear description of what the coding agent should do, including file paths",
+      "acceptance_criteria": "What must be true for this step to be considered complete (e.g., 'index.html exists with a header, main content area, and footer')"
     }
   ],
   "needs_input": ["Items needing user decision, empty array if none"]
 }
+
+### sub_task_id format
+- Use the format "T{task_number}-{step_number}", padded to two digits.
+- The task_number starts at 001 and increments for each new plan you create.
+- The step_number matches the step number within that plan.
+- Examples: "T001-01", "T001-02", "T002-01"
+
+### acceptance_criteria guidelines
+- Write a clear, testable statement describing what must be true when the step is done.
+- Focus on observable outcomes: file existence, elements present, styles applied, behavior working.
+- Keep it to 1-2 sentences — specific enough for a verifier to check.
 
 ## Rules
 - Keep step titles short (3-8 words).

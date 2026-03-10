@@ -28,14 +28,31 @@ export type ChatMode = "build" | "manager";
 
 export interface ManagerSubTask {
   step: number;
+  sub_task_id?: string;
   title: string;
   description: string;
+  acceptance_criteria?: string;
 }
 
 export interface ManagerPlan {
   summary: string;
   steps: ManagerSubTask[];
   needs_input: string[];
+}
+
+export interface VerificationItem {
+  item: string;
+  result: "pass" | "fail" | "warning";
+  details: string;
+}
+
+export interface VerificationResult {
+  sub_task_id: string;
+  verification_items: VerificationItem[];
+  requirement_match_percent: number;
+  error_summary: string;
+  user_confirmation_needed: string[];
+  suggestion: string;
 }
 
 export interface ManagerMessage {
@@ -194,8 +211,9 @@ interface IDEState {
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
   executingTaskIndex: number | null;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
   isManagerResponding: boolean;
+  verificationResults: Record<string, VerificationResult>;
 
   loadProject: (id: string) => void;
   saveProject: () => void;
@@ -225,10 +243,11 @@ interface IDEState {
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
-  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed") => void;
+  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "verifying" | "needs-input") => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
+  updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -379,6 +398,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   executingTaskIndex: null,
   taskStatuses: {},
   isManagerResponding: false,
+  verificationResults: {},
 
   loadProject: (id) => {
     const current = get();
@@ -421,6 +441,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         executingTaskIndex: null,
         taskStatuses: {},
         isManagerResponding: false,
+        verificationResults: {},
       });
     } else {
       set({
@@ -442,6 +463,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         executingTaskIndex: null,
         taskStatuses: {},
         isManagerResponding: false,
+        verificationResults: {},
       });
     }
   },
@@ -762,7 +784,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       managerPlan: null,
       executingTaskIndex: null,
       taskStatuses: {},
+      verificationResults: {},
     }),
+
+  updateVerificationResult: (subTaskId, result) =>
+    set((state) => ({
+      verificationResults: { ...state.verificationResults, [subTaskId]: result },
+    })),
 }));
 
 function updateFileInTree(
