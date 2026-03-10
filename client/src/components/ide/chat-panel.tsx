@@ -753,7 +753,10 @@ function TaskPlanCard({
   onExecute,
   isExecuting,
   onStop,
-  onContinue,
+  onContinueWithInput,
+  pendingConfirmation,
+  confirmationInput,
+  onConfirmationInputChange,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
@@ -761,7 +764,10 @@ function TaskPlanCard({
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
-  onContinue?: () => void;
+  onContinueWithInput?: (userInput?: string) => void;
+  pendingConfirmation?: { stepKey: string; items: string[] } | null;
+  confirmationInput?: string;
+  onConfirmationInputChange?: (value: string) => void;
 }) {
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((t) => taskStatuses[String(t.step)] === "done").length;
@@ -821,6 +827,54 @@ function TaskPlanCard({
         ) : null;
       })()}
 
+      {hasNeedsInput && pendingConfirmation && onContinueWithInput && (
+        <div className="px-3 pb-2 space-y-2" data-testid="confirmation-input-area">
+          <div className="flex items-center gap-1 mb-1">
+            <HelpCircle className="w-3 h-3 text-yellow-500" />
+            <span className="text-[10px] font-medium text-yellow-500">Please respond:</span>
+          </div>
+          {pendingConfirmation.items.map((item, i) => (
+            <p key={i} className="text-[11px] text-foreground/80 pl-4 leading-snug">• {item}</p>
+          ))}
+          <Textarea
+            value={confirmationInput || ""}
+            onChange={(e) => onConfirmationInputChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                onContinueWithInput(confirmationInput || "");
+              }
+            }}
+            placeholder="Type your response here..."
+            className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-muted/30 border-border/30"
+            rows={1}
+            data-testid="input-confirmation"
+          />
+          <div className="flex gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 h-6 text-[10px]"
+              onClick={() => onContinueWithInput("Looks good, proceed as planned")}
+              data-testid="button-approve-all"
+            >
+              <Check className="w-2.5 h-2.5 mr-0.5" />
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 h-6 text-[10px]"
+              onClick={() => onContinueWithInput(confirmationInput || "")}
+              disabled={!confirmationInput?.trim()}
+              data-testid="button-submit-confirmation"
+            >
+              <Send className="w-2.5 h-2.5 mr-0.5" />
+              Submit & Continue
+            </Button>
+          </div>
+        </div>
+      )}
+
       {onExecute && !allDone && (
         <div className="px-3 py-2 border-t border-border/30">
           {isExecuting ? (
@@ -834,17 +888,7 @@ function TaskPlanCard({
               <StopCircle className="w-3 h-3 mr-1" />
               Stop
             </Button>
-          ) : hasNeedsInput && onContinue ? (
-            <Button
-              size="sm"
-              className="w-full h-7 text-[11px]"
-              onClick={onContinue}
-              data-testid="button-continue-execution"
-            >
-              <Play className="w-3 h-3 mr-1" />
-              Continue
-            </Button>
-          ) : (
+          ) : hasNeedsInput ? null : (
             <Button
               size="sm"
               className="w-full h-7 text-[11px]"
@@ -868,7 +912,10 @@ function ManagerMessageBubble({
   onExecute,
   isExecuting,
   onStop,
-  onContinue,
+  onContinueWithInput,
+  pendingConfirmation,
+  confirmationInput,
+  onConfirmationInputChange,
 }: {
   message: { role: string; content: string; plan?: ManagerPlan };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
@@ -876,7 +923,10 @@ function ManagerMessageBubble({
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
-  onContinue?: () => void;
+  onContinueWithInput?: (userInput?: string) => void;
+  pendingConfirmation?: { stepKey: string; items: string[] } | null;
+  confirmationInput?: string;
+  onConfirmationInputChange?: (value: string) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -897,7 +947,10 @@ function ManagerMessageBubble({
         onExecute={onExecute}
         isExecuting={isExecuting}
         onStop={onStop}
-        onContinue={onContinue}
+        onContinueWithInput={onContinueWithInput}
+        pendingConfirmation={pendingConfirmation}
+        confirmationInput={confirmationInput}
+        onConfirmationInputChange={onConfirmationInputChange}
       />
     );
   }
@@ -940,6 +993,10 @@ export function ChatPanel() {
     isManagerResponding,
     setManagerResponding,
     clearManagerPlan,
+    pendingConfirmation,
+    setPendingConfirmation,
+    userConfirmationInput,
+    setUserConfirmationInput,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1048,6 +1105,11 @@ export function ChatPanel() {
       contextLines.push(`Task description: ${description}`);
       if (managerContext.acceptance_criteria) {
         contextLines.push(`Acceptance criteria: ${managerContext.acceptance_criteria}`);
+      }
+      if (userConfirmationRef.current) {
+        contextLines.push("");
+        contextLines.push(`User's response to confirmation items: ${userConfirmationRef.current}`);
+        userConfirmationRef.current = "";
       }
       contextLines.push("");
       contextLines.push("IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.");
@@ -1287,6 +1349,7 @@ export function ChatPanel() {
           if (verification.user_confirmation_needed?.length > 0 &&
               verification.user_confirmation_needed[0] !== "") {
             updateTaskStatus(key, "needs-input");
+            setPendingConfirmation({ stepKey: key, items: verification.user_confirmation_needed });
             addManagerMessage({
               role: "assistant",
               content: `Step ${task.step} needs your input:\n${verification.user_confirmation_needed.map(item => `• ${item}`).join("\n")}`,
@@ -1345,9 +1408,24 @@ export function ChatPanel() {
     setExecutingTaskIndex(null);
   }, [setAiResponding, setExecutingTaskIndex]);
 
-  const handleContinueExecution = useCallback(() => {
+  const userConfirmationRef = useRef<string>("");
+
+  const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
+
+    const inputText = userInput || useIDEStore.getState().userConfirmationInput || "";
+
+    if (inputText.trim()) {
+      addChatMessage({ role: "user", content: inputText.trim() });
+      userConfirmationRef.current = inputText.trim();
+    } else {
+      userConfirmationRef.current = "";
+    }
+
+    setPendingConfirmation(null);
+    setUserConfirmationInput("");
+
     const steps = normalizeSteps(plan);
     for (const t of steps) {
       const key = String(t.step);
@@ -1356,7 +1434,7 @@ export function ChatPanel() {
       }
     }
     handleExecutePlan();
-  }, [handleExecutePlan, updateTaskStatus]);
+  }, [handleExecutePlan, updateTaskStatus, addChatMessage, setPendingConfirmation, setUserConfirmationInput]);
 
   const handleSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
@@ -1524,12 +1602,20 @@ export function ChatPanel() {
   }, [setAiResponding, setManagerResponding, isExecuting]);
 
   const handleCurrentSend = useCallback(() => {
+    if (chatMode === "manager" && pendingConfirmation) {
+      const trimmed = input.trim();
+      if (trimmed) {
+        setInput("");
+        handleContinueExecution(trimmed);
+      }
+      return;
+    }
     if (chatMode === "manager") {
       handleManagerSend();
     } else {
       handleSend();
     }
-  }, [chatMode, handleManagerSend, handleSend]);
+  }, [chatMode, handleManagerSend, handleSend, pendingConfirmation, input, handleContinueExecution]);
 
   const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1598,7 +1684,10 @@ export function ChatPanel() {
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}
                   onStop={isLastPlan ? handleStopExecution : undefined}
-                  onContinue={isLastPlan ? handleContinueExecution : undefined}
+                  onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
+                  pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
+                  confirmationInput={isLastPlan ? userConfirmationInput : undefined}
+                  onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
                 />
               );
             }
@@ -1618,7 +1707,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
-            placeholder={chatMode === "manager" ? "Describe your project requirements..." : "Describe what you want to build..."}
+            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Describe your project requirements..." : "Describe what you want to build..."}
             className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
             rows={1}
             data-testid="input-chat"

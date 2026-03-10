@@ -214,6 +214,8 @@ interface IDEState {
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
   isManagerResponding: boolean;
   verificationResults: Record<string, VerificationResult>;
+  pendingConfirmation: { stepKey: string; items: string[] } | null;
+  userConfirmationInput: string;
 
   loadProject: (id: string) => void;
   saveProject: () => void;
@@ -248,6 +250,8 @@ interface IDEState {
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
+  setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
+  setUserConfirmationInput: (input: string) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -399,6 +403,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   taskStatuses: {},
   isManagerResponding: false,
   verificationResults: {},
+  pendingConfirmation: null,
+  userConfirmationInput: "",
 
   loadProject: (id) => {
     const current = get();
@@ -442,6 +448,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         taskStatuses: {},
         isManagerResponding: false,
         verificationResults: {},
+        pendingConfirmation: null,
+        userConfirmationInput: "",
       });
     } else {
       set({
@@ -464,6 +472,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         taskStatuses: {},
         isManagerResponding: false,
         verificationResults: {},
+        pendingConfirmation: null,
+        userConfirmationInput: "",
       });
     }
   },
@@ -785,12 +795,20 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       executingTaskIndex: null,
       taskStatuses: {},
       verificationResults: {},
+      pendingConfirmation: null,
+      userConfirmationInput: "",
     }),
 
   updateVerificationResult: (subTaskId, result) =>
     set((state) => ({
       verificationResults: { ...state.verificationResults, [subTaskId]: result },
     })),
+
+  setPendingConfirmation: (confirmation) =>
+    set({ pendingConfirmation: confirmation }),
+
+  setUserConfirmationInput: (input) =>
+    set({ userConfirmationInput: input }),
 }));
 
 function updateFileInTree(
