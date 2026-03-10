@@ -1062,7 +1062,11 @@ export function ChatPanel() {
 
     const editorMessages = [{ role: "user" as const, content: prompt }];
 
-    addChatMessage({ role: "user", content: prompt });
+    if (managerContext) {
+      addChatMessage({ role: "assistant", content: `**Working on:** ${title}` });
+    } else {
+      addChatMessage({ role: "user", content: prompt });
+    }
     addChatMessage({ role: "assistant", content: "" });
     setAiResponding(true);
 
