@@ -65,7 +65,7 @@ shared/
 - **Emojis**: Agent includes 1-3 emojis in ~90% of responses for warmth
 - **API Key**: Stored in `DOUBAO_API_KEY` environment secret
 
-## UI Design (Replit-inspired)
+## UI Design
 - **Layout**: Tools dock (far left) → Tool panel (files/chat) → Editor pane + Preview pane (side-by-side) → Console (bottom)
 - **Resizable panes**: All panels are freely resizable via react-resizable-panels
 - **Workspace aesthetic**: Dark sidebar chrome, rounded pane containers with gaps between them
