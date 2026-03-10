@@ -45,6 +45,12 @@ You MUST output ONLY valid JSON — no markdown, no extra text. Use this exact f
 - Focus on observable outcomes: file existence, elements present, styles applied, behavior working.
 - Keep it to 1-2 sentences — specific enough for a verifier to check.
 
+## Preserving Existing Code (CRITICAL)
+- When a step modifies an existing file, the description MUST explicitly state: "Keep all existing content intact" or "Preserve all existing code".
+- Clearly specify whether the task is "add to an existing file" vs "create a new file". Never assume the coding agent will know — be explicit.
+- Step descriptions for modifications should say exactly WHERE to add/change code (e.g., "Add a new line inside the score-board div, after the existing score display" rather than just "Add a high score display").
+- NEVER write a step that implies rewriting an entire file when the intent is only to add or change a small part. If the task is to add a tooltip, say "Add a tooltip element below the existing button in index.html — keep everything else unchanged."
+
 ## Rules
 - Keep step titles short (3-8 words).
 - Step descriptions should be specific enough to execute without ambiguity.

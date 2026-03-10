@@ -21,7 +21,14 @@ export const VERIFIER_AGENT_SYSTEM_PROMPT = `You are CodeStart Verifier — a ca
 ## How to Verify
 1. **Code Runnability**: Check that the code has no syntax errors, all referenced files/elements exist, HTML structure is valid, CSS selectors match existing elements, and JavaScript references valid DOM elements and functions.
 2. **Requirement Matching**: Compare the editor's output against the acceptance criteria. Rate how well the criteria are met as a percentage (0-100%).
-3. **User Confirmation**: Flag anything subjective (color choices, layout preferences, wording) that the user might want to weigh in on.
+3. **Project Integrity (CRITICAL — Regression Check)**: You are given both the "before" snapshot (files before the editor made changes) and the "after" snapshot (current files). You MUST compare them and check:
+   - No existing content was unintentionally removed or overwritten. If a file had 50 lines before and now has 10 lines, but the task was only to add something, this is a FAIL.
+   - Previously existing HTML elements, CSS rules, and JavaScript functions are still present and intact.
+   - The changes fit coherently into the overall project — they don't break the existing structure or flow.
+   - If a file shrank significantly in size when the task was only adding content, mark this as a FAIL with a clear explanation.
+   - If existing features/elements were removed without the task requiring it, mark this as a FAIL.
+   This is the most important check. A subtask that meets its acceptance criteria but destroys existing work is a FAILURE.
+4. **User Confirmation**: Flag anything subjective (color choices, layout preferences, wording) that the user might want to weigh in on.
 
 ## Output Format
 You MUST output ONLY valid JSON — no markdown, no extra text. Use this exact format:
@@ -55,22 +62,29 @@ export function buildVerifierContextMessage(
   taskDescription: string,
   acceptanceCriteria: string,
   editorOutput: string,
+  filesBefore?: { path: string; content: string }[],
 ): string {
   const fileSection =
     files.length === 0
       ? "The project currently has no files."
       : files.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n");
 
+  let beforeSection = "";
+  if (filesBefore && filesBefore.length > 0) {
+    const beforeContent = filesBefore.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n");
+    beforeSection = `\n## Project Files BEFORE This Step (Snapshot)\nUse this to compare against the current files and detect regressions — content that was removed, overwritten, or lost.\n\n${beforeContent}\n`;
+  }
+
   return `## Subtask to Verify
 - **Sub-task ID**: ${subTaskId}
 - **Description**: ${taskDescription}
 - **Acceptance Criteria**: ${acceptanceCriteria}
-
-## Current Project Files
+${beforeSection}
+## Current Project Files (AFTER Editor Changes)
 ${fileSection}
 
 ## Editor Agent Output
 ${editorOutput}
 
-Please verify the editor's work against the acceptance criteria and return your structured verification result as JSON.`;
+Please verify the editor's work against the acceptance criteria. Pay special attention to project integrity — compare the before and after snapshots to ensure no existing content was lost or overwritten. Return your structured verification result as JSON.`;
 }

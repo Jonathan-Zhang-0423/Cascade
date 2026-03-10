@@ -104,17 +104,20 @@ shared/
 - **Plan Schema**: `{ summary, steps: ManagerSubTask[], needs_input: string[] }` where `ManagerSubTask = { step, sub_task_id, title, description, acceptance_criteria }`
 
 ### Editor Agent (in Manager Mode context)
-- When executing plan steps, the prompt is enriched with `[Manager Mode]` context including `sub_task_id`, task description, and `acceptance_criteria`
+- When executing plan steps, the prompt is enriched with `[Manager Mode]` context including `sub_task_id`, task description, `acceptance_criteria`, and a strict instruction to preserve all existing code
+- Chat displays a friendly "Working on: {title}" message (assistant-style, left-aligned) instead of the raw technical prompt
 - Uses the same `/api/chat` streaming endpoint as Build mode
 
 ### Verifier Agent
-- **System Prompt**: `server/verifier-prompt.ts` — QA engineer that validates code and checks requirement matching
-- **API Endpoint**: `POST /api/verifier-chat` — non-streaming, accepts `{ sub_task_id, task_description, acceptance_criteria, files, editor_output }`
+- **System Prompt**: `server/verifier-prompt.ts` — QA engineer that validates code and checks requirement matching + project integrity
+- **API Endpoint**: `POST /api/verifier-chat` — non-streaming, accepts `{ sub_task_id, task_description, acceptance_criteria, files, editor_output, files_before }`
 - **Output Schema**: `{ sub_task_id, verification_items: [{item, result: pass|fail|warning, details}], requirement_match_percent, error_summary, user_confirmation_needed, suggestion }`
+- **Project Integrity Check**: Verifier receives both pre-edit ("files_before") and post-edit ("files") snapshots, compares them to detect regressions — content wiped, features removed, files shrunk when task was only adding content
+- **Regression = FAIL**: A step that meets acceptance criteria but destroys existing work is marked as a failure
 
 ### Execution Flow (Editor → Verifier → Manager cycle)
-1. For each step: Editor executes coding (streaming + incremental code apply)
-2. Verifier validates the result (runnability + requirement match)
+1. For each step: Capture file snapshot → Editor executes coding → Verifier validates with before/after comparison
+2. Verifier validates the result (runnability + requirement match + project integrity)
 3. If verification passes (all items pass/warning, match ≥ 70%) → step marked "done", proceed
 4. If verification fails → retry up to 2 times, then request Manager to re-plan
 5. If `user_confirmation_needed` items exist → pause execution, show items to user, "Continue" button resumes

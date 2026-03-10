@@ -1050,6 +1050,8 @@ export function ChatPanel() {
         contextLines.push(`Acceptance criteria: ${managerContext.acceptance_criteria}`);
       }
       contextLines.push("");
+      contextLines.push("IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.");
+      contextLines.push("");
       contextLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
       prompt = contextLines.join("\n");
     }
@@ -1155,6 +1157,7 @@ export function ChatPanel() {
   const verifySubTask = useCallback(async (
     task: ManagerSubTask,
     editorOutput: string,
+    filesBefore?: { path: string; content: string }[],
   ): Promise<VerificationResult | null> => {
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
@@ -1169,6 +1172,7 @@ export function ChatPanel() {
           acceptance_criteria: task.acceptance_criteria || task.title,
           files: fileContext,
           editor_output: editorOutput,
+          files_before: filesBefore,
         }),
       });
       const data = await resp.json();
@@ -1239,6 +1243,9 @@ export function ChatPanel() {
         setExecutingTaskIndex(i);
         updateTaskStatus(key, "running");
 
+        const filesBeforeEdit = flattenFiles(useIDEStore.getState().files)
+          .map((f) => ({ path: f.path, content: f.content || "" }));
+
         const success = await executeSubTask(task.description, task.title, {
           sub_task_id: task.sub_task_id || "",
           acceptance_criteria: task.acceptance_criteria || "",
@@ -1262,7 +1269,7 @@ export function ChatPanel() {
           .pop();
         const editorOutput = lastAssistant?.content || "";
 
-        const verification = await verifySubTask(task, editorOutput);
+        const verification = await verifySubTask(task, editorOutput, filesBeforeEdit);
 
         if (executionAbortRef.current) {
           updateTaskStatus(key, "pending");

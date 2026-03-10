@@ -127,12 +127,13 @@ export async function registerRoutes(
         return;
       }
 
-      const { sub_task_id, task_description, acceptance_criteria, files, editor_output } = req.body as {
+      const { sub_task_id, task_description, acceptance_criteria, files, editor_output, files_before } = req.body as {
         sub_task_id: string;
         task_description: string;
         acceptance_criteria: string;
         files?: Array<{ path: string; content: string }>;
         editor_output: string;
+        files_before?: Array<{ path: string; content: string }>;
       };
 
       if (!sub_task_id || !task_description || !acceptance_criteria) {
@@ -146,6 +147,7 @@ export async function registerRoutes(
         task_description,
         acceptance_criteria,
         editor_output || "",
+        files_before,
       );
 
       const messages: Array<{ role: "system" | "user"; content: string }> = [
