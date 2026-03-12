@@ -1072,6 +1072,7 @@ export function ChatPanel() {
   const pendingHandled = useRef(false);
   const projectNameExtracted = useRef(false);
   const executionAbortRef = useRef(false);
+  const preBuildSnapshotRef = useRef<{ path: string; content: string }[] | null>(null);
   const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
 
@@ -1453,8 +1454,17 @@ export function ChatPanel() {
 
     executionAbortRef.current = false;
 
-    const filesBeforeBuild = flattenFiles(useIDEStore.getState().files)
-      .map((f) => ({ path: f.path, content: f.content || "" }));
+    const allStepsDone = normalizedSteps.every(
+      t => useIDEStore.getState().taskStatuses[String(t.step)] === "done" ||
+           useIDEStore.getState().taskStatuses[String(t.step)] === "bug"
+    );
+    const isResume = allStepsDone && preBuildSnapshotRef.current !== null;
+
+    if (!isResume) {
+      preBuildSnapshotRef.current = flattenFiles(useIDEStore.getState().files)
+        .map((f) => ({ path: f.path, content: f.content || "" }));
+    }
+    const filesBeforeBuild = preBuildSnapshotRef.current!;
 
     setReviewPhase("building");
     setFixCycle(0);
@@ -1585,6 +1595,12 @@ export function ChatPanel() {
       if (review.overall_status === "pass") {
         setReviewPhase("review_passed");
         passed = true;
+        for (const step of currentPlanSteps) {
+          const key = String(step.step);
+          if (useIDEStore.getState().taskStatuses[key] === "bug") {
+            updateTaskStatus(key, "done");
+          }
+        }
         await callCommunicator({
           event: "review_passed",
           userLanguage: userLang,
@@ -1661,6 +1677,7 @@ export function ChatPanel() {
     }
 
     if (passed) {
+      preBuildSnapshotRef.current = null;
       await callCommunicator({
         event: "all_complete",
         userLanguage: userLang,
