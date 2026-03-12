@@ -1640,7 +1640,10 @@ export function ChatPanel() {
 
       const fixPlan = await requestFixPlan(review, userRequest);
 
-      if (!fixPlan || !fixPlan.steps || fixPlan.steps.length === 0) break;
+      if (!fixPlan || !fixPlan.steps || fixPlan.steps.length === 0) {
+        setReviewPhase("review_failed");
+        break;
+      }
 
       const fixSteps = normalizeSteps(fixPlan);
 
