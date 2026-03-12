@@ -256,11 +256,12 @@ export async function registerRoutes(
         return;
       }
 
-      const { user_request, plan_steps, files_before, files_after } = req.body as {
+      const { user_request, plan_steps, files_before, files_after, user_feedback } = req.body as {
         user_request: string;
         plan_steps: Array<{ step: number; title: string; description: string; acceptance_criteria?: string }>;
         files_before: Array<{ path: string; content: string }>;
         files_after: Array<{ path: string; content: string }>;
+        user_feedback?: string;
       };
 
       if (!user_request || !plan_steps || !files_after) {
@@ -268,12 +269,16 @@ export async function registerRoutes(
         return;
       }
 
-      const contextMessage = buildHolisticVerifierMessage(
+      let contextMessage = buildHolisticVerifierMessage(
         user_request,
         plan_steps,
         files_before || [],
         files_after,
       );
+
+      if (user_feedback) {
+        contextMessage += `\n\n--- USER FEEDBACK ---\nThe user provided the following feedback on a previous review:\n${user_feedback}\nPlease take this into account in your review.`;
+      }
 
       const messages: Array<{ role: "system" | "user"; content: string }> = [
         { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },

@@ -814,6 +814,8 @@ function TaskPlanCard({
   const allDone = doneCount === total && total > 0;
   const hasNeedsInput = steps.some((t) => taskStatuses[String(t.step)] === "needs-input");
   const phase = reviewPhase || "idle";
+  const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
+  const showConfirmation = hasNeedsInput || hasReviewConfirmation;
   const isFullyComplete = phase === "review_passed" && allDone;
 
   return (
@@ -879,7 +881,7 @@ function TaskPlanCard({
         ) : null;
       })()}
 
-      {hasNeedsInput && pendingConfirmation && onContinueWithInput && (
+      {showConfirmation && pendingConfirmation && onContinueWithInput && (
         <div className="px-3 pb-2 space-y-2" data-testid="confirmation-input-area">
           <div className="flex items-center gap-1 mb-1">
             <HelpCircle className="w-3 h-3 text-yellow-500" />
@@ -940,7 +942,7 @@ function TaskPlanCard({
               <StopCircle className="w-3 h-3 mr-1" />
               Stop
             </Button>
-          ) : hasNeedsInput ? null : (
+          ) : showConfirmation ? null : (
             <Button
               size="sm"
               className="w-full h-7 text-[11px]"
@@ -1374,25 +1376,29 @@ export function ChatPanel() {
     userRequest: string,
     planSteps: ManagerSubTask[],
     filesBefore: { path: string; content: string }[],
+    userFeedback?: string,
   ): Promise<HolisticReviewResult | null> => {
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const filesAfter = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
 
     try {
+      const body: Record<string, unknown> = {
+        user_request: userRequest,
+        plan_steps: planSteps.map((s) => ({
+          step: s.step,
+          title: s.title,
+          description: s.description,
+          acceptance_criteria: s.acceptance_criteria || "",
+        })),
+        files_before: filesBefore,
+        files_after: filesAfter,
+      };
+      if (userFeedback) body.user_feedback = userFeedback;
+
       const resp = await fetch("/api/verifier-holistic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_request: userRequest,
-          plan_steps: planSteps.map((s) => ({
-            step: s.step,
-            title: s.title,
-            description: s.description,
-            acceptance_criteria: s.acceptance_criteria || "",
-          })),
-          files_before: filesBefore,
-          files_after: filesAfter,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await resp.json();
       if (data.review) return data.review as HolisticReviewResult;
@@ -1537,7 +1543,9 @@ export function ChatPanel() {
         userLanguage: userLang,
       });
 
-      const review = await performHolisticReview(userRequest, currentPlanSteps, filesBeforeBuild);
+      const feedback = userConfirmationRef.current || undefined;
+      if (feedback) userConfirmationRef.current = "";
+      const review = await performHolisticReview(userRequest, currentPlanSteps, filesBeforeBuild, feedback);
 
       if (executionAbortRef.current) {
         setReviewPhase("idle");
