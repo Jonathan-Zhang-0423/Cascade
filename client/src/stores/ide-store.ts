@@ -55,6 +55,28 @@ export interface VerificationResult {
   suggestion: string;
 }
 
+export interface HolisticReviewBug {
+  id: string;
+  severity: "critical" | "major" | "minor";
+  file: string;
+  description: string;
+  expected: string;
+  actual: string;
+}
+
+export interface HolisticReviewResult {
+  overall_status: "pass" | "fail";
+  requirement_match_percent: number;
+  bugs: HolisticReviewBug[];
+  missing_features: Array<{ id: string; description: string; related_step: number }>;
+  regressions: Array<{ id: string; file: string; description: string }>;
+  user_confirmation_needed: string[];
+  summary: string;
+  suggestion: string;
+}
+
+export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing";
+
 export interface ManagerMessage {
   id: string;
   role: "user" | "assistant";
@@ -100,19 +122,19 @@ function computeReverseDiff(olderFiles: FlatFile[], newerFiles: FlatFile[]): Fil
   const olderMap = new Map(olderFiles.map((f) => [f.path, f.content]));
   const newerMap = new Map(newerFiles.map((f) => [f.path, f.content]));
 
-  for (const [path, content] of olderMap) {
+  olderMap.forEach((content, path) => {
     if (!newerMap.has(path)) {
       diffs.push({ path, action: "add", content });
     } else if (newerMap.get(path) !== content) {
       diffs.push({ path, action: "modify", content });
     }
-  }
+  });
 
-  for (const [path] of newerMap) {
+  newerMap.forEach((_content, path) => {
     if (!olderMap.has(path)) {
       diffs.push({ path, action: "delete" });
     }
-  }
+  });
 
   return diffs;
 }
@@ -211,11 +233,14 @@ interface IDEState {
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
   executingTaskIndex: number | null;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
   isManagerResponding: boolean;
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
   userConfirmationInput: string;
+  reviewPhase: ReviewPhase;
+  holisticReview: HolisticReviewResult | null;
+  fixCycle: number;
 
   loadProject: (id: string) => void;
   saveProject: () => void;
@@ -245,13 +270,16 @@ interface IDEState {
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
-  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "verifying" | "needs-input") => void;
+  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input") => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setUserConfirmationInput: (input: string) => void;
+  setReviewPhase: (phase: ReviewPhase) => void;
+  setHolisticReview: (review: HolisticReviewResult | null) => void;
+  setFixCycle: (cycle: number) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -405,6 +433,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   verificationResults: {},
   pendingConfirmation: null,
   userConfirmationInput: "",
+  reviewPhase: "idle",
+  holisticReview: null,
+  fixCycle: 0,
 
   loadProject: (id) => {
     const current = get();
@@ -450,6 +481,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         verificationResults: {},
         pendingConfirmation: null,
         userConfirmationInput: "",
+        reviewPhase: "idle",
+        holisticReview: null,
+        fixCycle: 0,
       });
     } else {
       set({
@@ -474,6 +508,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         verificationResults: {},
         pendingConfirmation: null,
         userConfirmationInput: "",
+        reviewPhase: "idle",
+        holisticReview: null,
+        fixCycle: 0,
       });
     }
   },
@@ -797,6 +834,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
+      reviewPhase: "idle",
+      holisticReview: null,
+      fixCycle: 0,
     }),
 
   updateVerificationResult: (subTaskId, result) =>
@@ -809,6 +849,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setUserConfirmationInput: (input) =>
     set({ userConfirmationInput: input }),
+
+  setReviewPhase: (phase) =>
+    set({ reviewPhase: phase }),
+
+  setHolisticReview: (review) =>
+    set({ holisticReview: review }),
+
+  setFixCycle: (cycle) =>
+    set({ fixCycle: cycle }),
 }));
 
 function updateFileInTree(

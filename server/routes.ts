@@ -3,8 +3,8 @@ import { createServer, type Server } from "http";
 import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { VIBE_AGENT_SYSTEM_PROMPT, buildContextMessage } from "./vibe-prompt";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
-import { MANAGER_AGENT_SYSTEM_PROMPT, buildManagerContextMessage } from "./manager-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT, buildVerifierContextMessage } from "./verifier-prompt";
+import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerContextMessage, buildManagerFixPlanMessage } from "./manager-prompt";
+import { VERIFIER_AGENT_SYSTEM_PROMPT, buildVerifierContextMessage, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
 
@@ -246,6 +246,114 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Verifier chat API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to get Verifier response" });
+    }
+  });
+
+  app.post("/api/verifier-holistic", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+
+      const { user_request, plan_steps, files_before, files_after } = req.body as {
+        user_request: string;
+        plan_steps: Array<{ step: number; title: string; description: string; acceptance_criteria?: string }>;
+        files_before: Array<{ path: string; content: string }>;
+        files_after: Array<{ path: string; content: string }>;
+      };
+
+      if (!user_request || !plan_steps || !files_after) {
+        res.status(400).json({ error: "user_request, plan_steps, and files_after are required" });
+        return;
+      }
+
+      const contextMessage = buildHolisticVerifierMessage(
+        user_request,
+        plan_steps,
+        files_before || [],
+        files_after,
+      );
+
+      const messages: Array<{ role: "system" | "user"; content: string }> = [
+        { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
+        { role: "user", content: contextMessage },
+      ];
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_MODEL,
+        messages,
+        stream: false,
+      });
+
+      const responseContent = completion.choices[0]?.message?.content || "";
+
+      const review = parseAIJson(responseContent);
+      if (!review) {
+        res.json({ raw: responseContent, error: "Verifier did not return valid JSON" });
+        return;
+      }
+
+      res.json({ review });
+    } catch (error: any) {
+      console.error("Holistic verifier API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get holistic review" });
+    }
+  });
+
+  app.post("/api/manager-fix-plan", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+
+      const { files, bug_report, original_request } = req.body as {
+        files: Array<{ path: string; content: string }>;
+        bug_report: {
+          bugs: Array<{ id: string; severity: string; file: string; description: string; expected: string; actual: string }>;
+          missing_features: Array<{ id: string; description: string; related_step: number }>;
+          regressions: Array<{ id: string; file: string; description: string }>;
+          summary: string;
+          suggestion: string;
+        };
+        original_request: string;
+      };
+
+      if (!bug_report || !original_request) {
+        res.status(400).json({ error: "bug_report and original_request are required" });
+        return;
+      }
+
+      const contextMessage = buildManagerFixPlanMessage(
+        files || [],
+        bug_report,
+        original_request,
+      );
+
+      const messages: Array<{ role: "system" | "user"; content: string }> = [
+        { role: "system", content: MANAGER_FIX_MODE_SYSTEM_PROMPT },
+        { role: "user", content: contextMessage },
+      ];
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_MODEL,
+        messages,
+        stream: false,
+      });
+
+      const responseContent = completion.choices[0]?.message?.content || "";
+
+      const plan = parseAIJson(responseContent);
+      if (!plan) {
+        res.json({ raw: responseContent, error: "Manager did not return valid fix plan JSON" });
+        return;
+      }
+
+      res.json({ plan });
+    } catch (error: any) {
+      console.error("Manager fix plan API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get fix plan" });
     }
   });
 

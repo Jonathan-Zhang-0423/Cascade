@@ -32,13 +32,14 @@ The CodeStart IDE features a modern web architecture:
 - **Incremental Code Auto-Apply**: AI-generated code blocks with `file="..."` annotations are automatically applied to the project files as they stream, and the preview updates instantly.
 - **Structured AI Output**: The AI agent adheres to a 3-part response format: Thinking, Code, and Changes Summary, with the summary visually styled for clarity.
 - **Checkpoint/Rollback System**: Automatic checkpoints are created after AI applies code changes, allowing users to restore previous project states. Checkpoints use reverse diffs for efficient storage.
-- **4-Agent System (Manager Mode)**:
-    - **Manager Agent** (`server/manager-prompt.ts`): Professional planner that breaks down tasks into actionable steps (JSON output only, no friendly personality).
+- **4-Agent System (Manager Mode)** — Build → Review → Fix cycle:
+    - **Manager Agent** (`server/manager-prompt.ts`): Professional planner that breaks down tasks into actionable steps (JSON output only). Also generates targeted fix plans via `buildManagerFixPlanMessage` when the Verifier finds issues.
     - **Editor Agent** (`server/editor-prompt.ts`): Professional code executor for Manager Mode — stripped-down, task-focused prompt. In Build Mode, the full Vibe Agent prompt (`server/vibe-prompt.ts`) is used instead.
-    - **Verifier Agent** (`server/verifier-prompt.ts`): Professional QA evaluator that validates code runnability, requirement matching, and project integrity (JSON output only, no friendly personality).
-    - **Communicator Agent** (`server/communicator-prompt.ts`): The sole user-facing narrator. Inherits the warm, friendly, emoji-rich personality from the Vibe Agent. Streams real-time progress updates to the user via `/api/communicator-chat` (SSE). Called at every key stage: `plan_created`, `step_starting`, `step_completed`, `step_verified`, `step_failed`, `needs_input`, `retry`, `all_complete`.
-    - **Prompt Architecture**: The 3 backend agents (Manager, Editor, Verifier) are purely professional/technical — they communicate with each other through structured JSON only. All friendly, beginner-facing communication flows through the Communicator Agent.
-    - **User Confirmation Flow**: When the Verifier flags subjective items needing user input, execution pauses and the Communicator presents the items in friendly language. Users respond via the confirmation area or main chat input; their response is passed to the Editor as context when re-executing the step. State: `pendingConfirmation`, `userConfirmationInput` in `ide-store.ts`.
+    - **Verifier Agent** (`server/verifier-prompt.ts`): Performs holistic project-level review after all build steps complete (not per-step). Uses `buildHolisticVerifierMessage` with full before/after file snapshots and plan context. Returns `HolisticReviewResult` with `bugs`, `missing_features`, `regressions`, `overall_status`.
+    - **Communicator Agent** (`server/communicator-prompt.ts`): The sole user-facing narrator. Streams real-time progress updates via `/api/communicator-chat` (SSE). Events: `build_starting`, `step_starting`, `step_completed`, `build_complete`, `reviewing`, `review_passed`, `bugs_found`, `fixing`, `needs_input`, `all_complete`.
+    - **Execution Flow**: Phase 1 BUILD — Editor executes all steps sequentially (no per-step verification). Phase 2 REVIEW — Verifier does holistic review via `/api/verifier-holistic`. Phase 3 FIX — If bugs found, Manager creates targeted fix plan via `/api/manager-fix-plan`, Editor fixes, Verifier re-reviews. Max 3 fix cycles.
+    - **State**: `reviewPhase` (`idle`|`building`|`reviewing`|`review_passed`|`review_failed`|`fixing`), `holisticReview`, `fixCycle` in `ide-store.ts`.
+    - **User Confirmation Flow**: When the Verifier flags subjective items needing user input, execution pauses and the Communicator presents the items. Users respond via the confirmation area or main chat input.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 

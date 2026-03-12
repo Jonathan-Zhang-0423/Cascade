@@ -14,26 +14,35 @@ You receive events about what the development team (planner, developer, and qual
 ### plan_created
 The planner has created a step-by-step plan. Summarize the plan in friendly terms — what's going to be built and roughly how many steps it will take. Make the user feel excited about their idea!
 
+### build_starting
+The build phase is starting — the developer is about to work through all the steps. Give the user a sense of momentum — things are about to happen!
+
 ### step_starting
 A specific step is about to begin. Tell the user what's happening in simple terms — e.g., "Now we're setting up the basic page structure!" Don't use technical file names or code terms.
 
 ### step_completed
 A step has been finished. Celebrate briefly and tell the user what was just done in plain language.
 
-### step_verified
-The quality checker has reviewed a completed step and it passed. Give a quick thumbs-up — the step looks good!
+### build_complete
+All build steps are finished! The developer has completed all the work. Tell the user everything has been built and now the quality checker will take a look. Keep it exciting but mention the review is next.
 
-### step_failed
-Something didn't work as expected. Explain gently that the team is fixing it — don't use technical error details. Keep it reassuring.
+### reviewing
+The quality checker is now reviewing the entire project. Let the user know someone is checking everything to make sure it all works perfectly together.
+
+### review_passed
+The quality checker has reviewed the project and everything looks great! Celebrate — the project passed quality checks!
+
+### bugs_found
+The quality checker found some issues that need fixing. Explain gently that a few small things need to be adjusted — don't use technical error details. Keep it reassuring and positive — the team is on it!
+
+### fixing
+The team is fixing the issues found by the quality checker. Let the user know adjustments are being made and things will be rechecked soon.
 
 ### needs_input
 The team needs the user's opinion on something. Present the items clearly and ask for their input in a friendly way.
 
-### retry
-A step is being retried. Keep it light — "Let me try that again!" vibes.
-
 ### all_complete
-Everything is done! Celebrate the user's project being ready. Make them feel proud!
+Everything is done — build, review, and any fixes! Celebrate the user's project being ready. Make them feel proud!
 
 ## Language Rules
 - **Always respond in the same language as the user's original request.** If the context contains Chinese text, respond in Chinese. If English, respond in English.
@@ -66,12 +75,15 @@ Everything is done! Celebrate the user's project being ready. Make them feel pro
 
 export type CommunicatorEventType =
   | "plan_created"
+  | "build_starting"
   | "step_starting"
   | "step_completed"
-  | "step_verified"
-  | "step_failed"
+  | "build_complete"
+  | "reviewing"
+  | "review_passed"
+  | "bugs_found"
+  | "fixing"
   | "needs_input"
-  | "retry"
   | "all_complete";
 
 export interface CommunicatorEvent {
@@ -84,8 +96,10 @@ export interface CommunicatorEvent {
   stepDescription?: string;
   errorSummary?: string;
   confirmationItems?: string[];
-  retryAttempt?: number;
-  maxRetries?: number;
+  bugCount?: number;
+  fixCycle?: number;
+  maxFixCycles?: number;
+  reviewSummary?: string;
 }
 
 export function buildCommunicatorMessage(ev: CommunicatorEvent): string {
@@ -102,6 +116,11 @@ export function buildCommunicatorMessage(ev: CommunicatorEvent): string {
       lines.push(`Total steps: ${ev.totalSteps ?? "unknown"}`);
       break;
 
+    case "build_starting":
+      lines.push(`Starting build phase with ${ev.totalSteps ?? "unknown"} steps`);
+      if (ev.planSummary) lines.push(`Plan: ${ev.planSummary}`);
+      break;
+
     case "step_starting":
       lines.push(`Step ${ev.stepNumber ?? "?"}: ${ev.stepTitle || "N/A"}`);
       if (ev.stepDescription) lines.push(`What it does: ${ev.stepDescription}`);
@@ -112,13 +131,33 @@ export function buildCommunicatorMessage(ev: CommunicatorEvent): string {
       lines.push(`Step ${ev.stepNumber ?? "?"} completed: ${ev.stepTitle || "N/A"}`);
       break;
 
-    case "step_verified":
-      lines.push(`Step ${ev.stepNumber ?? "?"} verified and passed: ${ev.stepTitle || "N/A"}`);
+    case "build_complete":
+      lines.push(`All ${ev.totalSteps ?? ""} build steps completed!`);
+      lines.push(`Now moving to quality review phase.`);
       break;
 
-    case "step_failed":
-      lines.push(`Step ${ev.stepNumber ?? "?"} had issues: ${ev.stepTitle || "N/A"}`);
-      if (ev.errorSummary) lines.push(`Issue: ${ev.errorSummary}`);
+    case "reviewing":
+      lines.push(`Quality checker is reviewing the entire project holistically.`);
+      break;
+
+    case "review_passed":
+      lines.push(`Project passed quality review!`);
+      if (ev.reviewSummary) lines.push(`Review summary: ${ev.reviewSummary}`);
+      break;
+
+    case "bugs_found":
+      lines.push(`Quality checker found ${ev.bugCount ?? "some"} issues that need fixing.`);
+      if (ev.reviewSummary) lines.push(`Summary: ${ev.reviewSummary}`);
+      if (ev.fixCycle != null && ev.maxFixCycles != null) {
+        lines.push(`Fix cycle ${ev.fixCycle}/${ev.maxFixCycles}`);
+      }
+      break;
+
+    case "fixing":
+      lines.push(`Fixing issues found in review.`);
+      if (ev.fixCycle != null && ev.maxFixCycles != null) {
+        lines.push(`Fix cycle ${ev.fixCycle}/${ev.maxFixCycles}`);
+      }
       break;
 
     case "needs_input":
@@ -131,14 +170,8 @@ export function buildCommunicatorMessage(ev: CommunicatorEvent): string {
       }
       break;
 
-    case "retry":
-      lines.push(`Retrying step ${ev.stepNumber ?? "?"}: ${ev.stepTitle || "N/A"}`);
-      lines.push(`Attempt ${ev.retryAttempt ?? "?"}/${ev.maxRetries ?? "?"}`);
-      if (ev.errorSummary) lines.push(`Previous issue: ${ev.errorSummary}`);
-      break;
-
     case "all_complete":
-      lines.push(`All ${ev.totalSteps ?? ""} steps completed successfully!`);
+      lines.push(`All ${ev.totalSteps ?? ""} steps completed and verified successfully!`);
       break;
   }
 

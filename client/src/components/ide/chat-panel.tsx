@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type ChatMode, flattenFiles } from "@/stores/ide-store";
+import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -703,22 +703,18 @@ function TypingIndicator({ text }: { text?: string }) {
   );
 }
 
-function StepItem({ task, status, verification }: {
+function StepItem({ task, status }: {
   task: ManagerSubTask;
-  status?: "pending" | "running" | "done" | "failed" | "verifying" | "needs-input";
-  verification?: VerificationResult;
+  status?: "pending" | "running" | "done" | "failed" | "needs-input";
 }) {
   const s = status || "pending";
   const icons: Record<string, JSX.Element> = {
     pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
     running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
-    verifying: <Search className="w-3 h-3 text-amber-400 animate-pulse" />,
     done: <CheckCircle2 className="w-3 h-3 text-green-500" />,
     failed: <XCircle className="w-3 h-3 text-red-500" />,
     "needs-input": <HelpCircle className="w-3 h-3 text-yellow-500" />,
   };
-
-  const matchPercent = verification?.requirement_match_percent;
 
   return (
     <div className="py-1" data-testid={`step-${task.step}`}>
@@ -729,24 +725,58 @@ function StepItem({ task, status, verification }: {
           s === "done" ? "text-muted-foreground line-through" :
           s === "failed" ? "text-red-400" :
           s === "running" ? "text-foreground font-medium" :
-          s === "verifying" ? "text-amber-400 font-medium" :
           s === "needs-input" ? "text-yellow-500" :
           "text-foreground/80"
         )}>
           {task.title}
         </span>
-        {matchPercent != null && s === "done" && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 font-medium" data-testid={`match-${task.step}`}>
-            {matchPercent}%
-          </span>
-        )}
-        {s === "verifying" && (
-          <span className="text-[10px] text-amber-400">Verifying...</span>
-        )}
       </div>
-      {verification?.error_summary && s === "failed" && (
-        <p className="text-[10px] text-red-400/80 pl-5 mt-0.5 leading-snug">{verification.error_summary}</p>
-      )}
+    </div>
+  );
+}
+
+function ReviewStatusBadge({ phase, fixCycle, review }: {
+  phase: ReviewPhase;
+  fixCycle: number;
+  review: HolisticReviewResult | null;
+}) {
+  if (phase === "idle") return null;
+
+  const configs: Record<string, { icon: JSX.Element; text: string; color: string }> = {
+    building: {
+      icon: <Loader2 className="w-3 h-3 animate-spin" />,
+      text: "Building...",
+      color: "text-blue-400",
+    },
+    reviewing: {
+      icon: <Search className="w-3 h-3 animate-pulse" />,
+      text: "Reviewing project...",
+      color: "text-amber-400",
+    },
+    review_passed: {
+      icon: <ShieldCheck className="w-3 h-3" />,
+      text: review ? `Review passed (${review.requirement_match_percent}%)` : "Review passed",
+      color: "text-green-500",
+    },
+    review_failed: {
+      icon: <AlertTriangle className="w-3 h-3" />,
+      text: review ? `${(review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0)} issues found` : "Issues found",
+      color: "text-red-400",
+    },
+    fixing: {
+      icon: <Loader2 className="w-3 h-3 animate-spin" />,
+      text: `Fixing issues (cycle ${fixCycle}/3)...`,
+      color: "text-orange-400",
+    },
+  };
+
+  const config = configs[phase];
+  if (!config) return null;
+
+  return (
+    <div className={cn("px-3 pb-2 flex items-center gap-1.5", config.color)} data-testid="review-status-badge">
+      {config.icon}
+      <span className="text-[10px] font-medium">{config.text}</span>
     </div>
   );
 }
@@ -754,7 +784,6 @@ function StepItem({ task, status, verification }: {
 function TaskPlanCard({
   plan,
   taskStatuses,
-  verificationResults,
   onExecute,
   isExecuting,
   onStop,
@@ -762,10 +791,12 @@ function TaskPlanCard({
   pendingConfirmation,
   confirmationInput,
   onConfirmationInputChange,
+  reviewPhase,
+  holisticReview,
+  fixCycle,
 }: {
   plan: ManagerPlan;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
-  verificationResults?: Record<string, VerificationResult>;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
@@ -773,13 +804,17 @@ function TaskPlanCard({
   pendingConfirmation?: { stepKey: string; items: string[] } | null;
   confirmationInput?: string;
   onConfirmationInputChange?: (value: string) => void;
+  reviewPhase?: ReviewPhase;
+  holisticReview?: HolisticReviewResult | null;
+  fixCycle?: number;
 }) {
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((t) => taskStatuses[String(t.step)] === "done").length;
   const total = steps.length;
   const allDone = doneCount === total && total > 0;
   const hasNeedsInput = steps.some((t) => taskStatuses[String(t.step)] === "needs-input");
-  const isVerifying = steps.some((t) => taskStatuses[String(t.step)] === "verifying");
+  const phase = reviewPhase || "idle";
+  const isFullyComplete = phase === "review_passed" && allDone;
 
   return (
     <div className="mx-3 my-1 rounded-lg border border-border/40 bg-card/50 overflow-hidden" data-testid="task-plan-card">
@@ -788,32 +823,44 @@ function TaskPlanCard({
       </div>
 
       <div className="px-3 pb-2 space-y-0">
-        {steps.map((task: ManagerSubTask) => {
-          const key = task.sub_task_id || String(task.step);
-          return (
-            <StepItem
-              key={task.step}
-              task={task}
-              status={taskStatuses[String(task.step)]}
-              verification={verificationResults?.[key]}
-            />
-          );
-        })}
+        {steps.map((task: ManagerSubTask) => (
+          <StepItem
+            key={task.step}
+            task={task}
+            status={taskStatuses[String(task.step)]}
+          />
+        ))}
       </div>
 
-      {doneCount > 0 && (
+      {doneCount > 0 && !isFullyComplete && (
         <div className="px-3 pb-2 flex items-center gap-1.5">
-          {allDone && <ShieldCheck className="w-3 h-3 text-green-500" />}
           <span className="text-[10px] text-muted-foreground">
-            {allDone ? "All steps verified ✓" : `${doneCount}/${total} steps done`}
+            {allDone ? `All ${total} steps built` : `${doneCount}/${total} steps done`}
           </span>
         </div>
       )}
 
-      {isVerifying && (
+      <ReviewStatusBadge phase={phase} fixCycle={fixCycle || 0} review={holisticReview || null} />
+
+      {isFullyComplete && (
         <div className="px-3 pb-2 flex items-center gap-1.5">
-          <Search className="w-3 h-3 text-amber-400 animate-pulse" />
-          <span className="text-[10px] text-amber-400">Verifier is checking...</span>
+          <ShieldCheck className="w-3 h-3 text-green-500" />
+          <span className="text-[10px] text-green-500 font-medium">
+            All steps built & verified ✓
+          </span>
+        </div>
+      )}
+
+      {holisticReview && phase === "review_failed" && holisticReview.bugs.length > 0 && (
+        <div className="px-3 pb-2" data-testid="review-bugs-list">
+          {holisticReview.bugs.map((bug, i) => (
+            <div key={bug.id || i} className="flex items-start gap-1.5 py-0.5">
+              <XCircle className="w-2.5 h-2.5 text-red-400 mt-0.5 shrink-0" />
+              <span className="text-[10px] text-red-400/80 leading-snug">
+                <span className="font-medium">[{bug.severity}]</span> {bug.description}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -880,7 +927,7 @@ function TaskPlanCard({
         </div>
       )}
 
-      {onExecute && !allDone && (
+      {onExecute && !isFullyComplete && (
         <div className="px-3 py-2 border-t border-border/30">
           {isExecuting ? (
             <Button
@@ -913,7 +960,6 @@ function TaskPlanCard({
 function ManagerMessageBubble({
   message,
   taskStatuses,
-  verificationResults,
   onExecute,
   isExecuting,
   onStop,
@@ -921,10 +967,12 @@ function ManagerMessageBubble({
   pendingConfirmation,
   confirmationInput,
   onConfirmationInputChange,
+  reviewPhase,
+  holisticReview,
+  fixCycle,
 }: {
   message: { role: string; content: string; plan?: ManagerPlan };
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "verifying" | "needs-input">;
-  verificationResults?: Record<string, VerificationResult>;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
@@ -932,6 +980,9 @@ function ManagerMessageBubble({
   pendingConfirmation?: { stepKey: string; items: string[] } | null;
   confirmationInput?: string;
   onConfirmationInputChange?: (value: string) => void;
+  reviewPhase?: ReviewPhase;
+  holisticReview?: HolisticReviewResult | null;
+  fixCycle?: number;
 }) {
   if (message.role === "user") {
     return (
@@ -948,7 +999,6 @@ function ManagerMessageBubble({
       <TaskPlanCard
         plan={message.plan}
         taskStatuses={taskStatuses}
-        verificationResults={verificationResults}
         onExecute={onExecute}
         isExecuting={isExecuting}
         onStop={onStop}
@@ -956,6 +1006,9 @@ function ManagerMessageBubble({
         pendingConfirmation={pendingConfirmation}
         confirmationInput={confirmationInput}
         onConfirmationInputChange={onConfirmationInputChange}
+        reviewPhase={reviewPhase}
+        holisticReview={holisticReview}
+        fixCycle={fixCycle}
       />
     );
   }
@@ -992,7 +1045,6 @@ export function ChatPanel() {
     addManagerMessage,
     taskStatuses,
     updateTaskStatus,
-    verificationResults,
     executingTaskIndex,
     setExecutingTaskIndex,
     isManagerResponding,
@@ -1002,6 +1054,12 @@ export function ChatPanel() {
     setPendingConfirmation,
     userConfirmationInput,
     setUserConfirmationInput,
+    reviewPhase,
+    setReviewPhase,
+    holisticReview,
+    setHolisticReview,
+    fixCycle,
+    setFixCycle,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1063,6 +1121,10 @@ export function ChatPanel() {
       confirmationItems?: string[];
       retryAttempt?: number;
       maxRetries?: number;
+      reviewSummary?: string;
+      bugCount?: number;
+      fixCycle?: number;
+      maxFixCycles?: number;
     },
   ): Promise<string> => {
     let messageInserted = false;
@@ -1306,84 +1368,96 @@ export function ChatPanel() {
     }
   }, [addChatMessage, updateLastAssistantMessage, setAiResponding, refreshPreview, createCheckpoint, applyCodeBlock]);
 
-  const MAX_RETRIES_PER_STEP = 2;
+  const MAX_FIX_CYCLES = 3;
 
-  const verifySubTask = useCallback(async (
-    task: ManagerSubTask,
-    editorOutput: string,
-    filesBefore?: { path: string; content: string }[],
-  ): Promise<VerificationResult | null> => {
+  const performHolisticReview = useCallback(async (
+    userRequest: string,
+    planSteps: ManagerSubTask[],
+    filesBefore: { path: string; content: string }[],
+  ): Promise<HolisticReviewResult | null> => {
     const allFiles = flattenFiles(useIDEStore.getState().files);
-    const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+    const filesAfter = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
 
     try {
-      const resp = await fetch("/api/verifier-chat", {
+      const resp = await fetch("/api/verifier-holistic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sub_task_id: task.sub_task_id || `T001-${String(task.step).padStart(2, "0")}`,
-          task_description: task.description,
-          acceptance_criteria: task.acceptance_criteria || task.title,
-          files: fileContext,
-          editor_output: editorOutput,
+          user_request: userRequest,
+          plan_steps: planSteps.map((s) => ({
+            step: s.step,
+            title: s.title,
+            description: s.description,
+            acceptance_criteria: s.acceptance_criteria || "",
+          })),
           files_before: filesBefore,
+          files_after: filesAfter,
         }),
       });
       const data = await resp.json();
-      if (data.verification) return data.verification as VerificationResult;
+      if (data.review) return data.review as HolisticReviewResult;
       return null;
     } catch {
       return null;
     }
   }, []);
 
-  const requestReplan = useCallback(async (
-    task: ManagerSubTask,
-    verificationResult: VerificationResult | null,
-  ) => {
+  const requestFixPlan = useCallback(async (
+    reviewResult: HolisticReviewResult,
+    userRequest: string,
+  ): Promise<ManagerPlan | null> => {
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
 
-    const suggestion = verificationResult?.suggestion || "";
-    const errorSummary = verificationResult?.error_summary || "Unknown error";
-    const feedbackMsg = `Step ${task.step} ("${task.title}") failed verification.\nError: ${errorSummary}${suggestion ? `\nSuggestion: ${suggestion}` : ""}\nPlease adjust the plan.`;
-    addManagerMessage({ role: "user", content: feedbackMsg });
-
-    const currentMsgs = useIDEStore.getState().managerMessages;
-    const messagesForApi = currentMsgs.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.plan ? JSON.stringify(m.plan) : m.content,
-    }));
-
     try {
-      const resp = await fetch("/api/manager-chat", {
+      const resp = await fetch("/api/manager-fix-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        body: JSON.stringify({
+          files: fileContext,
+          bug_report: {
+            bugs: reviewResult.bugs || [],
+            missing_features: reviewResult.missing_features || [],
+            regressions: reviewResult.regressions || [],
+            summary: reviewResult.summary || "",
+            suggestion: reviewResult.suggestion || "",
+          },
+          original_request: userRequest,
+        }),
       });
       const data = await resp.json();
-      if (data.plan) {
-        clearManagerPlan();
-        setManagerPlan(data.plan);
-        for (const t of normalizeSteps(data.plan)) {
-          updateTaskStatus(String(t.step), "pending");
-        }
-        addManagerMessage({ role: "assistant", content: "", plan: data.plan });
-      }
-    } catch {}
-  }, [addManagerMessage, setManagerPlan, updateTaskStatus, clearManagerPlan]);
+      if (data.plan) return data.plan as ManagerPlan;
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
 
     const normalizedSteps = normalizeSteps(plan);
-    const updateVerificationResult = useIDEStore.getState().updateVerificationResult;
 
     const firstUserMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
-    const userLang = firstUserMsg ? detectLanguage(firstUserMsg.content) : "English";
+    const userRequest = firstUserMsg?.content || "";
+    const userLang = firstUserMsg ? detectLanguage(userRequest) : "English";
 
     executionAbortRef.current = false;
+
+    const filesBeforeBuild = flattenFiles(useIDEStore.getState().files)
+      .map((f) => ({ path: f.path, content: f.content || "" }));
+
+    setReviewPhase("building");
+    setFixCycle(0);
+    setHolisticReview(null);
+
+    await callCommunicator({
+      event: "build_starting",
+      userLanguage: userLang,
+      totalSteps: normalizedSteps.length,
+      planSummary: plan.summary,
+    });
 
     for (let i = 0; i < normalizedSteps.length; i++) {
       if (executionAbortRef.current) break;
@@ -1393,161 +1467,183 @@ export function ChatPanel() {
       const currentStatus = useIDEStore.getState().taskStatuses[key];
       if (currentStatus === "done") continue;
 
-      let retries = 0;
-      let stepPassed = false;
+      setExecutingTaskIndex(i);
+      updateTaskStatus(key, "running");
 
-      while (retries <= MAX_RETRIES_PER_STEP && !stepPassed && !executionAbortRef.current) {
-        setExecutingTaskIndex(i);
-        updateTaskStatus(key, "running");
+      await callCommunicator({
+        event: "step_starting",
+        userLanguage: userLang,
+        stepNumber: task.step,
+        stepTitle: task.title,
+        stepDescription: task.description,
+        totalSteps: normalizedSteps.length,
+      });
 
-        await callCommunicator({
-          event: "step_starting",
-          userLanguage: userLang,
-          stepNumber: task.step,
-          stepTitle: task.title,
-          stepDescription: task.description,
-          totalSteps: normalizedSteps.length,
-        });
+      const success = await executeSubTask(task.description, task.title, {
+        sub_task_id: task.sub_task_id || "",
+        acceptance_criteria: task.acceptance_criteria || "",
+      });
 
-        const filesBeforeEdit = flattenFiles(useIDEStore.getState().files)
-          .map((f) => ({ path: f.path, content: f.content || "" }));
+      if (executionAbortRef.current) {
+        updateTaskStatus(key, "pending");
+        setReviewPhase("idle");
+        break;
+      }
 
-        const success = await executeSubTask(task.description, task.title, {
-          sub_task_id: task.sub_task_id || "",
-          acceptance_criteria: task.acceptance_criteria || "",
-        });
-
-        if (executionAbortRef.current) {
-          updateTaskStatus(key, "pending");
-          break;
-        }
-
-        if (!success) {
-          updateTaskStatus(key, "failed");
-          await callCommunicator({
-            event: "step_failed",
-            userLanguage: userLang,
-            stepNumber: task.step,
-            stepTitle: task.title,
-            errorSummary: "Editor could not complete this step",
-          });
-          await requestReplan(task, null);
-          break;
-        }
-
-        updateTaskStatus(key, "verifying");
-
-        const lastAssistant = useIDEStore.getState().chatMessages
-          .filter(m => m.role === "assistant")
-          .pop();
-        const editorOutput = lastAssistant?.content || "";
-
+      if (success) {
+        updateTaskStatus(key, "done");
         await callCommunicator({
           event: "step_completed",
           userLanguage: userLang,
           stepNumber: task.step,
           stepTitle: task.title,
         });
+      } else {
+        updateTaskStatus(key, "failed");
+      }
+    }
 
-        const verification = await verifySubTask(task, editorOutput, filesBeforeEdit);
+    if (executionAbortRef.current) {
+      setExecutingTaskIndex(null);
+      return;
+    }
 
-        if (executionAbortRef.current) {
-          updateTaskStatus(key, "pending");
-          break;
-        }
+    const buildStatuses = useIDEStore.getState().taskStatuses;
+    const allBuilt = normalizedSteps.every(t => buildStatuses[String(t.step)] === "done");
 
-        if (verification) {
-          updateVerificationResult(task.sub_task_id || key, verification);
+    if (!allBuilt) {
+      setReviewPhase("idle");
+      setExecutingTaskIndex(null);
+      return;
+    }
 
-          const allPassed = verification.verification_items?.every(
-            (item) => item.result === "pass" || item.result === "warning"
-          );
-          const matchPercent = verification.requirement_match_percent ?? 100;
+    await callCommunicator({
+      event: "build_complete",
+      userLanguage: userLang,
+      totalSteps: normalizedSteps.length,
+    });
 
-          if (verification.user_confirmation_needed?.length > 0 &&
-              verification.user_confirmation_needed[0] !== "") {
-            updateTaskStatus(key, "needs-input");
-            setPendingConfirmation({ stepKey: key, items: verification.user_confirmation_needed });
-            await callCommunicator({
-              event: "needs_input",
-              userLanguage: userLang,
-              stepNumber: task.step,
-              stepTitle: task.title,
-              confirmationItems: verification.user_confirmation_needed,
-            });
-            setExecutingTaskIndex(null);
-            return;
-          }
+    let currentCycle = 0;
+    let currentPlanSteps = normalizedSteps;
+    let passed = false;
 
-          if (allPassed && matchPercent >= 70) {
-            updateTaskStatus(key, "done");
-            stepPassed = true;
-            await callCommunicator({
-              event: "step_verified",
-              userLanguage: userLang,
-              stepNumber: task.step,
-              stepTitle: task.title,
-            });
-          } else {
-            retries++;
-            if (retries > MAX_RETRIES_PER_STEP) {
-              updateTaskStatus(key, "failed");
-              await callCommunicator({
-                event: "step_failed",
-                userLanguage: userLang,
-                stepNumber: task.step,
-                stepTitle: task.title,
-                errorSummary: verification.error_summary || "Verification did not pass",
-              });
-              await requestReplan(task, verification);
-              setExecutingTaskIndex(null);
-              return;
-            }
-            updateTaskStatus(key, "failed");
-            await callCommunicator({
-              event: "retry",
-              userLanguage: userLang,
-              stepNumber: task.step,
-              stepTitle: task.title,
-              retryAttempt: retries + 1,
-              maxRetries: MAX_RETRIES_PER_STEP + 1,
-              errorSummary: verification.error_summary || "Verification checks did not pass",
-            });
-          }
-        } else {
-          retries++;
-          if (retries > MAX_RETRIES_PER_STEP) {
-            updateTaskStatus(key, "failed");
-            await callCommunicator({
-              event: "step_failed",
-              userLanguage: userLang,
-              stepNumber: task.step,
-              stepTitle: task.title,
-              errorSummary: "Could not validate this step",
-            });
-            await requestReplan(task, null);
-            setExecutingTaskIndex(null);
-            return;
-          }
-          updateTaskStatus(key, "failed");
+    while (currentCycle < MAX_FIX_CYCLES && !passed && !executionAbortRef.current) {
+      currentCycle++;
+      setFixCycle(currentCycle);
+      setReviewPhase("reviewing");
+
+      await callCommunicator({
+        event: "reviewing",
+        userLanguage: userLang,
+      });
+
+      const review = await performHolisticReview(userRequest, currentPlanSteps, filesBeforeBuild);
+
+      if (executionAbortRef.current) {
+        setReviewPhase("idle");
+        break;
+      }
+
+      if (!review) {
+        setReviewPhase("review_failed");
+        await callCommunicator({
+          event: "bugs_found",
+          userLanguage: userLang,
+          bugCount: 0,
+          reviewSummary: "Review failed due to an error. Treating as inconclusive.",
+          fixCycle: currentCycle,
+          maxFixCycles: MAX_FIX_CYCLES,
+        });
+        break;
+      }
+
+      setHolisticReview(review);
+
+      if (review.user_confirmation_needed?.length > 0 &&
+          review.user_confirmation_needed[0] !== "") {
+        setPendingConfirmation({ stepKey: "review", items: review.user_confirmation_needed });
+        await callCommunicator({
+          event: "needs_input",
+          userLanguage: userLang,
+          confirmationItems: review.user_confirmation_needed,
+        });
+        setReviewPhase("review_failed");
+        setExecutingTaskIndex(null);
+        return;
+      }
+
+      if (review.overall_status === "pass") {
+        setReviewPhase("review_passed");
+        passed = true;
+        await callCommunicator({
+          event: "review_passed",
+          userLanguage: userLang,
+          reviewSummary: review.summary,
+        });
+        break;
+      }
+
+      setReviewPhase("review_failed");
+
+      const issueCount = (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0);
+
+      await callCommunicator({
+        event: "bugs_found",
+        userLanguage: userLang,
+        bugCount: issueCount,
+        reviewSummary: review.summary,
+        fixCycle: currentCycle,
+        maxFixCycles: MAX_FIX_CYCLES,
+      });
+
+      setReviewPhase("fixing");
+
+      await callCommunicator({
+        event: "fixing",
+        userLanguage: userLang,
+        fixCycle: currentCycle,
+        maxFixCycles: MAX_FIX_CYCLES,
+      });
+
+      const fixPlan = await requestFixPlan(review, userRequest);
+
+      if (!fixPlan || !fixPlan.steps || fixPlan.steps.length === 0) break;
+
+      const fixSteps = normalizeSteps(fixPlan);
+
+      for (let i = 0; i < fixSteps.length; i++) {
+        if (executionAbortRef.current) break;
+
+        const fixTask = fixSteps[i];
+
+        await callCommunicator({
+          event: "step_starting",
+          userLanguage: userLang,
+          stepNumber: fixTask.step,
+          stepTitle: fixTask.title,
+          stepDescription: fixTask.description,
+          totalSteps: fixSteps.length,
+        });
+
+        const fixSuccess = await executeSubTask(fixTask.description, fixTask.title, {
+          sub_task_id: fixTask.sub_task_id || "",
+          acceptance_criteria: fixTask.acceptance_criteria || "",
+        });
+
+        if (fixSuccess) {
           await callCommunicator({
-            event: "retry",
+            event: "step_completed",
             userLanguage: userLang,
-            stepNumber: task.step,
-            stepTitle: task.title,
-            retryAttempt: retries + 1,
-            maxRetries: MAX_RETRIES_PER_STEP + 1,
-            errorSummary: "Verification could not complete",
+            stepNumber: fixTask.step,
+            stepTitle: fixTask.title,
           });
         }
       }
 
-      if (!stepPassed && !executionAbortRef.current) break;
+      currentPlanSteps = [...normalizedSteps, ...fixSteps];
     }
 
-    const finalStatuses = useIDEStore.getState().taskStatuses;
-    const allDone = normalizedSteps.every(t => finalStatuses[String(t.step)] === "done");
-    if (allDone) {
+    if (passed) {
       await callCommunicator({
         event: "all_complete",
         userLanguage: userLang,
@@ -1556,7 +1652,7 @@ export function ChatPanel() {
     }
 
     setExecutingTaskIndex(null);
-  }, [executeSubTask, verifySubTask, requestReplan, setExecutingTaskIndex, updateTaskStatus, addManagerMessage, setManagerPlan, callCommunicator]);
+  }, [executeSubTask, performHolisticReview, requestFixPlan, setExecutingTaskIndex, updateTaskStatus, callCommunicator, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation]);
 
   const handleStopExecution = useCallback(() => {
     executionAbortRef.current = true;
@@ -1566,7 +1662,8 @@ export function ChatPanel() {
     }
     setAiResponding(false);
     setExecutingTaskIndex(null);
-  }, [setAiResponding, setExecutingTaskIndex]);
+    setReviewPhase("idle");
+  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase]);
 
   const userConfirmationRef = useRef<string>("");
 
@@ -1840,7 +1937,6 @@ export function ChatPanel() {
                   key={`m-${msg.id}`}
                   message={msg}
                   taskStatuses={taskStatuses}
-                  verificationResults={verificationResults}
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}
                   onStop={isLastPlan ? handleStopExecution : undefined}
@@ -1848,6 +1944,9 @@ export function ChatPanel() {
                   pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
                   confirmationInput={isLastPlan ? userConfirmationInput : undefined}
                   onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
+                  reviewPhase={isLastPlan ? reviewPhase : undefined}
+                  holisticReview={isLastPlan ? holisticReview : undefined}
+                  fixCycle={isLastPlan ? fixCycle : undefined}
                 />
               );
             }
