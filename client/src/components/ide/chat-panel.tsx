@@ -1065,7 +1065,7 @@ export function ChatPanel() {
       maxRetries?: number;
     },
   ): Promise<string> => {
-    addManagerMessage({ role: "assistant", content: "" });
+    let messageInserted = false;
     try {
       const response = await fetch("/api/communicator-chat", {
         method: "POST",
@@ -1099,15 +1099,20 @@ export function ChatPanel() {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 accumulated += parsed.content;
-                const msgs = useIDEStore.getState().managerMessages;
-                const lastMsg = msgs[msgs.length - 1];
-                if (lastMsg && lastMsg.role === "assistant") {
-                  useIDEStore.setState({
-                    managerMessages: [
-                      ...msgs.slice(0, -1),
-                      { ...lastMsg, content: accumulated },
-                    ],
-                  });
+                if (!messageInserted) {
+                  addManagerMessage({ role: "assistant", content: accumulated });
+                  messageInserted = true;
+                } else {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  const lastMsg = msgs[msgs.length - 1];
+                  if (lastMsg && lastMsg.role === "assistant") {
+                    useIDEStore.setState({
+                      managerMessages: [
+                        ...msgs.slice(0, -1),
+                        { ...lastMsg, content: accumulated },
+                      ],
+                    });
+                  }
                 }
               }
             } catch {}
