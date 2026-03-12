@@ -32,11 +32,13 @@ The CodeStart IDE features a modern web architecture:
 - **Incremental Code Auto-Apply**: AI-generated code blocks with `file="..."` annotations are automatically applied to the project files as they stream, and the preview updates instantly.
 - **Structured AI Output**: The AI agent adheres to a 3-part response format: Thinking, Code, and Changes Summary, with the summary visually styled for clarity.
 - **Checkpoint/Rollback System**: Automatic checkpoints are created after AI applies code changes, allowing users to restore previous project states. Checkpoints use reverse diffs for efficient storage.
-- **3-Agent System (Manager Mode)**:
-    - **Manager Agent**: Plans and breaks down tasks into actionable steps (JSON output).
-    - **Editor Agent**: Executes coding tasks for each step, leveraging the Vibe Agent.
-    - **Verifier Agent**: Validates code after each step, checking runnability, requirement matching, and project integrity by comparing pre-edit and post-edit file snapshots.
-    - **User Confirmation Flow**: When the Verifier flags subjective items needing user input, execution pauses and shows an interactive confirmation UI (text input + Approve/Submit buttons in TaskPlanCard). Users can respond via the confirmation area or the main chat input; their response is passed to the Editor as context when re-executing the step. State: `pendingConfirmation`, `userConfirmationInput` in `ide-store.ts`.
+- **4-Agent System (Manager Mode)**:
+    - **Manager Agent** (`server/manager-prompt.ts`): Professional planner that breaks down tasks into actionable steps (JSON output only, no friendly personality).
+    - **Editor Agent** (`server/editor-prompt.ts`): Professional code executor for Manager Mode — stripped-down, task-focused prompt. In Build Mode, the full Vibe Agent prompt (`server/vibe-prompt.ts`) is used instead.
+    - **Verifier Agent** (`server/verifier-prompt.ts`): Professional QA evaluator that validates code runnability, requirement matching, and project integrity (JSON output only, no friendly personality).
+    - **Communicator Agent** (`server/communicator-prompt.ts`): The sole user-facing narrator. Inherits the warm, friendly, emoji-rich personality from the Vibe Agent. Streams real-time progress updates to the user via `/api/communicator-chat` (SSE). Called at every key stage: `plan_created`, `step_starting`, `step_completed`, `step_verified`, `step_failed`, `needs_input`, `retry`, `all_complete`.
+    - **Prompt Architecture**: The 3 backend agents (Manager, Editor, Verifier) are purely professional/technical — they communicate with each other through structured JSON only. All friendly, beginner-facing communication flows through the Communicator Agent.
+    - **User Confirmation Flow**: When the Verifier flags subjective items needing user input, execution pauses and the Communicator presents the items in friendly language. Users respond via the confirmation area or main chat input; their response is passed to the Editor as context when re-executing the step. State: `pendingConfirmation`, `userConfirmationInput` in `ide-store.ts`.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 

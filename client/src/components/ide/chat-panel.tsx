@@ -6,6 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function detectLanguage(text: string): string {
+  const chineseRe = /[\u4e00-\u9fff]/;
+  return chineseRe.test(text) ? "Chinese" : "English";
+}
+
 function normalizeSteps(plan: any): ManagerSubTask[] {
   const raw = plan?.steps ?? plan?.sub_tasks;
   if (!Array.isArray(raw)) return [];
@@ -1045,6 +1050,77 @@ export function ChatPanel() {
     }
   }, []);
 
+  const callCommunicator = useCallback(async (
+    event: {
+      event: string;
+      userLanguage?: string;
+      planSummary?: string;
+      totalSteps?: number;
+      stepNumber?: number;
+      stepTitle?: string;
+      stepDescription?: string;
+      errorSummary?: string;
+      confirmationItems?: string[];
+      retryAttempt?: number;
+      maxRetries?: number;
+    },
+  ): Promise<string> => {
+    addManagerMessage({ role: "assistant", content: "" });
+    try {
+      const response = await fetch("/api/communicator-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event }),
+      });
+
+      if (!response.ok) return "";
+
+      const reader = response.body?.getReader();
+      if (!reader) return "";
+
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith("data: ")) {
+            const data = trimmedLine.slice(6).trim();
+            if (data === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                accumulated += parsed.content;
+                const msgs = useIDEStore.getState().managerMessages;
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg && lastMsg.role === "assistant") {
+                  useIDEStore.setState({
+                    managerMessages: [
+                      ...msgs.slice(0, -1),
+                      { ...lastMsg, content: accumulated },
+                    ],
+                  });
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return accumulated;
+    } catch {
+      return "";
+    }
+  }, [addManagerMessage]);
+
   const handleManagerSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
     if (!trimmed || isManagerResponding) return;
@@ -1080,17 +1156,26 @@ export function ChatPanel() {
       } else if (data.plan) {
         clearManagerPlan();
         setManagerPlan(data.plan);
-        for (const t of normalizeSteps(data.plan)) {
+        const steps = normalizeSteps(data.plan);
+        for (const t of steps) {
           updateTaskStatus(String(t.step), "pending");
         }
         addManagerMessage({ role: "assistant", content: "", plan: data.plan });
+
+        const userLang = detectLanguage(trimmed);
+        await callCommunicator({
+          event: "plan_created",
+          userLanguage: userLang,
+          planSummary: data.plan.summary || "",
+          totalSteps: steps.length,
+        });
       }
     } catch (error: any) {
       addManagerMessage({ role: "assistant", content: "Failed to reach the Manager Agent. Please try again." });
     } finally {
       setManagerResponding(false);
     }
-  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus]);
+  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator]);
 
   const executeSubTask = useCallback(async (
     description: string,
@@ -1126,9 +1211,7 @@ export function ChatPanel() {
 
     const editorMessages = [{ role: "user" as const, content: prompt }];
 
-    if (managerContext) {
-      addChatMessage({ role: "assistant", content: `**Working on:** ${title}` });
-    } else {
+    if (!managerContext) {
       addChatMessage({ role: "user", content: prompt });
     }
     addChatMessage({ role: "assistant", content: "" });
@@ -1141,7 +1224,11 @@ export function ChatPanel() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: editorMessages, files: fileContext }),
+        body: JSON.stringify({
+          messages: editorMessages,
+          files: fileContext,
+          ...(managerContext ? { mode: "manager" as const } : {}),
+        }),
         signal: controller.signal,
       });
 
@@ -1288,6 +1375,9 @@ export function ChatPanel() {
     const normalizedSteps = normalizeSteps(plan);
     const updateVerificationResult = useIDEStore.getState().updateVerificationResult;
 
+    const firstUserMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+    const userLang = firstUserMsg ? detectLanguage(firstUserMsg.content) : "English";
+
     executionAbortRef.current = false;
 
     for (let i = 0; i < normalizedSteps.length; i++) {
@@ -1305,6 +1395,15 @@ export function ChatPanel() {
         setExecutingTaskIndex(i);
         updateTaskStatus(key, "running");
 
+        await callCommunicator({
+          event: "step_starting",
+          userLanguage: userLang,
+          stepNumber: task.step,
+          stepTitle: task.title,
+          stepDescription: task.description,
+          totalSteps: normalizedSteps.length,
+        });
+
         const filesBeforeEdit = flattenFiles(useIDEStore.getState().files)
           .map((f) => ({ path: f.path, content: f.content || "" }));
 
@@ -1320,6 +1419,13 @@ export function ChatPanel() {
 
         if (!success) {
           updateTaskStatus(key, "failed");
+          await callCommunicator({
+            event: "step_failed",
+            userLanguage: userLang,
+            stepNumber: task.step,
+            stepTitle: task.title,
+            errorSummary: "Editor could not complete this step",
+          });
           await requestReplan(task, null);
           break;
         }
@@ -1330,6 +1436,13 @@ export function ChatPanel() {
           .filter(m => m.role === "assistant")
           .pop();
         const editorOutput = lastAssistant?.content || "";
+
+        await callCommunicator({
+          event: "step_completed",
+          userLanguage: userLang,
+          stepNumber: task.step,
+          stepTitle: task.title,
+        });
 
         const verification = await verifySubTask(task, editorOutput, filesBeforeEdit);
 
@@ -1350,9 +1463,12 @@ export function ChatPanel() {
               verification.user_confirmation_needed[0] !== "") {
             updateTaskStatus(key, "needs-input");
             setPendingConfirmation({ stepKey: key, items: verification.user_confirmation_needed });
-            addManagerMessage({
-              role: "assistant",
-              content: `Step ${task.step} needs your input:\n${verification.user_confirmation_needed.map(item => `• ${item}`).join("\n")}`,
+            await callCommunicator({
+              event: "needs_input",
+              userLanguage: userLang,
+              stepNumber: task.step,
+              stepTitle: task.title,
+              confirmationItems: verification.user_confirmation_needed,
             });
             setExecutingTaskIndex(null);
             return;
@@ -1361,28 +1477,63 @@ export function ChatPanel() {
           if (allPassed && matchPercent >= 70) {
             updateTaskStatus(key, "done");
             stepPassed = true;
+            await callCommunicator({
+              event: "step_verified",
+              userLanguage: userLang,
+              stepNumber: task.step,
+              stepTitle: task.title,
+            });
           } else {
             retries++;
             if (retries > MAX_RETRIES_PER_STEP) {
               updateTaskStatus(key, "failed");
+              await callCommunicator({
+                event: "step_failed",
+                userLanguage: userLang,
+                stepNumber: task.step,
+                stepTitle: task.title,
+                errorSummary: verification.error_summary || "Verification did not pass",
+              });
               await requestReplan(task, verification);
               setExecutingTaskIndex(null);
               return;
             }
             updateTaskStatus(key, "failed");
-            const retryMsg = `Retrying step ${task.step} (attempt ${retries + 1}/${MAX_RETRIES_PER_STEP + 1}). Issues: ${verification.error_summary || "Verification checks did not pass."}`;
-            addManagerMessage({ role: "assistant", content: retryMsg });
+            await callCommunicator({
+              event: "retry",
+              userLanguage: userLang,
+              stepNumber: task.step,
+              stepTitle: task.title,
+              retryAttempt: retries + 1,
+              maxRetries: MAX_RETRIES_PER_STEP + 1,
+              errorSummary: verification.error_summary || "Verification checks did not pass",
+            });
           }
         } else {
           retries++;
           if (retries > MAX_RETRIES_PER_STEP) {
             updateTaskStatus(key, "failed");
+            await callCommunicator({
+              event: "step_failed",
+              userLanguage: userLang,
+              stepNumber: task.step,
+              stepTitle: task.title,
+              errorSummary: "Could not validate this step",
+            });
             await requestReplan(task, null);
             setExecutingTaskIndex(null);
             return;
           }
           updateTaskStatus(key, "failed");
-          addManagerMessage({ role: "assistant", content: `Verifier could not validate step ${task.step}. Retrying (attempt ${retries + 1}/${MAX_RETRIES_PER_STEP + 1})...` });
+          await callCommunicator({
+            event: "retry",
+            userLanguage: userLang,
+            stepNumber: task.step,
+            stepTitle: task.title,
+            retryAttempt: retries + 1,
+            maxRetries: MAX_RETRIES_PER_STEP + 1,
+            errorSummary: "Verification could not complete",
+          });
         }
       }
 
@@ -1392,11 +1543,15 @@ export function ChatPanel() {
     const finalStatuses = useIDEStore.getState().taskStatuses;
     const allDone = normalizedSteps.every(t => finalStatuses[String(t.step)] === "done");
     if (allDone) {
-      addManagerMessage({ role: "assistant", content: "All steps completed and verified! Your project is ready. 🎉" });
+      await callCommunicator({
+        event: "all_complete",
+        userLanguage: userLang,
+        totalSteps: normalizedSteps.length,
+      });
     }
 
     setExecutingTaskIndex(null);
-  }, [executeSubTask, verifySubTask, requestReplan, setExecutingTaskIndex, updateTaskStatus, addManagerMessage, setManagerPlan]);
+  }, [executeSubTask, verifySubTask, requestReplan, setExecutingTaskIndex, updateTaskStatus, addManagerMessage, setManagerPlan, callCommunicator]);
 
   const handleStopExecution = useCallback(() => {
     executionAbortRef.current = true;

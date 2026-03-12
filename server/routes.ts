@@ -2,8 +2,11 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { VIBE_AGENT_SYSTEM_PROMPT, buildContextMessage } from "./vibe-prompt";
+import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { MANAGER_AGENT_SYSTEM_PROMPT, buildManagerContextMessage } from "./manager-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildVerifierContextMessage } from "./verifier-prompt";
+import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
+import type { CommunicatorEvent } from "./communicator-prompt";
 
 function parseAIJson(raw: string): any {
   let text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
@@ -85,9 +88,10 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files } = req.body as {
+      const { messages, files, mode } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
+        mode?: "vibe" | "manager";
       };
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -95,12 +99,14 @@ export async function registerRoutes(
         return;
       }
 
+      const isManagerMode = mode === "manager";
+      const systemPrompt = isManagerMode ? EDITOR_AGENT_SYSTEM_PROMPT : VIBE_AGENT_SYSTEM_PROMPT;
       const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: VIBE_AGENT_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
       ];
 
       if (files && files.length > 0) {
-        const contextMsg = buildContextMessage(files);
+        const contextMsg = isManagerMode ? buildEditorContextMessage(files) : buildContextMessage(files);
         systemMessages.push({ role: "system", content: contextMsg });
       }
 
@@ -240,6 +246,58 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Verifier chat API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to get Verifier response" });
+    }
+  });
+
+  app.post("/api/communicator-chat", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+
+      const { event } = req.body as { event: CommunicatorEvent };
+
+      if (!event || !event.event) {
+        res.status(400).json({ error: "event object with event type is required" });
+        return;
+      }
+
+      const contextMessage = buildCommunicatorMessage(event);
+
+      const messages: Array<{ role: "system" | "user"; content: string }> = [
+        { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+        { role: "user", content: contextMessage },
+      ];
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const stream = await doubaoClient.chat.completions.create({
+        model: DOUBAO_MODEL,
+        messages,
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
+      }
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (error: any) {
+      console.error("Communicator chat API error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Failed to get Communicator response" });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`);
+        res.end();
+      }
     }
   });
 
