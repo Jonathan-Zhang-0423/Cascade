@@ -170,7 +170,7 @@ export function PreviewPanel() {
           srcDoc={injectedHtml}
           className="w-full h-full border-0"
           title="Preview"
-          sandbox="allow-scripts allow-modals"
+          sandbox="allow-scripts allow-modals allow-same-origin"
           data-testid="preview-iframe"
         />
       </div>
