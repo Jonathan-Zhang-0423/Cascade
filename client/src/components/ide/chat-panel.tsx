@@ -983,7 +983,7 @@ function ManagerMessageBubble({
   holisticReview,
   fixCycle,
 }: {
-  message: { role: string; content: string; plan?: ManagerPlan };
+  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   onExecute?: () => void;
   isExecuting?: boolean;
@@ -1023,6 +1023,10 @@ function ManagerMessageBubble({
         fixCycle={fixCycle}
       />
     );
+  }
+
+  if (message.source === "manager_raw") {
+    return null;
   }
 
   return (
@@ -1175,7 +1179,7 @@ export function ChatPanel() {
               if (parsed.content) {
                 accumulated += parsed.content;
                 if (!messageInserted) {
-                  addManagerMessage({ role: "assistant", content: accumulated });
+                  addManagerMessage({ role: "assistant", content: accumulated, source: "communicator" });
                   messageInserted = true;
                 } else {
                   const msgs = useIDEStore.getState().managerMessages;
@@ -1232,7 +1236,7 @@ export function ChatPanel() {
       const data = await response.json();
 
       if (data.error && !data.plan) {
-        addManagerMessage({ role: "assistant", content: data.raw || data.error });
+        addManagerMessage({ role: "assistant", content: "Hmm, I had a little trouble understanding that. Could you try rephrasing your request? 🤔", source: "communicator" });
       } else if (data.plan) {
         clearManagerPlan();
         setManagerPlan(data.plan);
@@ -1251,7 +1255,7 @@ export function ChatPanel() {
         });
       }
     } catch (error: any) {
-      addManagerMessage({ role: "assistant", content: "Failed to reach the Manager Agent. Please try again." });
+      addManagerMessage({ role: "assistant", content: "Oops, I couldn't connect to the team right now. Please try again in a moment! 🔄", source: "communicator" });
     } finally {
       setManagerResponding(false);
     }
@@ -1963,6 +1967,7 @@ export function ChatPanel() {
           return merged.map((item) => {
             if (item.kind === "chat") {
               const { msg, idx } = item;
+              if (chatMode === "manager" && msg.role === "assistant") return null;
               const isLastAssistant = msg.role === "assistant" && idx === lastChatIdx;
               return msg.role === "checkpoint" ? (
                 <CheckpointMarker key={`c-${msg.id}`} message={msg} />
@@ -1997,7 +2002,7 @@ export function ChatPanel() {
             }
           });
         })()}
-        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
+        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
         {isManagerResponding && (

@@ -83,6 +83,7 @@ export interface ManagerMessage {
   content: string;
   plan?: ManagerPlan;
   timestamp: number;
+  source?: "communicator" | "manager_raw";
 }
 
 interface FlatFile {

@@ -71,7 +71,11 @@ Everything is done — build, review, and any fixes! Celebrate the user's projec
 - Do NOT repeat information the user already knows.
 - Do NOT add subjective judgments or suggestions about the code — only narrate what's happening.
 - Do NOT use JSON, code blocks, or any structured format — just natural, friendly text.
-- Match the energy to the event: excited for completions, gentle for failures, clear for input requests.`;
+- **NEVER include code snippets, file names, file paths, function names, variable names, HTML tags, CSS properties, or any programming syntax in your messages.** The user is a complete beginner and should never see raw code or technical identifiers.
+- **NEVER reference specific files** like "index.html", "style.css", "app.js", etc. Instead, say "the page", "the styling", "the interactive features".
+- Match the energy to the event: excited for completions, gentle for failures, clear for input requests.
+- For step_completed, describe the visible RESULT of the step (what the user can now see or do), not the technical process. For example: "The game board is now showing on the page! 🎮" instead of "Added canvas element to index.html".
+- For all_complete, give a brief 1-2 sentence summary of what the user's project can now do, and encourage them to try it out.`;
 
 export type CommunicatorEventType =
   | "plan_created"
