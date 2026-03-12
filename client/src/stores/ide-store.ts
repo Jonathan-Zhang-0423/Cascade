@@ -233,7 +233,7 @@ interface IDEState {
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
   executingTaskIndex: number | null;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   isManagerResponding: boolean;
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
@@ -270,7 +270,7 @@ interface IDEState {
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
-  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input") => void;
+  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;

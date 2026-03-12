@@ -705,7 +705,7 @@ function TypingIndicator({ text }: { text?: string }) {
 
 function StepItem({ task, status }: {
   task: ManagerSubTask;
-  status?: "pending" | "running" | "done" | "failed" | "needs-input";
+  status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
 }) {
   const s = status || "pending";
   const icons: Record<string, JSX.Element> = {
@@ -714,6 +714,7 @@ function StepItem({ task, status }: {
     done: <CheckCircle2 className="w-3 h-3 text-green-500" />,
     failed: <XCircle className="w-3 h-3 text-red-500" />,
     "needs-input": <HelpCircle className="w-3 h-3 text-yellow-500" />,
+    bug: <AlertTriangle className="w-3 h-3 text-orange-500" />,
   };
 
   return (
@@ -726,6 +727,7 @@ function StepItem({ task, status }: {
           s === "failed" ? "text-red-400" :
           s === "running" ? "text-foreground font-medium" :
           s === "needs-input" ? "text-yellow-500" :
+          s === "bug" ? "text-orange-500" :
           "text-foreground/80"
         )}>
           {task.title}
@@ -796,7 +798,7 @@ function TaskPlanCard({
   fixCycle,
 }: {
   plan: ManagerPlan;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
@@ -974,7 +976,7 @@ function ManagerMessageBubble({
   fixCycle,
 }: {
   message: { role: string; content: string; plan?: ManagerPlan };
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input">;
+  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   onExecute?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
@@ -1592,6 +1594,13 @@ export function ChatPanel() {
       }
 
       setReviewPhase("review_failed");
+
+      for (const step of currentPlanSteps) {
+        const key = String(step.step);
+        if (useIDEStore.getState().taskStatuses[key] === "done") {
+          updateTaskStatus(key, "bug");
+        }
+      }
 
       const issueCount = (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0);
 

@@ -4,7 +4,7 @@ import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { VIBE_AGENT_SYSTEM_PROMPT, buildContextMessage } from "./vibe-prompt";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerContextMessage, buildManagerFixPlanMessage } from "./manager-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT, buildVerifierContextMessage, buildHolisticVerifierMessage } from "./verifier-prompt";
+import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
 
@@ -190,62 +190,6 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to get Manager response" });
-    }
-  });
-
-  app.post("/api/verifier-chat", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
-        return;
-      }
-
-      const { sub_task_id, task_description, acceptance_criteria, files, editor_output, files_before } = req.body as {
-        sub_task_id: string;
-        task_description: string;
-        acceptance_criteria: string;
-        files?: Array<{ path: string; content: string }>;
-        editor_output: string;
-        files_before?: Array<{ path: string; content: string }>;
-      };
-
-      if (!sub_task_id || !task_description || !acceptance_criteria) {
-        res.status(400).json({ error: "sub_task_id, task_description, and acceptance_criteria are required" });
-        return;
-      }
-
-      const contextMessage = buildVerifierContextMessage(
-        files || [],
-        sub_task_id,
-        task_description,
-        acceptance_criteria,
-        editor_output || "",
-        files_before,
-      );
-
-      const messages: Array<{ role: "system" | "user"; content: string }> = [
-        { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
-        { role: "user", content: contextMessage },
-      ];
-
-      const completion = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages,
-        stream: false,
-      });
-
-      const responseContent = completion.choices[0]?.message?.content || "";
-
-      const verification = parseAIJson(responseContent);
-      if (!verification) {
-        res.json({ raw: responseContent, error: "Verifier did not return valid JSON" });
-        return;
-      }
-
-      res.json({ verification });
-    } catch (error: any) {
-      console.error("Verifier chat API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get Verifier response" });
     }
   });
 
