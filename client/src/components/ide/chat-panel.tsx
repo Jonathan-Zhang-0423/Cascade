@@ -539,21 +539,29 @@ function renderBoldMarkdown(str: string) {
 
 function splitSummaryBody(text: string): { body: string; trailing: string } {
   const lines = text.split("\n");
-  let lastBulletIdx = -1;
+  let bulletStarted = false;
+  let endOfBulletBlock = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
-      lastBulletIdx = i;
+      bulletStarted = true;
+    } else if (bulletStarted && trimmed.length > 0) {
+      endOfBulletBlock = i;
+      break;
     }
   }
 
-  if (lastBulletIdx === -1) {
+  if (!bulletStarted) {
     return { body: text, trailing: "" };
   }
 
-  const body = lines.slice(0, lastBulletIdx + 1).join("\n");
-  const trailing = lines.slice(lastBulletIdx + 1).join("\n");
+  if (endOfBulletBlock === -1) {
+    return { body: text, trailing: "" };
+  }
+
+  const body = lines.slice(0, endOfBulletBlock).join("\n");
+  const trailing = lines.slice(endOfBulletBlock).join("\n");
   return { body, trailing };
 }
 
