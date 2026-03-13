@@ -177,7 +177,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: false,
-        max_tokens: 800,
+        max_tokens: 4096,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
