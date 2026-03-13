@@ -641,7 +641,7 @@ function MessageBubble({ message, autoApplied, appliedBlockIndices }: { message:
 
   return (
     <div className="flex justify-end px-3" data-testid={`chat-message-${message.id}`}>
-      <div className="rounded-full px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
         <MessageContent content={message.content} />
       </div>
     </div>
@@ -999,7 +999,7 @@ function ManagerMessageBubble({
   if (message.role === "user") {
     return (
       <div className="flex justify-end px-3">
-        <div className="rounded-full px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+        <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
           {message.content}
         </div>
       </div>
