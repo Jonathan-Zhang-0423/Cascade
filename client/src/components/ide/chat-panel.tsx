@@ -1373,7 +1373,6 @@ export function ChatPanel() {
       let streamDone = false;
       const appliedBlockCount = { current: 0 };
       let lastUIUpdate = 0;
-      let lastCodeCheck = 0;
       let uiUpdatePending = false;
 
       while (!streamDone) {
@@ -1407,8 +1406,7 @@ export function ChatPanel() {
                 }
 
                 const hasCodeFence = parsed.content.includes("```");
-                if (hasCodeFence || now - lastCodeCheck > 500) {
-                  lastCodeCheck = now;
+                if (hasCodeFence) {
                   const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
                   if (currentBlocks.length > appliedBlockCount.current) {
                     for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
