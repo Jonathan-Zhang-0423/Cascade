@@ -1400,13 +1400,14 @@ export function ChatPanel() {
 
                 const now = performance.now();
 
-                if (now - lastUIUpdate > 50) {
+                if (now - lastUIUpdate > 16) {
                   updateLastAssistantMessage(stripProjectNameMarker(accumulated));
                   lastUIUpdate = now;
                   uiUpdatePending = false;
                 }
 
-                if (now - lastCodeCheck > 300) {
+                const hasCodeFence = parsed.content.includes("```");
+                if (hasCodeFence || now - lastCodeCheck > 500) {
                   lastCodeCheck = now;
                   const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
                   if (currentBlocks.length > appliedBlockCount.current) {

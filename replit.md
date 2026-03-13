@@ -42,9 +42,9 @@ The CodeStart IDE features a modern web architecture:
     - **User Confirmation Flow**: When the Verifier flags subjective items needing user input, execution pauses and the Communicator presents the items. Users respond via the confirmation area or main chat input.
 - **Performance Optimizations** (Task #4):
     - **Non-blocking Communicator**: Informational narration events (step_starting, step_completed, etc.) fire-and-forget — only `needs_input` blocks. Saves 40-95s per build.
-    - **max_tokens caps**: Communicator=200, Manager=1500, Verifier=2000, Editor/Vibe=4096, Manager fix=1500.
+    - **max_tokens caps**: Communicator=150, Manager=300 (conversation)/800 (plan), Verifier=800, Editor/Vibe=4096, Manager fix=800.
     - **Filtered Manager history**: Communicator narration excluded from Manager API conversation context.
-    - **Throttled streaming UI**: `updateLastAssistantMessage` batched to 50ms intervals; `extractCodeBlocks` only runs on code fence detection.
+    - **Throttled streaming UI**: `updateLastAssistantMessage` batched to ~16ms intervals; `extractCodeBlocks` gated by code-fence detection with 500ms time-based fallback.
     - **Relevant-files-only for Editor**: In plan execution, only files mentioned in step descriptions are sent (with index.html fallback). Falls back to all files when no paths detected.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.

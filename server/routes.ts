@@ -173,11 +173,15 @@ export async function registerRoutes(
 
       const allMessages = [...systemMessages, ...messages];
 
+      const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || "";
+      const looksLikeBuildRequest = /\b(build|create|make|implement|add|写|做|创建|搭建|帮我)\b/i.test(lastUserMsg);
+      const managerMaxTokens = looksLikeBuildRequest ? 800 : 300;
+
       const completion = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: false,
-        max_tokens: 1500,
+        max_tokens: managerMaxTokens,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -245,7 +249,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
-        max_tokens: 2000,
+        max_tokens: 800,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -302,7 +306,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
-        max_tokens: 1500,
+        max_tokens: 800,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -350,7 +354,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: true,
-        max_tokens: 200,
+        max_tokens: 150,
       });
 
       for await (const chunk of stream) {
