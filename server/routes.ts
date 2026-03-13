@@ -180,13 +180,23 @@ export async function registerRoutes(
 
       const responseContent = completion.choices[0]?.message?.content || "";
 
-      const plan = parseAIJson(responseContent);
-      if (!plan) {
-        res.json({ raw: responseContent, error: "Manager did not return valid JSON" });
+      const parsed = parseAIJson(responseContent);
+      if (!parsed) {
+        res.json({ message: responseContent });
         return;
       }
 
-      res.json({ plan });
+      if (parsed.type === "message" && parsed.content) {
+        res.json({ message: parsed.content });
+      } else if (parsed.type === "plan" || parsed.steps) {
+        const plan = { ...parsed };
+        delete plan.type;
+        res.json({ plan });
+      } else if (parsed.summary && parsed.steps) {
+        res.json({ plan: parsed });
+      } else {
+        res.json({ message: parsed.content || responseContent });
+      }
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to get Manager response" });

@@ -960,7 +960,7 @@ function TaskPlanCard({
               data-testid="button-execute-plan"
             >
               <Play className="w-3 h-3 mr-1" />
-              Execute Plan
+              Start building
             </Button>
           )}
         </div>
@@ -1030,8 +1030,16 @@ function ManagerMessageBubble({
   }
 
   return (
-    <div className="px-3 text-[13px] leading-relaxed text-foreground">
-      <p className="text-muted-foreground/70 italic">{message.content}</p>
+    <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
+      <div className="flex items-start gap-2">
+        <div className="shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+          <ClipboardList className="w-3 h-3 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="text-[10px] font-medium text-primary/70 block mb-0.5">Plan</span>
+          <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1235,8 +1243,10 @@ export function ChatPanel() {
 
       const data = await response.json();
 
-      if (data.error && !data.plan) {
+      if (data.error && !data.plan && !data.message) {
         addManagerMessage({ role: "assistant", content: "Hmm, I had a little trouble understanding that. Could you try rephrasing your request? 🤔", source: "communicator" });
+      } else if (data.message) {
+        addManagerMessage({ role: "assistant", content: data.message, source: "communicator" });
       } else if (data.plan) {
         clearManagerPlan();
         setManagerPlan(data.plan);
@@ -1270,7 +1280,7 @@ export function ChatPanel() {
 
     if (managerContext && (managerContext.sub_task_id || managerContext.acceptance_criteria)) {
       const contextLines: string[] = [];
-      contextLines.push(`[Manager Mode] You are executing subtask ${managerContext.sub_task_id || title}: ${title}`);
+      contextLines.push(`[Plan Mode] You are executing subtask ${managerContext.sub_task_id || title}: ${title}`);
       contextLines.push(`Task description: ${description}`);
       if (managerContext.acceptance_criteria) {
         contextLines.push(`Acceptance criteria: ${managerContext.acceptance_criteria}`);
@@ -1457,6 +1467,8 @@ export function ChatPanel() {
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
+
+    setChatMode("build");
 
     const normalizedSteps = normalizeSteps(plan);
 
@@ -1701,7 +1713,7 @@ export function ChatPanel() {
     }
 
     setExecutingTaskIndex(null);
-  }, [executeSubTask, performHolisticReview, requestFixPlan, setExecutingTaskIndex, updateTaskStatus, callCommunicator, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation]);
+  }, [executeSubTask, performHolisticReview, requestFixPlan, setExecutingTaskIndex, updateTaskStatus, callCommunicator, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
 
   const handleStopExecution = useCallback(() => {
     executionAbortRef.current = true;
@@ -2016,7 +2028,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
-            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Describe your project requirements..." : "Describe what you want to build..."}
+            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : "Describe what you want to build..."}
             className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
             rows={1}
             data-testid="input-chat"
@@ -2055,7 +2067,7 @@ export function ChatPanel() {
               ) : (
                 <ClipboardList className="w-3 h-3" />
               )}
-              <span>{chatMode === "build" ? "Build" : "Manager"}</span>
+              <span>{chatMode === "build" ? "Build" : "Plan"}</span>
               {modeDropdownOpen ? (
                 <ChevronUp className="w-2.5 h-2.5" />
               ) : (
@@ -2085,12 +2097,12 @@ export function ChatPanel() {
                     chatMode === "manager" ? "text-primary bg-primary/5" : "text-foreground hover:bg-muted/50"
                   )}
                   onClick={() => { setChatMode("manager"); setModeDropdownOpen(false); }}
-                  data-testid="option-manager-mode"
+                  data-testid="option-plan-mode"
                 >
                   <ClipboardList className="w-3 h-3" />
                   <div>
-                    <div className="font-medium">Manager</div>
-                    <div className="text-[9px] text-muted-foreground">Plan & execute</div>
+                    <div className="font-medium">Plan</div>
+                    <div className="text-[9px] text-muted-foreground">Brainstorm & plan</div>
                   </div>
                   {chatMode === "manager" && <Check className="w-3 h-3 ml-auto" />}
                 </button>
