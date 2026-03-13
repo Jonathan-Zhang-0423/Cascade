@@ -1133,7 +1133,9 @@ export function ChatPanel() {
     }
   }, []);
 
-  const callCommunicator = useCallback(async (
+  const BLOCKING_EVENTS = new Set(["needs_input"]);
+
+  const callCommunicatorCore = useCallback(async (
     event: {
       event: string;
       userLanguage?: string;
@@ -1213,6 +1215,16 @@ export function ChatPanel() {
     }
   }, [addManagerMessage]);
 
+  const callCommunicator = useCallback(async (
+    event: Parameters<typeof callCommunicatorCore>[0],
+  ): Promise<string> => {
+    if (BLOCKING_EVENTS.has(event.event)) {
+      return callCommunicatorCore(event);
+    }
+    callCommunicatorCore(event).catch(() => {});
+    return "";
+  }, [callCommunicatorCore]);
+
   const handleManagerSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
     if (!trimmed || isManagerResponding) return;
@@ -1227,10 +1239,12 @@ export function ChatPanel() {
     }));
 
     const currentMsgs = useIDEStore.getState().managerMessages;
-    const messagesForApi = currentMsgs.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.plan ? JSON.stringify(m.plan) : m.content,
-    }));
+    const messagesForApi = currentMsgs
+      .filter((m) => m.role === "user" || m.plan || (m.role === "assistant" && m.source !== "communicator"))
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.plan ? JSON.stringify(m.plan) : m.content,
+      }));
 
     setManagerResponding(true);
 
@@ -1298,10 +1312,26 @@ export function ChatPanel() {
     }
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
-    const fileContext = allFiles.map((f) => ({
-      path: f.path,
-      content: f.content || "",
-    }));
+
+    let fileContext: { path: string; content: string }[];
+    if (managerContext) {
+      const pathPattern = /\/project\/[\w\-./]+\.\w+/g;
+      const mentionedPaths = new Set(description.match(pathPattern) || []);
+      if (mentionedPaths.size > 0) {
+        const relevant = allFiles.filter((f) => mentionedPaths.has(f.path));
+        const indexFile = allFiles.find((f) => f.path === "/project/index.html");
+        if (indexFile && !mentionedPaths.has("/project/index.html")) {
+          relevant.push(indexFile);
+        }
+        fileContext = relevant.length > 0
+          ? relevant.map((f) => ({ path: f.path, content: f.content || "" }))
+          : allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+      } else {
+        fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+      }
+    } else {
+      fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+    }
 
     const editorMessages = [{ role: "user" as const, content: prompt }];
 
@@ -1342,6 +1372,9 @@ export function ChatPanel() {
       let buffer = "";
       let streamDone = false;
       const appliedBlockCount = { current: 0 };
+      let lastUIUpdate = 0;
+      let lastCodeCheck = 0;
+      let uiUpdatePending = false;
 
       while (!streamDone) {
         const { done, value } = await reader.read();
@@ -1363,15 +1396,26 @@ export function ChatPanel() {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 accumulated += parsed.content;
-                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+                uiUpdatePending = true;
 
-                const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
-                if (currentBlocks.length > appliedBlockCount.current) {
-                  for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
-                    await applyCodeBlock(currentBlocks[bi]);
-                    refreshPreview();
+                const now = performance.now();
+
+                if (now - lastUIUpdate > 50) {
+                  updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+                  lastUIUpdate = now;
+                  uiUpdatePending = false;
+                }
+
+                if (now - lastCodeCheck > 300) {
+                  lastCodeCheck = now;
+                  const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
+                  if (currentBlocks.length > appliedBlockCount.current) {
+                    for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
+                      await applyCodeBlock(currentBlocks[bi]);
+                      refreshPreview();
+                    }
+                    appliedBlockCount.current = currentBlocks.length;
                   }
-                  appliedBlockCount.current = currentBlocks.length;
                 }
               }
             } catch {}
@@ -1379,7 +1423,15 @@ export function ChatPanel() {
         }
       }
 
+      if (uiUpdatePending) {
+        updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+      }
+
       const finalBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
+      for (let bi = appliedBlockCount.current; bi < finalBlocks.length; bi++) {
+        await applyCodeBlock(finalBlocks[bi]);
+        refreshPreview();
+      }
       if (finalBlocks.length > 0) {
         createCheckpoint(title);
       }

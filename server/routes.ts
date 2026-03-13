@@ -121,6 +121,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: true,
+        max_tokens: 4096,
       });
 
       for await (const chunk of stream) {
@@ -176,6 +177,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: false,
+        max_tokens: 1500,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -243,6 +245,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
+        max_tokens: 2000,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -299,6 +302,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
+        max_tokens: 1500,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -346,6 +350,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: true,
+        max_tokens: 200,
       });
 
       for await (const chunk of stream) {
