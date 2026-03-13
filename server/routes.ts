@@ -173,15 +173,11 @@ export async function registerRoutes(
 
       const allMessages = [...systemMessages, ...messages];
 
-      const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || "";
-      const looksLikeBuildRequest = /\b(build|create|make|implement|add|写|做|创建|搭建|帮我)\b/i.test(lastUserMsg);
-      const managerMaxTokens = looksLikeBuildRequest ? 800 : 100;
-
       const completion = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: false,
-        max_tokens: managerMaxTokens,
+        max_tokens: 800,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
