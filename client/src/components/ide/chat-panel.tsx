@@ -1308,7 +1308,7 @@ export function ChatPanel() {
     if (!managerContext) {
       addChatMessage({ role: "user", content: prompt });
     }
-    addChatMessage({ role: "assistant", content: "" });
+    addChatMessage({ role: "assistant", content: "", ...(managerContext ? { hidden: true } : {}) });
     setAiResponding(true);
 
     const controller = new AbortController();
@@ -1979,7 +1979,7 @@ export function ChatPanel() {
           return merged.map((item) => {
             if (item.kind === "chat") {
               const { msg, idx } = item;
-              if (chatMode === "manager" && msg.role === "assistant") return null;
+              if (msg.hidden) return null;
               const isLastAssistant = msg.role === "assistant" && idx === lastChatIdx;
               return msg.role === "checkpoint" ? (
                 <CheckpointMarker key={`c-${msg.id}`} message={msg} />

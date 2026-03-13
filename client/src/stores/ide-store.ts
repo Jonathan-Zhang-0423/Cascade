@@ -14,6 +14,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   checkpointId?: string;
+  hidden?: boolean;
 }
 
 export interface ConsoleEntry {
