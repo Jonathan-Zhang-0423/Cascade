@@ -1953,21 +1953,39 @@ export function ChatPanel() {
         </Button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
-        {(() => {
-          const lastPlanMsgId = [...managerMessages].reverse().find((m) => m.plan)?.id;
-          const lastChatIdx = chatMessages.length - 1;
-          type MergedItem =
-            | { kind: "chat"; msg: ChatMessage; idx: number; order: number }
-            | { kind: "manager"; msg: typeof managerMessages[number]; order: number };
-          const merged: MergedItem[] = [
-            ...chatMessages.map((msg, idx) => ({ kind: "chat" as const, msg, idx, order: idx })),
-            ...managerMessages.map((msg, idx) => ({ kind: "manager" as const, msg, order: idx })),
-          ].sort((a, b) => a.msg.timestamp - b.msg.timestamp || a.order - b.order);
-
-          return merged.map((item) => {
-            if (item.kind === "chat") {
-              const { msg, idx } = item;
-              if (chatMode === "manager" && msg.role === "assistant") return null;
+        {chatMode === "manager" ? (
+          <>
+            {(() => {
+              const lastPlanMsgId = [...managerMessages].reverse().find((m) => m.plan)?.id;
+              return managerMessages.map((msg) => {
+                const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
+                return (
+                  <ManagerMessageBubble
+                    key={`m-${msg.id}`}
+                    message={msg}
+                    taskStatuses={taskStatuses}
+                    onExecute={isLastPlan ? handleExecutePlan : undefined}
+                    isExecuting={isLastPlan ? isExecuting : undefined}
+                    onStop={isLastPlan ? handleStopExecution : undefined}
+                    onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
+                    pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
+                    confirmationInput={isLastPlan ? userConfirmationInput : undefined}
+                    onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
+                    reviewPhase={isLastPlan ? reviewPhase : undefined}
+                    holisticReview={isLastPlan ? holisticReview : undefined}
+                    fixCycle={isLastPlan ? fixCycle : undefined}
+                  />
+                );
+              });
+            })()}
+            {isManagerResponding && (
+              <TypingIndicator text="Planning..." />
+            )}
+          </>
+        ) : (
+          <>
+            {chatMessages.map((msg, idx) => {
+              const lastChatIdx = chatMessages.length - 1;
               const isLastAssistant = msg.role === "assistant" && idx === lastChatIdx;
               return msg.role === "checkpoint" ? (
                 <CheckpointMarker key={`c-${msg.id}`} message={msg} />
@@ -1979,34 +1997,11 @@ export function ChatPanel() {
                   appliedBlockIndices={isLastAssistant ? appliedBlockIndices : undefined}
                 />
               );
-            } else {
-              const { msg } = item;
-              const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
-              return (
-                <ManagerMessageBubble
-                  key={`m-${msg.id}`}
-                  message={msg}
-                  taskStatuses={taskStatuses}
-                  onExecute={isLastPlan ? handleExecutePlan : undefined}
-                  isExecuting={isLastPlan ? isExecuting : undefined}
-                  onStop={isLastPlan ? handleStopExecution : undefined}
-                  onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
-                  pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
-                  confirmationInput={isLastPlan ? userConfirmationInput : undefined}
-                  onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
-                  reviewPhase={isLastPlan ? reviewPhase : undefined}
-                  holisticReview={isLastPlan ? holisticReview : undefined}
-                  fixCycle={isLastPlan ? fixCycle : undefined}
-                />
-              );
-            }
-          });
-        })()}
-        {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
-          <TypingIndicator />
-        )}
-        {isManagerResponding && (
-          <TypingIndicator text="Planning..." />
+            })}
+            {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && (
+              <TypingIndicator />
+            )}
+          </>
         )}
       </div>
       <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
