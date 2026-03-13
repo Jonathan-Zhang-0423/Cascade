@@ -140,3 +140,68 @@ Planned:
   [ ] Settings panel
   [ ] Search across files
   [ ] Drag and drop file reordering
+
+====================================
+PHASE 5: Multi-Agent System
+====================================
+Status: COMPLETE
+
+Task #1 - Communicator Agent & Agent Personalities (MERGED):
+  [x] Added Communicator Agent as the user-facing narrator
+      - Translates internal agent events into friendly, non-technical messages
+      - Streams responses via SSE (/api/communicator-chat)
+      - Handles events: step_starting, step_completed, build_starting,
+        build_complete, reviewing, review_passed, bugs_found, fixing,
+        all_complete, needs_input
+  [x] Separated agent personalities with dedicated prompt files
+      - server/communicator-prompt.ts (friendly narrator)
+      - server/verifier-prompt.ts (quality reviewer)
+      - server/manager-prompt.ts (planning/orchestration)
+
+Task #2 - Build → Review → Fix Workflow (MERGED):
+  [x] Holistic Verifier that reviews entire project after all steps complete
+      - Checks for bugs, missing features, regressions, UI/UX issues
+      - Returns structured JSON with verdict and actionable items
+  [x] Manager fix-plan generation when Verifier finds issues
+      - Creates targeted fix steps based on Verifier feedback
+  [x] Automated fix cycle (up to 2 fix rounds)
+  [x] User confirmation flow for subjective Verifier items
+  [x] Review phase state management (idle → building → reviewing → passed/failed → fixing)
+
+Task #3 - Plan Mode Redesign (MERGED):
+  [x] Renamed "Manager Mode" → "Plan Mode" throughout UI
+  [x] Conversational planning assistant (dual JSON output: message or plan)
+  [x] Non-italic chat bubbles for Plan mode responses
+  [x] Auto-switch from Plan → Build mode when user says "Start building"
+  [x] Filtered Manager history (excludes Communicator narration)
+  [x] Merged timeline via msg.hidden flag (Editor output hidden during plan execution)
+  [x] Squarer chat input box (rounded-lg instead of rounded-full)
+
+====================================
+PHASE 6: Performance Optimization
+====================================
+Status: COMPLETE
+
+Task #4 - Agent Pipeline Performance (MERGED):
+  [x] Non-blocking Communicator calls
+      - Informational narration events fire-and-forget (no await)
+      - Only needs_input events block execution
+      - Saves 40-95 seconds per typical 5-step build
+  [x] max_tokens caps on all API endpoints
+      - Communicator: 150, Manager: 800, Verifier: 500
+      - Editor/Vibe: 4096, Manager fix: 500
+  [x] Filtered Manager conversation history
+      - Excludes Communicator narration from Manager API context
+  [x] Throttled streaming UI updates
+      - updateLastAssistantMessage batched to ~16ms intervals
+      - extractCodeBlocks gated by code-fence detection in chunks
+      - Post-stream catch-all apply for any missed blocks
+  [x] Relevant-files-only for Editor
+      - In plan execution, only files mentioned in step descriptions are sent
+      - Falls back to all files when no paths detected
+
+Task #5 - Fix Plan Mode Raw JSON Regression (MERGED):
+  [x] Removed brittle max_tokens heuristic from Manager endpoint
+      - Previous keyword regex misclassified build requests, truncated plan JSON
+      - Replaced dynamic 100/800 logic with single max_tokens: 800
+      - Plan cards now render correctly for all languages
