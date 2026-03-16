@@ -500,7 +500,7 @@ export function NotebookPanel() {
           >
             <h2 className="text-base font-semibold text-foreground mb-4">思维导图</h2>
             <p className="text-xs text-muted-foreground mb-3">
-              Hover on a file node to see its description. Click to expand its features. Click a feature to pin its explanation.
+              悬停文件节点查看说明，点击展开功能详情，点击子节点可固定说明
             </p>
             <MindMap data={notebookContent.mind_map} />
           </section>
