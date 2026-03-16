@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
 import type { FileNode, NotebookContent } from "@/stores/ide-store";
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle } from "lucide-react";
+import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
 
 const LOADING_MESSAGES = [
   "Reading through your code...",
@@ -72,18 +72,129 @@ function flattenFiles(files: FileNode[]): { path: string; content: string }[] {
   return result;
 }
 
+function computeChangedFiles(
+  oldFiles: { path: string; content: string }[],
+  newFiles: { path: string; content: string }[]
+): { path: string; content: string; status: "added" | "modified" | "deleted" }[] {
+  const oldMap = new Map(oldFiles.map((f) => [f.path, f.content]));
+  const newMap = new Map(newFiles.map((f) => [f.path, f.content]));
+  const changes: { path: string; content: string; status: "added" | "modified" | "deleted" }[] = [];
+
+  for (const [path, content] of newMap) {
+    if (!oldMap.has(path)) {
+      changes.push({ path, content, status: "added" });
+    } else if (oldMap.get(path) !== content) {
+      changes.push({ path, content, status: "modified" });
+    }
+  }
+
+  for (const [path] of oldMap) {
+    if (!newMap.has(path)) {
+      changes.push({ path, content: "", status: "deleted" });
+    }
+  }
+
+  return changes;
+}
+
+function applyPatchToNotebook(
+  existing: NotebookContent,
+  patch: any,
+  newHash: string,
+  newFiles: { path: string; content: string }[]
+): NotebookContent {
+  let projectSummary = existing.project_summary;
+  if (patch.project_summary) {
+    projectSummary = patch.project_summary;
+  }
+
+  let breakdowns = [...existing.file_breakdowns];
+
+  if (patch.removed_files?.length) {
+    breakdowns = breakdowns.filter((fb) => !patch.removed_files.includes(fb.file));
+  }
+
+  if (patch.updated_breakdowns?.length) {
+    for (const updated of patch.updated_breakdowns) {
+      const idx = breakdowns.findIndex((fb) => fb.file === updated.file);
+      if (idx >= 0) {
+        breakdowns[idx] = updated;
+      }
+    }
+  }
+
+  if (patch.new_breakdowns?.length) {
+    breakdowns.push(...patch.new_breakdowns);
+  }
+
+  let mindMap = existing.mind_map;
+  if (patch.updated_mind_map) {
+    const patchBranches = patch.updated_mind_map.branches || [];
+    const existingBranches = [...(existing.mind_map?.branches || [])];
+
+    if (patch.removed_files?.length) {
+      const filteredBranches = existingBranches.filter(
+        (b) => !patch.removed_files.includes(b.file)
+      );
+      existingBranches.length = 0;
+      existingBranches.push(...filteredBranches);
+    }
+
+    for (const patchBranch of patchBranches) {
+      const idx = existingBranches.findIndex((b) => b.file === patchBranch.file);
+      if (idx >= 0) {
+        existingBranches[idx] = patchBranch;
+      } else {
+        existingBranches.push(patchBranch);
+      }
+    }
+
+    mindMap = {
+      central_node: patch.updated_mind_map.central_node || existing.mind_map?.central_node || "",
+      branches: existingBranches,
+    };
+  }
+
+  let learningTips = existing.learning_tips;
+  if (patch.learning_tips?.length) {
+    learningTips = patch.learning_tips;
+  }
+
+  return {
+    project_summary: projectSummary,
+    file_breakdowns: breakdowns,
+    mind_map: mindMap,
+    learning_tips: learningTips,
+    generatedAt: Date.now(),
+    sourceHash: newHash,
+    sourceFiles: newFiles,
+  };
+}
+
+function buildNotebookOutline(notebook: NotebookContent): string {
+  const fileList = notebook.file_breakdowns.map((fb) => fb.file).join(", ");
+  const conceptTerms = notebook.file_breakdowns
+    .flatMap((fb) => fb.key_concepts?.map((c) => c.term) || [])
+    .join(", ");
+  const tipCount = notebook.learning_tips?.length || 0;
+  return `Files: ${fileList}\nConcept terms: ${conceptTerms}\nTip count: ${tipCount}`;
+}
+
 export function NotebookPanel() {
   const {
     files,
     notebookContent,
     isNotebookLoading,
+    isNotebookOptimizing,
     notebookError,
     setNotebookContent,
     setNotebookLoading,
+    setNotebookOptimizing,
     setNotebookError,
   } = useIDEStore();
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const autoPatchTriggeredRef = useRef(false);
 
   const currentHash = useMemo(() => computeFilesHash(files), [files]);
   const isStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
@@ -120,6 +231,7 @@ export function NotebookPanel() {
         ...data.notebook,
         generatedAt: Date.now(),
         sourceHash: hash,
+        sourceFiles: nonEmpty,
       };
       setNotebookContent(notebook);
     } catch (err: any) {
@@ -129,12 +241,129 @@ export function NotebookPanel() {
     }
   }, [files, setNotebookContent, setNotebookLoading, setNotebookError]);
 
+  const autoPatchNotebook = useCallback(async () => {
+    if (!notebookContent || isNotebookLoading || isNotebookOptimizing) return;
+
+    const flatFiles = flattenFiles(files);
+    const nonEmpty = flatFiles.filter((f) => f.content.trim().length > 0);
+    if (nonEmpty.length === 0) return;
+
+    const oldFiles = notebookContent.sourceFiles || [];
+
+    if (oldFiles.length === 0) {
+      generateNotebook();
+      return;
+    }
+
+    const changedFiles = computeChangedFiles(oldFiles, nonEmpty);
+    if (changedFiles.length === 0) return;
+
+    const newHash = computeFilesHash(files);
+    setNotebookOptimizing(true);
+
+    try {
+      const outline = buildNotebookOutline(notebookContent);
+
+      const affectedSections = notebookContent.file_breakdowns.filter((fb) =>
+        changedFiles.some((cf) => cf.path === fb.file)
+      );
+
+      const res = await fetch("/api/mentor-patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          changedFiles,
+          notebookOutline: outline,
+          affectedSections: affectedSections.length > 0 ? affectedSections : undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to patch notebook");
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        console.error("Patch error, falling back silently:", data.error);
+        setNotebookOptimizing(false);
+        return;
+      }
+
+      const patched = applyPatchToNotebook(notebookContent, data.patch, newHash, nonEmpty);
+      setNotebookContent(patched);
+    } catch (err: any) {
+      console.error("Auto-patch failed:", err.message);
+    } finally {
+      setNotebookOptimizing(false);
+    }
+  }, [files, notebookContent, isNotebookLoading, isNotebookOptimizing, generateNotebook, setNotebookContent, setNotebookOptimizing]);
+
+  const optimizeNotebook = useCallback(async () => {
+    if (!notebookContent || isNotebookLoading || isNotebookOptimizing) return;
+
+    const flatFiles = flattenFiles(files);
+    const nonEmpty = flatFiles.filter((f) => f.content.trim().length > 0);
+    if (nonEmpty.length === 0) return;
+
+    const newHash = computeFilesHash(files);
+    setNotebookOptimizing(true);
+
+    try {
+      const notebookForApi = {
+        project_summary: notebookContent.project_summary,
+        file_breakdowns: notebookContent.file_breakdowns,
+        mind_map: notebookContent.mind_map,
+        learning_tips: notebookContent.learning_tips,
+      };
+
+      const res = await fetch("/api/mentor-optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebook: notebookForApi,
+          files: nonEmpty,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to optimize notebook");
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      const optimized: NotebookContent = {
+        ...data.notebook,
+        generatedAt: Date.now(),
+        sourceHash: newHash,
+        sourceFiles: nonEmpty,
+      };
+      setNotebookContent(optimized);
+    } catch (err: any) {
+      console.error("Optimize failed:", err.message);
+    } finally {
+      setNotebookOptimizing(false);
+    }
+  }, [files, notebookContent, isNotebookLoading, isNotebookOptimizing, setNotebookContent, setNotebookOptimizing]);
+
   useEffect(() => {
     if (isNotebookLoading) return;
     if (!notebookContent && !notebookError) {
       generateNotebook();
     }
   }, [notebookContent, isNotebookLoading, notebookError, generateNotebook]);
+
+  useEffect(() => {
+    if (isStale && notebookContent && !isNotebookLoading && !isNotebookOptimizing && !autoPatchTriggeredRef.current) {
+      autoPatchTriggeredRef.current = true;
+      autoPatchNotebook();
+    }
+    if (!isStale) {
+      autoPatchTriggeredRef.current = false;
+    }
+  }, [isStale, notebookContent, isNotebookLoading, isNotebookOptimizing, autoPatchNotebook]);
 
   const toggleFileExpand = (file: string) => {
     setExpandedFiles((prev) => {
@@ -193,7 +422,7 @@ export function NotebookPanel() {
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
             <BookOpen className="w-5 h-5 text-primary" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-bold text-foreground" data-testid="text-notebook-title">
               My Coding Notebook
             </h1>
@@ -203,9 +432,36 @@ export function NotebookPanel() {
                 : "Your learning companion"}
             </p>
           </div>
+          <Button
+            onClick={optimizeNotebook}
+            variant="outline"
+            size="sm"
+            disabled={isNotebookOptimizing}
+            className="gap-1.5"
+            data-testid="button-optimize-notebook"
+          >
+            {isNotebookOptimizing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            优化笔记
+          </Button>
         </div>
 
-        {isStale && (
+        {isNotebookOptimizing && (
+          <div
+            className="flex items-center gap-3 p-3 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20"
+            data-testid="notebook-optimizing-banner"
+          >
+            <Loader2 className="w-5 h-5 text-blue-500 animate-spin shrink-0" />
+            <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
+              Updating your notebook with the latest changes...
+            </p>
+          </div>
+        )}
+
+        {isStale && !isNotebookOptimizing && (
           <div
             className="flex items-center gap-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
             data-testid="notebook-stale-banner"
@@ -215,14 +471,14 @@ export function NotebookPanel() {
               Your code has changed since this notebook was generated.
             </p>
             <Button
-              onClick={generateNotebook}
+              onClick={autoPatchNotebook}
               variant="outline"
               size="sm"
-              disabled={isNotebookLoading}
+              disabled={isNotebookOptimizing}
               className="border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
               data-testid="button-refresh-stale-notebook"
             >
-              <RefreshCw className={`w-4 h-4 mr-1 ${isNotebookLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className="w-4 h-4 mr-1" />
               Update
             </Button>
           </div>

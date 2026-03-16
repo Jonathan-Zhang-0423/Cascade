@@ -53,8 +53,13 @@ The CodeStart IDE features a modern web architecture:
     - **Space Toggle**: Navbar has "Workspace" / "Learner Space" pill toggle (`activeSpace` in store).
     - **NotebookPanel** (`client/src/components/ide/notebook-panel.tsx`): Renders project summary, expandable file breakdowns with key concepts, interactive SVG mind map, and learning tips.
     - **MindMap** (`client/src/components/ide/mind-map.tsx`): Custom SVG mind map with central project node, file branches, concept leaves. Click nodes for explanations. Color-coded by file type.
-    - **State**: `activeSpace`, `notebookContent`, `isNotebookLoading`, `notebookError` in `ide-store.ts`. Persisted to localStorage.
+    - **State**: `activeSpace`, `notebookContent`, `isNotebookLoading`, `isNotebookOptimizing`, `notebookError` in `ide-store.ts`. Persisted to localStorage.
     - **Auto-generation**: When user switches to Learner Space and no notebook exists, generation triggers automatically.
+    - **Two-Tier Incremental Updates**:
+      - **Tier 1 — Auto-patch** (`/api/mentor-patch`): When notebook is stale, automatically sends only changed files + notebook outline + affected sections → Mentor returns a JSON patch → client merges patch into existing notebook. Uses `MENTOR_PATCH_PROMPT`. Lightweight, fires automatically on entering stale notebook.
+      - **Tier 2 — Optimize** (`/api/mentor-optimize`): "优化笔记" button sends full existing notebook + all current files → Mentor does targeted refinement with full cross-file context. Uses `MENTOR_OPTIMIZE_PROMPT`. Premium, user-initiated.
+      - **Diffing**: `NotebookContent.sourceFiles` stores a snapshot of files at generation time. `computeChangedFiles()` diffs old snapshot vs current files to find added/modified/deleted files.
+      - **Patch merge**: `applyPatchToNotebook()` merges `updated_breakdowns`, `new_breakdowns`, `removed_files`, and `updated_mind_map` branches into the existing notebook.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 

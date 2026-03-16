@@ -115,6 +115,7 @@ export interface NotebookContent {
   learning_tips: string[];
   generatedAt?: number;
   sourceHash?: string;
+  sourceFiles?: { path: string; content: string }[];
 }
 
 export interface ManagerMessage {
@@ -286,6 +287,7 @@ interface IDEState {
   activeSpace: ActiveSpace;
   notebookContent: NotebookContent | null;
   isNotebookLoading: boolean;
+  isNotebookOptimizing: boolean;
   notebookError: string | null;
 
   loadProject: (id: string) => void;
@@ -330,6 +332,7 @@ interface IDEState {
   setActiveSpace: (space: ActiveSpace) => void;
   setNotebookContent: (content: NotebookContent | null) => void;
   setNotebookLoading: (v: boolean) => void;
+  setNotebookOptimizing: (v: boolean) => void;
   setNotebookError: (error: string | null) => void;
 }
 
@@ -518,6 +521,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   activeSpace: "workspace",
   notebookContent: null,
   isNotebookLoading: false,
+  isNotebookOptimizing: false,
   notebookError: null,
 
   loadProject: (id) => {
@@ -570,6 +574,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeSpace: saved.activeSpace || "workspace",
         notebookContent: saved.notebookContent || null,
         isNotebookLoading: false,
+        isNotebookOptimizing: false,
         notebookError: null,
       });
     } else {
@@ -601,6 +606,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeSpace: "workspace",
         notebookContent: null,
         isNotebookLoading: false,
+        isNotebookOptimizing: false,
         notebookError: null,
       });
     }
@@ -965,8 +971,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setNotebookLoading: (v) =>
     set({ isNotebookLoading: v }),
 
+  setNotebookOptimizing: (v) =>
+    set({ isNotebookOptimizing: v }),
+
   setNotebookError: (error) =>
-    set({ notebookError: error, isNotebookLoading: false }),
+    set({ notebookError: error, isNotebookLoading: false, isNotebookOptimizing: false }),
 }));
 
 function updateFileInTree(

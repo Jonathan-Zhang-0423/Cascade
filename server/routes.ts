@@ -7,7 +7,7 @@ import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManag
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
-import { MENTOR_SYSTEM_PROMPT } from "./mentor-prompt";
+import { MENTOR_SYSTEM_PROMPT, MENTOR_PATCH_PROMPT, MENTOR_OPTIMIZE_PROMPT } from "./mentor-prompt";
 
 function parseAIJson(raw: string): any {
   let text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
@@ -419,6 +419,106 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Mentor analyze API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to get Mentor analysis" });
+    }
+  });
+
+  app.post("/api/mentor-patch", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
+
+      const { changedFiles, notebookOutline, affectedSections } = req.body;
+
+      if (!changedFiles || !Array.isArray(changedFiles) || changedFiles.length === 0) {
+        res.status(400).json({ error: "No changed files provided" });
+        return;
+      }
+
+      const fileContext = changedFiles
+        .map((f: { path: string; content: string; status: string }) =>
+          `--- ${f.path} [${f.status}] ---\n${f.status === "deleted" ? "(file deleted)" : f.content}`)
+        .join("\n\n");
+
+      const outlineText = notebookOutline || "No existing notebook outline.";
+      const sectionsText = affectedSections
+        ? `\n\nAffected existing sections:\n${JSON.stringify(affectedSections, null, 2)}`
+        : "";
+
+      const messages = [
+        { role: "system" as const, content: MENTOR_PATCH_PROMPT },
+        {
+          role: "user" as const,
+          content: `## Existing Notebook Outline\n${outlineText}${sectionsText}\n\n## Changed Files\n${fileContext}`,
+        },
+      ];
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages,
+        stream: false,
+        max_tokens: 4096,
+      });
+
+      const responseContent = completion.choices[0]?.message?.content || "";
+      const patch = parseAIJson(responseContent);
+      if (!patch) {
+        res.json({ raw: responseContent, error: "Mentor did not return valid JSON patch" });
+        return;
+      }
+
+      res.json({ patch });
+    } catch (error: any) {
+      console.error("Mentor patch API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get Mentor patch" });
+    }
+  });
+
+  app.post("/api/mentor-optimize", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
+
+      const { notebook, files } = req.body;
+
+      if (!notebook || !files || !Array.isArray(files) || files.length === 0) {
+        res.status(400).json({ error: "Notebook and files are required" });
+        return;
+      }
+
+      const fileContext = files
+        .map((f: { path: string; content: string }) => `--- ${f.path} ---\n${f.content}`)
+        .join("\n\n");
+
+      const messages = [
+        { role: "system" as const, content: MENTOR_OPTIMIZE_PROMPT },
+        {
+          role: "user" as const,
+          content: `## Existing Notebook\n${JSON.stringify(notebook, null, 2)}\n\n## All Current Project Files\n${fileContext}`,
+        },
+      ];
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages,
+        stream: false,
+        max_tokens: 4096,
+      });
+
+      const responseContent = completion.choices[0]?.message?.content || "";
+      const optimized = parseAIJson(responseContent);
+      if (!optimized) {
+        res.json({ raw: responseContent, error: "Mentor did not return valid JSON" });
+        return;
+      }
+
+      res.json({ notebook: optimized });
+    } catch (error: any) {
+      console.error("Mentor optimize API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get Mentor optimization" });
     }
   });
 
