@@ -666,7 +666,7 @@ export function MindMap({ data }: MindMapProps) {
             className="fixed inset-0 z-[9998] bg-black/50"
             onClick={toggleFullscreen}
           />
-          <div className="fixed inset-4 z-[9999]">
+          <div className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
             {canvasDiv(fullscreenRef)}
           </div>
         </>,
