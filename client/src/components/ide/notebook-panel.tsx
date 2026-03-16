@@ -494,11 +494,8 @@ export function NotebookPanel() {
         </section>
 
         {notebookContent.mind_map && notebookContent.mind_map.branches?.length > 0 && (
-          <section
-            className="rounded-xl border border-border bg-card p-5"
-            data-testid="notebook-mindmap"
-          >
-            <h2 className="text-base font-semibold text-foreground mb-4">思维导图</h2>
+          <section data-testid="notebook-mindmap">
+            <h2 className="text-base font-semibold text-foreground mb-3">思维导图</h2>
             <p className="text-xs text-muted-foreground mb-3">
               悬停文件节点查看说明，点击展开功能详情，点击子节点可固定说明
             </p>
