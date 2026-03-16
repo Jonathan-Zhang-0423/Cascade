@@ -100,6 +100,7 @@ export interface NotebookMindMapChild {
 export interface NotebookMindMapBranch {
   label: string;
   file: string;
+  description?: string;
   children: NotebookMindMapChild[];
 }
 

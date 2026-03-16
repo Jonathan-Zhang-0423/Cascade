@@ -52,7 +52,7 @@ The CodeStart IDE features a modern web architecture:
     - **API Endpoint**: `POST /api/mentor-analyze` — receives project files, returns structured notebook JSON via Doubao Lite.
     - **Space Toggle**: Navbar has "Workspace" / "Learner Space" pill toggle (`activeSpace` in store).
     - **NotebookPanel** (`client/src/components/ide/notebook-panel.tsx`): Renders project summary, expandable file breakdowns with key concepts, interactive SVG mind map, and learning tips.
-    - **MindMap** (`client/src/components/ide/mind-map.tsx`): Custom SVG mind map with central project node, file branches, concept leaves. Click nodes for explanations. Color-coded by file type.
+    - **MindMap** (`client/src/components/ide/mind-map.tsx`): Custom SVG mind map with three-level interactive exploration. Section heading: "思维导图". Central project node → file branches (hover for description, click to expand/collapse children) → feature sub-nodes (hover for explanation, click to pin/unpin). Children hidden by default. Layout recalculates dynamically on expand/collapse. `NotebookMindMapBranch` has `description` field. Color-coded by file type.
     - **State**: `activeSpace`, `notebookContent`, `isNotebookLoading`, `isNotebookOptimizing`, `notebookError` in `ide-store.ts`. Persisted to localStorage.
     - **Auto-generation**: When user switches to Learner Space and no notebook exists, generation triggers automatically.
     - **Two-Tier Incremental Updates**:

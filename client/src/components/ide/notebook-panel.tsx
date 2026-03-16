@@ -498,9 +498,9 @@ export function NotebookPanel() {
             className="rounded-xl border border-border bg-card p-5"
             data-testid="notebook-mindmap"
           >
-            <h2 className="text-base font-semibold text-foreground mb-4">Project Mind Map</h2>
+            <h2 className="text-base font-semibold text-foreground mb-4">思维导图</h2>
             <p className="text-xs text-muted-foreground mb-3">
-              Click on any concept node to see its explanation
+              Hover on a file node to see its description. Click to expand its features. Click a feature to pin its explanation.
             </p>
             <MindMap data={notebookContent.mind_map} />
           </section>

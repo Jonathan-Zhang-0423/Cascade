@@ -35,10 +35,11 @@ You MUST return valid JSON with this exact structure:
       {
         "label": "Short label for this branch (usually the filename)",
         "file": "/project/filename.ext",
+        "description": "A beginner-friendly explanation of this file's purpose and key features (2-3 sentences). This appears when hovering over the file node in the mind map.",
         "children": [
           {
-            "label": "A concept or feature in this file",
-            "explanation": "Brief explanation of this node"
+            "label": "A function or feature keyword in this file",
+            "explanation": "A detailed, beginner-friendly elaboration of what this function/feature does and why it matters (2-4 sentences)"
           }
         ]
       }
@@ -54,7 +55,7 @@ You MUST return valid JSON with this exact structure:
 1. **Explain like I'm 5 (but respectfully)**: Use analogies, real-world comparisons, and simple language.
 2. **Connect the dots**: Show how files work together — "index.html is like the skeleton, style.css is the clothing, and app.js is the brain."
 3. **Key concepts**: For each file, identify 2-4 programming concepts used and explain them simply.
-4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch), and children are key concepts/features within that file. Each branch must have a unique "file" field pointing to the corresponding project file.
+4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose), a unique "file" field, and children representing functions/features as keywords. Each child's "label" should be a short keyword (2-5 words) and the "explanation" should be a detailed elaboration (2-4 sentences).
 5. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
 6. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
 7. **connections**: List which other project files this file references or depends on.
@@ -102,7 +103,8 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
       {
         "label": "branch label",
         "file": "/project/filename.ext",
-        "children": [{"label": "concept", "explanation": "..."}]
+        "description": "Beginner-friendly explanation of the file's purpose (2-3 sentences)",
+        "children": [{"label": "feature keyword", "explanation": "detailed elaboration (2-4 sentences)"}]
       }
     ]
   },
@@ -156,7 +158,7 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 1. **Preserve what works**: If a section is still accurate, keep it mostly the same.
 2. **Targeted refinement**: Focus on accuracy, clarity, and completeness.
 3. **Full cross-file context**: Use your knowledge of ALL files to improve connection descriptions and the mind map.
-4. Each file gets its OWN separate branch in the mind map (one branch per file).
+4. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and detailed explanation fields (2-4 sentences each).
 5. **Language**: Match the language of the existing notebook content.
 6. Return ONLY the JSON object, no markdown fences, no extra text.`;
 

@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import type { NotebookMindMap } from "@/stores/ide-store";
+import { useState, useMemo, useCallback } from "react";
+import type { NotebookMindMap, NotebookMindMapBranch } from "@/stores/ide-store";
 
 interface MindMapProps {
   data: NotebookMindMap;
@@ -27,16 +27,23 @@ interface LayoutNode {
   x: number;
   y: number;
   label: string;
+  description?: string;
   explanation?: string;
   color: { bg: string; border: string; text: string };
   isCentral?: boolean;
   isBranch?: boolean;
+  isChild?: boolean;
   file?: string;
+  branchIndex?: number;
+  childIndex?: number;
   parentX?: number;
   parentY?: number;
 }
 
-function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: number; height: number } {
+function computeLayout(
+  data: NotebookMindMap,
+  expandedBranches: Set<number>
+): { nodes: LayoutNode[]; width: number; height: number } {
   const branches = data.branches || [];
   const totalBranches = branches.length;
 
@@ -55,7 +62,6 @@ function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: num
   const branchRadius = 180;
   const childRadius = 120;
 
-  const maxChildren = Math.max(...branches.map((b) => b.children?.length || 0), 1);
   const estimatedSpan = branchRadius + childRadius + 100;
   const canvasSize = Math.max(estimatedSpan * 2 + 80, 600);
   const centerX = canvasSize / 2;
@@ -84,12 +90,16 @@ function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: num
       x: bx,
       y: by,
       label: branch.label || getFileName(branch.file),
+      description: branch.description,
       file: branch.file,
       color: fileColor,
       isBranch: true,
+      branchIndex: bi,
       parentX: centerX,
       parentY: centerY,
     });
+
+    if (!expandedBranches.has(bi)) return;
 
     const children = branch.children || [];
     const childCount = children.length;
@@ -109,6 +119,9 @@ function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: num
         label: child.label,
         explanation: child.explanation,
         color: fileColor,
+        isChild: true,
+        branchIndex: bi,
+        childIndex: ci,
         parentX: bx,
         parentY: by,
       });
@@ -136,18 +149,109 @@ function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: num
   };
 }
 
-export function MindMap({ data }: MindMapProps) {
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+function TooltipBox({
+  x,
+  y,
+  nodeHeight,
+  text,
+  borderColor,
+}: {
+  x: number;
+  y: number;
+  nodeHeight: number;
+  text: string;
+  borderColor: string;
+}) {
+  const boxWidth = 260;
+  const boxHeight = 80;
+  const boxX = x - boxWidth / 2;
+  const boxY = y + nodeHeight / 2 + 10;
 
-  const { nodes, width, height } = useMemo(() => computeLayout(data), [data]);
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <rect
+        x={boxX}
+        y={boxY}
+        width={boxWidth}
+        height={boxHeight}
+        rx={8}
+        fill="white"
+        stroke={borderColor}
+        strokeWidth={1.5}
+        filter="drop-shadow(0 2px 8px rgba(0,0,0,0.15))"
+      />
+      <foreignObject
+        x={boxX + 10}
+        y={boxY + 8}
+        width={boxWidth - 20}
+        height={boxHeight - 16}
+      >
+        <div
+          style={{
+            fontSize: "11px",
+            lineHeight: "1.4",
+            color: "#333",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 4,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
+          {text}
+        </div>
+      </foreignObject>
+    </g>
+  );
+}
+
+export function MindMap({ data }: MindMapProps) {
+  const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set());
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [pinnedNodes, setPinnedNodes] = useState<Set<string>>(new Set());
+
+  const toggleBranch = useCallback((bi: number) => {
+    setExpandedBranches((prev) => {
+      const next = new Set(prev);
+      if (next.has(bi)) {
+        next.delete(bi);
+        setPinnedNodes((pp) => {
+          const np = new Set(pp);
+          for (const key of pp) {
+            if (key.startsWith(`child-${bi}-`)) np.delete(key);
+          }
+          return np;
+        });
+      } else {
+        next.add(bi);
+      }
+      return next;
+    });
+  }, []);
+
+  const togglePin = useCallback((key: string) => {
+    setPinnedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const { nodes, width, height } = useMemo(
+    () => computeLayout(data, expandedBranches),
+    [data, expandedBranches]
+  );
 
   return (
     <div className="w-full overflow-x-auto" data-testid="mind-map-container">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full min-w-[500px]"
-        style={{ maxHeight: "550px" }}
+        style={{ maxHeight: "600px" }}
       >
         {nodes.map((node, i) => {
           if (node.parentX !== undefined && node.parentY !== undefined) {
@@ -168,84 +272,166 @@ export function MindMap({ data }: MindMapProps) {
         })}
 
         {nodes.map((node, i) => {
-          const nodeKey = `${node.label}-${i}`;
-          const isHovered = hoveredNode === nodeKey;
-          const isSelected = selectedNode === nodeKey;
           const nodeWidth = node.isCentral ? 180 : node.isBranch ? 140 : 120;
           const nodeHeight = node.isCentral ? 44 : node.isBranch ? 36 : 30;
           const rx = node.isCentral ? 22 : node.isBranch ? 18 : 15;
 
-          return (
-            <g
-              key={nodeKey}
-              onMouseEnter={() => setHoveredNode(nodeKey)}
-              onMouseLeave={() => setHoveredNode(null)}
-              onClick={() => setSelectedNode(isSelected ? null : nodeKey)}
-              style={{ cursor: node.explanation ? "pointer" : "default" }}
-              data-testid={`mind-map-node-${i}`}
-            >
-              <rect
-                x={node.x - nodeWidth / 2}
-                y={node.y - nodeHeight / 2}
-                width={nodeWidth}
-                height={nodeHeight}
-                rx={rx}
-                fill={node.color.bg}
-                stroke={node.color.border}
-                strokeWidth={isHovered || isSelected ? 3 : node.isCentral ? 2.5 : 2}
-                opacity={isHovered ? 1 : 0.9}
-              />
-              <text
-                x={node.x}
-                y={node.y + 1}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill={node.color.text}
-                fontSize={node.isCentral ? 13 : node.isBranch ? 11 : 10}
-                fontWeight={node.isCentral ? 700 : node.isBranch ? 600 : 500}
-                style={{ pointerEvents: "none" }}
-              >
-                {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
-              </text>
+          if (node.isCentral) {
+            return (
+              <g key={`node-central`} data-testid="mind-map-node-central">
+                <rect
+                  x={node.x - nodeWidth / 2}
+                  y={node.y - nodeHeight / 2}
+                  width={nodeWidth}
+                  height={nodeHeight}
+                  rx={rx}
+                  fill={node.color.bg}
+                  stroke={node.color.border}
+                  strokeWidth={2.5}
+                  opacity={0.9}
+                />
+                <text
+                  x={node.x}
+                  y={node.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={node.color.text}
+                  fontSize={13}
+                  fontWeight={700}
+                  style={{ pointerEvents: "none" }}
+                >
+                  {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
+                </text>
+              </g>
+            );
+          }
 
-              {isSelected && node.explanation && (
-                <g>
-                  <rect
-                    x={node.x - 120}
-                    y={node.y + nodeHeight / 2 + 8}
-                    width={240}
-                    height={60}
-                    rx={8}
-                    fill="white"
-                    stroke={node.color.border}
-                    strokeWidth={1}
-                    filter="drop-shadow(0 2px 4px rgba(0,0,0,0.1))"
+          if (node.isBranch) {
+            const branchKey = `branch-${node.branchIndex}`;
+            const isHovered = hoveredNode === branchKey;
+            const isExpanded = expandedBranches.has(node.branchIndex!);
+
+            return (
+              <g
+                key={branchKey}
+                onMouseEnter={() => setHoveredNode(branchKey)}
+                onMouseLeave={() => setHoveredNode(null)}
+                onClick={() => toggleBranch(node.branchIndex!)}
+                style={{ cursor: "pointer" }}
+                data-testid={`mind-map-branch-${node.branchIndex}`}
+              >
+                <rect
+                  x={node.x - nodeWidth / 2}
+                  y={node.y - nodeHeight / 2}
+                  width={nodeWidth}
+                  height={nodeHeight}
+                  rx={rx}
+                  fill={node.color.bg}
+                  stroke={node.color.border}
+                  strokeWidth={isHovered || isExpanded ? 3 : 2}
+                  opacity={isHovered ? 1 : 0.9}
+                />
+                {isExpanded && (
+                  <circle
+                    cx={node.x + nodeWidth / 2 - 12}
+                    cy={node.y}
+                    r={4}
+                    fill={node.color.border}
+                    opacity={0.6}
+                    style={{ pointerEvents: "none" }}
                   />
-                  <foreignObject
-                    x={node.x - 112}
-                    y={node.y + nodeHeight / 2 + 14}
-                    width={224}
-                    height={48}
-                  >
-                    <div
-                      style={{
-                        fontSize: "10px",
-                        lineHeight: "1.3",
-                        color: "#333",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        display: "-webkit-box",
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: "vertical",
-                      }}
-                    >
-                      {node.explanation}
-                    </div>
-                  </foreignObject>
-                </g>
-              )}
-            </g>
-          );
+                )}
+                <text
+                  x={node.x}
+                  y={node.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={node.color.text}
+                  fontSize={11}
+                  fontWeight={600}
+                  style={{ pointerEvents: "none" }}
+                >
+                  {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
+                </text>
+
+                {isHovered && !isExpanded && node.description && (
+                  <TooltipBox
+                    x={node.x}
+                    y={node.y}
+                    nodeHeight={nodeHeight}
+                    text={node.description}
+                    borderColor={node.color.border}
+                  />
+                )}
+              </g>
+            );
+          }
+
+          if (node.isChild) {
+            const childKey = `child-${node.branchIndex}-${node.childIndex}`;
+            const isHovered = hoveredNode === childKey;
+            const isPinned = pinnedNodes.has(childKey);
+            const showTooltip = (isHovered || isPinned) && node.explanation;
+
+            return (
+              <g
+                key={childKey}
+                onMouseEnter={() => setHoveredNode(childKey)}
+                onMouseLeave={() => setHoveredNode(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(childKey);
+                }}
+                style={{ cursor: node.explanation ? "pointer" : "default" }}
+                data-testid={`mind-map-child-${node.branchIndex}-${node.childIndex}`}
+              >
+                <rect
+                  x={node.x - nodeWidth / 2}
+                  y={node.y - nodeHeight / 2}
+                  width={nodeWidth}
+                  height={nodeHeight}
+                  rx={rx}
+                  fill={node.color.bg}
+                  stroke={node.color.border}
+                  strokeWidth={isHovered || isPinned ? 2.5 : 1.5}
+                  opacity={isHovered ? 1 : 0.9}
+                />
+                {isPinned && (
+                  <circle
+                    cx={node.x + nodeWidth / 2 - 8}
+                    cy={node.y - nodeHeight / 2 + 8}
+                    r={3}
+                    fill={node.color.border}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
+                <text
+                  x={node.x}
+                  y={node.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={node.color.text}
+                  fontSize={10}
+                  fontWeight={500}
+                  style={{ pointerEvents: "none" }}
+                >
+                  {node.label.length > 16 ? node.label.slice(0, 14) + "..." : node.label}
+                </text>
+
+                {showTooltip && (
+                  <TooltipBox
+                    x={node.x}
+                    y={node.y}
+                    nodeHeight={nodeHeight}
+                    text={node.explanation!}
+                    borderColor={node.color.border}
+                  />
+                )}
+              </g>
+            );
+          }
+
+          return null;
         })}
       </svg>
     </div>
