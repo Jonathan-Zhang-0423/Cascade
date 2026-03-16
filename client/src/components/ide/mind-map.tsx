@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
 import type { NotebookMindMap } from "@/stores/ide-store";
 import { ZoomIn, ZoomOut, Maximize2, X } from "lucide-react";
 
@@ -236,7 +235,6 @@ export function MindMap({ data }: MindMapProps) {
   const [draggingCursor, setDraggingCursor] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const fullscreenRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const panAtDragStart = useRef({ x: 0, y: 0 });
@@ -247,25 +245,22 @@ export function MindMap({ data }: MindMapProps) {
     [data, expandedBranches]
   );
 
-  const recalculate = useCallback((ref: HTMLDivElement | null) => {
-    if (!ref) return;
-    const cw = ref.clientWidth || 700;
-    const ch = ref.clientHeight || 500;
-    const s = Math.min(0.95, Math.min(cw / width, ch / height));
-    const panX = (cw - width * s) / 2;
-    const panY = (ch - height * s) / 2;
-    setTransform({ panX, panY, scale: s });
-  }, [width, height]);
-
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
-      recalculate(isFullscreen ? fullscreenRef.current : containerRef.current);
+      const container = containerRef.current;
+      if (!container) return;
+      const cw = container.clientWidth || 700;
+      const ch = container.clientHeight || 500;
+      const s = Math.min(0.95, Math.min(cw / width, ch / height));
+      const panX = (cw - width * s) / 2;
+      const panY = (ch - height * s) / 2;
+      setTransform({ panX, panY, scale: s });
     });
-    return () => cancelAnimationFrame(raf);
-  }, [width, height, isFullscreen, recalculate]);
+    return () => {};
+  }, [width, height, isFullscreen]);
 
   useEffect(() => {
-    const container = isFullscreen ? fullscreenRef.current : containerRef.current;
+    const container = containerRef.current;
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
@@ -296,16 +291,7 @@ export function MindMap({ data }: MindMapProps) {
 
     container.addEventListener("wheel", handleWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleWheel);
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsFullscreen(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen]);
+  }, []);
 
   const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -336,7 +322,7 @@ export function MindMap({ data }: MindMapProps) {
   }, []);
 
   const zoomIn = useCallback(() => {
-    const container = isFullscreen ? fullscreenRef.current : containerRef.current;
+    const container = containerRef.current;
     const cw = container ? container.clientWidth / 2 : 350;
     const ch = container ? container.clientHeight / 2 : 250;
     setTransform((prev) => {
@@ -344,10 +330,10 @@ export function MindMap({ data }: MindMapProps) {
       const ratio = newScale / prev.scale;
       return { scale: newScale, panX: cw - (cw - prev.panX) * ratio, panY: ch - (ch - prev.panY) * ratio };
     });
-  }, [isFullscreen]);
+  }, []);
 
   const zoomOut = useCallback(() => {
-    const container = isFullscreen ? fullscreenRef.current : containerRef.current;
+    const container = containerRef.current;
     const cw = container ? container.clientWidth / 2 : 350;
     const ch = container ? container.clientHeight / 2 : 250;
     setTransform((prev) => {
@@ -355,7 +341,7 @@ export function MindMap({ data }: MindMapProps) {
       const ratio = newScale / prev.scale;
       return { scale: newScale, panX: cw - (cw - prev.panX) * ratio, panY: ch - (ch - prev.panY) * ratio };
     });
-  }, [isFullscreen]);
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => !prev);
@@ -633,14 +619,14 @@ export function MindMap({ data }: MindMapProps) {
     </svg>
   );
 
-  const canvasDiv = (
-    divRef: React.RefObject<HTMLDivElement>,
-    extraClass = ""
-  ) => (
+  return (
     <div
-      ref={divRef}
-      className={`relative w-full h-full rounded-xl border border-border overflow-hidden bg-muted/20 select-none ${extraClass}`}
-      style={{ cursor: draggingCursor ? "grabbing" : "grab" }}
+      ref={containerRef}
+      className="relative w-full rounded-xl border border-border overflow-hidden bg-muted/20 select-none transition-all duration-300"
+      style={{
+        height: isFullscreen ? "80vh" : 500,
+        cursor: draggingCursor ? "grabbing" : "grab",
+      }}
       onMouseDown={handleContainerMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -652,26 +638,5 @@ export function MindMap({ data }: MindMapProps) {
       {controls}
       {hint}
     </div>
-  );
-
-  return (
-    <>
-      <div style={{ height: 500 }}>
-        {!isFullscreen && canvasDiv(containerRef)}
-      </div>
-
-      {isFullscreen && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[9998] bg-black/60"
-            onClick={toggleFullscreen}
-          />
-          <div className="fixed inset-4 z-[9999]">
-            {canvasDiv(fullscreenRef)}
-          </div>
-        </>,
-        document.body
-      )}
-    </>
   );
 }
