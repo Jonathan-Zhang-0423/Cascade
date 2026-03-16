@@ -6,4 +6,4 @@ export const doubaoClient = new OpenAI({
 });
 
 export const DOUBAO_MODEL = process.env.DOUBAO_MODEL || "doubao-seed-2-0-code-preview-260215";
-export const DOUBAO_LITE_MODEL = process.env.DOUBAO_LITE_MODEL || DOUBAO_MODEL;
+export const DOUBAO_LITE_MODEL = process.env.DOUBAO_LITE_MODEL || "doubao-seed-2-0-lite-260215";

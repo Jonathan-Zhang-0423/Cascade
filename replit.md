@@ -62,7 +62,7 @@ The CodeStart IDE features a modern web architecture:
 - **AI Provider**: Doubao (ByteDance/Volcengine) via an OpenAI-compatible SDK.
 - **AI Models**:
   - `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) — Editor, Manager, Verifier, Communicator agents.
-  - `DOUBAO_LITE_MODEL` env var (defaults to main model) — Mentor Agent. Set to Doubao Seed 2.0 Lite endpoint ID when available.
+  - `doubao-seed-2-0-lite-260215` (Doubao Seed 2.0 Lite) — Mentor Agent. Override via `DOUBAO_LITE_MODEL` env var.
 - **Code Editor**: `@monaco-editor/react`.
 - **State Management**: Zustand.
 - **UI Components**: Shadcn UI.
