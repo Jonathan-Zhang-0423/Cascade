@@ -400,7 +400,6 @@ export function MindMap({ data }: MindMapProps) {
   }, []);
 
   const toggleBranch = useCallback((bi: number) => {
-    if (hasMoved.current) return;
     setExpandedBranches((prev) => {
       const next = new Set(prev);
       if (next.has(bi)) {
@@ -420,7 +419,6 @@ export function MindMap({ data }: MindMapProps) {
   }, []);
 
   const togglePin = useCallback((key: string) => {
-    if (hasMoved.current) return;
     setPinnedNodes((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
