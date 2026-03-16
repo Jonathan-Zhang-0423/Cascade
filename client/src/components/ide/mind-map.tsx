@@ -256,12 +256,12 @@ export function MindMap({ data }: MindMapProps) {
   useEffect(() => {
     if (!containerRef.current) return;
     const cw = containerRef.current.clientWidth || 700;
-    const ch = 500;
+    const ch = containerRef.current.clientHeight || 500;
     const s = Math.min(0.95, Math.min(cw / width, ch / height));
     const panX = (cw - width * s) / 2;
     const panY = (ch - height * s) / 2;
     setTransform({ panX, panY, scale: s });
-  }, [width, height]);
+  }, [width, height, isFullscreen]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -328,7 +328,7 @@ export function MindMap({ data }: MindMapProps) {
   const zoomIn = useCallback(() => {
     const container = containerRef.current;
     const cw = container ? container.clientWidth / 2 : 350;
-    const ch = 250;
+    const ch = container ? container.clientHeight / 2 : 250;
     setTransform((prev) => {
       const newScale = Math.min(4, prev.scale * 1.25);
       const ratio = newScale / prev.scale;
@@ -343,7 +343,7 @@ export function MindMap({ data }: MindMapProps) {
   const zoomOut = useCallback(() => {
     const container = containerRef.current;
     const cw = container ? container.clientWidth / 2 : 350;
-    const ch = 250;
+    const ch = container ? container.clientHeight / 2 : 250;
     setTransform((prev) => {
       const newScale = Math.max(0.15, prev.scale * 0.8);
       const ratio = newScale / prev.scale;
