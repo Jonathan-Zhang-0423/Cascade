@@ -3,7 +3,61 @@ import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
 import type { FileNode, NotebookContent } from "@/stores/ide-store";
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, Loader2, AlertTriangle } from "lucide-react";
+import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle } from "lucide-react";
+
+const LOADING_MESSAGES = [
+  "Reading through your code...",
+  "Identifying key concepts...",
+  "Mapping connections between files...",
+  "Preparing learning tips just for you...",
+  "Building your mind map...",
+  "Almost ready...",
+];
+
+function NotebookLoadingScreen() {
+  const [msgIndex, setMsgIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const msgTimer = setInterval(() => {
+      setMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
+    }, 3500);
+    return () => clearInterval(msgTimer);
+  }, []);
+
+  useEffect(() => {
+    const step = 100 / (LOADING_MESSAGES.length * 3.5);
+    const progTimer = setInterval(() => {
+      setProgress((p) => Math.min(p + step, 92));
+    }, 1000);
+    return () => clearInterval(progTimer);
+  }, []);
+
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-6 p-8" data-testid="notebook-loading">
+      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+        <BookOpen className="w-8 h-8 text-primary animate-pulse" />
+      </div>
+      <div className="text-center">
+        <h3 className="text-lg font-semibold text-foreground mb-1">
+          Generating My Coding Notebook...
+        </h3>
+        <p className="text-sm text-muted-foreground transition-all duration-500">
+          {LOADING_MESSAGES[msgIndex]}
+        </p>
+      </div>
+      <div className="w-64 flex flex-col gap-2">
+        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-1000 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground text-center">This usually takes 10–20 seconds</p>
+      </div>
+    </div>
+  );
+}
 
 function flattenFiles(files: FileNode[]): { path: string; content: string }[] {
   const result: { path: string; content: string }[] = [];
@@ -99,17 +153,7 @@ export function NotebookPanel() {
   };
 
   if (isNotebookLoading) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-4 p-8" data-testid="notebook-loading">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
-        <div className="text-center">
-          <h3 className="text-lg font-semibold text-foreground">Your mentor is reading your code...</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Preparing your personalized Coding Notebook
-          </p>
-        </div>
-      </div>
-    );
+    return <NotebookLoadingScreen />;
   }
 
   if (notebookError) {
