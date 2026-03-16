@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import type { NotebookMindMap } from "@/stores/ide-store";
-import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, X } from "lucide-react";
 
 interface MindMapProps {
   data: NotebookMindMap;
@@ -230,6 +230,7 @@ export function MindMap({ data }: MindMapProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set());
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [pinnedNodes, setPinnedNodes] = useState<Set<string>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [transform, setTransform] = useState<Transform>({ panX: 0, panY: 0, scale: 1 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -354,16 +355,9 @@ export function MindMap({ data }: MindMapProps) {
     });
   }, []);
 
-  const resetView = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const cw = container.clientWidth || 700;
-    const ch = 500;
-    const s = Math.min(0.95, Math.min(cw / width, ch / height));
-    const panX = (cw - width * s) / 2;
-    const panY = (ch - height * s) / 2;
-    setTransform({ panX, panY, scale: s });
-  }, [width, height]);
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
 
   const toggleBranch = useCallback((bi: number) => {
     if (hasMoved.current) return;
@@ -397,8 +391,12 @@ export function MindMap({ data }: MindMapProps) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full rounded-lg border border-border overflow-hidden bg-muted/20 select-none"
-      style={{ height: 500, cursor: draggingCursor ? "grabbing" : "grab" }}
+      className={`relative rounded-lg border border-border overflow-hidden bg-muted/20 select-none ${
+        isFullscreen
+          ? "fixed inset-0 z-50 m-4 w-[calc(100%-2rem)] h-[calc(100%-2rem)]"
+          : "w-full"
+      }`}
+      style={{ height: isFullscreen ? undefined : 500, cursor: draggingCursor ? "grabbing" : "grab" }}
       onMouseDown={handleContainerMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -620,13 +618,13 @@ export function MindMap({ data }: MindMapProps) {
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={resetView}
+          onClick={toggleFullscreen}
           className="w-7 h-7 rounded-md bg-background/90 border border-border shadow flex items-center justify-center text-foreground hover:bg-muted transition-colors"
-          title="Reset view"
-          data-testid="button-mindmap-reset"
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          data-testid="button-mindmap-fullscreen"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <Maximize2 className="w-3.5 h-3.5" />
+          {isFullscreen ? <X className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
       </div>
 
