@@ -114,6 +114,7 @@ export interface NotebookContent {
   mind_map: NotebookMindMap;
   learning_tips: string[];
   generatedAt?: number;
+  sourceHash?: string;
 }
 
 export interface ManagerMessage {
@@ -371,6 +372,31 @@ const defaultFiles: FileNode[] = [
     ],
   },
 ];
+
+function flattenFilesForHash(files: FileNode[]): string {
+  const parts: string[] = [];
+  const collect = (nodes: FileNode[]) => {
+    for (const f of nodes) {
+      if (f.type === "file" && f.content) {
+        parts.push(f.path + ":" + f.content);
+      }
+      if (f.children) collect(f.children);
+    }
+  };
+  collect(files);
+  parts.sort();
+  return parts.join("\n");
+}
+
+export function computeFilesHash(files: FileNode[]): string {
+  const str = flattenFilesForHash(files);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    hash = ((hash << 5) - hash + ch) | 0;
+  }
+  return hash.toString(36);
+}
 
 function getPersistedState(projectId: string) {
   try {

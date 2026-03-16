@@ -1,4 +1,5 @@
-import { useIDEStore } from "@/stores/ide-store";
+import { useMemo } from "react";
+import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
 import type { ActiveSpace } from "@/stores/ide-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
@@ -26,9 +27,14 @@ export function Navbar({ projectName }: NavbarProps) {
     saveProject,
     activeSpace,
     setActiveSpace,
+    files,
+    notebookContent,
   } = useIDEStore();
   const { theme, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
+
+  const currentHash = useMemo(() => computeFilesHash(files), [files]);
+  const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
 
   const handleEditorThemeChange = (v: string) => {
     setEditorTheme(v as "vs-dark" | "vs-light" | "hc-black");
@@ -83,7 +89,7 @@ export function Navbar({ projectName }: NavbarProps) {
           Workspace
         </button>
         <button
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+          className={`relative flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
             activeSpace === "learner"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
@@ -93,6 +99,13 @@ export function Navbar({ projectName }: NavbarProps) {
         >
           <BookOpen className="w-3 h-3" />
           Learner Space
+          {isNotebookStale && activeSpace !== "learner" && (
+            <span
+              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500"
+              data-testid="notebook-stale-dot"
+              title="Notebook is outdated"
+            />
+          )}
         </button>
       </div>
 

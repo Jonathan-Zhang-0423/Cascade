@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { useIDEStore } from "@/stores/ide-store";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
 import type { FileNode, NotebookContent } from "@/stores/ide-store";
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, Loader2 } from "lucide-react";
+import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, Loader2, AlertTriangle } from "lucide-react";
 
 function flattenFiles(files: FileNode[]): { path: string; content: string }[] {
   const result: { path: string; content: string }[] = [];
@@ -31,6 +31,9 @@ export function NotebookPanel() {
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
+  const currentHash = useMemo(() => computeFilesHash(files), [files]);
+  const isStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
+
   const generateNotebook = useCallback(async () => {
     const flatFiles = flattenFiles(files);
     const nonEmpty = flatFiles.filter((f) => f.content.trim().length > 0);
@@ -39,6 +42,7 @@ export function NotebookPanel() {
       return;
     }
 
+    const hash = computeFilesHash(files);
     setNotebookLoading(true);
     setNotebookError(null);
 
@@ -61,6 +65,7 @@ export function NotebookPanel() {
       const notebook: NotebookContent = {
         ...data.notebook,
         generatedAt: Date.now(),
+        sourceHash: hash,
       };
       setNotebookContent(notebook);
     } catch (err: any) {
@@ -166,6 +171,29 @@ export function NotebookPanel() {
             Refresh
           </Button>
         </div>
+
+        {isStale && (
+          <div
+            className="flex items-center gap-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
+            data-testid="notebook-stale-banner"
+          >
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+              Your code has changed since this notebook was generated.
+            </p>
+            <Button
+              onClick={generateNotebook}
+              variant="outline"
+              size="sm"
+              disabled={isNotebookLoading}
+              className="border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+              data-testid="button-refresh-stale-notebook"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${isNotebookLoading ? "animate-spin" : ""}`} />
+              Update
+            </Button>
+          </div>
+        )}
 
         <section
           className="rounded-xl border border-border bg-card p-5"
