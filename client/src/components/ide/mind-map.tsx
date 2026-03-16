@@ -217,9 +217,9 @@ export function MindMap({ data }: MindMapProps) {
         next.delete(bi);
         setPinnedNodes((pp) => {
           const np = new Set(pp);
-          for (const key of pp) {
+          Array.from(pp).forEach((key) => {
             if (key.startsWith(`child-${bi}-`)) np.delete(key);
-          }
+          });
           return np;
         });
       } else {

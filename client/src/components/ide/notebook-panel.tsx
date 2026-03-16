@@ -80,19 +80,19 @@ function computeChangedFiles(
   const newMap = new Map(newFiles.map((f) => [f.path, f.content]));
   const changes: { path: string; content: string; status: "added" | "modified" | "deleted" }[] = [];
 
-  for (const [path, content] of newMap) {
+  Array.from(newMap.entries()).forEach(([path, content]) => {
     if (!oldMap.has(path)) {
       changes.push({ path, content, status: "added" });
     } else if (oldMap.get(path) !== content) {
       changes.push({ path, content, status: "modified" });
     }
-  }
+  });
 
-  for (const [path] of oldMap) {
+  Array.from(oldMap.keys()).forEach((path) => {
     if (!newMap.has(path)) {
       changes.push({ path, content: "", status: "deleted" });
     }
-  }
+  });
 
   return changes;
 }
