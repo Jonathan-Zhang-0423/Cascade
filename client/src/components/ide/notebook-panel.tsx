@@ -76,10 +76,15 @@ export function NotebookPanel() {
   }, [files, setNotebookContent, setNotebookLoading, setNotebookError]);
 
   useEffect(() => {
-    if (!notebookContent && !isNotebookLoading && !notebookError) {
+    if (isNotebookLoading) return;
+    if (!notebookContent && !notebookError) {
+      generateNotebook();
+      return;
+    }
+    if (notebookContent && notebookContent.sourceHash !== currentHash) {
       generateNotebook();
     }
-  }, [notebookContent, isNotebookLoading, notebookError, generateNotebook]);
+  }, [notebookContent, isNotebookLoading, notebookError, generateNotebook, currentHash]);
 
   const toggleFileExpand = (file: string) => {
     setExpandedFiles((prev) => {
