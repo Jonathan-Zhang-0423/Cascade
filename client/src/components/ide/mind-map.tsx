@@ -354,7 +354,7 @@ export function MindMap({ data }: MindMapProps) {
                   {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
                 </text>
 
-                {isHovered && !isExpanded && node.description && (
+                {isHovered && node.description && (
                   <TooltipBox
                     x={node.x}
                     y={node.y}
