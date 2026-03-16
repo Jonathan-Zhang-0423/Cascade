@@ -161,4 +161,3 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 4. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and rich educational explanation fields (4-8 sentences each) covering: what it is & why it exists, why it matters, what it does to the project, how it is built — with a short markdown code snippet and walkthrough where helpful.
 5. **Language**: Match the language of the existing notebook content.
 6. Return ONLY the JSON object, no markdown fences, no extra text.`;
-
