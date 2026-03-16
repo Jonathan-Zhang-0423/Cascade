@@ -78,6 +78,44 @@ export interface HolisticReviewResult {
 
 export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing";
 
+export type ActiveSpace = "workspace" | "learner";
+
+export interface NotebookKeyConcept {
+  term: string;
+  explanation: string;
+}
+
+export interface NotebookFileBreakdown {
+  file: string;
+  what_it_does: string;
+  key_concepts: NotebookKeyConcept[];
+  connections: string[];
+}
+
+export interface NotebookMindMapChild {
+  label: string;
+  explanation: string;
+}
+
+export interface NotebookMindMapBranch {
+  label: string;
+  file: string;
+  children: NotebookMindMapChild[];
+}
+
+export interface NotebookMindMap {
+  central_node: string;
+  branches: NotebookMindMapBranch[];
+}
+
+export interface NotebookContent {
+  project_summary: string;
+  file_breakdowns: NotebookFileBreakdown[];
+  mind_map: NotebookMindMap;
+  learning_tips: string[];
+  generatedAt?: number;
+}
+
 export interface ManagerMessage {
   id: string;
   role: "user" | "assistant";
@@ -244,6 +282,11 @@ interface IDEState {
   holisticReview: HolisticReviewResult | null;
   fixCycle: number;
 
+  activeSpace: ActiveSpace;
+  notebookContent: NotebookContent | null;
+  isNotebookLoading: boolean;
+  notebookError: string | null;
+
   loadProject: (id: string) => void;
   saveProject: () => void;
   clearPendingPrompt: () => void;
@@ -282,6 +325,11 @@ interface IDEState {
   setReviewPhase: (phase: ReviewPhase) => void;
   setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
+
+  setActiveSpace: (space: ActiveSpace) => void;
+  setNotebookContent: (content: NotebookContent | null) => void;
+  setNotebookLoading: (v: boolean) => void;
+  setNotebookError: (error: string | null) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -351,6 +399,8 @@ function persistState(state: IDEState) {
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
       : state.managerMessages,
+    activeSpace: state.activeSpace,
+    notebookContent: state.notebookContent,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
@@ -439,6 +489,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   holisticReview: null,
   fixCycle: 0,
 
+  activeSpace: "workspace",
+  notebookContent: null,
+  isNotebookLoading: false,
+  notebookError: null,
+
   loadProject: (id) => {
     const current = get();
     if (current.projectId) {
@@ -486,6 +541,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         reviewPhase: "idle",
         holisticReview: null,
         fixCycle: 0,
+        activeSpace: saved.activeSpace || "workspace",
+        notebookContent: saved.notebookContent || null,
+        isNotebookLoading: false,
+        notebookError: null,
       });
     } else {
       set({
@@ -513,6 +572,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         reviewPhase: "idle",
         holisticReview: null,
         fixCycle: 0,
+        activeSpace: "workspace",
+        notebookContent: null,
+        isNotebookLoading: false,
+        notebookError: null,
       });
     }
   },
@@ -860,6 +923,24 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setFixCycle: (cycle) =>
     set({ fixCycle: cycle }),
+
+  setActiveSpace: (space) => {
+    set({ activeSpace: space });
+    const state = get();
+    debouncedPersist(state);
+  },
+
+  setNotebookContent: (content) => {
+    set({ notebookContent: content, notebookError: null });
+    const state = get();
+    debouncedPersist(state);
+  },
+
+  setNotebookLoading: (v) =>
+    set({ isNotebookLoading: v }),
+
+  setNotebookError: (error) =>
+    set({ notebookError: error, isNotebookLoading: false }),
 }));
 
 function updateFileInTree(

@@ -1,12 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
+import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { VIBE_AGENT_SYSTEM_PROMPT, buildContextMessage } from "./vibe-prompt";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerContextMessage, buildManagerFixPlanMessage } from "./manager-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
+import { MENTOR_SYSTEM_PROMPT } from "./mentor-prompt";
 
 function parseAIJson(raw: string): any {
   let text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
@@ -370,6 +371,49 @@ export async function registerRoutes(
         res.write(`data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`);
         res.end();
       }
+    }
+  });
+
+  app.post("/api/mentor-analyze", async (req, res) => {
+    try {
+      const { files } = req.body;
+
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        res.status(400).json({ error: "No files provided" });
+        return;
+      }
+
+      const fileContext = files
+        .map((f: { path: string; content: string }) => `--- ${f.path} ---\n${f.content}`)
+        .join("\n\n");
+
+      const messages = [
+        { role: "system" as const, content: MENTOR_SYSTEM_PROMPT },
+        {
+          role: "user" as const,
+          content: `Please analyze the following project files and generate the Coding Notebook:\n\n${fileContext}`,
+        },
+      ];
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages,
+        stream: false,
+        max_tokens: 4096,
+      });
+
+      const responseContent = completion.choices[0]?.message?.content || "";
+
+      const notebook = parseAIJson(responseContent);
+      if (!notebook) {
+        res.json({ raw: responseContent, error: "Mentor did not return valid JSON" });
+        return;
+      }
+
+      res.json({ notebook });
+    } catch (error: any) {
+      console.error("Mentor analyze API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get Mentor analysis" });
     }
   });
 

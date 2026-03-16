@@ -1,4 +1,5 @@
 import { useIDEStore } from "@/stores/ide-store";
+import type { ActiveSpace } from "@/stores/ide-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Code2, Sun, Moon, ChevronLeft } from "lucide-react";
+import { Play, Code2, Sun, Moon, ChevronLeft, BookOpen, Wrench } from "lucide-react";
 
 interface NavbarProps {
   projectName: string;
@@ -23,6 +24,8 @@ export function Navbar({ projectName }: NavbarProps) {
     setPreviewFile,
     refreshPreview,
     saveProject,
+    activeSpace,
+    setActiveSpace,
   } = useIDEStore();
   const { theme, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
@@ -64,6 +67,33 @@ export function Navbar({ projectName }: NavbarProps) {
         <span className="text-sm text-muted-foreground" data-testid="text-project-name">
           {projectName}
         </span>
+      </div>
+
+      <div className="flex items-center bg-muted rounded-lg p-0.5" data-testid="space-toggle">
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+            activeSpace === "workspace"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setActiveSpace("workspace")}
+          data-testid="button-workspace"
+        >
+          <Wrench className="w-3 h-3" />
+          Workspace
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+            activeSpace === "learner"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setActiveSpace("learner")}
+          data-testid="button-learner-space"
+        >
+          <BookOpen className="w-3 h-3" />
+          Learner Space
+        </button>
       </div>
 
       <div className="flex items-center gap-2">

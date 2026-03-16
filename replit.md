@@ -46,12 +46,23 @@ The CodeStart IDE features a modern web architecture:
     - **Filtered Manager history**: Communicator narration excluded from Manager API conversation context.
     - **Throttled streaming UI**: `updateLastAssistantMessage` batched to ~16ms intervals; `extractCodeBlocks` gated by code-fence marker detection in chunks, with final post-stream catch-all apply.
     - **Relevant-files-only for Editor**: In plan execution, only files mentioned in step descriptions are sent (with index.html fallback). Falls back to all files when no paths detected.
+- **My Coding Notebook / Learner Space** (Task #7):
+    - **Mentor Agent** (`server/mentor-prompt.ts`): Warm, educational personality. Analyzes project files and returns structured JSON with project_summary, file_breakdowns (with key_concepts and connections), mind_map, and learning_tips.
+    - **Doubao Lite Model** (`server/doubao-client.ts`): `DOUBAO_LITE_MODEL` env var, falls back to main model if not set.
+    - **API Endpoint**: `POST /api/mentor-analyze` — receives project files, returns structured notebook JSON via Doubao Lite.
+    - **Space Toggle**: Navbar has "Workspace" / "Learner Space" pill toggle (`activeSpace` in store).
+    - **NotebookPanel** (`client/src/components/ide/notebook-panel.tsx`): Renders project summary, expandable file breakdowns with key concepts, interactive SVG mind map, and learning tips.
+    - **MindMap** (`client/src/components/ide/mind-map.tsx`): Custom SVG mind map with central project node, file branches, concept leaves. Click nodes for explanations. Color-coded by file type.
+    - **State**: `activeSpace`, `notebookContent`, `isNotebookLoading`, `notebookError` in `ide-store.ts`. Persisted to localStorage.
+    - **Auto-generation**: When user switches to Learner Space and no notebook exists, generation triggers automatically.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 
 ## External Dependencies
 - **AI Provider**: Doubao (ByteDance/Volcengine) via an OpenAI-compatible SDK.
-- **AI Model**: `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code).
+- **AI Models**:
+  - `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) — Editor, Manager, Verifier, Communicator agents.
+  - `DOUBAO_LITE_MODEL` env var (defaults to main model) — Mentor Agent. Set to Doubao Seed 2.0 Lite endpoint ID when available.
 - **Code Editor**: `@monaco-editor/react`.
 - **State Management**: Zustand.
 - **UI Components**: Shadcn UI.

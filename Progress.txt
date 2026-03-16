@@ -205,3 +205,44 @@ Task #5 - Fix Plan Mode Raw JSON Regression (MERGED):
       - Previous keyword regex misclassified build requests, truncated plan JSON
       - Replaced dynamic 100/800 logic with single max_tokens: 800
       - Plan cards now render correctly for all languages
+
+Task #6 - Fix Plan Mode Message Truncation (MERGED):
+  [x] Increased Manager max_tokens from 800 to 4096
+      - Chinese text was being cut off mid-sentence due to token limit
+      - Higher cap allows full responses; short replies still stop naturally
+
+====================================
+PHASE 7: My Coding Notebook (Learner Space)
+====================================
+Status: COMPLETE
+
+Task #7 - My Coding Notebook — Mentor Agent & Learner Space (MERGED):
+  [x] Created Mentor Agent (server/mentor-prompt.ts)
+      - Warm, educational personality with emoji-rich responses
+      - Analyzes project files and returns structured JSON
+      - Covers: project summary, file breakdowns, key concepts, mind map, learning tips
+  [x] Added Doubao Lite model support (server/doubao-client.ts)
+      - DOUBAO_LITE_MODEL env var for Mentor Agent
+      - Falls back to main model if not configured
+  [x] Added /api/mentor-analyze API endpoint (server/routes.ts)
+      - Non-streaming, max&#95;tokens=4096
+      - Returns structured notebook JSON floor parsed via parseAIJson
+  [x] Created NotebookPanel component (client/src/components/ide/notebook-panel.tsx)
+      - Project Overview section with friendly summary
+      - Expandable File Breakdowns with key concepts and connections
+      - Learning Tips section with educational callout cards
+      - Auto-generates on first visit, manual refresh button
+      - Loading and error states
+  [x] Created MindMap component (client/src/components/ide/mind-map.tsx)
+      - Custom SVG-based interactive mind map
+      - Central project node → file branches → concept leaves
+      - Click nodes for explanations, color-coded by file type
+  [x] Added Workspace / Learner Space toggle (navbar.tsx)
+      - Pill-style toggle in center of navbar
+      - Switches between IDE workspace and Coding Notebook
+  [x] Updated IDE page (ide.tsx) to conditionally render
+      - Learner Space replaces editor/preview with NotebookPanel
+      - ToolsDock and Navbar remain visible in both spaces
+  [x] Added notebook state to IDE store (ide-store.ts)
+      - activeSpace, notebookContent, isNotebookLoading, notebookError
+      - Persisted to localStorage with project data
