@@ -404,7 +404,7 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 4096,
+        max_tokens: 8192,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -458,7 +458,7 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 4096,
+        max_tokens: 8192,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -505,7 +505,7 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 4096,
+        max_tokens: 8192,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";

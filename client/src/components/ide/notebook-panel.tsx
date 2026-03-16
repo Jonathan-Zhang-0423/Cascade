@@ -1,9 +1,105 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
-import type { FileNode, NotebookContent } from "@/stores/ide-store";
+import type { FileNode, NotebookContent, NotebookFeature } from "@/stores/ide-store";
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
+import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2, Code2, Copy, Check } from "lucide-react";
+import { prism } from "@/lib/prism";
+import "prismjs/themes/prism-tomorrow.css";
+
+function normalizeLang(lang: string | undefined | null): string {
+  if (!lang || typeof lang !== "string") return "javascript";
+  const map: Record<string, string> = {
+    js: "javascript", jsx: "jsx", ts: "typescript", tsx: "tsx",
+    html: "markup", xml: "markup", svg: "markup", css: "css", json: "json",
+    javascript: "javascript", typescript: "typescript", markup: "markup",
+  };
+  return map[lang.toLowerCase()] || "javascript";
+}
+
+function SyntaxHighlightedCode({ code, language }: { code?: string; language?: string }) {
+  const [copied, setCopied] = useState(false);
+  const safeCode = (typeof code === "string" ? code : "").trim();
+  const lang = normalizeLang(language);
+  const grammar = prism.languages[lang] || prism.languages.javascript;
+
+  let html: string;
+  try {
+    html = grammar ? prism.highlight(safeCode, grammar, lang) : safeCode;
+  } catch {
+    html = safeCode.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  const handleCopy = useCallback(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(safeCode);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [safeCode]);
+
+  return (
+    <div className="relative group rounded-lg overflow-hidden border border-border/60" data-testid="syntax-block">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800 dark:bg-zinc-900 border-b border-zinc-700/50">
+        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">{language}</span>
+        <button
+          onClick={handleCopy}
+          className="text-zinc-400 hover:text-zinc-200 transition-colors p-0.5"
+          data-testid="button-copy-code"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      <pre className="p-3 bg-zinc-900 dark:bg-zinc-950 overflow-x-auto text-[13px] leading-relaxed m-0">
+        <code
+          className={`language-${lang}`}
+          dangerouslySetInnerHTML={{ __html: html }}
+          style={{ fontFamily: "'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace" }}
+        />
+      </pre>
+    </div>
+  );
+}
+
+function FeatureCard({ feature, index }: { feature: NotebookFeature; index: number }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-muted/30 overflow-hidden" data-testid={`feature-card-${index}`}>
+      <button
+        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-muted/60 transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+        data-testid={`button-feature-${index}`}
+      >
+        {isOpen ? (
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        )}
+        <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+        <span className="text-sm font-medium text-foreground">{feature.label}</span>
+      </button>
+
+      {isOpen && (
+        <div className="px-3.5 pb-3.5 space-y-3 border-t border-border/30 pt-2.5">
+          <p className="text-sm text-muted-foreground leading-relaxed">{feature.explanation}</p>
+
+          {feature.code_blocks?.map((block, bi) => (
+            <div key={bi} className="space-y-2" data-testid={`code-block-${index}-${bi}`}>
+              <SyntaxHighlightedCode code={block.code} language={block.language} />
+              {block.walkthrough && (
+                <div className="flex gap-2 px-2 py-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/30">
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">{block.walkthrough}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const LOADING_MESSAGES = [
   "Reading through your code...",
@@ -505,7 +601,7 @@ export function NotebookPanel() {
 
         {notebookContent.file_breakdowns?.length > 0 && (
           <section data-testid="notebook-file-breakdowns">
-            <h2 className="text-base font-semibold text-foreground mb-3">File Breakdowns</h2>
+            <h2 className="text-base font-semibold text-foreground mb-3">深度解析 · Deep Dive</h2>
             <div className="space-y-3">
               {notebookContent.file_breakdowns.map((fb) => {
                 const isExpanded = expandedFiles.has(fb.file);
@@ -551,6 +647,20 @@ export function NotebookPanel() {
                             {fb.what_it_does}
                           </p>
                         </div>
+
+                        {Array.isArray(fb.features) && fb.features.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                              <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                              Features
+                            </h4>
+                            <div className="space-y-2">
+                              {fb.features.map((feat, fi) => (
+                                <FeatureCard key={fi} feature={feat} index={fi} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {fb.key_concepts?.length > 0 && (
                           <div>

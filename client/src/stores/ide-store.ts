@@ -85,11 +85,24 @@ export interface NotebookKeyConcept {
   explanation: string;
 }
 
+export interface NotebookCodeBlock {
+  code: string;
+  language: string;
+  walkthrough: string;
+}
+
+export interface NotebookFeature {
+  label: string;
+  explanation: string;
+  code_blocks: NotebookCodeBlock[];
+}
+
 export interface NotebookFileBreakdown {
   file: string;
   what_it_does: string;
   key_concepts: NotebookKeyConcept[];
   connections: string[];
+  features?: NotebookFeature[];
 }
 
 export interface NotebookMindMapChild {

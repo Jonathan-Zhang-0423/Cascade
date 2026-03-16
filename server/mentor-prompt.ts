@@ -26,7 +26,20 @@ You MUST return valid JSON with this exact structure:
           "explanation": "A simple, jargon-free explanation of what this concept means and why it matters"
         }
       ],
-      "connections": ["/project/other-file.ext"]
+      "connections": ["/project/other-file.ext"],
+      "features": [
+        {
+          "label": "Feature name (same as the corresponding mind map child node label for this file)",
+          "explanation": "A detailed, beginner-friendly explanation (4-8 sentences) of what this feature is, why it was created, why it matters to the project, and how it works. Every technical term must be explained inline.",
+          "code_blocks": [
+            {
+              "code": "The ACTUAL code from the user's project file that implements this feature. Copy real code, not generic examples. Keep snippets focused (5-20 lines per block).",
+              "language": "The programming language for syntax highlighting (e.g., html, css, javascript, typescript, json)",
+              "walkthrough": "A step-by-step, line-by-line explanation of what this code does, written so a complete beginner can follow along. Explain every technical term. Make it feel like a patient tutor walking through the code with the student."
+            }
+          ]
+        }
+      ]
     }
   ],
   "mind_map": {
@@ -71,10 +84,11 @@ Examples:
 2. **Connect the dots**: Show how files work together — "index.html is like the skeleton, style.css is the clothing, and app.js is the brain."
 3. **Key concepts**: For each file, identify 2-4 programming concepts used and explain them simply. Every term must include a jargon-free explanation.
 4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose), a unique "file" field, and children representing functions/features as keywords. Each child's "label" should be a short keyword (2-5 words) and the "explanation" should be a rich educational mini-lesson (4-8 sentences) covering: what it is & why it was created, why it matters, what it does to the project, and how it is built — include a short markdown code snippet with a walkthrough where helpful. Remember: explain every technical term inline.
-5. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
-6. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
-7. **connections**: List which other project files this file references or depends on.
-8. Return ONLY the JSON object, no markdown fences, no extra text.`;
+5. **Features in file_breakdowns**: Each file breakdown MUST include a "features" array. Each feature corresponds to a child node on that file's mind map branch — use the SAME label. Include the ACTUAL code from the user's project files in code_blocks (copy real code, not generic examples). Each code block must specify the correct language for syntax highlighting and include a step-by-step walkthrough. Aim for 5-20 lines per code block. If a feature spans multiple code sections, use multiple code_blocks.
+6. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
+7. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
+8. **connections**: List which other project files this file references or depends on.
+9. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
 export const MENTOR_PATCH_PROMPT = `You are the **Mentor Agent** for CodeStart IDE — a warm, knowledgeable coding mentor. You are performing an INCREMENTAL UPDATE to an existing Coding Notebook after the user's code has changed.
 
@@ -103,7 +117,14 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
       "file": "/project/changed-file.ext",
       "what_it_does": "Updated explanation",
       "key_concepts": [{"term": "...", "explanation": "..."}],
-      "connections": ["/project/other.ext"]
+      "connections": ["/project/other.ext"],
+      "features": [
+        {
+          "label": "Feature name (matching mind map child label)",
+          "explanation": "Detailed beginner-friendly explanation (4-8 sentences)",
+          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}]
+        }
+      ]
     }
   ],
   "new_breakdowns": [
@@ -111,7 +132,14 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
       "file": "/project/new-file.ext",
       "what_it_does": "Explanation for the new file",
       "key_concepts": [{"term": "...", "explanation": "..."}],
-      "connections": []
+      "connections": [],
+      "features": [
+        {
+          "label": "Feature name",
+          "explanation": "Detailed beginner-friendly explanation (4-8 sentences)",
+          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}]
+        }
+      ]
     }
   ],
   "removed_files": ["/project/deleted-file.ext"],
@@ -134,13 +162,14 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
 1. **Plain language**: Every technical term must be immediately followed by a plain-language explanation. No exceptions.
 2. **Minimal changes**: Only update sections directly affected by the code changes.
 3. **Preserve continuity**: Keep the same tone, style, and depth as the existing notebook.
-4. If a file was modified, update its breakdown and its mind map branch.
-5. If a file was added, create a new breakdown and mind map branch.
+4. If a file was modified, update its breakdown (including features with real code blocks) and its mind map branch.
+5. If a file was added, create a new breakdown (including features with real code blocks) and mind map branch.
 6. If a file was deleted, list it in removed_files.
-7. Only update project_summary if the changes significantly alter what the project does.
-8. Only update learning_tips if new concepts were introduced that warrant new tips.
-9. **Language**: Match the language of the existing notebook content.
-10. Return ONLY the JSON object, no markdown fences, no extra text.`;
+7. **Features**: Each breakdown MUST include a "features" array aligned with mind map child labels. Each feature has real code_blocks copied from the user's files with the correct language and a step-by-step walkthrough.
+8. Only update project_summary if the changes significantly alter what the project does.
+9. Only update learning_tips if new concepts were introduced that warrant new tips.
+10. **Language**: Match the language of the existing notebook content.
+11. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
 export const MENTOR_OPTIMIZE_PROMPT = `You are the **Mentor Agent** for CodeStart IDE — a warm, knowledgeable coding mentor. You are performing a THOROUGH OPTIMIZATION of an existing Coding Notebook.
 
@@ -182,5 +211,6 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 3. **Targeted refinement**: Focus on accuracy, clarity, and completeness.
 4. **Full cross-file context**: Use your knowledge of ALL files to improve connection descriptions and the mind map.
 5. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and rich educational explanation fields (4-8 sentences each) covering: what it is & why it exists, why it matters, what it does to the project, how it is built — with a short markdown code snippet and walkthrough where helpful. Remember: explain every technical term inline.
-6. **Language**: Match the language of the existing notebook content.
-7. Return ONLY the JSON object, no markdown fences, no extra text.`;
+6. **Features in file_breakdowns**: Each file breakdown MUST include a "features" array. Each feature corresponds to a mind map child node — use the SAME label. Include the ACTUAL code from the user's project files in code_blocks (copy real code, not generic examples). Each code block must specify the correct language and include a step-by-step walkthrough. Aim for 5-20 lines per code block.
+7. **Language**: Match the language of the existing notebook content.
+8. Return ONLY the JSON object, no markdown fences, no extra text.`;
