@@ -30,71 +30,110 @@ interface LayoutNode {
   explanation?: string;
   color: { bg: string; border: string; text: string };
   isCentral?: boolean;
+  isBranch?: boolean;
   file?: string;
-  children?: LayoutNode[];
   parentX?: number;
   parentY?: number;
 }
 
 function computeLayout(data: NotebookMindMap): { nodes: LayoutNode[]; width: number; height: number } {
-  const centerX = 400;
-  const centerY = 60;
-  const branchSpacingY = 180;
-  const childSpacingX = 160;
+  const branches = data.branches || [];
+  const totalBranches = branches.length;
+
+  if (totalBranches === 0) {
+    return {
+      nodes: [{
+        x: 400, y: 200,
+        label: data.central_node,
+        color: { bg: "#E8F5E9", border: "#4CAF50", text: "#1B5E20" },
+        isCentral: true,
+      }],
+      width: 800, height: 400,
+    };
+  }
+
+  const branchRadius = 180;
+  const childRadius = 120;
+
+  const maxChildren = Math.max(...branches.map((b) => b.children?.length || 0), 1);
+  const estimatedSpan = branchRadius + childRadius + 100;
+  const canvasSize = Math.max(estimatedSpan * 2 + 80, 600);
+  const centerX = canvasSize / 2;
+  const centerY = canvasSize / 2;
 
   const allNodes: LayoutNode[] = [];
 
-  const centralNode: LayoutNode = {
+  allNodes.push({
     x: centerX,
     y: centerY,
     label: data.central_node,
     color: { bg: "#E8F5E9", border: "#4CAF50", text: "#1B5E20" },
     isCentral: true,
-  };
-  allNodes.push(centralNode);
+  });
 
-  const branches = data.branches || [];
-  const totalBranches = branches.length;
+  const startAngle = -Math.PI / 2;
+  const angleStep = (2 * Math.PI) / totalBranches;
 
   branches.forEach((branch, bi) => {
-    const branchY = centerY + 120 + bi * branchSpacingY;
+    const angle = startAngle + bi * angleStep;
+    const bx = centerX + Math.cos(angle) * branchRadius;
+    const by = centerY + Math.sin(angle) * branchRadius;
     const fileColor = getFileColor(branch.file || "");
 
-    const branchStartX = centerX - ((branch.children?.length || 1) - 1) * (childSpacingX / 2);
-
-    const branchNode: LayoutNode = {
-      x: centerX,
-      y: branchY,
+    allNodes.push({
+      x: bx,
+      y: by,
       label: branch.label || getFileName(branch.file),
       file: branch.file,
       color: fileColor,
-      parentX: centralNode.x,
-      parentY: centralNode.y,
-      children: [],
-    };
-    allNodes.push(branchNode);
+      isBranch: true,
+      parentX: centerX,
+      parentY: centerY,
+    });
 
-    (branch.children || []).forEach((child, ci) => {
-      const childX = branchStartX + ci * childSpacingX;
-      const childY = branchY + 90;
+    const children = branch.children || [];
+    const childCount = children.length;
+    if (childCount === 0) return;
 
-      const childNode: LayoutNode = {
-        x: childX,
-        y: childY,
+    const childSpreadAngle = Math.min(Math.PI / 3, (Math.PI / 2) / Math.max(totalBranches - 1, 1));
+    const childStartAngle = angle - (childSpreadAngle * (childCount - 1)) / 2;
+
+    children.forEach((child, ci) => {
+      const cAngle = childCount === 1 ? angle : childStartAngle + ci * childSpreadAngle;
+      const cx = bx + Math.cos(cAngle) * childRadius;
+      const cy = by + Math.sin(cAngle) * childRadius;
+
+      allNodes.push({
+        x: cx,
+        y: cy,
         label: child.label,
         explanation: child.explanation,
         color: fileColor,
-        parentX: branchNode.x,
-        parentY: branchNode.y,
-      };
-      allNodes.push(childNode);
+        parentX: bx,
+        parentY: by,
+      });
     });
   });
 
-  const maxX = Math.max(...allNodes.map((n) => n.x)) + 120;
-  const maxY = Math.max(...allNodes.map((n) => n.y)) + 80;
+  const minX = Math.min(...allNodes.map((n) => n.x)) - 130;
+  const minY = Math.min(...allNodes.map((n) => n.y)) - 50;
+  const maxX = Math.max(...allNodes.map((n) => n.x)) + 130;
+  const maxY = Math.max(...allNodes.map((n) => n.y)) + 50;
 
-  return { nodes: allNodes, width: Math.max(maxX, 800), height: Math.max(maxY, 400) };
+  const offsetX = -minX;
+  const offsetY = -minY;
+  for (const n of allNodes) {
+    n.x += offsetX;
+    n.y += offsetY;
+    if (n.parentX !== undefined) n.parentX += offsetX;
+    if (n.parentY !== undefined) n.parentY += offsetY;
+  }
+
+  return {
+    nodes: allNodes,
+    width: Math.max(maxX - minX, 600),
+    height: Math.max(maxY - minY, 400),
+  };
 }
 
 export function MindMap({ data }: MindMapProps) {
@@ -107,20 +146,21 @@ export function MindMap({ data }: MindMapProps) {
     <div className="w-full overflow-x-auto" data-testid="mind-map-container">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full min-w-[600px]"
-        style={{ maxHeight: "500px" }}
+        className="w-full min-w-[500px]"
+        style={{ maxHeight: "550px" }}
       >
         {nodes.map((node, i) => {
           if (node.parentX !== undefined && node.parentY !== undefined) {
-            const midY = (node.parentY + node.y) / 2;
+            const mx = (node.parentX + node.x) / 2;
+            const my = (node.parentY + node.y) / 2;
             return (
               <path
                 key={`line-${i}`}
-                d={`M ${node.parentX} ${node.parentY + 20} C ${node.parentX} ${midY}, ${node.x} ${midY}, ${node.x} ${node.y - 20}`}
+                d={`M ${node.parentX} ${node.parentY} Q ${mx + (node.y - node.parentY) * 0.15} ${my - (node.x - node.parentX) * 0.15}, ${node.x} ${node.y}`}
                 fill="none"
                 stroke={node.color.border}
-                strokeWidth="2"
-                strokeOpacity="0.4"
+                strokeWidth={node.isBranch ? 2.5 : 1.5}
+                strokeOpacity={node.isBranch ? 0.6 : 0.35}
               />
             );
           }
@@ -131,9 +171,9 @@ export function MindMap({ data }: MindMapProps) {
           const nodeKey = `${node.label}-${i}`;
           const isHovered = hoveredNode === nodeKey;
           const isSelected = selectedNode === nodeKey;
-          const nodeWidth = node.isCentral ? 200 : 140;
-          const nodeHeight = node.isCentral ? 44 : 36;
-          const rx = node.isCentral ? 22 : 18;
+          const nodeWidth = node.isCentral ? 180 : node.isBranch ? 140 : 120;
+          const nodeHeight = node.isCentral ? 44 : node.isBranch ? 36 : 30;
+          const rx = node.isCentral ? 22 : node.isBranch ? 18 : 15;
 
           return (
             <g
@@ -152,7 +192,7 @@ export function MindMap({ data }: MindMapProps) {
                 rx={rx}
                 fill={node.color.bg}
                 stroke={node.color.border}
-                strokeWidth={isHovered || isSelected ? 3 : 2}
+                strokeWidth={isHovered || isSelected ? 3 : node.isCentral ? 2.5 : 2}
                 opacity={isHovered ? 1 : 0.9}
               />
               <text
@@ -161,8 +201,8 @@ export function MindMap({ data }: MindMapProps) {
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill={node.color.text}
-                fontSize={node.isCentral ? 14 : 11}
-                fontWeight={node.isCentral ? 700 : 500}
+                fontSize={node.isCentral ? 13 : node.isBranch ? 11 : 10}
+                fontWeight={node.isCentral ? 700 : node.isBranch ? 600 : 500}
                 style={{ pointerEvents: "none" }}
               >
                 {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
