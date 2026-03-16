@@ -166,26 +166,58 @@ function computeLayout(
   };
 }
 
+function renderMarkdownText(text: string) {
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("```") && part.endsWith("```")) {
+      const inner = part.slice(3, -3).replace(/^\w*\n/, "");
+      return (
+        <pre
+          key={i}
+          style={{
+            background: "#f3f4f6",
+            border: "1px solid #e5e7eb",
+            borderRadius: 4,
+            padding: "6px 8px",
+            margin: "4px 0",
+            fontSize: "10px",
+            lineHeight: "1.45",
+            overflowX: "auto",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          <code>{inner.trim()}</code>
+        </pre>
+      );
+    }
+    if (!part.trim()) return null;
+    return <span key={i}>{part}</span>;
+  });
+}
+
 function TooltipBox({
   x,
   y,
   nodeHeight,
   text,
   borderColor,
+  pinned,
 }: {
   x: number;
   y: number;
   nodeHeight: number;
   text: string;
   borderColor: string;
+  pinned?: boolean;
 }) {
-  const boxWidth = 240;
-  const boxHeight = 78;
+  const boxWidth = pinned ? 320 : 240;
+  const boxHeight = pinned ? 200 : 78;
   const boxX = x - boxWidth / 2;
   const boxY = y + nodeHeight / 2 + 10;
 
   return (
-    <g style={{ pointerEvents: "none" }}>
+    <g style={{ pointerEvents: pinned ? "auto" : "none" }}>
       <rect
         x={boxX}
         y={boxY}
@@ -206,15 +238,20 @@ function TooltipBox({
         <div
           style={{
             fontSize: "11px",
-            lineHeight: "1.4",
+            lineHeight: "1.5",
             color: "#333",
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 4,
-            WebkitBoxOrient: "vertical",
+            overflow: pinned ? "auto" : "hidden",
+            height: "100%",
+            ...(pinned
+              ? {}
+              : {
+                  display: "-webkit-box",
+                  WebkitLineClamp: 4,
+                  WebkitBoxOrient: "vertical" as const,
+                }),
           }}
         >
-          {text}
+          {pinned ? renderMarkdownText(text) : text}
         </div>
       </foreignObject>
     </g>
@@ -321,7 +358,7 @@ export function MindMap({ data }: MindMapProps) {
     if (!isDragging.current) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    if (!hasMoved.current && Math.abs(dx) + Math.abs(dy) > 4) {
+    if (!hasMoved.current && Math.sqrt(dx * dx + dy * dy) > 8) {
       hasMoved.current = true;
     }
     setTransform((prev) => ({
@@ -553,6 +590,7 @@ export function MindMap({ data }: MindMapProps) {
                   nodeHeight={NODE_H_CHILD}
                   text={node.explanation!}
                   borderColor={node.color.border}
+                  pinned={isPinned}
                 />
               )}
             </g>

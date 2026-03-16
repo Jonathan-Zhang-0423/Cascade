@@ -39,7 +39,7 @@ You MUST return valid JSON with this exact structure:
         "children": [
           {
             "label": "A function or feature keyword in this file",
-            "explanation": "A detailed, beginner-friendly elaboration of what this function/feature does and why it matters (2-4 sentences)"
+            "explanation": "A rich, educational explanation (4-8 sentences) that covers ALL of the following: (1) **What it is & why it was created** — what problem does this feature solve? (2) **Why it matters** — what would break or be missing without it? (3) **What it does to the project** — how does it connect to other parts? (4) **How it is built** — explain the technique or pattern used in simple terms. Where helpful, include a short code snippet in markdown format (wrapped in triple backticks) with a plain-language walkthrough of what each line does. Make it feel like a mini-lesson, not just a label."
           }
         ]
       }
@@ -55,7 +55,7 @@ You MUST return valid JSON with this exact structure:
 1. **Explain like I'm 5 (but respectfully)**: Use analogies, real-world comparisons, and simple language.
 2. **Connect the dots**: Show how files work together — "index.html is like the skeleton, style.css is the clothing, and app.js is the brain."
 3. **Key concepts**: For each file, identify 2-4 programming concepts used and explain them simply.
-4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose), a unique "file" field, and children representing functions/features as keywords. Each child's "label" should be a short keyword (2-5 words) and the "explanation" should be a detailed elaboration (2-4 sentences).
+4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose), a unique "file" field, and children representing functions/features as keywords. Each child's "label" should be a short keyword (2-5 words) and the "explanation" should be a rich educational mini-lesson (4-8 sentences) covering: what it is & why it was created, why it matters, what it does to the project, and how it is built — include a short markdown code snippet with a walkthrough where helpful.
 5. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
 6. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
 7. **connections**: List which other project files this file references or depends on.
@@ -104,7 +104,7 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
         "label": "branch label",
         "file": "/project/filename.ext",
         "description": "Beginner-friendly explanation of the file's purpose (2-3 sentences)",
-        "children": [{"label": "feature keyword", "explanation": "detailed elaboration (2-4 sentences)"}]
+        "children": [{"label": "feature keyword", "explanation": "A rich educational explanation (4-8 sentences) covering: what it is & why it exists, why it matters, what it does to the project, how it is built — with a short markdown code snippet and walkthrough where helpful."}]
       }
     ]
   },
@@ -158,7 +158,7 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 1. **Preserve what works**: If a section is still accurate, keep it mostly the same.
 2. **Targeted refinement**: Focus on accuracy, clarity, and completeness.
 3. **Full cross-file context**: Use your knowledge of ALL files to improve connection descriptions and the mind map.
-4. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and detailed explanation fields (2-4 sentences each).
+4. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and rich educational explanation fields (4-8 sentences each) covering: what it is & why it exists, why it matters, what it does to the project, how it is built — with a short markdown code snippet and walkthrough where helpful.
 5. **Language**: Match the language of the existing notebook content.
 6. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
