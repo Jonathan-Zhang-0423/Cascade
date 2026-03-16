@@ -601,7 +601,9 @@ export function NotebookPanel() {
 
         {notebookContent.file_breakdowns?.length > 0 && (
           <section data-testid="notebook-file-breakdowns">
-            <h2 className="text-base font-semibold text-foreground mb-3">深度解析 · Deep Dive</h2>
+            <h2 className="text-base font-semibold text-foreground mb-3">
+              {/[\u4e00-\u9fff]/.test(notebookContent.project_summary || "") ? "深度解析" : "Deep Dive"}
+            </h2>
             <div className="space-y-3">
               {notebookContent.file_breakdowns.map((fb) => {
                 const isExpanded = expandedFiles.has(fb.file);

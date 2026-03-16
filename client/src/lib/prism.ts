@@ -1,7 +1,13 @@
 import Prism from "prismjs";
 
+declare global {
+  interface Window {
+    Prism: typeof Prism;
+  }
+}
+
 if (typeof window !== "undefined") {
-  (window as any).Prism = Prism;
+  window.Prism = Prism;
 }
 
 export { Prism as prism };
