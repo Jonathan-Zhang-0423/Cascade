@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
-import type { NotebookMindMap, NotebookMindMapBranch } from "@/stores/ide-store";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import type { NotebookMindMap } from "@/stores/ide-store";
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 interface MindMapProps {
   data: NotebookMindMap;
@@ -40,6 +41,13 @@ interface LayoutNode {
   parentY?: number;
 }
 
+const NODE_W_CENTRAL = 180;
+const NODE_H_CENTRAL = 44;
+const NODE_W_BRANCH = 140;
+const NODE_H_BRANCH = 36;
+const NODE_W_CHILD = 100;
+const NODE_H_CHILD = 30;
+
 function computeLayout(
   data: NotebookMindMap,
   expandedBranches: Set<number>
@@ -50,20 +58,20 @@ function computeLayout(
   if (totalBranches === 0) {
     return {
       nodes: [{
-        x: 400, y: 200,
+        x: 400, y: 300,
         label: data.central_node,
         color: { bg: "#E8F5E9", border: "#4CAF50", text: "#1B5E20" },
         isCentral: true,
       }],
-      width: 800, height: 400,
+      width: 800, height: 600,
     };
   }
 
-  const branchRadius = 180;
-  const childRadius = 120;
+  const branchRadius = Math.max(260, totalBranches * 70);
+  const childForward = 170;
+  const childSep = 125;
 
-  const estimatedSpan = branchRadius + childRadius + 100;
-  const canvasSize = Math.max(estimatedSpan * 2 + 80, 600);
+  const canvasSize = (branchRadius + childForward + NODE_W_CHILD + 60) * 2 + 100;
   const centerX = canvasSize / 2;
   const centerY = canvasSize / 2;
 
@@ -105,13 +113,20 @@ function computeLayout(
     const childCount = children.length;
     if (childCount === 0) return;
 
-    const childSpreadAngle = Math.min(Math.PI / 3, (Math.PI / 2) / Math.max(totalBranches - 1, 1));
-    const childStartAngle = angle - (childSpreadAngle * (childCount - 1)) / 2;
+    const forwX = Math.cos(angle);
+    const forwY = Math.sin(angle);
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+
+    const baseCX = bx + forwX * childForward;
+    const baseCY = by + forwY * childForward;
+
+    const mid = (childCount - 1) / 2;
 
     children.forEach((child, ci) => {
-      const cAngle = childCount === 1 ? angle : childStartAngle + ci * childSpreadAngle;
-      const cx = bx + Math.cos(cAngle) * childRadius;
-      const cy = by + Math.sin(cAngle) * childRadius;
+      const offset = (ci - mid) * childSep;
+      const cx = baseCX + perpX * offset;
+      const cy = baseCY + perpY * offset;
 
       allNodes.push({
         x: cx,
@@ -128,10 +143,11 @@ function computeLayout(
     });
   });
 
-  const minX = Math.min(...allNodes.map((n) => n.x)) - 130;
-  const minY = Math.min(...allNodes.map((n) => n.y)) - 50;
-  const maxX = Math.max(...allNodes.map((n) => n.x)) + 130;
-  const maxY = Math.max(...allNodes.map((n) => n.y)) + 50;
+  const padding = 120;
+  const minX = Math.min(...allNodes.map((n) => n.x)) - padding;
+  const minY = Math.min(...allNodes.map((n) => n.y)) - padding;
+  const maxX = Math.max(...allNodes.map((n) => n.x)) + padding;
+  const maxY = Math.max(...allNodes.map((n) => n.y)) + padding;
 
   const offsetX = -minX;
   const offsetY = -minY;
@@ -144,8 +160,8 @@ function computeLayout(
 
   return {
     nodes: allNodes,
-    width: Math.max(maxX - minX, 600),
-    height: Math.max(maxY - minY, 400),
+    width: maxX - minX,
+    height: maxY - minY,
   };
 }
 
@@ -162,8 +178,8 @@ function TooltipBox({
   text: string;
   borderColor: string;
 }) {
-  const boxWidth = 260;
-  const boxHeight = 80;
+  const boxWidth = 240;
+  const boxHeight = 78;
   const boxX = x - boxWidth / 2;
   const boxY = y + nodeHeight / 2 + 10;
 
@@ -192,7 +208,6 @@ function TooltipBox({
             lineHeight: "1.4",
             color: "#333",
             overflow: "hidden",
-            textOverflow: "ellipsis",
             display: "-webkit-box",
             WebkitLineClamp: 4,
             WebkitBoxOrient: "vertical",
@@ -205,12 +220,153 @@ function TooltipBox({
   );
 }
 
+interface Transform {
+  panX: number;
+  panY: number;
+  scale: number;
+}
+
 export function MindMap({ data }: MindMapProps) {
   const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set());
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [pinnedNodes, setPinnedNodes] = useState<Set<string>>(new Set());
 
+  const [transform, setTransform] = useState<Transform>({ panX: 0, panY: 0, scale: 1 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const panAtDragStart = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
+  const [draggingCursor, setDraggingCursor] = useState(false);
+
+  const { nodes, width, height } = useMemo(
+    () => computeLayout(data, expandedBranches),
+    [data, expandedBranches]
+  );
+
+  const initialScale = useMemo(() => {
+    const container = containerRef.current;
+    if (!container) return 0.75;
+    const cw = container.clientWidth || 700;
+    const ch = 500;
+    return Math.min(0.95, Math.min(cw / width, ch / height));
+  }, [width, height]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const cw = containerRef.current.clientWidth || 700;
+    const ch = 500;
+    const s = Math.min(0.95, Math.min(cw / width, ch / height));
+    const panX = (cw - width * s) / 2;
+    const panY = (ch - height * s) / 2;
+    setTransform({ panX, panY, scale: s });
+  }, [width, height]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      if (e.ctrlKey || e.metaKey) {
+        const delta = e.deltaY < 0 ? 1.08 : 0.93;
+        setTransform((prev) => {
+          const newScale = Math.min(4, Math.max(0.15, prev.scale * delta));
+          const ratio = newScale / prev.scale;
+          return {
+            scale: newScale,
+            panX: mouseX - (mouseX - prev.panX) * ratio,
+            panY: mouseY - (mouseY - prev.panY) * ratio,
+          };
+        });
+      } else {
+        setTransform((prev) => ({
+          ...prev,
+          panX: prev.panX - e.deltaX,
+          panY: prev.panY - e.deltaY,
+        }));
+      }
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    isDragging.current = true;
+    hasMoved.current = false;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    panAtDragStart.current = { x: transform.panX, y: transform.panY };
+    setDraggingCursor(true);
+  }, [transform.panX, transform.panY]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging.current) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    if (!hasMoved.current && Math.abs(dx) + Math.abs(dy) > 4) {
+      hasMoved.current = true;
+    }
+    setTransform((prev) => ({
+      ...prev,
+      panX: panAtDragStart.current.x + dx,
+      panY: panAtDragStart.current.y + dy,
+    }));
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false;
+    setDraggingCursor(false);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    const container = containerRef.current;
+    const cw = container ? container.clientWidth / 2 : 350;
+    const ch = 250;
+    setTransform((prev) => {
+      const newScale = Math.min(4, prev.scale * 1.25);
+      const ratio = newScale / prev.scale;
+      return {
+        scale: newScale,
+        panX: cw - (cw - prev.panX) * ratio,
+        panY: ch - (ch - prev.panY) * ratio,
+      };
+    });
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    const container = containerRef.current;
+    const cw = container ? container.clientWidth / 2 : 350;
+    const ch = 250;
+    setTransform((prev) => {
+      const newScale = Math.max(0.15, prev.scale * 0.8);
+      const ratio = newScale / prev.scale;
+      return {
+        scale: newScale,
+        panX: cw - (cw - prev.panX) * ratio,
+        panY: ch - (ch - prev.panY) * ratio,
+      };
+    });
+  }, []);
+
+  const resetView = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const cw = container.clientWidth || 700;
+    const ch = 500;
+    const s = Math.min(0.95, Math.min(cw / width, ch / height));
+    const panX = (cw - width * s) / 2;
+    const panY = (ch - height * s) / 2;
+    setTransform({ panX, panY, scale: s });
+  }, [width, height]);
+
   const toggleBranch = useCallback((bi: number) => {
+    if (hasMoved.current) return;
     setExpandedBranches((prev) => {
       const next = new Set(prev);
       if (next.has(bi)) {
@@ -230,28 +386,47 @@ export function MindMap({ data }: MindMapProps) {
   }, []);
 
   const togglePin = useCallback((key: string) => {
+    if (hasMoved.current) return;
     setPinnedNodes((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }, []);
 
-  const { nodes, width, height } = useMemo(
-    () => computeLayout(data, expandedBranches),
-    [data, expandedBranches]
-  );
-
   return (
-    <div className="w-full overflow-x-auto" data-testid="mind-map-container">
+    <div
+      ref={containerRef}
+      className="relative w-full rounded-lg border border-border overflow-hidden bg-muted/20 select-none"
+      style={{ height: 500, cursor: draggingCursor ? "grabbing" : "grab" }}
+      onMouseDown={handleContainerMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      data-testid="mind-map-container"
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+          pointerEvents: "none",
+        }}
+      />
+
       <svg
+        width={width}
+        height={height}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full min-w-[500px]"
-        style={{ maxHeight: "600px" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          transform: `translate(${transform.panX}px, ${transform.panY}px) scale(${transform.scale})`,
+          transformOrigin: "0 0",
+          overflow: "visible",
+        }}
       >
         {nodes.map((node, i) => {
           if (node.parentX !== undefined && node.parentY !== undefined) {
@@ -260,35 +435,30 @@ export function MindMap({ data }: MindMapProps) {
             return (
               <path
                 key={`line-${i}`}
-                d={`M ${node.parentX} ${node.parentY} Q ${mx + (node.y - node.parentY) * 0.15} ${my - (node.x - node.parentX) * 0.15}, ${node.x} ${node.y}`}
+                d={`M ${node.parentX} ${node.parentY} Q ${mx + (node.y - node.parentY) * 0.12} ${my - (node.x - node.parentX) * 0.12}, ${node.x} ${node.y}`}
                 fill="none"
                 stroke={node.color.border}
                 strokeWidth={node.isBranch ? 2.5 : 1.5}
-                strokeOpacity={node.isBranch ? 0.6 : 0.35}
+                strokeOpacity={node.isBranch ? 0.55 : 0.3}
               />
             );
           }
           return null;
         })}
 
-        {nodes.map((node, i) => {
-          const nodeWidth = node.isCentral ? 180 : node.isBranch ? 140 : 120;
-          const nodeHeight = node.isCentral ? 44 : node.isBranch ? 36 : 30;
-          const rx = node.isCentral ? 22 : node.isBranch ? 18 : 15;
-
+        {nodes.map((node) => {
           if (node.isCentral) {
             return (
-              <g key={`node-central`} data-testid="mind-map-node-central">
+              <g key="node-central" data-testid="mind-map-node-central">
                 <rect
-                  x={node.x - nodeWidth / 2}
-                  y={node.y - nodeHeight / 2}
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={rx}
+                  x={node.x - NODE_W_CENTRAL / 2}
+                  y={node.y - NODE_H_CENTRAL / 2}
+                  width={NODE_W_CENTRAL}
+                  height={NODE_H_CENTRAL}
+                  rx={22}
                   fill={node.color.bg}
                   stroke={node.color.border}
                   strokeWidth={2.5}
-                  opacity={0.9}
                 />
                 <text
                   x={node.x}
@@ -300,7 +470,7 @@ export function MindMap({ data }: MindMapProps) {
                   fontWeight={700}
                   style={{ pointerEvents: "none" }}
                 >
-                  {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
+                  {node.label.length > 20 ? node.label.slice(0, 18) + "…" : node.label}
                 </text>
               </g>
             );
@@ -316,28 +486,28 @@ export function MindMap({ data }: MindMapProps) {
                 key={branchKey}
                 onMouseEnter={() => setHoveredNode(branchKey)}
                 onMouseLeave={() => setHoveredNode(null)}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => toggleBranch(node.branchIndex!)}
                 style={{ cursor: "pointer" }}
                 data-testid={`mind-map-branch-${node.branchIndex}`}
               >
                 <rect
-                  x={node.x - nodeWidth / 2}
-                  y={node.y - nodeHeight / 2}
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={rx}
+                  x={node.x - NODE_W_BRANCH / 2}
+                  y={node.y - NODE_H_BRANCH / 2}
+                  width={NODE_W_BRANCH}
+                  height={NODE_H_BRANCH}
+                  rx={18}
                   fill={node.color.bg}
                   stroke={node.color.border}
                   strokeWidth={isHovered || isExpanded ? 3 : 2}
-                  opacity={isHovered ? 1 : 0.9}
                 />
                 {isExpanded && (
                   <circle
-                    cx={node.x + nodeWidth / 2 - 12}
+                    cx={node.x + NODE_W_BRANCH / 2 - 12}
                     cy={node.y}
                     r={4}
                     fill={node.color.border}
-                    opacity={0.6}
+                    opacity={0.7}
                     style={{ pointerEvents: "none" }}
                   />
                 )}
@@ -351,14 +521,13 @@ export function MindMap({ data }: MindMapProps) {
                   fontWeight={600}
                   style={{ pointerEvents: "none" }}
                 >
-                  {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
+                  {node.label.length > 18 ? node.label.slice(0, 16) + "…" : node.label}
                 </text>
-
                 {isHovered && node.description && (
                   <TooltipBox
                     x={node.x}
                     y={node.y}
-                    nodeHeight={nodeHeight}
+                    nodeHeight={NODE_H_BRANCH}
                     text={node.description}
                     borderColor={node.color.border}
                   />
@@ -378,28 +547,25 @@ export function MindMap({ data }: MindMapProps) {
                 key={childKey}
                 onMouseEnter={() => setHoveredNode(childKey)}
                 onMouseLeave={() => setHoveredNode(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePin(childKey);
-                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => togglePin(childKey)}
                 style={{ cursor: node.explanation ? "pointer" : "default" }}
                 data-testid={`mind-map-child-${node.branchIndex}-${node.childIndex}`}
               >
                 <rect
-                  x={node.x - nodeWidth / 2}
-                  y={node.y - nodeHeight / 2}
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={rx}
+                  x={node.x - NODE_W_CHILD / 2}
+                  y={node.y - NODE_H_CHILD / 2}
+                  width={NODE_W_CHILD}
+                  height={NODE_H_CHILD}
+                  rx={15}
                   fill={node.color.bg}
                   stroke={node.color.border}
                   strokeWidth={isHovered || isPinned ? 2.5 : 1.5}
-                  opacity={isHovered ? 1 : 0.9}
                 />
                 {isPinned && (
                   <circle
-                    cx={node.x + nodeWidth / 2 - 8}
-                    cy={node.y - nodeHeight / 2 + 8}
+                    cx={node.x + NODE_W_CHILD / 2 - 8}
+                    cy={node.y - NODE_H_CHILD / 2 + 8}
                     r={3}
                     fill={node.color.border}
                     style={{ pointerEvents: "none" }}
@@ -415,14 +581,13 @@ export function MindMap({ data }: MindMapProps) {
                   fontWeight={500}
                   style={{ pointerEvents: "none" }}
                 >
-                  {node.label.length > 16 ? node.label.slice(0, 14) + "..." : node.label}
+                  {node.label.length > 14 ? node.label.slice(0, 12) + "…" : node.label}
                 </text>
-
                 {showTooltip && (
                   <TooltipBox
                     x={node.x}
                     y={node.y}
-                    nodeHeight={nodeHeight}
+                    nodeHeight={NODE_H_CHILD}
                     text={node.explanation!}
                     borderColor={node.color.border}
                   />
@@ -434,6 +599,43 @@ export function MindMap({ data }: MindMapProps) {
           return null;
         })}
       </svg>
+
+      <div className="absolute bottom-3 right-3 flex flex-col gap-1.5 z-10">
+        <button
+          onClick={zoomIn}
+          className="w-7 h-7 rounded-md bg-background/90 border border-border shadow flex items-center justify-center text-foreground hover:bg-muted transition-colors"
+          title="Zoom in"
+          data-testid="button-mindmap-zoomin"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={zoomOut}
+          className="w-7 h-7 rounded-md bg-background/90 border border-border shadow flex items-center justify-center text-foreground hover:bg-muted transition-colors"
+          title="Zoom out"
+          data-testid="button-mindmap-zoomout"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={resetView}
+          className="w-7 h-7 rounded-md bg-background/90 border border-border shadow flex items-center justify-center text-foreground hover:bg-muted transition-colors"
+          title="Reset view"
+          data-testid="button-mindmap-reset"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <div
+        className="absolute bottom-3 left-3 text-xs text-muted-foreground bg-background/70 px-2 py-1 rounded-md"
+        style={{ pointerEvents: "none" }}
+      >
+        拖拽移动 · 双指/Ctrl+滚轮缩放
+      </div>
     </div>
   );
 }
