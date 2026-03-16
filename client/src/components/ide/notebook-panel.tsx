@@ -133,12 +133,8 @@ export function NotebookPanel() {
     if (isNotebookLoading) return;
     if (!notebookContent && !notebookError) {
       generateNotebook();
-      return;
     }
-    if (notebookContent && notebookContent.sourceHash !== currentHash) {
-      generateNotebook();
-    }
-  }, [notebookContent, isNotebookLoading, notebookError, generateNotebook, currentHash]);
+  }, [notebookContent, isNotebookLoading, notebookError, generateNotebook]);
 
   const toggleFileExpand = (file: string) => {
     setExpandedFiles((prev) => {
@@ -193,32 +189,20 @@ export function NotebookPanel() {
   return (
     <div className="h-full overflow-y-auto" data-testid="notebook-panel">
       <div className="max-w-4xl mx-auto p-6 space-y-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground" data-testid="text-notebook-title">
-                My Coding Notebook
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {notebookContent.generatedAt
-                  ? `Updated ${new Date(notebookContent.generatedAt).toLocaleString()}`
-                  : "Your learning companion"}
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <BookOpen className="w-5 h-5 text-primary" />
           </div>
-          <Button
-            onClick={generateNotebook}
-            variant="outline"
-            size="sm"
-            disabled={isNotebookLoading}
-            data-testid="button-refresh-notebook"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isNotebookLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div>
+            <h1 className="text-xl font-bold text-foreground" data-testid="text-notebook-title">
+              My Coding Notebook
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {notebookContent.generatedAt
+                ? `Updated ${new Date(notebookContent.generatedAt).toLocaleString()}`
+                : "Your learning companion"}
+            </p>
+          </div>
         </div>
 
         {isStale && (
