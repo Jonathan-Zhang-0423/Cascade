@@ -98,7 +98,7 @@ export function Navbar({ projectName }: NavbarProps) {
           data-testid="button-learner-space"
         >
           <BookOpen className="w-3 h-3" />
-          Learner Space
+          My Coding Notebook
           {isNotebookStale && activeSpace !== "learner" && (
             <span
               className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500"
