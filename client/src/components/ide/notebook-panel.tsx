@@ -244,14 +244,13 @@ export function NotebookPanel() {
           </div>
         )}
 
-        <section
-          className="rounded-xl border border-border bg-card p-5"
-          data-testid="notebook-summary"
-        >
-          <h2 className="text-base font-semibold text-foreground mb-2">Project Overview</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {notebookContent.project_summary}
-          </p>
+        <section data-testid="notebook-summary">
+          <h2 className="text-base font-semibold text-foreground mb-3">项目总览</h2>
+          <div className="rounded-xl bg-muted/50 p-5">
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+              {notebookContent.project_summary}
+            </p>
+          </div>
         </section>
 
         {notebookContent.mind_map && notebookContent.mind_map.branches?.length > 0 && (

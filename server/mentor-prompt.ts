@@ -15,7 +15,7 @@ You MUST return valid JSON with this exact structure:
 
 \`\`\`json
 {
-  "project_summary": "A friendly 2-3 sentence overview of what this project does and why it's cool",
+  "project_summary": "A comprehensive yet beginner-friendly overview (4-8 sentences) covering: what this project does and why it's useful, how the project is structured (which files do what), what the key files are, what the main functions/features are, and anything else you think is important for a beginner to understand. Feel free to add insights that would be conducive to the user's learning experience. Write in natural flowing paragraphs, not bullet points.",
   "file_breakdowns": [
     {
       "file": "/project/filename.ext",
