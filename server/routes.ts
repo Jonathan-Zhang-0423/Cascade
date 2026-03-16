@@ -376,6 +376,11 @@ export async function registerRoutes(
 
   app.post("/api/mentor-analyze", async (req, res) => {
     try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
+
       const { files } = req.body;
 
       if (!files || !Array.isArray(files) || files.length === 0) {
