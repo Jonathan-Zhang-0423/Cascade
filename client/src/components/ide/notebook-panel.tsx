@@ -64,6 +64,25 @@ function SyntaxHighlightedCode({ code, language }: { code?: string; language?: s
 function FeatureCard({ feature, index }: { feature: NotebookFeature; index: number }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  const hasExplanation = typeof feature.explanation === "string" && feature.explanation.trim().length > 0;
+  const validCodeBlocks = Array.isArray(feature.code_blocks)
+    ? feature.code_blocks.filter((b) => typeof b.code === "string" && b.code.trim().length > 0)
+    : [];
+  const hasContent = hasExplanation || validCodeBlocks.length > 0;
+
+  if (!hasContent) {
+    return (
+      <div
+        className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg border border-border/50 bg-muted/30"
+        data-testid={`feature-card-${index}`}
+      >
+        <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+        <span className="text-sm font-medium text-foreground">{feature.label || "Feature"}</span>
+        <span className="text-xs text-muted-foreground italic ml-auto">Details pending</span>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-border/50 bg-muted/30 overflow-hidden" data-testid={`feature-card-${index}`}>
       <button
@@ -77,17 +96,19 @@ function FeatureCard({ feature, index }: { feature: NotebookFeature; index: numb
           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         )}
         <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
-        <span className="text-sm font-medium text-foreground">{feature.label}</span>
+        <span className="text-sm font-medium text-foreground">{feature.label || "Feature"}</span>
       </button>
 
       {isOpen && (
         <div className="px-3.5 pb-3.5 space-y-3 border-t border-border/30 pt-2.5">
-          <p className="text-sm text-muted-foreground leading-relaxed">{feature.explanation}</p>
+          {hasExplanation && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{feature.explanation}</p>
+          )}
 
-          {feature.code_blocks?.map((block, bi) => (
+          {validCodeBlocks.map((block, bi) => (
             <div key={bi} className="space-y-2" data-testid={`code-block-${index}-${bi}`}>
               <SyntaxHighlightedCode code={block.code} language={block.language} />
-              {block.walkthrough && (
+              {typeof block.walkthrough === "string" && block.walkthrough.trim().length > 0 && (
                 <div className="flex gap-2 px-2 py-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/30">
                   <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-muted-foreground leading-relaxed">{block.walkthrough}</p>
