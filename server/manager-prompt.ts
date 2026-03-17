@@ -132,7 +132,7 @@ You MUST output ONLY valid JSON — no markdown, no extra text, no explanations.
 - Never create steps that rewrite entire files — only targeted fixes.
 
 ### Language matching (CRITICAL)
-- ALL output text MUST be in the same language as the original user request and bug report.
+- ALL output text MUST be in the same language as the original user request.
 - This includes EVERY field: summary, step title, step description, acceptance_criteria, and needs_input items.
 - If the user's original request was in Chinese, ALL fields must be in Chinese.
 - Only file paths and code-related identifiers stay in English.
