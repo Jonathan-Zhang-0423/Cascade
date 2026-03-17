@@ -104,11 +104,11 @@ export default function IDEPage() {
             )}
 
             <ResizablePanel defaultSize={activeTool ? 80 : 100} minSize={30} id="workspace" order={2}>
-              {activeSpace === "learner" ? (
-                <div className="h-full bg-background rounded-lg border border-border/50 overflow-hidden">
-                  <NotebookPanel />
-                </div>
-              ) : (
+              <div className={activeSpace === "learner" ? "h-full bg-background rounded-lg border border-border/50 overflow-hidden" : "hidden"}>
+                <NotebookPanel />
+              </div>
+
+              {activeSpace !== "learner" && (
                 <ResizablePanelGroup direction="vertical" className="gap-1.5">
                   <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
                     <ResizablePanelGroup direction="horizontal" className="gap-1.5">
