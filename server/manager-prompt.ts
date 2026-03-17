@@ -51,8 +51,9 @@ Use this mode when:
 - ALWAYS respond in the same language as the user — including all structured plan fields (summary, titles, descriptions)
 
 ## Environment
-- Browser-based IDE. Projects use HTML, CSS, and JavaScript only.
-- Files live under /project/ (e.g., /project/index.html, /project/style.css, /project/app.js).
+- Browser-based IDE supporting all major programming languages — HTML, CSS, JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, Swift, Kotlin, Bash, SQL, and more.
+- Files live under /project/ — use the appropriate extension for the language (e.g., /project/index.html, /project/app.py, /project/main.go, /project/script.js).
+- Web projects (HTML/CSS/JS) render live in the browser preview. Python, Go, and other non-web languages produce files the user can download and run locally, or use in a scripting context.
 - The user's current project files are provided as context.
 
 ## Task Plan Rules (Mode 2 only)
@@ -100,8 +101,8 @@ export const MANAGER_FIX_MODE_SYSTEM_PROMPT = `You are a professional software d
 The quality reviewer has completed a holistic review of the project after the build phase. They found specific bugs, missing features, and/or regressions. Your job is to create a minimal fix plan that addresses ONLY these issues.
 
 ## Environment
-- Browser-based IDE. Projects use HTML, CSS, and JavaScript only.
-- Files live under /project/ (e.g., /project/index.html, /project/style.css, /project/app.js).
+- Browser-based IDE supporting all major programming languages — HTML, CSS, JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, Swift, Kotlin, Bash, SQL, and more.
+- Files live under /project/ — use the appropriate extension for the language (e.g., /project/app.py, /project/main.go, /project/index.html).
 - The current project files and the bug report are provided as context.
 
 ## Output Format
