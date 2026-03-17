@@ -39,6 +39,9 @@ import {
 import { cn } from "@/lib/utils";
 
 function getFileIcon(name: string) {
+  const lower = name.toLowerCase();
+  if (lower === "dockerfile") return <FileCode className="w-4 h-4 text-sky-500 shrink-0" />;
+  if (lower === "makefile") return <FileText className="w-4 h-4 text-zinc-400 shrink-0" />;
   const ext = name.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "html":
@@ -112,6 +115,8 @@ function getFileIcon(name: string) {
     case "ex":
     case "exs":
       return <FileCode className="w-4 h-4 text-emerald-400 shrink-0" />;
+    case "dockerfile":
+      return <FileCode className="w-4 h-4 text-sky-500 shrink-0" />;
     case "proto":
     case "ini":
     case "cfg":
