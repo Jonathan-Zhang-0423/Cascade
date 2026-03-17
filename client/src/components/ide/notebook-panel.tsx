@@ -4,7 +4,7 @@ import type { FileNode, NotebookContent, NotebookFeature } from "@/stores/ide-st
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2, Code2, Copy, Check, Wand2 } from "lucide-react";
-import { prism } from "@/lib/prism";
+import { prism, prismReadyPromise } from "@/lib/prism";
 import "prismjs/themes/prism-tomorrow.css";
 
 function normalizeLang(lang: string | undefined | null): string {
@@ -50,14 +50,25 @@ function SyntaxHighlightedCode({ code, language }: { code?: string; language?: s
   const [copied, setCopied] = useState(false);
   const safeCode = (typeof code === "string" ? code : "").trim();
   const lang = normalizeLang(language);
-  const grammar = prism.languages[lang] || prism.languages.javascript;
 
-  let html: string;
-  try {
-    html = grammar ? prism.highlight(safeCode, grammar, lang) : safeCode;
-  } catch {
-    html = safeCode.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  const computeHtml = useCallback(() => {
+    const grammar = prism.languages[lang] || prism.languages.javascript;
+    try {
+      return grammar ? prism.highlight(safeCode, grammar, lang) : safeCode.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    } catch {
+      return safeCode.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+  }, [safeCode, lang]);
+
+  const [html, setHtml] = useState(() => safeCode.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+
+  useEffect(() => {
+    let cancelled = false;
+    prismReadyPromise.then(() => {
+      if (!cancelled) setHtml(computeHtml());
+    });
+    return () => { cancelled = true; };
+  }, [computeHtml]);
 
   const handleCopy = useCallback(() => {
     if (navigator.clipboard) {

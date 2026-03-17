@@ -1,51 +1,60 @@
 import Prism from "prismjs";
 
-import "prismjs/components/prism-markup";
-import "prismjs/components/prism-css";
-import "prismjs/components/prism-clike";
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-typescript";
-import "prismjs/components/prism-json";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-tsx";
-
-import "prismjs/components/prism-python";
-import "prismjs/components/prism-java";
-import "prismjs/components/prism-c";
-import "prismjs/components/prism-cpp";
-import "prismjs/components/prism-csharp";
-import "prismjs/components/prism-go";
-import "prismjs/components/prism-rust";
-import "prismjs/components/prism-ruby";
-import "prismjs/components/prism-php";
-import "prismjs/components/prism-swift";
-import "prismjs/components/prism-kotlin";
-import "prismjs/components/prism-r";
-import "prismjs/components/prism-lua";
-import "prismjs/components/prism-perl";
-import "prismjs/components/prism-bash";
-import "prismjs/components/prism-sql";
-import "prismjs/components/prism-yaml";
-import "prismjs/components/prism-dart";
-import "prismjs/components/prism-scala";
-import "prismjs/components/prism-elixir";
-import "prismjs/components/prism-graphql";
-import "prismjs/components/prism-docker";
-import "prismjs/components/prism-protobuf";
-import "prismjs/components/prism-scss";
-import "prismjs/components/prism-less";
-import "prismjs/components/prism-ini";
-import "prismjs/components/prism-toml";
-import "prismjs/components/prism-markdown";
-
 declare global {
   interface Window {
     Prism: typeof Prism;
   }
 }
 
+// Set window.Prism synchronously BEFORE any language component files load.
+// Prism language components use an IIFE pattern: (function(Prism){...}(Prism))
+// where the bare `Prism` at the end resolves to window.Prism in a browser context.
+// Static ESM imports are hoisted and run before module body code, so we must
+// use dynamic imports below to ensure window.Prism is already set when each
+// component IIFE executes.
 if (typeof window !== "undefined") {
   window.Prism = Prism;
 }
 
+async function loadPrismLanguages(): Promise<void> {
+  await import("prismjs/components/prism-markup");
+  await import("prismjs/components/prism-css");
+  await import("prismjs/components/prism-clike");
+  await import("prismjs/components/prism-javascript");
+  await import("prismjs/components/prism-typescript");
+  await import("prismjs/components/prism-json");
+  await import("prismjs/components/prism-jsx");
+  await import("prismjs/components/prism-tsx");
+
+  await import("prismjs/components/prism-python");
+  await import("prismjs/components/prism-java");
+  await import("prismjs/components/prism-c");
+  await import("prismjs/components/prism-cpp");
+  await import("prismjs/components/prism-csharp");
+  await import("prismjs/components/prism-go");
+  await import("prismjs/components/prism-rust");
+  await import("prismjs/components/prism-ruby");
+  await import("prismjs/components/prism-php");
+  await import("prismjs/components/prism-swift");
+  await import("prismjs/components/prism-kotlin");
+  await import("prismjs/components/prism-r");
+  await import("prismjs/components/prism-lua");
+  await import("prismjs/components/prism-perl");
+  await import("prismjs/components/prism-bash");
+  await import("prismjs/components/prism-sql");
+  await import("prismjs/components/prism-yaml");
+  await import("prismjs/components/prism-dart");
+  await import("prismjs/components/prism-scala");
+  await import("prismjs/components/prism-elixir");
+  await import("prismjs/components/prism-graphql");
+  await import("prismjs/components/prism-docker");
+  await import("prismjs/components/prism-protobuf");
+  await import("prismjs/components/prism-scss");
+  await import("prismjs/components/prism-less");
+  await import("prismjs/components/prism-ini");
+  await import("prismjs/components/prism-toml");
+  await import("prismjs/components/prism-markdown");
+}
+
+export const prismReadyPromise: Promise<void> = loadPrismLanguages();
 export { Prism as prism };
