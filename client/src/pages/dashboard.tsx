@@ -21,13 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send } from "lucide-react";
+import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Moon, Sun } from "lucide-react";
+import { useTheme } from "@/components/theme-provider";
 
 migrateOldState();
 
 export default function DashboardPage() {
   const { projects, createProject, deleteProject, renameProject } = useProjectStore();
   const [, navigate] = useLocation();
+  const { theme, toggleTheme } = useTheme();
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [ideaText, setIdeaText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -72,14 +74,25 @@ export default function DashboardPage() {
               CodeStart
             </span>
           </div>
-          <Button
-            onClick={() => setShowNewDialog(true)}
-            className="gap-2"
-            data-testid="button-new-project"
-          >
-            <Plus className="w-4 h-4" />
-            New Project
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              data-testid="button-theme-toggle"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            <Button
+              onClick={() => setShowNewDialog(true)}
+              className="gap-2"
+              data-testid="button-new-project"
+            >
+              <Plus className="w-4 h-4" />
+              New Project
+            </Button>
+          </div>
         </div>
       </header>
 
