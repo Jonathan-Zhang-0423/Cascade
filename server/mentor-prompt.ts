@@ -85,16 +85,20 @@ Examples:
 3. **Key concepts**: For each file, identify 2-4 programming concepts used and explain them simply. Every term must include a jargon-free explanation.
 4. **Mind map**: Create a clear hierarchy — central node is the project, each file gets its OWN separate branch (one branch per file, NEVER group multiple files into a single branch). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose), a unique "file" field, and children representing functions/features as keywords. Each child's "label" should be a short keyword (2-5 words) and the "explanation" should be a rich educational mini-lesson (4-8 sentences) covering: what it is & why it was created, why it matters, what it does to the project, and how it is built — include a short markdown code snippet with a walkthrough where helpful. Remember: explain every technical term inline.
 5. **Features in file_breakdowns — CRITICAL**: Every feature MUST have ALL three fields populated — never return a feature with only a label. Specifically:
-   - **"explanation"**: MUST be a non-empty string (4-8 sentences). Never leave this empty or omit it.
-   - **"code_blocks"**: MUST contain at least one code block. Never return an empty array.
-   - Each code_block MUST have non-empty "code" (real code from the file), "language", and "walkthrough" fields.
+   - **"explanation"**: MUST be a non-empty string (4-8 sentences). Never leave this empty or omit it. Do NOT use "walkthrough" at the feature level — use "explanation".
+   - **"code_blocks"**: MUST be an ARRAY of objects. Never return an empty array.
+   - Each code_block object MUST have non-empty "code" (real code from the file, raw text WITHOUT markdown fences), "language", and "walkthrough" fields.
+   
+   ⚠️ FIELD NAME WARNING — READ CAREFULLY:
+   - The field is "code_blocks" (PLURAL with "s"), NOT "code_block" (singular). It is an ARRAY of objects.
+   - The "code" field inside each code_block must contain RAW code text. Do NOT wrap it in markdown triple backticks (\`\`\`). No fences.
+   - Each feature must have an "explanation" field (NOT "walkthrough" at the feature level).
+   
+   ✅ CORRECT: {"label": "Page Title", "explanation": "This sets the title...", "code_blocks": [{"code": "<title>My Game</title>", "language": "html", "walkthrough": "This line tells the browser..."}]}
+   ❌ WRONG (singular code_block): {"label": "Page Title", "code_block": "\`\`\`html\n<title>My Game</title>\n\`\`\`", "walkthrough": "..."}
+   ❌ WRONG (empty): {"label": "Page Title", "explanation": "", "code_blocks": []}
+   
    Features correspond to child nodes on the mind map — use the SAME label. Copy ACTUAL code from the user's project files (not generic examples). Aim for 5-20 lines per code block. If a feature spans multiple code sections, use multiple code_blocks.
-   
-   Example of a CORRECT feature:
-   {"label": "Page Title", "explanation": "This sets the title that appears at the top of the browser tab...", "code_blocks": [{"code": "<title>My Game</title>", "language": "html", "walkthrough": "This line tells the browser what text to show in the tab..."}]}
-   
-   Example of a WRONG feature (NEVER do this):
-   {"label": "Page Title", "explanation": "", "code_blocks": []}
    
 6. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
 7. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
@@ -176,7 +180,10 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
 4. If a file was modified, update its breakdown (including features with real code blocks) and its mind map branch.
 5. If a file was added, create a new breakdown (including features with real code blocks) and mind map branch.
 6. If a file was deleted, list it in removed_files.
-7. **Features — CRITICAL**: Each breakdown MUST include a "features" array aligned with mind map child labels. Every feature MUST have a non-empty "explanation" (4-8 sentences) AND at least one code_block with non-empty "code", "language", and "walkthrough". Never return a feature with only a label and empty content.
+7. **Features — CRITICAL**: Each breakdown MUST include a "features" array aligned with mind map child labels. Every feature MUST have:
+   - "explanation" (NOT "walkthrough" at the feature level) — a non-empty string (4-8 sentences)
+   - "code_blocks" (PLURAL with "s", NOT singular "code_block") — an ARRAY of objects, each with "code" (raw text, NO markdown fences), "language", and "walkthrough"
+   ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content.
 8. Only update project_summary if the changes significantly alter what the project does.
 9. Only update learning_tips if new concepts were introduced that warrant new tips.
 10. **Language**: Match the language of the existing notebook content.
@@ -222,6 +229,9 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 3. **Targeted refinement**: Focus on accuracy, clarity, and completeness.
 4. **Full cross-file context**: Use your knowledge of ALL files to improve connection descriptions and the mind map.
 5. Each file gets its OWN separate branch in the mind map (one branch per file). Each branch MUST have a "description" field (2-3 sentences explaining the file's purpose). Children should have short keyword labels and rich educational explanation fields (4-8 sentences each) covering: what it is & why it exists, why it matters, what it does to the project, how it is built — with a short markdown code snippet and walkthrough where helpful. Remember: explain every technical term inline.
-6. **Features in file_breakdowns — CRITICAL**: Each file breakdown MUST include a "features" array. Each feature corresponds to a mind map child node — use the SAME label. Every feature MUST have a non-empty "explanation" (4-8 sentences) AND at least one code_block with non-empty "code" (real code from the file), "language", and "walkthrough". Never return a feature with only a label and empty content. Aim for 5-20 lines per code block.
+6. **Features in file_breakdowns — CRITICAL**: Each file breakdown MUST include a "features" array. Each feature corresponds to a mind map child node — use the SAME label. Every feature MUST have:
+   - "explanation" (NOT "walkthrough" at the feature level) — a non-empty string (4-8 sentences)
+   - "code_blocks" (PLURAL with "s", NOT singular "code_block") — an ARRAY of objects, each with "code" (raw text, NO markdown fences), "language", and "walkthrough"
+   ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content. Aim for 5-20 lines per code block.
 7. **Language**: Match the language of the existing notebook content.
 8. Return ONLY the JSON object, no markdown fences, no extra text.`;

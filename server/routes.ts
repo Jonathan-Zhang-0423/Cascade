@@ -9,6 +9,71 @@ import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./co
 import type { CommunicatorEvent } from "./communicator-prompt";
 import { MENTOR_SYSTEM_PROMPT, MENTOR_PATCH_PROMPT, MENTOR_OPTIMIZE_PROMPT } from "./mentor-prompt";
 
+function parseMarkdownCodeBlock(raw: string): { code: string; language: string } {
+  const fenceMatch = raw.match(/^```(\w*)\s*\n?([\s\S]*?)```\s*$/);
+  if (fenceMatch) {
+    return { code: fenceMatch[2].trim(), language: fenceMatch[1] || "text" };
+  }
+  const partialMatch = raw.match(/^```(\w*)\s*\n?([\s\S]*)$/);
+  if (partialMatch) {
+    return { code: partialMatch[2].trim(), language: partialMatch[1] || "text" };
+  }
+  return { code: raw.trim(), language: "text" };
+}
+
+function normalizeFeatures(breakdowns: any[]): any[] {
+  if (!Array.isArray(breakdowns)) return breakdowns;
+  return breakdowns.map((fb: any) => {
+    if (!fb || !Array.isArray(fb.features)) return fb;
+    fb.features = fb.features.map((feat: any) => {
+      if (!feat) return feat;
+
+      if (!feat.explanation && feat.walkthrough) {
+        feat.explanation = feat.walkthrough;
+      }
+      if (!feat.explanation) {
+        feat.explanation = "";
+      }
+
+      if (!Array.isArray(feat.code_blocks) || feat.code_blocks.length === 0) {
+        if (typeof feat.code_block === "string" && feat.code_block.trim().length > 0) {
+          const { code, language } = parseMarkdownCodeBlock(feat.code_block);
+          feat.code_blocks = [{
+            code,
+            language,
+            walkthrough: typeof feat.walkthrough === "string" ? feat.walkthrough : "",
+          }];
+        } else if (typeof feat.code === "string" && feat.code.trim().length > 0) {
+          feat.code_blocks = [{
+            code: feat.code.trim(),
+            language: typeof feat.language === "string" ? feat.language : "text",
+            walkthrough: typeof feat.walkthrough === "string" ? feat.walkthrough : "",
+          }];
+        } else {
+          feat.code_blocks = [];
+        }
+      } else {
+        feat.code_blocks = feat.code_blocks.map((block: any) => {
+          if (!block) return block;
+          if (typeof block.code === "string" && block.code.includes("```")) {
+            const { code, language } = parseMarkdownCodeBlock(block.code);
+            block.code = code;
+            if (!block.language || block.language === "text") {
+              block.language = language;
+            }
+          }
+          return block;
+        });
+      }
+
+      delete feat.code_block;
+
+      return feat;
+    });
+    return fb;
+  });
+}
+
 function parseAIJson(raw: string): any {
   let text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
 
@@ -415,6 +480,10 @@ export async function registerRoutes(
         return;
       }
 
+      if (notebook.file_breakdowns) {
+        notebook.file_breakdowns = normalizeFeatures(notebook.file_breakdowns);
+      }
+
       res.json({ notebook });
     } catch (error: any) {
       console.error("Mentor analyze API error:", error?.message || error);
@@ -468,6 +537,13 @@ export async function registerRoutes(
         return;
       }
 
+      if (patch.updated_breakdowns) {
+        patch.updated_breakdowns = normalizeFeatures(patch.updated_breakdowns);
+      }
+      if (patch.new_breakdowns) {
+        patch.new_breakdowns = normalizeFeatures(patch.new_breakdowns);
+      }
+
       res.json({ patch });
     } catch (error: any) {
       console.error("Mentor patch API error:", error?.message || error);
@@ -513,6 +589,10 @@ export async function registerRoutes(
       if (!optimized) {
         res.json({ raw: responseContent, error: "Mentor did not return valid JSON" });
         return;
+      }
+
+      if (optimized.file_breakdowns) {
+        optimized.file_breakdowns = normalizeFeatures(optimized.file_breakdowns);
       }
 
       res.json({ notebook: optimized });
