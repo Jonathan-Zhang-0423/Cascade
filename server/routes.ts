@@ -62,11 +62,15 @@ function normalizeFeatures(breakdowns: any[]): any[] {
               block.language = language;
             }
           }
+          if ((!block.walkthrough || (typeof block.walkthrough === "string" && block.walkthrough.trim().length === 0)) && typeof feat.walkthrough === "string" && feat.walkthrough.trim().length > 0) {
+            block.walkthrough = feat.walkthrough;
+          }
           return block;
         });
       }
 
       delete feat.code_block;
+      delete feat.walkthrough;
 
       return feat;
     });
