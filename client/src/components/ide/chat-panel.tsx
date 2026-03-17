@@ -11,6 +11,74 @@ function detectLanguage(text: string): string {
   return chineseRe.test(text) ? "Chinese" : "English";
 }
 
+type PlanCardLang = "Chinese" | "English";
+
+const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
+  Chinese: {
+    startBuilding: "开始构建",
+    stop: "停止",
+    allStepsBuilt: "全部 {n} 步已完成",
+    stepsDone: "{done}/{total} 步已完成",
+    allVerified: "所有步骤已完成并验证 ✓",
+    needsInput: "需要您的输入：",
+    pleaseRespond: "请回复：",
+    approve: "确认",
+    submitContinue: "提交并继续",
+    inputPlaceholder: "在此输入您的回复...",
+    completed: "已完成",
+    building: "构建中...",
+    reviewing: "正在审查项目...",
+    reviewPassed: "审查通过",
+    reviewPassedPct: "审查通过 ({pct}%)",
+    issuesFound: "发现 {n} 个问题",
+    issuesFoundGeneric: "发现问题",
+    fixingIssues: "修复问题中（第 {n}/3 轮）...",
+    thinking: "思考中...",
+    planning: "规划中...",
+  },
+  English: {
+    startBuilding: "Start building",
+    stop: "Stop",
+    allStepsBuilt: "All {n} steps built",
+    stepsDone: "{done}/{total} steps done",
+    allVerified: "All steps built & verified ✓",
+    needsInput: "Needs your input:",
+    pleaseRespond: "Please respond:",
+    approve: "Approve",
+    submitContinue: "Submit & Continue",
+    inputPlaceholder: "Type your response here...",
+    completed: "Completed",
+    building: "Building...",
+    reviewing: "Reviewing project...",
+    reviewPassed: "Review passed",
+    reviewPassedPct: "Review passed ({pct}%)",
+    issuesFound: "{n} issues found",
+    issuesFoundGeneric: "Issues found",
+    fixingIssues: "Fixing issues (cycle {n}/3)...",
+    thinking: "Thinking...",
+    planning: "Planning...",
+  },
+};
+
+function t(lang: PlanCardLang, key: string, vars?: Record<string, string | number>): string {
+  let str = planCardStrings[lang]?.[key] || planCardStrings.English[key] || key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      str = str.replace(`{${k}}`, String(v));
+    }
+  }
+  return str;
+}
+
+function detectPlanCardLang(): PlanCardLang {
+  const msgs = useIDEStore.getState().managerMessages;
+  const firstUserMsg = msgs.find((m) => m.role === "user");
+  if (firstUserMsg) {
+    return detectLanguage(firstUserMsg.content) as PlanCardLang;
+  }
+  return "English";
+}
+
 function normalizeSteps(plan: any): ManagerSubTask[] {
   const raw = plan?.steps ?? plan?.sub_tasks;
   if (!Array.isArray(raw)) return [];
@@ -703,23 +771,25 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
 }
 
 function TypingIndicator({ text }: { text?: string }) {
+  const lang = detectPlanCardLang();
   return (
     <div className="px-3 flex items-center gap-1.5" data-testid="typing-indicator">
       <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-      <span className="text-xs text-muted-foreground">{text || "Thinking..."}</span>
+      <span className="text-xs text-muted-foreground">{text || t(lang, "thinking")}</span>
     </div>
   );
 }
 
-function StepItem({ task, status }: {
+function StepItem({ task, status, isCompleted }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
+  isCompleted?: boolean;
 }) {
   const s = status || "pending";
   const icons: Record<string, JSX.Element> = {
     pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
     running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
-    done: <CheckCircle2 className="w-3 h-3 text-green-500" />,
+    done: <CheckCircle2 className={cn("w-3 h-3", isCompleted ? "text-muted-foreground/40" : "text-green-500")} />,
     failed: <XCircle className="w-3 h-3 text-red-500" />,
     "needs-input": <HelpCircle className="w-3 h-3 text-yellow-500" />,
     bug: <AlertTriangle className="w-3 h-3 text-orange-500" />,
@@ -731,6 +801,7 @@ function StepItem({ task, status }: {
         <div className="shrink-0">{icons[s] || icons.pending}</div>
         <span className={cn(
           "text-[12px] leading-snug flex-1",
+          isCompleted ? "text-muted-foreground/50 line-through" :
           s === "done" ? "text-muted-foreground line-through" :
           s === "failed" ? "text-red-400" :
           s === "running" ? "text-foreground font-medium" :
@@ -745,37 +816,40 @@ function StepItem({ task, status }: {
   );
 }
 
-function ReviewStatusBadge({ phase, fixCycle, review }: {
+function ReviewStatusBadge({ phase, fixCycle, review, lang }: {
   phase: ReviewPhase;
   fixCycle: number;
   review: HolisticReviewResult | null;
+  lang: PlanCardLang;
 }) {
   if (phase === "idle") return null;
+
+  const issueCount = review ? (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0) : 0;
 
   const configs: Record<string, { icon: JSX.Element; text: string; color: string }> = {
     building: {
       icon: <Loader2 className="w-3 h-3 animate-spin" />,
-      text: "Building...",
+      text: t(lang, "building"),
       color: "text-blue-400",
     },
     reviewing: {
       icon: <Search className="w-3 h-3 animate-pulse" />,
-      text: "Reviewing project...",
+      text: t(lang, "reviewing"),
       color: "text-amber-400",
     },
     review_passed: {
       icon: <ShieldCheck className="w-3 h-3" />,
-      text: review ? `Review passed (${review.requirement_match_percent}%)` : "Review passed",
+      text: review ? t(lang, "reviewPassedPct", { pct: review.requirement_match_percent }) : t(lang, "reviewPassed"),
       color: "text-green-500",
     },
     review_failed: {
       icon: <AlertTriangle className="w-3 h-3" />,
-      text: review ? `${(review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0)} issues found` : "Issues found",
+      text: review ? t(lang, "issuesFound", { n: issueCount }) : t(lang, "issuesFoundGeneric"),
       color: "text-red-400",
     },
     fixing: {
       icon: <Loader2 className="w-3 h-3 animate-spin" />,
-      text: `Fixing issues (cycle ${fixCycle}/3)...`,
+      text: t(lang, "fixingIssues", { n: fixCycle }),
       color: "text-orange-400",
     },
   };
@@ -818,20 +892,21 @@ function TaskPlanCard({
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
 }) {
+  const lang = detectPlanCardLang();
   const steps = normalizeSteps(plan);
-  const doneCount = steps.filter((t) => taskStatuses[String(t.step)] === "done").length;
+  const doneCount = steps.filter((s) => taskStatuses[String(s.step)] === "done").length;
   const total = steps.length;
   const allDone = doneCount === total && total > 0;
-  const hasNeedsInput = steps.some((t) => taskStatuses[String(t.step)] === "needs-input");
+  const hasNeedsInput = steps.some((s) => taskStatuses[String(s.step)] === "needs-input");
   const phase = reviewPhase || "idle";
   const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
   const showConfirmation = hasNeedsInput || hasReviewConfirmation;
   const isFullyComplete = phase === "review_passed" && allDone;
 
   return (
-    <div className="mx-3 my-1 rounded-lg border border-border/40 bg-card/50 overflow-hidden" data-testid="task-plan-card">
+    <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
       <div className="px-3 pt-2.5 pb-1.5">
-        <p className="text-[13px] text-foreground leading-snug">{plan.summary || (plan as any).user_requirement || ""}</p>
+        <p className={cn("text-[13px] leading-snug", isFullyComplete ? "text-muted-foreground" : "text-foreground")}>{plan.summary || (plan as any).user_requirement || ""}</p>
       </div>
 
       <div className="px-3 pb-2 space-y-0">
@@ -840,6 +915,7 @@ function TaskPlanCard({
             key={task.step}
             task={task}
             status={taskStatuses[String(task.step)]}
+            isCompleted={isFullyComplete}
           />
         ))}
       </div>
@@ -847,18 +923,18 @@ function TaskPlanCard({
       {doneCount > 0 && !isFullyComplete && (
         <div className="px-3 pb-2 flex items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground">
-            {allDone ? `All ${total} steps built` : `${doneCount}/${total} steps done`}
+            {allDone ? t(lang, "allStepsBuilt", { n: total }) : t(lang, "stepsDone", { done: doneCount, total })}
           </span>
         </div>
       )}
 
-      <ReviewStatusBadge phase={phase} fixCycle={fixCycle || 0} review={holisticReview || null} />
+      <ReviewStatusBadge phase={phase} fixCycle={fixCycle || 0} review={holisticReview || null} lang={lang} />
 
       {isFullyComplete && (
         <div className="px-3 pb-2 flex items-center gap-1.5">
           <ShieldCheck className="w-3 h-3 text-green-500" />
           <span className="text-[10px] text-green-500 font-medium">
-            All steps built & verified ✓
+            {t(lang, "allVerified")}
           </span>
         </div>
       )}
@@ -882,7 +958,7 @@ function TaskPlanCard({
           <div className="px-3 pb-2">
             <div className="flex items-center gap-1 mb-0.5">
               <AlertTriangle className="w-3 h-3 text-yellow-500" />
-              <span className="text-[10px] font-medium text-yellow-500">Needs your input:</span>
+              <span className="text-[10px] font-medium text-yellow-500">{t(lang, "needsInput")}</span>
             </div>
             {inputs.map((item, i) => (
               <p key={i} className="text-[11px] text-foreground/70 pl-4 leading-snug">• {item}</p>
@@ -895,7 +971,7 @@ function TaskPlanCard({
         <div className="px-3 pb-2 space-y-2" data-testid="confirmation-input-area">
           <div className="flex items-center gap-1 mb-1">
             <HelpCircle className="w-3 h-3 text-yellow-500" />
-            <span className="text-[10px] font-medium text-yellow-500">Please respond:</span>
+            <span className="text-[10px] font-medium text-yellow-500">{t(lang, "pleaseRespond")}</span>
           </div>
           {pendingConfirmation.items.map((item, i) => (
             <p key={i} className="text-[11px] text-foreground/80 pl-4 leading-snug">• {item}</p>
@@ -909,7 +985,7 @@ function TaskPlanCard({
                 onContinueWithInput(confirmationInput || "");
               }
             }}
-            placeholder="Type your response here..."
+            placeholder={t(lang, "inputPlaceholder")}
             className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-muted/30 border-border/30"
             rows={1}
             data-testid="input-confirmation"
@@ -923,7 +999,7 @@ function TaskPlanCard({
               data-testid="button-approve-all"
             >
               <Check className="w-2.5 h-2.5 mr-0.5" />
-              Approve
+              {t(lang, "approve")}
             </Button>
             <Button
               size="sm"
@@ -933,13 +1009,26 @@ function TaskPlanCard({
               data-testid="button-submit-confirmation"
             >
               <Send className="w-2.5 h-2.5 mr-0.5" />
-              Submit & Continue
+              {t(lang, "submitContinue")}
             </Button>
           </div>
         </div>
       )}
 
-      {onExecute && !isFullyComplete && (
+      {isFullyComplete ? (
+        <div className="px-3 py-2 border-t border-green-500/20">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full h-7 text-[11px] border-green-500/30 text-green-500 cursor-default pointer-events-none"
+            disabled
+            data-testid="button-plan-completed"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            {t(lang, "completed")}
+          </Button>
+        </div>
+      ) : onExecute && (
         <div className="px-3 py-2 border-t border-border/30">
           {isExecuting ? (
             <Button
@@ -950,7 +1039,7 @@ function TaskPlanCard({
               data-testid="button-stop-execution"
             >
               <StopCircle className="w-3 h-3 mr-1" />
-              Stop
+              {t(lang, "stop")}
             </Button>
           ) : showConfirmation ? null : (
             <Button
@@ -960,7 +1049,7 @@ function TaskPlanCard({
               data-testid="button-execute-plan"
             >
               <Play className="w-3 h-3 mr-1" />
-              Start building
+              {t(lang, "startBuilding")}
             </Button>
           )}
         </div>
@@ -2069,7 +2158,7 @@ export function ChatPanel() {
           <TypingIndicator />
         )}
         {isManagerResponding && (
-          <TypingIndicator text="Planning..." />
+          <TypingIndicator text={t(detectPlanCardLang(), "planning")} />
         )}
       </div>
       <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
