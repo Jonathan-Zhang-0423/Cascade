@@ -420,11 +420,13 @@ export async function registerRoutes(
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
 
+      const maxTokens = event.event === "plan_created" ? 500 : 150;
+
       const stream = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
         messages,
         stream: true,
-        max_tokens: 150,
+        max_tokens: maxTokens,
       });
 
       for await (const chunk of stream) {

@@ -79,6 +79,27 @@ function detectPlanCardLang(): PlanCardLang {
   return "English";
 }
 
+function parsePlanLocalization(text: string): { summary?: string; stepTitles?: string[] } | null {
+  const lines = text.split("\n");
+  let summary: string | undefined;
+  const stepTitles: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const summaryMatch = trimmed.match(/^\[PLAN[_ ]SUMMARY\]\s*(.+)/i);
+    if (summaryMatch) {
+      summary = summaryMatch[1].trim();
+    }
+    const stepMatch = trimmed.match(/^\[STEP[_ ](\d+)\]\s*(.+)/i);
+    if (stepMatch) {
+      stepTitles[parseInt(stepMatch[1]) - 1] = stepMatch[2].trim();
+    }
+  }
+
+  if (!summary && stepTitles.length === 0) return null;
+  return { summary, stepTitles: stepTitles.length > 0 ? stepTitles : undefined };
+}
+
 function normalizeSteps(plan: any): ManagerSubTask[] {
   const raw = plan?.steps ?? plan?.sub_tasks;
   if (!Array.isArray(raw)) return [];
@@ -1222,7 +1243,7 @@ export function ChatPanel() {
     }
   }, []);
 
-  const BLOCKING_EVENTS = new Set(["needs_input"]);
+  const BLOCKING_EVENTS = new Set(["needs_input", "plan_created"]);
 
   const callCommunicatorCore = useCallback(async (
     event: {
@@ -1230,6 +1251,7 @@ export function ChatPanel() {
       userLanguage?: string;
       planSummary?: string;
       totalSteps?: number;
+      stepTitles?: string[];
       stepNumber?: number;
       stepTitle?: string;
       stepDescription?: string;
@@ -1352,20 +1374,65 @@ export function ChatPanel() {
         addManagerMessage({ role: "assistant", content: data.message, source: "communicator" });
       } else if (data.plan) {
         clearManagerPlan();
-        setManagerPlan(data.plan);
         const steps = normalizeSteps(data.plan);
         for (const t of steps) {
           updateTaskStatus(String(t.step), "pending");
         }
-        addManagerMessage({ role: "assistant", content: "", plan: data.plan });
 
         const userLang = detectLanguage(trimmed);
-        await callCommunicator({
+        const communicatorResponse = await callCommunicator({
           event: "plan_created",
           userLanguage: userLang,
           planSummary: data.plan.summary || "",
           totalSteps: steps.length,
+          stepTitles: steps.map((s) => s.title),
         });
+
+        const localized = parsePlanLocalization(communicatorResponse);
+        const displayPlan = { ...data.plan };
+        if (localized?.summary) {
+          displayPlan.summary = localized.summary;
+        }
+        const rawSteps = displayPlan.steps || (displayPlan as any).sub_tasks;
+        if (localized?.stepTitles && Array.isArray(rawSteps)) {
+          const localizedSteps = rawSteps.map((step: any, i: number) => ({
+            ...step,
+            title: localized.stepTitles?.[i] || step.title,
+          }));
+          if (displayPlan.steps) {
+            displayPlan.steps = localizedSteps;
+          } else {
+            (displayPlan as any).sub_tasks = localizedSteps;
+          }
+        }
+
+        if (communicatorResponse) {
+          const friendlyLines = communicatorResponse
+            .split("\n")
+            .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i))
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .join("\n");
+          const msgs = useIDEStore.getState().managerMessages;
+          const lastIdx = msgs.length - 1;
+          if (lastIdx >= 0 && msgs[lastIdx].source === "communicator") {
+            if (friendlyLines) {
+              useIDEStore.setState({
+                managerMessages: [
+                  ...msgs.slice(0, lastIdx),
+                  { ...msgs[lastIdx], content: friendlyLines },
+                ],
+              });
+            } else {
+              useIDEStore.setState({
+                managerMessages: msgs.slice(0, lastIdx),
+              });
+            }
+          }
+        }
+
+        setManagerPlan(displayPlan);
+        addManagerMessage({ role: "assistant", content: "", plan: displayPlan });
       }
     } catch (error: any) {
       addManagerMessage({ role: "assistant", content: "Oops, I couldn't connect to the team right now. Please try again in a moment! 🔄", source: "communicator" });
