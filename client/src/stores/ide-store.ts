@@ -95,6 +95,7 @@ export interface NotebookFeature {
   label: string;
   explanation: string;
   code_blocks: NotebookCodeBlock[];
+  prompt_tip?: string;
 }
 
 export interface NotebookFileBreakdown {

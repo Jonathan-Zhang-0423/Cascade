@@ -69,6 +69,10 @@ function normalizeFeatures(breakdowns: any[]): any[] {
         });
       }
 
+      if (!feat.prompt_tip || typeof feat.prompt_tip !== "string" || feat.prompt_tip.trim().length === 0) {
+        feat.prompt_tip = "";
+      }
+
       delete feat.code_block;
       delete feat.walkthrough;
 

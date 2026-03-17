@@ -3,7 +3,7 @@ import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
 import type { FileNode, NotebookContent, NotebookFeature } from "@/stores/ide-store";
 import { MindMap } from "./mind-map";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2, Code2, Copy, Check } from "lucide-react";
+import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2, Code2, Copy, Check, Wand2 } from "lucide-react";
 import { prism } from "@/lib/prism";
 import "prismjs/themes/prism-tomorrow.css";
 
@@ -116,6 +116,16 @@ function FeatureCard({ feature, index }: { feature: NotebookFeature; index: numb
               )}
             </div>
           ))}
+
+          {typeof feature.prompt_tip === "string" && feature.prompt_tip.trim().length > 0 && (
+            <div
+              className="flex gap-2 px-2.5 py-2.5 rounded-md bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200/40 dark:border-violet-800/30"
+              data-testid={`prompt-tip-${index}`}
+            >
+              <Wand2 className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground leading-relaxed">{feature.prompt_tip}</p>
+            </div>
+          )}
         </div>
       )}
     </div>

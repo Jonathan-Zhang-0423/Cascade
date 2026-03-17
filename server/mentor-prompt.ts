@@ -37,7 +37,8 @@ You MUST return valid JSON with this exact structure:
               "language": "The programming language for syntax highlighting (e.g., html, css, javascript, typescript, json)",
               "walkthrough": "A step-by-step, line-by-line explanation of what this code does, written so a complete beginner can follow along. Explain every technical term. Make it feel like a patient tutor walking through the code with the student."
             }
-          ]
+          ],
+          "prompt_tip": "A practical prompt engineering tip teaching the user what prompt to give an AI coding agent to build this specific feature. For English users start with 'Try this prompt next time when you are building this feature: ...' and then provide the actual prompt. For Chinese users start with '下次搭建这个功能时，试试这些提示语: ...' and then provide the actual prompt. The suggested prompt should be specific, actionable, and detailed enough to produce good results from an AI coding assistant. Include key details the user should mention like layout, behavior, styling, and edge cases."
         }
       ]
     }
@@ -94,11 +95,13 @@ Examples:
    - The "code" field inside each code_block must contain RAW code text. Do NOT wrap it in markdown triple backticks (\`\`\`). No fences.
    - Each feature must have an "explanation" field (NOT "walkthrough" at the feature level).
    
-   ✅ CORRECT: {"label": "Page Title", "explanation": "This sets the title...", "code_blocks": [{"code": "<title>My Game</title>", "language": "html", "walkthrough": "This line tells the browser..."}]}
+   ✅ CORRECT: {"label": "Page Title", "explanation": "This sets the title...", "code_blocks": [{"code": "<title>My Game</title>", "language": "html", "walkthrough": "This line tells the browser..."}], "prompt_tip": "Try this prompt next time when you are building this feature: 'Add a page title...'" }
    ❌ WRONG (singular code_block): {"label": "Page Title", "code_block": "\`\`\`html\n<title>My Game</title>\n\`\`\`", "walkthrough": "..."}
    ❌ WRONG (empty): {"label": "Page Title", "explanation": "", "code_blocks": []}
    
    Features correspond to child nodes on the mind map — use the SAME label. Copy ACTUAL code from the user's project files (not generic examples). Aim for 5-20 lines per code block. If a feature spans multiple code sections, use multiple code_blocks.
+
+   Every feature MUST also include a non-empty "prompt_tip" — a practical prompt engineering suggestion showing the user what to tell an AI coding agent to build this feature. Use the locale-appropriate prefix.
    
 6. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
 7. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
@@ -137,7 +140,8 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
         {
           "label": "Feature name (matching mind map child label)",
           "explanation": "Detailed beginner-friendly explanation (4-8 sentences)",
-          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}]
+          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}],
+          "prompt_tip": "A prompt engineering tip for building this feature with AI. Start with 'Try this prompt next time when you are building this feature: ...' (English) or '下次搭建这个功能时，试试这些提示语: ...' (Chinese). Be specific and actionable."
         }
       ]
     }
@@ -152,7 +156,8 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
         {
           "label": "Feature name",
           "explanation": "Detailed beginner-friendly explanation (4-8 sentences)",
-          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}]
+          "code_blocks": [{"code": "ACTUAL code from the file", "language": "javascript", "walkthrough": "Step-by-step walkthrough"}],
+          "prompt_tip": "A prompt engineering tip for building this feature with AI."
         }
       ]
     }
@@ -183,6 +188,7 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
 7. **Features — CRITICAL**: Each breakdown MUST include a "features" array aligned with mind map child labels. Every feature MUST have:
    - "explanation" (NOT "walkthrough" at the feature level) — a non-empty string (4-8 sentences)
    - "code_blocks" (PLURAL with "s", NOT singular "code_block") — an ARRAY of objects, each with "code" (raw text, NO markdown fences), "language", and "walkthrough"
+   - "prompt_tip" — a non-empty prompt engineering suggestion for building this feature with AI
    ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content.
 8. Only update project_summary if the changes significantly alter what the project does.
 9. Only update learning_tips if new concepts were introduced that warrant new tips.
@@ -232,6 +238,7 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
 6. **Features in file_breakdowns — CRITICAL**: Each file breakdown MUST include a "features" array. Each feature corresponds to a mind map child node — use the SAME label. Every feature MUST have:
    - "explanation" (NOT "walkthrough" at the feature level) — a non-empty string (4-8 sentences)
    - "code_blocks" (PLURAL with "s", NOT singular "code_block") — an ARRAY of objects, each with "code" (raw text, NO markdown fences), "language", and "walkthrough"
+   - "prompt_tip" — a non-empty prompt engineering suggestion for building this feature with AI. For English: "Try this prompt next time when you are building this feature: ..." For Chinese: "下次搭建这个功能时，试试这些提示语: ..."
    ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content. Aim for 5-20 lines per code block.
 7. **Language**: Match the language of the existing notebook content.
 8. Return ONLY the JSON object, no markdown fences, no extra text.`;
