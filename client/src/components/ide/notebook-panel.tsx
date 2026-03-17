@@ -267,12 +267,13 @@ function applyPatchToNotebook(
   let breakdowns = [...existing.file_breakdowns];
 
   if (patch.removed_files?.length) {
-    breakdowns = breakdowns.filter((fb) => !patch.removed_files.includes(fb.file));
+    breakdowns = breakdowns.filter((fb) => !patch.removed_files.includes(fb.file || fb.path || ""));
   }
 
   if (patch.updated_breakdowns?.length) {
     for (const updated of patch.updated_breakdowns) {
-      const idx = breakdowns.findIndex((fb) => fb.file === updated.file);
+      const updatedKey = updated.file || updated.path;
+      const idx = breakdowns.findIndex((fb) => (fb.file || fb.path) === updatedKey);
       if (idx >= 0) {
         breakdowns[idx] = updated;
       }
@@ -328,7 +329,7 @@ function applyPatchToNotebook(
 }
 
 function buildNotebookOutline(notebook: NotebookContent): string {
-  const fileList = notebook.file_breakdowns.map((fb) => fb.file).join(", ");
+  const fileList = notebook.file_breakdowns.map((fb) => fb.file || fb.path || fb.name || "").join(", ");
   const conceptTerms = notebook.file_breakdowns
     .flatMap((fb) => fb.key_concepts?.map((c) => c.term) || [])
     .join(", ");
@@ -431,7 +432,7 @@ export function NotebookPanel() {
       const outline = buildNotebookOutline(notebookContent);
 
       const affectedSections = notebookContent.file_breakdowns.filter((fb) =>
-        changedFiles.some((cf) => cf.path === fb.file)
+        changedFiles.some((cf) => cf.path === fb.file || cf.path === fb.path)
       );
 
       const res = await fetch("/api/mentor-patch", {
@@ -686,8 +687,9 @@ export function NotebookPanel() {
             </h2>
             <div className="space-y-3">
               {notebookContent.file_breakdowns.map((fb) => {
-                const isExpanded = expandedFiles.has(fb.file);
-                const fileName = fb.file.split("/").pop() || fb.file;
+                const fbKey = fb.file || fb.path || fb.name || "";
+                const isExpanded = expandedFiles.has(fbKey);
+                const fileName = fbKey.split("/").pop() || fbKey;
                 const ext = fileName.split(".").pop()?.toLowerCase() || "";
 
                 const extColors: Record<string, string> = {
@@ -701,13 +703,13 @@ export function NotebookPanel() {
 
                 return (
                   <div
-                    key={fb.file}
+                    key={fbKey}
                     className="rounded-lg border border-border bg-card overflow-hidden"
                     data-testid={`file-breakdown-${fileName}`}
                   >
                     <button
                       className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
-                      onClick={() => toggleFileExpand(fb.file)}
+                      onClick={() => toggleFileExpand(fbKey)}
                       data-testid={`button-expand-${fileName}`}
                     >
                       {isExpanded ? (
@@ -726,7 +728,7 @@ export function NotebookPanel() {
                       <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-3">
                         <div>
                           <p className="text-sm text-muted-foreground leading-relaxed">
-                            {fb.what_it_does}
+                            {fb.what_it_does || fb.description}
                           </p>
                         </div>
 

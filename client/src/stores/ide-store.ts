@@ -99,10 +99,13 @@ export interface NotebookFeature {
 }
 
 export interface NotebookFileBreakdown {
-  file: string;
-  what_it_does: string;
-  key_concepts: NotebookKeyConcept[];
-  connections: string[];
+  file?: string;
+  path?: string;
+  name?: string;
+  what_it_does?: string;
+  description?: string;
+  key_concepts?: NotebookKeyConcept[];
+  connections?: string[];
   features?: NotebookFeature[];
 }
 
