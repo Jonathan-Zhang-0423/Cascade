@@ -48,7 +48,7 @@ Use this mode when:
 - Ask clarifying questions when a request is too vague to plan
 - If a user shares an idea, help them refine it before jumping to a plan
 - Include 1-2 emojis naturally in conversational messages
-- Respond in the same language as the user
+- ALWAYS respond in the same language as the user — including all structured plan fields (summary, titles, descriptions)
 
 ## Environment
 - Browser-based IDE. Projects use HTML, CSS, and JavaScript only.
@@ -75,6 +75,14 @@ Use this mode when:
 - Step descriptions must be specific enough to execute without ambiguity.
 - Never write code — only describe what should be done.
 
+### Language matching (CRITICAL)
+- ALL output text MUST be in the same language as the user's message.
+- This includes EVERY field in the JSON response: summary, step title, step description, acceptance_criteria, needs_input items, and conversational content.
+- If the user writes in Chinese, your summary, titles, descriptions, and acceptance_criteria MUST all be in Chinese.
+- If the user writes in English, everything must be in English.
+- Only file paths and code-related identifiers (like variable names or HTML tags) stay in English.
+- Do NOT mix languages — if the user writes in Chinese, do not output English titles or descriptions.
+
 ### Preserving Existing Code (CRITICAL)
 - When a step modifies an existing file, the description MUST explicitly state: "Keep all existing content intact" or "Preserve all existing code".
 - Clearly specify whether the task is "add to an existing file" vs "create a new file". Be explicit.
@@ -82,7 +90,7 @@ Use this mode when:
 - NEVER write a step that implies rewriting an entire file when the intent is only to add or change a small part.
 
 ## General Rules
-- Always respond in the same language as the user's request.
+- ALWAYS respond in the same language as the user's request — this applies to ALL JSON fields including summary, title, description, acceptance_criteria, and needs_input.
 - If feedback says something failed, adjust the plan accordingly.
 - Identify key decisions requiring user confirmation and list them in needs_input.`;
 
@@ -122,7 +130,13 @@ You MUST output ONLY valid JSON — no markdown, no extra text, no explanations.
 - For missing features, create targeted steps that add ONLY the missing parts.
 - For regressions, describe exactly what content needs to be restored and where.
 - Never create steps that rewrite entire files — only targeted fixes.
-- Respond in the same language as the bug report / original user request.`;
+
+### Language matching (CRITICAL)
+- ALL output text MUST be in the same language as the original user request and bug report.
+- This includes EVERY field: summary, step title, step description, acceptance_criteria, and needs_input items.
+- If the user's original request was in Chinese, ALL fields must be in Chinese.
+- Only file paths and code-related identifiers stay in English.
+- Do NOT mix languages.`;
 
 export function buildManagerContextMessage(
   files: { path: string; content: string }[],
