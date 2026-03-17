@@ -42,17 +42,80 @@ function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "html":
+    case "svelte":
+    case "vue":
       return <FileCode className="w-4 h-4 text-orange-400 shrink-0" />;
     case "css":
+    case "scss":
+    case "sass":
+    case "less":
       return <FileType className="w-4 h-4 text-blue-400 shrink-0" />;
     case "js":
     case "jsx":
+    case "mjs":
+    case "cjs":
       return <FileCode className="w-4 h-4 text-yellow-400 shrink-0" />;
+    case "py":
+    case "pyw":
+      return <FileCode className="w-4 h-4 text-yellow-500 shrink-0" />;
     case "ts":
     case "tsx":
       return <FileCode className="w-4 h-4 text-blue-500 shrink-0" />;
+    case "go":
+    case "dart":
+      return <FileCode className="w-4 h-4 text-sky-400 shrink-0" />;
+    case "java":
+      return <FileCode className="w-4 h-4 text-red-400 shrink-0" />;
+    case "rb":
+      return <FileCode className="w-4 h-4 text-red-500 shrink-0" />;
+    case "scala":
+      return <FileCode className="w-4 h-4 text-red-600 shrink-0" />;
+    case "c":
+    case "h":
+    case "cpp":
+    case "cc":
+    case "cxx":
+    case "hpp":
+    case "hxx":
+      return <FileCode className="w-4 h-4 text-teal-400 shrink-0" />;
+    case "cs":
+      return <FileCode className="w-4 h-4 text-purple-400 shrink-0" />;
+    case "php":
+      return <FileCode className="w-4 h-4 text-purple-500 shrink-0" />;
+    case "graphql":
+    case "gql":
+      return <FileCode className="w-4 h-4 text-purple-600 shrink-0" />;
+    case "rs":
+    case "swift":
+    case "kt":
+    case "kts":
+      return <FileCode className="w-4 h-4 text-orange-500 shrink-0" />;
     case "json":
       return <FileText className="w-4 h-4 text-green-400 shrink-0" />;
+    case "yaml":
+    case "yml":
+    case "xml":
+    case "svg":
+    case "toml":
+      return <FileText className="w-4 h-4 text-green-500 shrink-0" />;
+    case "sh":
+    case "bash":
+    case "zsh":
+    case "sql":
+    case "md":
+    case "txt":
+      return <FileText className="w-4 h-4 text-gray-400 shrink-0" />;
+    case "r":
+    case "lua":
+    case "pl":
+    case "pm":
+    case "ex":
+    case "exs":
+      return <FileCode className="w-4 h-4 text-emerald-400 shrink-0" />;
+    case "proto":
+    case "ini":
+    case "cfg":
+      return <FileText className="w-4 h-4 text-zinc-400 shrink-0" />;
     default:
       return <FileText className="w-4 h-4 text-muted-foreground shrink-0" />;
   }
