@@ -32,7 +32,7 @@ function normalizeFeatures(breakdowns: any[]): any[] {
         feat.explanation = feat.walkthrough;
       }
       if (!feat.explanation) {
-        feat.explanation = "";
+        feat.explanation = feat.label ? `This section covers the "${feat.label}" feature of the project.` : "";
       }
 
       if (!Array.isArray(feat.code_blocks) || feat.code_blocks.length === 0) {
