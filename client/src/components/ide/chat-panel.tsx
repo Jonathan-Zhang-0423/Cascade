@@ -126,6 +126,12 @@ interface CodeBlock {
   code: string;
 }
 
+const PLAIN_FENCE_RE = /```[\w]*\n[\s\S]*?```/g;
+
+function stripPlainFences(text: string): string {
+  return text.replace(PLAIN_FENCE_RE, "").trim();
+}
+
 function parseCodeBlocks(content: string): Array<string | CodeBlock> {
   const parts: Array<string | CodeBlock> = [];
   const regex = /```(\w*)\s+file="([^"]+)"\n([\s\S]*?)```/g;
@@ -134,7 +140,8 @@ function parseCodeBlocks(content: string): Array<string | CodeBlock> {
 
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match.index));
+      const segment = stripPlainFences(content.slice(lastIndex, match.index));
+      if (segment) parts.push(segment);
     }
     parts.push({
       language: match[1] || "text",
@@ -145,7 +152,8 @@ function parseCodeBlocks(content: string): Array<string | CodeBlock> {
   }
 
   if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
+    const segment = stripPlainFences(content.slice(lastIndex));
+    if (segment) parts.push(segment);
   }
 
   return parts;
