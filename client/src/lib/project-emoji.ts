@@ -1,0 +1,56 @@
+const RULES: [RegExp, string][] = [
+  [/\b(space|rocket|星球|星际|太空|宇宙|星战|星球大战|ufo|alien|外星)\b/i, "🚀"],
+  [/\b(snake|贪吃蛇|蛇)\b/i, "🐍"],
+  [/\b(chess|国际象棋|象棋|围棋|checkers|跳棋)\b/i, "♟️"],
+  [/\b(tetris|俄罗斯方块|方块)\b/i, "🟦"],
+  [/\b(pac.?man|吃豆人|吃豆)\b/i, "👾"],
+  [/\b(card|poker|扑克|纸牌|blackjack|solitaire|接龙)\b/i, "🃏"],
+  [/\b(rpg|dungeon|dragon|魔法|角色扮演|冒险|adventure|quest|精灵|骑士|巫师)\b/i, "⚔️"],
+  [/\b(racing|race|赛车|驾驶|car game|汽车游戏)\b/i, "🏎️"],
+  [/\b(puzzle|jigsaw|拼图|解谜|消除|match)\b/i, "🧩"],
+  [/\b(platform|jump|跳跳|跑酷|parkour|mario)\b/i, "🕹️"],
+  [/\b(fight|battle|shooter|shoot|shooting|战斗|射击|打架)\b/i, "🎮"],
+  [/\b(flappy|bird|小鸟|fly)\b/i, "🐦"],
+  [/\b(dinosaur|dino|恐龙)\b/i, "🦕"],
+  [/\b(2048|数字游戏)\b/i, "🔢"],
+  [/\b(minesweeper|扫雷)\b/i, "💣"],
+  [/\b(typing|type|keyboard|打字)\b/i, "⌨️"],
+  [/\b(game|游戏)\b/i, "🎮"],
+  [/\b(portfolio|resume|cv|简历|作品集|personal site|个人网站)\b/i, "🎨"],
+  [/\b(blog|日记|文章|博客|post|article)\b/i, "✍️"],
+  [/\b(todo|task|任务|待办|checklist|清单)\b/i, "✅"],
+  [/\b(weather|天气|温度|forecast|气温)\b/i, "⛅"],
+  [/\b(chat|message|messaging|聊天|消息|im |即时通讯)\b/i, "💬"],
+  [/\b(quiz|trivia|问答|测验|知识竞赛)\b/i, "🧠"],
+  [/\b(shop|store|e-?commerce|商店|购物|商城|产品)\b/i, "🛒"],
+  [/\b(music|song|playlist|音乐|歌曲|播放器|player)\b/i, "🎵"],
+  [/\b(calendar|schedule|日历|日程|plan|规划)\b/i, "📅"],
+  [/\b(calculator|计算器|math|数学|arithmetic)\b/i, "🧮"],
+  [/\b(timer|stopwatch|clock|countdown|计时|倒计时|时钟)\b/i, "⏱️"],
+  [/\b(draw|drawing|paint|canvas|绘画|画图|画板)\b/i, "🖌️"],
+  [/\b(story|book|novel|小说|故事|reading|阅读)\b/i, "📖"],
+  [/\b(map|地图|navigation|导航|location|位置)\b/i, "🗺️"],
+  [/\b(news|新闻|feed|资讯|头条)\b/i, "📰"],
+  [/\b(photo|image|gallery|picture|相册|照片|图片)\b/i, "🖼️"],
+  [/\b(video|movie|film|视频|电影|播放)\b/i, "🎬"],
+  [/\b(food|recipe|cooking|meal|菜谱|食谱|美食|饮食)\b/i, "🍳"],
+  [/\b(fitness|workout|exercise|运动|健身|锻炼)\b/i, "💪"],
+  [/\b(finance|budget|money|投资|财务|账单|理财|expense)\b/i, "💰"],
+  [/\b(travel|trip|vacation|旅行|旅游|景点)\b/i, "✈️"],
+  [/\b(social|network|community|社交|论坛|社区)\b/i, "🌐"],
+  [/\b(ai|machine learning|人工智能|机器学习|chatbot|聊天机器人)\b/i, "🤖"],
+  [/\b(clock|alarm|闹钟|时间)\b/i, "🕐"],
+  [/\b(note|notes|笔记|memo|备忘)\b/i, "📝"],
+  [/\b(hello|world|helloworld|入门|第一个)\b/i, "👋"],
+  [/\b(landing|page|官网|主页|homepage|home page)\b/i, "🏠"],
+  [/\b(dashboard|管理|admin|后台)\b/i, "📊"],
+  [/\b(chart|graph|data|visualization|数据|图表|可视化)\b/i, "📈"],
+];
+
+export function getProjectEmoji(text: string): string {
+  const t = text.trim().toLowerCase();
+  for (const [pattern, emoji] of RULES) {
+    if (pattern.test(t)) return emoji;
+  }
+  return "💻";
+}

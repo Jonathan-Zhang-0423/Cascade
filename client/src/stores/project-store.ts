@@ -5,11 +5,12 @@ export interface ProjectEntry {
   id: string;
   name: string;
   createdAt: number;
+  emoji?: string;
 }
 
 interface ProjectStoreState {
   projects: ProjectEntry[];
-  createProject: (name: string, initialPrompt?: string) => string;
+  createProject: (name: string, initialPrompt?: string, emoji?: string) => string;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
 }
@@ -144,7 +145,7 @@ export const useProjectStore = create<ProjectStoreState>()(
     (set) => ({
       projects: [],
 
-      createProject: (name: string, initialPrompt?: string) => {
+      createProject: (name: string, initialPrompt?: string, emoji?: string) => {
         const id = generateId();
         const state = getDefaultProjectState(initialPrompt);
         localStorage.setItem(
@@ -155,7 +156,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         set((s) => ({
           projects: [
             ...s.projects,
-            { id, name, createdAt: Date.now() },
+            { id, name, createdAt: Date.now(), ...(emoji ? { emoji } : {}) },
           ],
         }));
 

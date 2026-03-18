@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, Code2 } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette } from "lucide-react";
+import { getProjectEmoji } from "@/lib/project-emoji";
 import logoSrc from "@assets/CodeStart_Logo_EN_v1_1773815402242.png";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
@@ -48,7 +49,8 @@ export default function DashboardPage() {
   const handleCreate = () => {
     const idea = ideaText.trim();
     if (!idea) return;
-    const id = createProject("New Project", idea);
+    const emoji = getProjectEmoji(idea);
+    const id = createProject("New Project", idea, emoji);
     setIdeaText("");
     setShowNewDialog(false);
     navigate(`/project/${id}`);
@@ -145,8 +147,8 @@ export default function DashboardPage() {
                 data-testid={`card-project-${project.id}`}
               >
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Code2 className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-2xl leading-none select-none" data-testid={`emoji-project-${project.id}`}>
+                    {project.emoji ?? getProjectEmoji(project.name)}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
