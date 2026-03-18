@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useTheme } from "@/components/theme-provider";
 import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
@@ -21,10 +22,11 @@ import { useToast } from "@/hooks/use-toast";
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, activeSpace } =
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, activeSpace, theme: storeTheme } =
     useIDEStore();
   const { projects } = useProjectStore();
   const { toast } = useToast();
+  const { setThemeId } = useTheme();
 
   const project = projects.find((p) => p.id === id);
 
@@ -44,6 +46,12 @@ export default function IDEPage() {
       }
     };
   }, [id, project, projectId, loadProject, navigate]);
+
+  useEffect(() => {
+    if (storeTheme) {
+      setThemeId(storeTheme);
+    }
+  }, [storeTheme, setThemeId]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

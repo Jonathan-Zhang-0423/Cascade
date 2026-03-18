@@ -1,42 +1,49 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { type ThemeId, getThemeConfig, isValidThemeId, THEME_LIST } from "@/lib/themes";
 
-type Theme = "light" | "dark";
+type Mode = "light" | "dark";
 
 interface ThemeContextType {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
+  themeId: ThemeId;
+  mode: Mode;
+  setThemeId: (id: ThemeId) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: "dark",
-  setTheme: () => {},
-  toggleTheme: () => {},
+  themeId: "vs-dark",
+  mode: "dark",
+  setThemeId: () => {},
 });
 
+const STORAGE_KEY = "codestart-theme-id";
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
+  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("codestart-theme") as Theme) || "dark";
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored && isValidThemeId(stored)) return stored;
     }
-    return "dark";
+    return "vs-dark";
   });
+
+  const config = getThemeConfig(themeId);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
+    if (config.mode === "dark") {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
     }
-    localStorage.setItem("codestart-theme", theme);
-  }, [theme]);
+    localStorage.setItem(STORAGE_KEY, themeId);
+  }, [themeId, config.mode]);
 
-  const setTheme = (t: Theme) => setThemeState(t);
-  const toggleTheme = () => setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
+  const setThemeId = useCallback((id: ThemeId) => {
+    setThemeIdState(id);
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ themeId, mode: config.mode, setThemeId }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -45,3 +52,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export function useTheme() {
   return useContext(ThemeContext);
 }
+
+export { THEME_LIST };
+export type { ThemeId };

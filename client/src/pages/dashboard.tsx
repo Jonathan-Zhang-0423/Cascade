@@ -21,15 +21,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Moon, Sun } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { THEME_LIST, type ThemeId } from "@/lib/themes";
 
 migrateOldState();
 
 export default function DashboardPage() {
   const { projects, createProject, deleteProject, renameProject } = useProjectStore();
   const [, navigate] = useLocation();
-  const { theme, toggleTheme } = useTheme();
+  const { themeId, setThemeId } = useTheme();
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [ideaText, setIdeaText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -75,15 +83,19 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              data-testid="button-theme-toggle"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
+            <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
+              <SelectTrigger className="w-[150px] h-8 text-xs" data-testid="select-theme">
+                <Palette className="w-3.5 h-3.5 mr-1 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {THEME_LIST.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               onClick={() => setShowNewDialog(true)}
               className="gap-2"

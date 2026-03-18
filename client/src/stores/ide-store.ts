@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { type ThemeId, isValidThemeId } from "@/lib/themes";
 
 export interface FileNode {
   name: string;
@@ -283,7 +284,7 @@ interface IDEState {
   isSidebarOpen: boolean;
   isChatOpen: boolean;
   isAiResponding: boolean;
-  theme: "vs-dark" | "vs-light" | "hc-black";
+  theme: ThemeId;
   previewFile: string;
   previewRefreshKey: number;
   pendingPrompt: string | null;
@@ -324,7 +325,7 @@ interface IDEState {
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
-  setTheme: (theme: "vs-dark" | "vs-light" | "hc-black") => void;
+  setTheme: (theme: ThemeId) => void;
   addFile: (parentPath: string, name: string, type: "file" | "folder") => void;
   renameFile: (oldPath: string, newName: string) => void;
   deleteFile: (path: string) => void;
@@ -568,7 +569,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: saved.activeFile || "/project/index.html",
         previewFile: saved.previewFile || "/project/index.html",
         chatMessages: saved.chatMessages || defaultChat,
-        theme: saved.theme || "vs-dark",
+        theme: (saved.theme && isValidThemeId(saved.theme)) ? saved.theme : "vs-dark",
         pendingPrompt: saved.pendingPrompt || null,
         checkpoints: savedCheckpoints,
         consoleEntries: [],

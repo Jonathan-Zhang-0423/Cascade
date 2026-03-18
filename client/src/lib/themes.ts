@@ -1,0 +1,431 @@
+import type { editor } from "monaco-editor";
+
+export type ThemeId =
+  | "vs-dark"
+  | "vs-light"
+  | "hc-black"
+  | "hc-light"
+  | "monokai"
+  | "dracula"
+  | "github-dark"
+  | "github-light"
+  | "solarized-dark"
+  | "solarized-light"
+  | "abyss"
+  | "tomorrow-night-blue"
+  | "one-dark"
+  | "quiet-light";
+
+export interface ThemeConfig {
+  label: string;
+  mode: "dark" | "light";
+  monacoTheme: string;
+  customTheme?: editor.IStandaloneThemeData;
+}
+
+export const THEME_LIST: { id: ThemeId; label: string; mode: "dark" | "light" }[] = [
+  { id: "vs-dark", label: "Dark+", mode: "dark" },
+  { id: "monokai", label: "Monokai", mode: "dark" },
+  { id: "dracula", label: "Dracula", mode: "dark" },
+  { id: "one-dark", label: "One Dark", mode: "dark" },
+  { id: "github-dark", label: "GitHub Dark", mode: "dark" },
+  { id: "solarized-dark", label: "Solarized Dark", mode: "dark" },
+  { id: "abyss", label: "Abyss", mode: "dark" },
+  { id: "tomorrow-night-blue", label: "Tomorrow Night Blue", mode: "dark" },
+  { id: "hc-black", label: "High Contrast", mode: "dark" },
+  { id: "vs-light", label: "Light+", mode: "light" },
+  { id: "quiet-light", label: "Quiet Light", mode: "light" },
+  { id: "github-light", label: "GitHub Light", mode: "light" },
+  { id: "solarized-light", label: "Solarized Light", mode: "light" },
+  { id: "hc-light", label: "High Contrast Light", mode: "light" },
+];
+
+export const THEMES: Record<ThemeId, ThemeConfig> = {
+  "vs-dark": {
+    label: "Dark+",
+    mode: "dark",
+    monacoTheme: "vs-dark",
+  },
+  "vs-light": {
+    label: "Light+",
+    mode: "light",
+    monacoTheme: "vs",
+  },
+  "hc-black": {
+    label: "High Contrast",
+    mode: "dark",
+    monacoTheme: "hc-black",
+  },
+  "hc-light": {
+    label: "High Contrast Light",
+    mode: "light",
+    monacoTheme: "hc-light",
+    customTheme: {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "292929" },
+        { token: "comment", foreground: "008000" },
+        { token: "keyword", foreground: "0000FF", fontStyle: "bold" },
+        { token: "string", foreground: "A31515" },
+        { token: "number", foreground: "098658" },
+      ],
+      colors: {
+        "editor.background": "#FFFFFF",
+        "editor.foreground": "#292929",
+        "editorCursor.foreground": "#000000",
+        "editor.selectionBackground": "#ADD6FF",
+        "editor.lineHighlightBackground": "#F0F0F0",
+        "editorLineNumber.foreground": "#292929",
+      },
+    },
+  },
+  monokai: {
+    label: "Monokai",
+    mode: "dark",
+    monacoTheme: "monokai",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "F8F8F2", background: "272822" },
+        { token: "comment", foreground: "75715E", fontStyle: "italic" },
+        { token: "keyword", foreground: "F92672" },
+        { token: "string", foreground: "E6DB74" },
+        { token: "number", foreground: "AE81FF" },
+        { token: "type", foreground: "66D9EF", fontStyle: "italic" },
+        { token: "function", foreground: "A6E22E" },
+        { token: "variable", foreground: "F8F8F2" },
+        { token: "constant", foreground: "AE81FF" },
+        { token: "tag", foreground: "F92672" },
+        { token: "attribute.name", foreground: "A6E22E" },
+        { token: "attribute.value", foreground: "E6DB74" },
+        { token: "delimiter", foreground: "F8F8F2" },
+        { token: "operator", foreground: "F92672" },
+      ],
+      colors: {
+        "editor.background": "#272822",
+        "editor.foreground": "#F8F8F2",
+        "editorCursor.foreground": "#F8F8F0",
+        "editor.selectionBackground": "#49483E",
+        "editor.lineHighlightBackground": "#3E3D32",
+        "editorLineNumber.foreground": "#90908A",
+        "editorIndentGuide.background": "#464741",
+      },
+    },
+  },
+  dracula: {
+    label: "Dracula",
+    mode: "dark",
+    monacoTheme: "dracula",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "F8F8F2", background: "282A36" },
+        { token: "comment", foreground: "6272A4", fontStyle: "italic" },
+        { token: "keyword", foreground: "FF79C6" },
+        { token: "string", foreground: "F1FA8C" },
+        { token: "number", foreground: "BD93F9" },
+        { token: "type", foreground: "8BE9FD", fontStyle: "italic" },
+        { token: "function", foreground: "50FA7B" },
+        { token: "variable", foreground: "F8F8F2" },
+        { token: "constant", foreground: "BD93F9" },
+        { token: "tag", foreground: "FF79C6" },
+        { token: "attribute.name", foreground: "50FA7B" },
+        { token: "attribute.value", foreground: "F1FA8C" },
+        { token: "delimiter", foreground: "F8F8F2" },
+        { token: "operator", foreground: "FF79C6" },
+      ],
+      colors: {
+        "editor.background": "#282A36",
+        "editor.foreground": "#F8F8F2",
+        "editorCursor.foreground": "#F8F8F0",
+        "editor.selectionBackground": "#44475A",
+        "editor.lineHighlightBackground": "#44475A75",
+        "editorLineNumber.foreground": "#6272A4",
+        "editorIndentGuide.background": "#424450",
+      },
+    },
+  },
+  "one-dark": {
+    label: "One Dark",
+    mode: "dark",
+    monacoTheme: "one-dark",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "ABB2BF", background: "282C34" },
+        { token: "comment", foreground: "5C6370", fontStyle: "italic" },
+        { token: "keyword", foreground: "C678DD" },
+        { token: "string", foreground: "98C379" },
+        { token: "number", foreground: "D19A66" },
+        { token: "type", foreground: "E5C07B" },
+        { token: "function", foreground: "61AFEF" },
+        { token: "variable", foreground: "E06C75" },
+        { token: "constant", foreground: "D19A66" },
+        { token: "tag", foreground: "E06C75" },
+        { token: "attribute.name", foreground: "D19A66" },
+        { token: "attribute.value", foreground: "98C379" },
+        { token: "delimiter", foreground: "ABB2BF" },
+        { token: "operator", foreground: "56B6C2" },
+      ],
+      colors: {
+        "editor.background": "#282C34",
+        "editor.foreground": "#ABB2BF",
+        "editorCursor.foreground": "#528BFF",
+        "editor.selectionBackground": "#3E4451",
+        "editor.lineHighlightBackground": "#2C313C",
+        "editorLineNumber.foreground": "#495162",
+        "editorIndentGuide.background": "#3B4048",
+      },
+    },
+  },
+  "github-dark": {
+    label: "GitHub Dark",
+    mode: "dark",
+    monacoTheme: "github-dark",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "C9D1D9", background: "0D1117" },
+        { token: "comment", foreground: "8B949E", fontStyle: "italic" },
+        { token: "keyword", foreground: "FF7B72" },
+        { token: "string", foreground: "A5D6FF" },
+        { token: "number", foreground: "79C0FF" },
+        { token: "type", foreground: "FFA657" },
+        { token: "function", foreground: "D2A8FF" },
+        { token: "variable", foreground: "FFA657" },
+        { token: "constant", foreground: "79C0FF" },
+        { token: "tag", foreground: "7EE787" },
+        { token: "attribute.name", foreground: "79C0FF" },
+        { token: "attribute.value", foreground: "A5D6FF" },
+        { token: "delimiter", foreground: "C9D1D9" },
+        { token: "operator", foreground: "FF7B72" },
+      ],
+      colors: {
+        "editor.background": "#0D1117",
+        "editor.foreground": "#C9D1D9",
+        "editorCursor.foreground": "#58A6FF",
+        "editor.selectionBackground": "#264F78",
+        "editor.lineHighlightBackground": "#161B22",
+        "editorLineNumber.foreground": "#484F58",
+        "editorIndentGuide.background": "#21262D",
+      },
+    },
+  },
+  "github-light": {
+    label: "GitHub Light",
+    mode: "light",
+    monacoTheme: "github-light",
+    customTheme: {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "24292F", background: "FFFFFF" },
+        { token: "comment", foreground: "6E7781", fontStyle: "italic" },
+        { token: "keyword", foreground: "CF222E" },
+        { token: "string", foreground: "0A3069" },
+        { token: "number", foreground: "0550AE" },
+        { token: "type", foreground: "953800" },
+        { token: "function", foreground: "8250DF" },
+        { token: "variable", foreground: "953800" },
+        { token: "constant", foreground: "0550AE" },
+        { token: "tag", foreground: "116329" },
+        { token: "attribute.name", foreground: "0550AE" },
+        { token: "attribute.value", foreground: "0A3069" },
+        { token: "delimiter", foreground: "24292F" },
+        { token: "operator", foreground: "CF222E" },
+      ],
+      colors: {
+        "editor.background": "#FFFFFF",
+        "editor.foreground": "#24292F",
+        "editorCursor.foreground": "#044289",
+        "editor.selectionBackground": "#BBDFFF",
+        "editor.lineHighlightBackground": "#F6F8FA",
+        "editorLineNumber.foreground": "#8C959F",
+        "editorIndentGuide.background": "#D8DEE4",
+      },
+    },
+  },
+  "solarized-dark": {
+    label: "Solarized Dark",
+    mode: "dark",
+    monacoTheme: "solarized-dark",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "839496", background: "002B36" },
+        { token: "comment", foreground: "586E75", fontStyle: "italic" },
+        { token: "keyword", foreground: "859900" },
+        { token: "string", foreground: "2AA198" },
+        { token: "number", foreground: "D33682" },
+        { token: "type", foreground: "B58900" },
+        { token: "function", foreground: "268BD2" },
+        { token: "variable", foreground: "B58900" },
+        { token: "constant", foreground: "CB4B16" },
+        { token: "tag", foreground: "268BD2" },
+        { token: "attribute.name", foreground: "93A1A1" },
+        { token: "attribute.value", foreground: "2AA198" },
+        { token: "delimiter", foreground: "839496" },
+        { token: "operator", foreground: "859900" },
+      ],
+      colors: {
+        "editor.background": "#002B36",
+        "editor.foreground": "#839496",
+        "editorCursor.foreground": "#D30102",
+        "editor.selectionBackground": "#073642",
+        "editor.lineHighlightBackground": "#073642",
+        "editorLineNumber.foreground": "#586E75",
+        "editorIndentGuide.background": "#073642",
+      },
+    },
+  },
+  "solarized-light": {
+    label: "Solarized Light",
+    mode: "light",
+    monacoTheme: "solarized-light",
+    customTheme: {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "657B83", background: "FDF6E3" },
+        { token: "comment", foreground: "93A1A1", fontStyle: "italic" },
+        { token: "keyword", foreground: "859900" },
+        { token: "string", foreground: "2AA198" },
+        { token: "number", foreground: "D33682" },
+        { token: "type", foreground: "B58900" },
+        { token: "function", foreground: "268BD2" },
+        { token: "variable", foreground: "B58900" },
+        { token: "constant", foreground: "CB4B16" },
+        { token: "tag", foreground: "268BD2" },
+        { token: "attribute.name", foreground: "93A1A1" },
+        { token: "attribute.value", foreground: "2AA198" },
+        { token: "delimiter", foreground: "657B83" },
+        { token: "operator", foreground: "859900" },
+      ],
+      colors: {
+        "editor.background": "#FDF6E3",
+        "editor.foreground": "#657B83",
+        "editorCursor.foreground": "#D30102",
+        "editor.selectionBackground": "#EEE8D5",
+        "editor.lineHighlightBackground": "#EEE8D5",
+        "editorLineNumber.foreground": "#93A1A1",
+        "editorIndentGuide.background": "#EEE8D5",
+      },
+    },
+  },
+  abyss: {
+    label: "Abyss",
+    mode: "dark",
+    monacoTheme: "abyss",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "6688CC", background: "000C18" },
+        { token: "comment", foreground: "384887", fontStyle: "italic" },
+        { token: "keyword", foreground: "225588" },
+        { token: "string", foreground: "22AA44" },
+        { token: "number", foreground: "F280D0" },
+        { token: "type", foreground: "DDBB88" },
+        { token: "function", foreground: "DDBB88" },
+        { token: "variable", foreground: "6688CC" },
+        { token: "constant", foreground: "F280D0" },
+        { token: "tag", foreground: "225588" },
+        { token: "attribute.name", foreground: "DDBB88" },
+        { token: "attribute.value", foreground: "22AA44" },
+        { token: "delimiter", foreground: "6688CC" },
+        { token: "operator", foreground: "225588" },
+      ],
+      colors: {
+        "editor.background": "#000C18",
+        "editor.foreground": "#6688CC",
+        "editorCursor.foreground": "#DDBB88",
+        "editor.selectionBackground": "#770811",
+        "editor.lineHighlightBackground": "#082050",
+        "editorLineNumber.foreground": "#384887",
+        "editorIndentGuide.background": "#1B2738",
+      },
+    },
+  },
+  "tomorrow-night-blue": {
+    label: "Tomorrow Night Blue",
+    mode: "dark",
+    monacoTheme: "tomorrow-night-blue",
+    customTheme: {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "FFFFFF", background: "002451" },
+        { token: "comment", foreground: "7285B7", fontStyle: "italic" },
+        { token: "keyword", foreground: "EBBBFF" },
+        { token: "string", foreground: "D1F1A9" },
+        { token: "number", foreground: "FFC58F" },
+        { token: "type", foreground: "FFEEAD" },
+        { token: "function", foreground: "BBDAFF" },
+        { token: "variable", foreground: "FFEEAD" },
+        { token: "constant", foreground: "FFC58F" },
+        { token: "tag", foreground: "FF9DA4" },
+        { token: "attribute.name", foreground: "FFEEAD" },
+        { token: "attribute.value", foreground: "D1F1A9" },
+        { token: "delimiter", foreground: "FFFFFF" },
+        { token: "operator", foreground: "99FFFF" },
+      ],
+      colors: {
+        "editor.background": "#002451",
+        "editor.foreground": "#FFFFFF",
+        "editorCursor.foreground": "#FFFFFF",
+        "editor.selectionBackground": "#003F8E",
+        "editor.lineHighlightBackground": "#00346E",
+        "editorLineNumber.foreground": "#7285B7",
+        "editorIndentGuide.background": "#1F4662",
+      },
+    },
+  },
+  "quiet-light": {
+    label: "Quiet Light",
+    mode: "light",
+    monacoTheme: "quiet-light",
+    customTheme: {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "333333", background: "F5F5F5" },
+        { token: "comment", foreground: "AAAAAA", fontStyle: "italic" },
+        { token: "keyword", foreground: "4B69C6" },
+        { token: "string", foreground: "448C27" },
+        { token: "number", foreground: "AB6526" },
+        { token: "type", foreground: "7A3E9D" },
+        { token: "function", foreground: "AA3731" },
+        { token: "variable", foreground: "7A3E9D" },
+        { token: "constant", foreground: "AB6526" },
+        { token: "tag", foreground: "4B69C6" },
+        { token: "attribute.name", foreground: "AA3731" },
+        { token: "attribute.value", foreground: "448C27" },
+        { token: "delimiter", foreground: "333333" },
+        { token: "operator", foreground: "777777" },
+      ],
+      colors: {
+        "editor.background": "#F5F5F5",
+        "editor.foreground": "#333333",
+        "editorCursor.foreground": "#54494B",
+        "editor.selectionBackground": "#C9D0D9",
+        "editor.lineHighlightBackground": "#E4E6E7",
+        "editorLineNumber.foreground": "#AAAAAA",
+        "editorIndentGuide.background": "#E0E0E0",
+      },
+    },
+  },
+};
+
+export function getThemeConfig(id: ThemeId): ThemeConfig {
+  return THEMES[id] || THEMES["vs-dark"];
+}
+
+export function isValidThemeId(id: string): id is ThemeId {
+  return id in THEMES;
+}

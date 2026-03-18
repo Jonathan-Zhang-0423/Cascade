@@ -1,6 +1,5 @@
 import { useIDEStore } from "@/stores/ide-store";
-import { useTheme } from "@/components/theme-provider";
-import { FolderClosed, Sparkles, Terminal, Sun, Moon } from "lucide-react";
+import { FolderClosed, Sparkles, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function DockButton({
@@ -38,7 +37,6 @@ function DockButton({
 
 export function ToolsDock() {
   const { activeTool, setActiveTool, isConsoleOpen, toggleConsole } = useIDEStore();
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <div

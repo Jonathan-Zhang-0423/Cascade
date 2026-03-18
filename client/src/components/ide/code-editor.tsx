@@ -1,12 +1,36 @@
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
 import { useIDEStore, findFileContent, getFileLanguage } from "@/stores/ide-store";
 import { X, FileCode, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef } from "react";
+import { getThemeConfig, THEMES } from "@/lib/themes";
+
+let themesRegistered = false;
+
+function registerCustomThemes() {
+  if (themesRegistered) return;
+  themesRegistered = true;
+
+  loader.init().then((monaco) => {
+    for (const [id, config] of Object.entries(THEMES)) {
+      if (config.customTheme) {
+        monaco.editor.defineTheme(id, config.customTheme);
+      }
+    }
+  });
+}
 
 export function CodeEditor() {
   const { activeFile, openFiles, files, theme, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
+  const hasRegistered = useRef(false);
+
+  useEffect(() => {
+    if (!hasRegistered.current) {
+      hasRegistered.current = true;
+      registerCustomThemes();
+    }
+  }, []);
 
   const openCommandPalette = () => {
     const event = new KeyboardEvent("keydown", {
@@ -20,6 +44,7 @@ export function CodeEditor() {
 
   const content = activeFile ? findFileContent(files, activeFile) : "";
   const language = activeFile ? getFileLanguage(activeFile) : "plaintext";
+  const themeConfig = getThemeConfig(theme);
 
   const getFileName = (path: string) => path.split("/").pop() || path;
 
@@ -82,7 +107,7 @@ export function CodeEditor() {
               height="100%"
               language={language}
               value={content || ""}
-              theme={theme}
+              theme={themeConfig.monacoTheme}
               onChange={(value) => {
                 if (activeFile && value !== undefined) {
                   updateFileContent(activeFile, value);

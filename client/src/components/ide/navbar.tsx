@@ -11,7 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Code2, Sun, Moon, ChevronLeft, BookOpen, Wrench } from "lucide-react";
+import { Play, Code2, ChevronLeft, BookOpen, Wrench } from "lucide-react";
+import { THEME_LIST, type ThemeId } from "@/lib/themes";
 
 interface NavbarProps {
   projectName: string;
@@ -30,14 +31,16 @@ export function Navbar({ projectName }: NavbarProps) {
     files,
     notebookContent,
   } = useIDEStore();
-  const { theme, toggleTheme } = useTheme();
+  const { setThemeId } = useTheme();
   const [, navigate] = useLocation();
 
   const currentHash = useMemo(() => computeFilesHash(files), [files]);
   const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
 
-  const handleEditorThemeChange = (v: string) => {
-    setEditorTheme(v as "vs-dark" | "vs-light" | "hc-black");
+  const handleThemeChange = (v: string) => {
+    const id = v as ThemeId;
+    setEditorTheme(id);
+    setThemeId(id);
   };
 
   const handleBack = () => {
@@ -50,37 +53,32 @@ export function Navbar({ projectName }: NavbarProps) {
       className="flex items-center justify-between gap-2 px-3 h-10 border-b border-border/50 bg-sidebar shrink-0"
       data-testid="navbar"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2 min-w-0">
         <Button
-          size="icon"
+          size="sm"
           variant="ghost"
-          className="h-7 w-7"
+          className="gap-1 h-7 px-2 shrink-0"
           onClick={handleBack}
-          aria-label="Back to dashboard"
-          data-testid="button-back-dashboard"
+          data-testid="button-back"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-3.5 h-3.5" />
         </Button>
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-            <Code2 className="w-3.5 h-3.5 text-primary-foreground" />
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="w-5 h-5 rounded bg-primary flex items-center justify-center shrink-0">
+            <Code2 className="w-3 h-3 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-sm tracking-tight text-foreground" data-testid="text-logo">
-            CodeStart
+          <span className="text-sm font-semibold truncate" data-testid="text-project-name">
+            {projectName}
           </span>
         </div>
-        <span className="text-muted-foreground/40 text-sm">/</span>
-        <span className="text-sm text-muted-foreground" data-testid="text-project-name">
-          {projectName}
-        </span>
       </div>
 
-      <div className="flex items-center bg-muted rounded-lg p-0.5" data-testid="space-toggle">
+      <div className="flex items-center gap-1">
         <button
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+          className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
             activeSpace === "workspace"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
           onClick={() => setActiveSpace("workspace")}
           data-testid="button-workspace"
@@ -89,10 +87,10 @@ export function Navbar({ projectName }: NavbarProps) {
           Workspace
         </button>
         <button
-          className={`relative flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+          className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
             activeSpace === "learner"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
           onClick={() => setActiveSpace("learner")}
           data-testid="button-learner-space"
@@ -110,27 +108,18 @@ export function Navbar({ projectName }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Select value={editorTheme} onValueChange={handleEditorThemeChange}>
-          <SelectTrigger className="w-[110px] h-7 text-xs" data-testid="select-theme">
+        <Select value={editorTheme} onValueChange={handleThemeChange}>
+          <SelectTrigger className="w-[150px] h-7 text-xs" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="vs-dark">Dark+</SelectItem>
-            <SelectItem value="vs-light">Light+</SelectItem>
-            <SelectItem value="hc-black">High Contrast</SelectItem>
+            {THEME_LIST.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
-
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          data-testid="navbar-theme-toggle"
-        >
-          {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-        </Button>
 
         <Button
           size="sm"

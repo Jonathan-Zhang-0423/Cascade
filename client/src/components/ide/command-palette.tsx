@@ -14,12 +14,11 @@ import {
   FolderClosed,
   Sparkles,
   Terminal,
-  Sun,
-  Moon,
   FileText,
   Palette,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { THEME_LIST, type ThemeId } from "@/lib/themes";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -33,7 +32,7 @@ export function CommandPalette() {
     theme,
     setTheme,
   } = useIDEStore();
-  const { theme: appTheme, toggleTheme } = useTheme();
+  const { setThemeId } = useTheme();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -51,6 +50,11 @@ export function CommandPalette() {
   const runCommand = (fn: () => void) => {
     setOpen(false);
     fn();
+  };
+
+  const handleSetTheme = (id: ThemeId) => {
+    setTheme(id);
+    setThemeId(id);
   };
 
   return (
@@ -106,44 +110,17 @@ export function CommandPalette() {
         <CommandSeparator />
 
         <CommandGroup heading="Theme">
-          <CommandItem
-            onSelect={() => runCommand(toggleTheme)}
-            data-testid="cmd-toggle-theme"
-          >
-            {appTheme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-            <span>Toggle {appTheme === "dark" ? "Light" : "Dark"} Mode</span>
-          </CommandItem>
-
-          <CommandItem
-            onSelect={() => runCommand(() => setTheme("vs-dark"))}
-            data-testid="cmd-theme-dark"
-          >
-            <Palette className="w-4 h-4" />
-            <span>Editor Theme: Dark+</span>
-            {theme === "vs-dark" && <CommandShortcut>Active</CommandShortcut>}
-          </CommandItem>
-
-          <CommandItem
-            onSelect={() => runCommand(() => setTheme("vs-light"))}
-            data-testid="cmd-theme-light"
-          >
-            <Palette className="w-4 h-4" />
-            <span>Editor Theme: Light+</span>
-            {theme === "vs-light" && <CommandShortcut>Active</CommandShortcut>}
-          </CommandItem>
-
-          <CommandItem
-            onSelect={() => runCommand(() => setTheme("hc-black"))}
-            data-testid="cmd-theme-hc"
-          >
-            <Palette className="w-4 h-4" />
-            <span>Editor Theme: High Contrast</span>
-            {theme === "hc-black" && <CommandShortcut>Active</CommandShortcut>}
-          </CommandItem>
+          {THEME_LIST.map((t) => (
+            <CommandItem
+              key={t.id}
+              onSelect={() => runCommand(() => handleSetTheme(t.id))}
+              data-testid={`cmd-theme-${t.id}`}
+            >
+              <Palette className="w-4 h-4" />
+              <span>{t.label}</span>
+              {theme === t.id && <CommandShortcut>Active</CommandShortcut>}
+            </CommandItem>
+          ))}
         </CommandGroup>
       </CommandList>
     </CommandDialog>
