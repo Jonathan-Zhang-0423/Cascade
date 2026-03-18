@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Code2, Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, Code2 } from "lucide-react";
+import logoSrc from "@assets/CodeStart_Logo_EN_v1_1773815402242.png";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 
@@ -74,13 +75,13 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background" data-testid="dashboard-page">
       <header className="border-b border-border/50 bg-sidebar">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Code2 className="w-4.5 h-4.5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg tracking-tight text-foreground" data-testid="text-dashboard-logo">
-              CodeStart
-            </span>
+          <div className="flex items-center">
+            <img
+              src={logoSrc}
+              alt="CodeStart"
+              className="h-9 w-36 object-cover object-center mix-blend-multiply dark:invert dark:mix-blend-screen"
+              data-testid="text-dashboard-logo"
+            />
           </div>
           <div className="flex items-center gap-2">
             <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
