@@ -2268,7 +2268,7 @@ export function ChatPanel() {
           className={cn(
             "rounded-xl border bg-background transition-all",
             inputFocused
-              ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.1)] bg-background/80"
+              ? "border-primary ring-2 ring-primary/20 bg-background/80"
               : "border-border/60"
           )}
         >
