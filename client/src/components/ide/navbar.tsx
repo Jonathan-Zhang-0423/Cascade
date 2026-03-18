@@ -61,7 +61,7 @@ export function Navbar({ projectName }: NavbarProps) {
           <ChevronLeft className="w-3.5 h-3.5" />
         </Button>
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-5 h-5 rounded bg-primary flex items-center justify-center shrink-0 text-sm leading-none select-none" data-testid="emoji-project">
+          <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#2a2a2b00]" data-testid="emoji-project">
             {getProjectEmoji(projectName)}
           </div>
           <span className="text-sm font-semibold truncate" data-testid="text-project-name">
@@ -69,7 +69,6 @@ export function Navbar({ projectName }: NavbarProps) {
           </span>
         </div>
       </div>
-
       <div className="flex items-center gap-1">
         <button
           className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
@@ -103,7 +102,6 @@ export function Navbar({ projectName }: NavbarProps) {
           )}
         </button>
       </div>
-
       <div className="flex items-center gap-2">
         <Select value={themeId} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-[150px] h-7 text-xs" data-testid="select-theme">
