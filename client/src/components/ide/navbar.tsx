@@ -11,8 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Code2, ChevronLeft, BookOpen, Wrench } from "lucide-react";
+import { Play, ChevronLeft, BookOpen, Wrench } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
+import { getProjectEmoji } from "@/lib/project-emoji";
 
 interface NavbarProps {
   projectName: string;
@@ -60,8 +61,8 @@ export function Navbar({ projectName }: NavbarProps) {
           <ChevronLeft className="w-3.5 h-3.5" />
         </Button>
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-5 h-5 rounded bg-primary flex items-center justify-center shrink-0">
-            <Code2 className="w-3 h-3 text-primary-foreground" />
+          <div className="w-5 h-5 rounded bg-primary flex items-center justify-center shrink-0 text-sm leading-none select-none" data-testid="emoji-project">
+            {getProjectEmoji(projectName)}
           </div>
           <span className="text-sm font-semibold truncate" data-testid="text-project-name">
             {projectName}
