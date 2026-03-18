@@ -1205,6 +1205,7 @@ export function ChatPanel() {
   const preBuildSnapshotRef = useRef<{ path: string; content: string }[] | null>(null);
   const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
+  const [smartResponseLoading, setSmartResponseLoading] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -2149,6 +2150,31 @@ export function ChatPanel() {
     }
   };
 
+  const handleSmartResponse = useCallback(async () => {
+    const msgs = chatMode === "manager"
+      ? managerMessages.filter(m => !m.hidden).map(m => ({ role: m.role, content: m.content }))
+      : chatMessages.filter(m => m.role !== "checkpoint" && !m.hidden).map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    if (msgs.length === 0) return;
+
+    setSmartResponseLoading(true);
+    try {
+      const res = await fetch("/api/smart-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: msgs, mode: chatMode }),
+      });
+      const data = await res.json();
+      if (data.suggestion) {
+        setInput(data.suggestion);
+        setTimeout(() => textareaRef.current?.focus(), 50);
+      }
+    } catch {
+    } finally {
+      setSmartResponseLoading(false);
+    }
+  }, [chatMode, chatMessages, managerMessages]);
+
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
@@ -2240,6 +2266,25 @@ export function ChatPanel() {
             rows={1}
             data-testid="input-chat"
           />
+          <Button
+            variant="outline"
+            className="h-9 shrink-0 gap-1.5 px-2.5 text-[12px] font-medium"
+            onClick={handleSmartResponse}
+            disabled={isBusy || smartResponseLoading || (
+              chatMode === "manager"
+                ? !managerMessages.some(m => m.role === "assistant")
+                : !chatMessages.some(m => m.role === "assistant")
+            )}
+            title="Let AI suggest a response"
+            data-testid="button-smart-response"
+          >
+            {smartResponseLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            Smart Response
+          </Button>
           {isBusy ? (
             <Button
               size="icon"

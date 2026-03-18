@@ -612,5 +612,58 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/smart-response", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
+
+      const { messages, mode } = req.body;
+
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        res.status(400).json({ error: "messages are required" });
+        return;
+      }
+
+      const systemPrompt = `You are a smart response generator for a beginner-friendly coding assistant app.
+
+Given a conversation between a user and an AI coding assistant, your job is to generate the most helpful and natural response that the USER would likely want to send next.
+
+Rules:
+- Output ONLY the user's response text — no explanations, no quotes, no meta-commentary
+- Keep it concise and direct (1–4 sentences)
+- Match the language of the conversation (write in Chinese if the conversation is in Chinese, English if English)
+- Address exactly what the AI assistant just asked, proposed, or explained
+- Write in first person as the user (e.g. "I want...", "Yes, please...", "Let's go with...")
+- For choices or yes/no questions, pick the most sensible option and briefly explain why
+- Sound like a real beginner who is enthusiastic and wants to move forward
+${mode === "manager" ? "- This is a planning conversation, so the response should be about confirming direction, adding requirements, or asking for clarification" : "- This is a building conversation, so the response should be about what to build or change"}`;
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages.map((m: { role: string; content: string }) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })),
+          {
+            role: "user",
+            content: "[Generate a suggested response for me to send to the assistant. Output only the response text itself.]",
+          },
+        ],
+        stream: false,
+        max_tokens: 256,
+      });
+
+      const suggestion = completion.choices[0]?.message?.content?.trim() || "";
+      res.json({ suggestion });
+    } catch (error: any) {
+      console.error("Smart response API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to generate smart response" });
+    }
+  });
+
   return httpServer;
 }
