@@ -1,4 +1,4 @@
-type Rule = [pattern: RegExp | string[], emoji: string];
+type Rule = [pattern: RegExp, emoji: string];
 
 const RULES: Rule[] = [
   [/\b(space|rocket|star.?war|ufo|alien|galax)\b|星球|星际|太空|宇宙|星战|外星/i, "🚀"],
@@ -50,9 +50,9 @@ const RULES: Rule[] = [
 ];
 
 export function getProjectEmoji(text: string): string {
-  const t = text.trim();
+  const t = text.trim().toLowerCase();
   for (const [pattern, emoji] of RULES) {
-    if ((pattern as RegExp).test(t)) return emoji;
+    if (pattern.test(t)) return emoji;
   }
   return "💻";
 }
