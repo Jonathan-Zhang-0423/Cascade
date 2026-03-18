@@ -1,35 +1,29 @@
-import Editor, { loader } from "@monaco-editor/react";
+import Editor from "@monaco-editor/react";
+import type { Monaco } from "@monaco-editor/react";
 import { useIDEStore, findFileContent, getFileLanguage } from "@/stores/ide-store";
 import { X, FileCode, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { getThemeConfig, THEMES } from "@/lib/themes";
 
 let themesRegistered = false;
 
-function registerCustomThemes() {
+function registerCustomThemes(monaco: Monaco) {
   if (themesRegistered) return;
   themesRegistered = true;
-
-  loader.init().then((monaco) => {
-    for (const [id, config] of Object.entries(THEMES)) {
-      if (config.customTheme) {
-        monaco.editor.defineTheme(id, config.customTheme);
-      }
+  for (const [id, config] of Object.entries(THEMES)) {
+    if (config.customTheme) {
+      monaco.editor.defineTheme(id, config.customTheme);
     }
-  });
+  }
 }
 
 export function CodeEditor() {
   const { activeFile, openFiles, files, theme, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
-  const hasRegistered = useRef(false);
 
-  useEffect(() => {
-    if (!hasRegistered.current) {
-      hasRegistered.current = true;
-      registerCustomThemes();
-    }
+  const handleBeforeMount = useCallback((monaco: Monaco) => {
+    registerCustomThemes(monaco);
   }, []);
 
   const openCommandPalette = () => {
@@ -108,6 +102,7 @@ export function CodeEditor() {
               language={language}
               value={content || ""}
               theme={themeConfig.monacoTheme}
+              beforeMount={handleBeforeMount}
               onChange={(value) => {
                 if (activeFile && value !== undefined) {
                   updateFileContent(activeFile, value);
