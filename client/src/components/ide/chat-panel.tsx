@@ -1206,6 +1206,8 @@ export function ChatPanel() {
   const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const inputBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -2255,7 +2257,21 @@ export function ChatPanel() {
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
-        <div className="rounded-xl border border-border/60 bg-background transition-all focus-within:border-primary focus-within:shadow-[0_0_0_2px_hsl(var(--primary)/0.1)] focus-within:bg-background/80">
+        <div
+          ref={inputBoxRef}
+          onFocus={() => setInputFocused(true)}
+          onBlur={(e) => {
+            if (!inputBoxRef.current?.contains(e.relatedTarget as Node)) {
+              setInputFocused(false);
+            }
+          }}
+          className={cn(
+            "rounded-xl border bg-background transition-all",
+            inputFocused
+              ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.1)] bg-background/80"
+              : "border-border/60"
+          )}
+        >
           <Textarea
             ref={textareaRef}
             value={input}
