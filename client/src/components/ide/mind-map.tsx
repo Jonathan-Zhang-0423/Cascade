@@ -7,7 +7,10 @@ interface MindMapProps {
   data: NotebookMindMap;
 }
 
-const FILE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+const FILE_COLORS: Record<
+  string,
+  { bg: string; border: string; text: string }
+> = {
   html: { bg: "#FFF3E0", border: "#FF9800", text: "#E65100" },
   css: { bg: "#E3F2FD", border: "#2196F3", text: "#0D47A1" },
   js: { bg: "#FFFDE7", border: "#FFC107", text: "#F57F17" },
@@ -51,20 +54,24 @@ const NODE_H_CHILD = 30;
 
 function computeLayout(
   data: NotebookMindMap,
-  expandedBranches: Set<number>
+  expandedBranches: Set<number>,
 ): { nodes: LayoutNode[]; width: number; height: number } {
   const branches = data.branches || [];
   const totalBranches = branches.length;
 
   if (totalBranches === 0) {
     return {
-      nodes: [{
-        x: 400, y: 300,
-        label: data.central_node,
-        color: { bg: "#E8F5E9", border: "#4CAF50", text: "#1B5E20" },
-        isCentral: true,
-      }],
-      width: 800, height: 600,
+      nodes: [
+        {
+          x: 400,
+          y: 300,
+          label: data.central_node,
+          color: { bg: "#E8F5E9", border: "#4CAF50", text: "#1B5E20" },
+          isCentral: true,
+        },
+      ],
+      width: 800,
+      height: 600,
     };
   }
 
@@ -72,7 +79,8 @@ function computeLayout(
   const childForward = 170;
   const childSep = 125;
 
-  const canvasSize = (branchRadius + childForward + NODE_W_CHILD + 60) * 2 + 100;
+  const canvasSize =
+    (branchRadius + childForward + NODE_W_CHILD + 60) * 2 + 100;
   const centerX = canvasSize / 2;
   const centerY = canvasSize / 2;
 
@@ -265,11 +273,17 @@ interface Transform {
 }
 
 export function MindMap({ data }: MindMapProps) {
-  const [expandedBranches, setExpandedBranches] = useState<Set<number>>(new Set());
+  const [expandedBranches, setExpandedBranches] = useState<Set<number>>(
+    new Set(),
+  );
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [pinnedNodes, setPinnedNodes] = useState<Set<string>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [transform, setTransform] = useState<Transform>({ panX: 0, panY: 0, scale: 1 });
+  const [transform, setTransform] = useState<Transform>({
+    panX: 0,
+    panY: 0,
+    scale: 1,
+  });
   const [draggingCursor, setDraggingCursor] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -281,7 +295,7 @@ export function MindMap({ data }: MindMapProps) {
 
   const { nodes, width, height } = useMemo(
     () => computeLayout(data, expandedBranches),
-    [data, expandedBranches]
+    [data, expandedBranches],
   );
 
   const activeRef = useCallback(() => {
@@ -337,14 +351,17 @@ export function MindMap({ data }: MindMapProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen]);
 
-  const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    isDragging.current = true;
-    hasMoved.current = false;
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    panAtDragStart.current = { x: transform.panX, y: transform.panY };
-    setDraggingCursor(true);
-  }, [transform.panX, transform.panY]);
+  const handleContainerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      isDragging.current = true;
+      hasMoved.current = false;
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      panAtDragStart.current = { x: transform.panX, y: transform.panY };
+      setDraggingCursor(true);
+    },
+    [transform.panX, transform.panY],
+  );
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging.current) return;
@@ -372,7 +389,11 @@ export function MindMap({ data }: MindMapProps) {
     setTransform((prev) => {
       const newScale = Math.min(4, prev.scale * 1.25);
       const ratio = newScale / prev.scale;
-      return { scale: newScale, panX: cw - (cw - prev.panX) * ratio, panY: ch - (ch - prev.panY) * ratio };
+      return {
+        scale: newScale,
+        panX: cw - (cw - prev.panX) * ratio,
+        panY: ch - (ch - prev.panY) * ratio,
+      };
     });
   }, [activeRef]);
 
@@ -383,7 +404,11 @@ export function MindMap({ data }: MindMapProps) {
     setTransform((prev) => {
       const newScale = Math.max(0.15, prev.scale * 0.8);
       const ratio = newScale / prev.scale;
-      return { scale: newScale, panX: cw - (cw - prev.panX) * ratio, panY: ch - (ch - prev.panY) * ratio };
+      return {
+        scale: newScale,
+        panX: cw - (cw - prev.panX) * ratio,
+        panY: ch - (ch - prev.panY) * ratio,
+      };
     });
   }, [activeRef]);
 
@@ -413,7 +438,8 @@ export function MindMap({ data }: MindMapProps) {
   const togglePin = useCallback((key: string) => {
     setPinnedNodes((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }, []);
@@ -462,7 +488,9 @@ export function MindMap({ data }: MindMapProps) {
                 fontWeight={700}
                 style={{ pointerEvents: "none" }}
               >
-                {node.label.length > 20 ? node.label.slice(0, 18) + "…" : node.label}
+                {node.label.length > 20
+                  ? node.label.slice(0, 18) + "…"
+                  : node.label}
               </text>
             </g>
           );
@@ -512,7 +540,9 @@ export function MindMap({ data }: MindMapProps) {
                 fontWeight={600}
                 style={{ pointerEvents: "none" }}
               >
-                {node.label.length > 18 ? node.label.slice(0, 16) + "…" : node.label}
+                {node.label.length > 18
+                  ? node.label.slice(0, 16) + "…"
+                  : node.label}
               </text>
               {isHovered && node.description && (
                 <TooltipBox
@@ -571,7 +601,9 @@ export function MindMap({ data }: MindMapProps) {
                 fontWeight={500}
                 style={{ pointerEvents: "none" }}
               >
-                {node.label.length > 14 ? node.label.slice(0, 12) + "…" : node.label}
+                {node.label.length > 14
+                  ? node.label.slice(0, 12) + "…"
+                  : node.label}
               </text>
               {showTooltip && (
                 <TooltipBox
@@ -619,7 +651,11 @@ export function MindMap({ data }: MindMapProps) {
         data-testid="button-mindmap-fullscreen"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {isFullscreen ? <X className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+        {isFullscreen ? (
+          <X className="w-3.5 h-3.5" />
+        ) : (
+          <Maximize2 className="w-3.5 h-3.5" />
+        )}
       </button>
     </div>
   );
@@ -629,7 +665,7 @@ export function MindMap({ data }: MindMapProps) {
       className="absolute bottom-3 left-3 text-xs text-muted-foreground bg-background/70 px-2 py-1 rounded-md"
       style={{ pointerEvents: "none" }}
     >
-      拖拽移动 · 双指/Ctrl+滚轮缩放
+      拖拽移动 · 双指/滚轮缩放
     </div>
   );
 
@@ -637,7 +673,8 @@ export function MindMap({ data }: MindMapProps) {
     <div
       className="absolute inset-0"
       style={{
-        backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)",
+        backgroundImage:
+          "radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)",
         backgroundSize: "24px 24px",
         pointerEvents: "none",
       }}
@@ -662,9 +699,7 @@ export function MindMap({ data }: MindMapProps) {
     </svg>
   );
 
-  const canvasDiv = (
-    divRef: React.RefObject<HTMLDivElement>,
-  ) => (
+  const canvasDiv = (divRef: React.RefObject<HTMLDivElement>) => (
     <div
       ref={divRef}
       className="relative w-full h-full rounded-xl border border-border overflow-hidden bg-muted/20 select-none"
@@ -688,18 +723,19 @@ export function MindMap({ data }: MindMapProps) {
         {!isFullscreen && canvasDiv(containerRef)}
       </div>
 
-      {isFullscreen && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[9998] bg-black/50"
-            onClick={toggleFullscreen}
-          />
-          <div className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
-            {canvasDiv(fullscreenRef)}
-          </div>
-        </>,
-        document.body
-      )}
+      {isFullscreen &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9998] bg-black/50"
+              onClick={toggleFullscreen}
+            />
+            <div className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
+              {canvasDiv(fullscreenRef)}
+            </div>
+          </>,
+          document.body,
+        )}
     </>
   );
 }
