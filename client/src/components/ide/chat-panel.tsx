@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, t
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowUp, Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function detectLanguage(text: string): string {
@@ -1210,6 +1210,14 @@ export function ChatPanel() {
   const inputBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const lineHeight = parseInt(getComputedStyle(el).lineHeight) || 20;
+    el.style.height = Math.min(el.scrollHeight, lineHeight * 10) + "px";
+  }, [input]);
+
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -2278,8 +2286,7 @@ export function ChatPanel() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
             placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : "Describe what you want to build..."}
-            className="resize-none text-[13px] min-h-[60px] max-h-[120px] rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
-            rows={2}
+            className="resize-none text-[13px] min-h-[60px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
             data-testid="input-chat"
           />
           <div className="flex items-center gap-1 px-2 pb-2">
@@ -2316,7 +2323,7 @@ export function ChatPanel() {
               {smartResponseLoading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5" />
+                <Lightbulb className="w-3.5 h-3.5" />
               )}
             </Button>
             {isBusy ? (
