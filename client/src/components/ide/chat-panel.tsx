@@ -2260,16 +2260,16 @@ export function ChatPanel() {
         <div
           ref={inputBoxRef}
           onFocus={() => setInputFocused(true)}
-          onBlur={(e) => {
-            if (!inputBoxRef.current?.contains(e.relatedTarget as Node)) {
-              setInputFocused(false);
-            }
+          onBlur={() => {
+            setTimeout(() => {
+              if (!inputBoxRef.current?.contains(document.activeElement)) {
+                setInputFocused(false);
+              }
+            }, 0);
           }}
           className={cn(
-            "rounded-xl border bg-background transition-all",
-            inputFocused
-              ? "border-primary ring-2 ring-primary/20 bg-background/80"
-              : "border-border/60"
+            "rounded-xl border bg-background overflow-hidden transition-[border-color,box-shadow]",
+            inputFocused ? "border-primary ring-2 ring-primary/40" : "border-border/60"
           )}
         >
           <Textarea
@@ -2278,7 +2278,7 @@ export function ChatPanel() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
             placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : "Describe what you want to build..."}
-            className="resize-none text-[13px] min-h-[60px] max-h-[120px] border-0 shadow-none focus-visible:ring-0 bg-transparent px-3 pt-3 pb-1"
+            className="resize-none text-[13px] min-h-[60px] max-h-[120px] rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
             rows={2}
             data-testid="input-chat"
           />
