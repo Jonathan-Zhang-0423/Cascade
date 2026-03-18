@@ -312,24 +312,16 @@ export function MindMap({ data }: MindMapProps) {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      if (e.ctrlKey || e.metaKey) {
-        const delta = e.deltaY < 0 ? 1.08 : 0.93;
-        setTransform((prev) => {
-          const newScale = Math.min(4, Math.max(0.15, prev.scale * delta));
-          const ratio = newScale / prev.scale;
-          return {
-            scale: newScale,
-            panX: mouseX - (mouseX - prev.panX) * ratio,
-            panY: mouseY - (mouseY - prev.panY) * ratio,
-          };
-        });
-      } else {
-        setTransform((prev) => ({
-          ...prev,
-          panX: prev.panX - e.deltaX,
-          panY: prev.panY - e.deltaY,
-        }));
-      }
+      const delta = e.deltaY < 0 ? 1.08 : 0.93;
+      setTransform((prev) => {
+        const newScale = Math.min(4, Math.max(0.15, prev.scale * delta));
+        const ratio = newScale / prev.scale;
+        return {
+          scale: newScale,
+          panX: mouseX - (mouseX - prev.panX) * ratio,
+          panY: mouseY - (mouseY - prev.panY) * ratio,
+        };
+      });
     };
 
     container.addEventListener("wheel", handleWheel, { passive: false });
