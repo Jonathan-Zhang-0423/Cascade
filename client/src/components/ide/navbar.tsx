@@ -20,8 +20,6 @@ interface NavbarProps {
 
 export function Navbar({ projectName }: NavbarProps) {
   const {
-    theme: editorTheme,
-    setTheme: setEditorTheme,
     activeFile,
     setPreviewFile,
     refreshPreview,
@@ -31,16 +29,14 @@ export function Navbar({ projectName }: NavbarProps) {
     files,
     notebookContent,
   } = useIDEStore();
-  const { setThemeId } = useTheme();
+  const { themeId, setThemeId } = useTheme();
   const [, navigate] = useLocation();
 
   const currentHash = useMemo(() => computeFilesHash(files), [files]);
   const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
 
   const handleThemeChange = (v: string) => {
-    const id = v as ThemeId;
-    setEditorTheme(id);
-    setThemeId(id);
+    setThemeId(v as ThemeId);
   };
 
   const handleBack = () => {
@@ -108,7 +104,7 @@ export function Navbar({ projectName }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Select value={editorTheme} onValueChange={handleThemeChange}>
+        <Select value={themeId} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-[150px] h-7 text-xs" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>

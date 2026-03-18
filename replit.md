@@ -21,7 +21,7 @@ The CodeStart IDE features a modern web architecture:
 - The code editor is powered by `@monaco-editor/react`, providing a rich coding experience.
 - UI/UX decisions emphasize a dark sidebar chrome, rounded pane containers, and gaps between elements for a clean workspace aesthetic.
 - The layout includes a tools dock, resizable tool panels, an editor pane, a preview pane, and a console panel.
-- **Unified Theme System** (`client/src/lib/themes.ts`): 14 VS Code-style themes (Dark+, Monokai, Dracula, One Dark, GitHub Dark/Light, Solarized Dark/Light, Abyss, Tomorrow Night Blue, High Contrast variants, Quiet Light, Light+). Single `ThemeId` type drives both Monaco editor theme and app dark/light mode. `ThemeProvider` exposes `{ themeId, mode, setThemeId }`. IDE store's `theme` field uses `ThemeId`. Theme selector appears on both dashboard and IDE navbar. Custom Monaco themes registered via `monaco.editor.defineTheme()`.
+- **Unified Theme System** (`client/src/lib/themes.ts`): 14 VS Code-style themes (Dark+, Monokai, Dracula, One Dark, GitHub Dark/Light, Solarized Dark/Light, Abyss, Tomorrow Night Blue, High Contrast variants, Quiet Light, Light+). Single `ThemeId` type drives both Monaco editor theme and app dark/light mode. **Theme is globally managed by `ThemeProvider`** (not per-project) — persists in localStorage key `codestart-theme-id`. `ThemeProvider` exposes `{ themeId, mode, setThemeId }`. Theme selector appears on both dashboard and IDE navbar. Custom Monaco themes registered via `beforeMount` hook to guarantee availability before first render.
 
 **Backend**:
 - An Express.js server handles API routes for AI interactions and manages agent communication.

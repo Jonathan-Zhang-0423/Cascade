@@ -29,10 +29,8 @@ export function CommandPalette() {
     isConsoleOpen,
     files,
     setActiveFile,
-    theme,
-    setTheme,
   } = useIDEStore();
-  const { setThemeId } = useTheme();
+  const { themeId, setThemeId } = useTheme();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -53,7 +51,6 @@ export function CommandPalette() {
   };
 
   const handleSetTheme = (id: ThemeId) => {
-    setTheme(id);
     setThemeId(id);
   };
 
@@ -118,7 +115,7 @@ export function CommandPalette() {
             >
               <Palette className="w-4 h-4" />
               <span>{t.label}</span>
-              {theme === t.id && <CommandShortcut>Active</CommandShortcut>}
+              {themeId === t.id && <CommandShortcut>Active</CommandShortcut>}
             </CommandItem>
           ))}
         </CommandGroup>

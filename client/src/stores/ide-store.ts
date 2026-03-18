@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { type ThemeId, isValidThemeId } from "@/lib/themes";
 
 export interface FileNode {
   name: string;
@@ -284,7 +283,6 @@ interface IDEState {
   isSidebarOpen: boolean;
   isChatOpen: boolean;
   isAiResponding: boolean;
-  theme: ThemeId;
   previewFile: string;
   previewRefreshKey: number;
   pendingPrompt: string | null;
@@ -325,7 +323,6 @@ interface IDEState {
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
-  setTheme: (theme: ThemeId) => void;
   addFile: (parentPath: string, name: string, type: "file" | "folder") => void;
   renameFile: (oldPath: string, newName: string) => void;
   deleteFile: (path: string) => void;
@@ -569,7 +566,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: saved.activeFile || "/project/index.html",
         previewFile: saved.previewFile || "/project/index.html",
         chatMessages: saved.chatMessages || defaultChat,
-        theme: (saved.theme && isValidThemeId(saved.theme)) ? saved.theme : "vs-dark",
         pendingPrompt: saved.pendingPrompt || null,
         checkpoints: savedCheckpoints,
         consoleEntries: [],
@@ -604,7 +600,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: "/project/index.html",
         previewFile: "/project/index.html",
         chatMessages: defaultChat,
-        theme: "vs-dark",
         pendingPrompt: null,
         checkpoints: [],
         consoleEntries: [],
@@ -833,12 +828,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       activeTool: !state.isChatOpen ? "chat" : state.activeTool === "chat" ? null : state.activeTool,
     })),
   toggleConsole: () => set((state) => ({ isConsoleOpen: !state.isConsoleOpen })),
-  setTheme: (theme) =>
-    set((state) => {
-      const next = { ...state, theme };
-      debouncedPersist(next);
-      return next;
-    }),
 
   addFile: (parentPath, name, type) =>
     set((state) => {

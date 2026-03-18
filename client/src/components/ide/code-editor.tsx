@@ -4,6 +4,7 @@ import { useIDEStore, findFileContent, getFileLanguage } from "@/stores/ide-stor
 import { X, FileCode, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback } from "react";
+import { useTheme } from "@/components/theme-provider";
 import { getThemeConfig, THEMES } from "@/lib/themes";
 
 let themesRegistered = false;
@@ -19,8 +20,9 @@ function registerCustomThemes(monaco: Monaco) {
 }
 
 export function CodeEditor() {
-  const { activeFile, openFiles, files, theme, setActiveFile, closeFile, updateFileContent } =
+  const { activeFile, openFiles, files, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
+  const { themeId } = useTheme();
 
   const handleBeforeMount = useCallback((monaco: Monaco) => {
     registerCustomThemes(monaco);
@@ -38,7 +40,7 @@ export function CodeEditor() {
 
   const content = activeFile ? findFileContent(files, activeFile) : "";
   const language = activeFile ? getFileLanguage(activeFile) : "plaintext";
-  const themeConfig = getThemeConfig(theme);
+  const themeConfig = getThemeConfig(themeId);
 
   const getFileName = (path: string) => path.split("/").pop() || path;
 
