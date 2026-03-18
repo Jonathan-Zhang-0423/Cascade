@@ -3,7 +3,7 @@ import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, t
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
+import { ArrowUp, Send, Sparkles, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function detectLanguage(text: string): string {
@@ -2254,116 +2254,77 @@ export function ChatPanel() {
           <TypingIndicator text={t(detectPlanCardLang(), "planning")} />
         )}
       </div>
-      <div className="p-2.5 border-t border-border/50 shrink-0 text-[13px]">
-        <div className="flex gap-2 items-end">
+      <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
+        <div className="rounded-xl border border-border/60 bg-background transition-colors focus-within:border-primary/50">
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
             placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : "Describe what you want to build..."}
-            className="resize-none text-[13px] min-h-[36px] max-h-[100px] bg-muted/30 border-border/30"
-            rows={1}
+            className="resize-none text-[13px] min-h-[60px] max-h-[120px] border-0 shadow-none focus-visible:ring-0 bg-transparent px-3 pt-3 pb-1"
+            rows={2}
             data-testid="input-chat"
           />
-          <Button
-            variant="outline"
-            className="h-9 shrink-0 gap-1.5 px-2.5 text-[12px] font-medium"
-            onClick={handleSmartResponse}
-            disabled={isBusy || smartResponseLoading || (
-              chatMode === "manager"
-                ? !managerMessages.some(m => m.role === "assistant")
-                : !chatMessages.some(m => m.role === "assistant")
-            )}
-            title="Let AI suggest a response"
-            data-testid="button-smart-response"
-          >
-            {smartResponseLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5" />
-            )}
-            Smart Response
-          </Button>
-          {isBusy ? (
-            <Button
-              size="icon"
-              variant="destructive"
-              className="h-9 w-9 shrink-0"
-              onClick={handleStop}
-              data-testid="button-stop-chat"
-            >
-              <Square className="w-3.5 h-3.5 fill-current" />
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={handleCurrentSend}
-              disabled={!input.trim()}
-              data-testid="button-send-chat"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center mt-1.5">
-          <div className="relative" ref={modeDropdownRef}>
+          <div className="flex items-center gap-1 px-2 pb-2">
             <button
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-[13px] font-medium"
-              onClick={() => setModeDropdownOpen((v) => !v)}
-              data-testid="dropdown-chat-mode"
+              className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors group"
+              onClick={() => setChatMode(chatMode === "manager" ? "build" : "manager")}
+              data-testid="toggle-plan-mode"
+              title={chatMode === "manager" ? "Switch to Build mode" : "Switch to Plan mode"}
             >
-              {chatMode === "build" ? (
-                <Zap className="w-3 h-3" />
-              ) : (
-                <ClipboardList className="w-3 h-3" />
-              )}
-              <span>{chatMode === "build" ? "Build" : "Plan"}</span>
-              {modeDropdownOpen ? (
-                <ChevronUp className="w-2.5 h-2.5" />
-              ) : (
-                <ChevronDown className="w-2.5 h-2.5" />
-              )}
-            </button>
-            {modeDropdownOpen && (
-              <div className="absolute bottom-full left-0 mb-1 w-36 rounded-md border border-border bg-popover shadow-md py-1 z-50">
-                <button
-                  className={cn(
-                    "w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors text-left",
-                    chatMode === "build" ? "text-primary bg-primary/5" : "text-foreground hover:bg-muted/50"
-                  )}
-                  onClick={() => { setChatMode("build"); setModeDropdownOpen(false); }}
-                  data-testid="option-build-mode"
-                >
-                  <Zap className="w-3 h-3" />
-                  <div>
-                    <div className="font-medium">Build</div>
-                    <div className="text-[9px] text-muted-foreground">Code directly</div>
-                  </div>
-                  {chatMode === "build" && <Check className="w-3 h-3 ml-auto" />}
-                </button>
-                <button
-                  className={cn(
-                    "w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors text-left",
-                    chatMode === "manager" ? "text-primary bg-primary/5" : "text-foreground hover:bg-muted/50"
-                  )}
-                  onClick={() => { setChatMode("manager"); setModeDropdownOpen(false); }}
-                  data-testid="option-plan-mode"
-                >
-                  <ClipboardList className="w-3 h-3" />
-                  <div>
-                    <div className="font-medium">Plan</div>
-                    <div className="text-[9px] text-muted-foreground">Brainstorm & plan</div>
-                  </div>
-                  {chatMode === "manager" && <Check className="w-3 h-3 ml-auto" />}
-                </button>
+              <div className={cn(
+                "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0",
+                chatMode === "manager"
+                  ? "bg-primary border-primary"
+                  : "border-muted-foreground/40 group-hover:border-muted-foreground/70"
+              )}>
+                {chatMode === "manager" && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
               </div>
+              <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">Plan</span>
+            </button>
+            <div className="flex-1" />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 rounded-lg shrink-0"
+              onClick={handleSmartResponse}
+              disabled={isBusy || smartResponseLoading || (
+                chatMode === "manager"
+                  ? !managerMessages.some(m => m.role === "assistant")
+                  : !chatMessages.some(m => m.role === "assistant")
+              )}
+              title="Smart Response — let AI suggest a reply"
+              data-testid="button-smart-response"
+            >
+              {smartResponseLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+            </Button>
+            {isBusy ? (
+              <Button
+                size="icon"
+                variant="destructive"
+                className="h-7 w-7 rounded-lg shrink-0"
+                onClick={handleStop}
+                data-testid="button-stop-chat"
+              >
+                <Square className="w-3 h-3 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                className="h-7 w-7 rounded-lg shrink-0"
+                onClick={handleCurrentSend}
+                disabled={!input.trim()}
+                data-testid="button-send-chat"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+              </Button>
             )}
           </div>
-          <p className="text-[10px] text-muted-foreground/40 ml-auto">
-            Enter to send · Shift+Enter for new line
-          </p>
         </div>
       </div>
     </div>
