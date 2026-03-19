@@ -11,6 +11,7 @@ interface VariantResult {
   verifierStatus: "pass" | "fail";
   matchPercent: number;
   summary: string;
+  rawOutput?: string;
 }
 
 interface ScenarioResult {
@@ -30,6 +31,7 @@ function fmt(n: number): string {
 }
 
 function VariantCell({ v, label }: { v: VariantResult; label: string }) {
+  const [showRaw, setShowRaw] = useState(false);
   return (
     <div
       data-testid={`variant-cell-${label.toLowerCase()}`}
@@ -69,6 +71,25 @@ function VariantCell({ v, label }: { v: VariantResult; label: string }) {
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed border-t pt-2">
           {v.summary}
         </p>
+      )}
+      {v.rawOutput && (
+        <div className="border-t pt-2 mt-1">
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            onClick={() => setShowRaw((s) => !s)}
+            data-testid={`toggle-raw-${label.toLowerCase()}`}
+          >
+            {showRaw ? "▲ Hide" : "▼ Show"} raw editor output
+          </button>
+          {showRaw && (
+            <pre
+              className="mt-2 text-xs bg-muted rounded p-2 overflow-auto max-h-60 whitespace-pre-wrap break-all"
+              data-testid={`raw-output-${label.toLowerCase()}`}
+            >
+              {v.rawOutput}
+            </pre>
+          )}
+        </div>
       )}
     </div>
   );

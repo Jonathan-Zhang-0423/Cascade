@@ -1,16 +1,21 @@
+export interface ABTestStep {
+  step: number;
+  sub_task_id: string;
+  title: string;
+  description: string;
+  acceptance_criteria: string;
+  required_files: string[];
+}
+
 export interface ABTestScenario {
   id: string;
   name: string;
   description: string;
   userRequest: string;
   initialFiles: Array<{ path: string; content: string }>;
-  step: {
-    step: number;
-    sub_task_id: string;
-    title: string;
-    description: string;
-    acceptance_criteria: string;
-    required_files: string[];
+  plan: {
+    summary: string;
+    steps: [ABTestStep];
   };
   expectedOutput: string;
 }
@@ -76,13 +81,16 @@ function updateScore() {
 }`,
       },
     ],
-    step: {
-      step: 1,
-      sub_task_id: "T001-01",
-      title: "Add click button to index.html",
-      description: "In /project/index.html, add a <button id='clickBtn'>Click me!</button> element inside the .container div, immediately after the <div id='score'>0</div> element. Keep all existing content intact.",
-      acceptance_criteria: "A button with id='clickBtn' and text 'Click me!' is present inside .container in index.html, positioned after the score display.",
-      required_files: ["/project/index.html"],
+    plan: {
+      summary: "Add a click button to the HTML file only",
+      steps: [{
+        step: 1,
+        sub_task_id: "T001-01",
+        title: "Add click button to index.html",
+        description: "In /project/index.html, add a <button id='clickBtn'>Click me!</button> element inside the .container div, immediately after the <div id='score'>0</div> element. Keep all existing content intact.",
+        acceptance_criteria: "A button with id='clickBtn' and text 'Click me!' is present inside .container in index.html, positioned after the score display.",
+        required_files: ["/project/index.html"],
+      }],
     },
     expectedOutput: "index.html should have a <button id='clickBtn'>Click me!</button> element inside .container, after <div id='score'>. style.css and app.js must be unchanged from their initial content.",
   },
@@ -167,13 +175,16 @@ clickBtn.addEventListener('click', function() {
 });`,
       },
     ],
-    step: {
-      step: 1,
-      sub_task_id: "T002-01",
-      title: "Add reset button and reset logic",
-      description: "In /project/index.html, add a <button id='resetBtn'>Reset</button> immediately after the #clickBtn button inside .container. Keep all existing HTML intact. In /project/app.js, add a click event listener on the resetBtn element that sets count to 0 and calls updateScore(). Keep all existing JavaScript intact.",
-      acceptance_criteria: "A reset button with id='resetBtn' is present in index.html after the click button. Clicking reset sets the score display back to 0.",
-      required_files: ["/project/index.html", "/project/app.js"],
+    plan: {
+      summary: "Add a reset button to HTML and wire up reset logic in JS",
+      steps: [{
+        step: 1,
+        sub_task_id: "T002-01",
+        title: "Add reset button and reset logic",
+        description: "In /project/index.html, add a <button id='resetBtn'>Reset</button> immediately after the #clickBtn button inside .container. Keep all existing HTML intact. In /project/app.js, add a click event listener on the resetBtn element that sets count to 0 and calls updateScore(). Keep all existing JavaScript intact.",
+        acceptance_criteria: "A reset button with id='resetBtn' is present in index.html after the click button. Clicking reset sets the score display back to 0.",
+        required_files: ["/project/index.html", "/project/app.js"],
+      }],
     },
     expectedOutput: "index.html should have <button id='resetBtn'>Reset</button> after #clickBtn. app.js should have a resetBtn click listener that sets count=0 and calls updateScore(). style.css must be unchanged.",
   },
@@ -318,13 +329,16 @@ clickBtn.addEventListener('click', () => updateScore('click'));
 resetBtn.addEventListener('click', resetCounter);`,
       },
     ],
-    step: {
-      step: 1,
-      sub_task_id: "T003-01",
-      title: "Add spacebar keyboard listener",
-      description: "In /project/app.js only, add a keydown event listener on the document that listens for the spacebar key (event.code === 'Space' or event.key === ' '). When pressed, call updateScore('keyboard'). Prevent default scrolling behavior (event.preventDefault()) when space is pressed. Keep all existing code intact.",
-      acceptance_criteria: "Pressing the spacebar on the page increments the counter by 1 and shows the keyboard status message, without scrolling the page.",
-      required_files: ["/project/app.js"],
+    plan: {
+      summary: "Add keyboard support (spacebar) in app.js only",
+      steps: [{
+        step: 1,
+        sub_task_id: "T003-01",
+        title: "Add spacebar keyboard listener",
+        description: "In /project/app.js only, add a keydown event listener on the document that listens for the spacebar key (event.code === 'Space' or event.key === ' '). When pressed, call updateScore('keyboard'). Prevent default scrolling behavior (event.preventDefault()) when space is pressed. Keep all existing code intact.",
+        acceptance_criteria: "Pressing the spacebar on the page increments the counter by 1 and shows the keyboard status message, without scrolling the page.",
+        required_files: ["/project/app.js"],
+      }],
     },
     expectedOutput: "app.js should have a document keydown listener that checks for Space key, calls updateScore('keyboard'), and calls event.preventDefault(). index.html, style.css, and animations.css must be unchanged.",
   },

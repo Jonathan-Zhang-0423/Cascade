@@ -153,6 +153,44 @@ function parseAIJson(raw: string): any {
   return null;
 }
 
+async function runEditorNonStreaming(
+  userMessage: string,
+  files: Array<{ path: string; content: string }>,
+): Promise<{ output: string; latencyMs: number; charsInContext: number }> {
+  const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
+  ];
+  if (files.length > 0) {
+    const contextMsg = buildEditorContextMessage(files);
+    systemMessages.push({ role: "system", content: contextMsg });
+    const charsInContext = contextMsg.length;
+    const t0 = Date.now();
+    const completion = await doubaoClient.chat.completions.create({
+      model: DOUBAO_MODEL,
+      messages: [...systemMessages, { role: "user", content: userMessage }],
+      stream: false,
+      max_tokens: 4096,
+    });
+    return {
+      output: completion.choices[0]?.message?.content || "",
+      latencyMs: Date.now() - t0,
+      charsInContext,
+    };
+  }
+  const t0 = Date.now();
+  const completion = await doubaoClient.chat.completions.create({
+    model: DOUBAO_MODEL,
+    messages: [...systemMessages, { role: "user", content: userMessage }],
+    stream: false,
+    max_tokens: 4096,
+  });
+  return {
+    output: completion.choices[0]?.message?.content || "",
+    latencyMs: Date.now() - t0,
+    charsInContext: 0,
+  };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -687,28 +725,6 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
         ].join("\n");
       }
 
-      async function runEditorVariant(
-        prompt: string,
-        files: { path: string; content: string }[],
-      ): Promise<{ output: string; latencyMs: number; charsInContext: number }> {
-        const contextMsg = buildEditorContextMessage(files);
-        const charsInContext = contextMsg.length;
-        const t0 = Date.now();
-        const completion = await doubaoClient.chat.completions.create({
-          model: DOUBAO_MODEL,
-          messages: [
-            { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
-            { role: "system", content: contextMsg },
-            { role: "user", content: prompt },
-          ],
-          stream: false,
-          max_tokens: 4096,
-        });
-        const latencyMs = Date.now() - t0;
-        const output = completion.choices[0]?.message?.content || "";
-        return { output, latencyMs, charsInContext };
-      }
-
       function applyEditorOutput(
         output: string,
         initialFiles: { path: string; content: string }[],
@@ -767,23 +783,24 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
 
       const scenarioResults = await Promise.all(
         AB_TEST_SCENARIOS.map(async (scenario) => {
-          const prompt = buildEditorPrompt(scenario.step);
+          const step = scenario.plan.steps[0];
+          const prompt = buildEditorPrompt(step);
 
           const variantBFiles = scenario.initialFiles.filter((f) =>
-            scenario.step.required_files.includes(f.path),
+            step.required_files.includes(f.path),
           );
 
           const [variantA, variantB] = await Promise.all([
-            runEditorVariant(prompt, scenario.initialFiles),
-            runEditorVariant(prompt, variantBFiles.length > 0 ? variantBFiles : scenario.initialFiles),
+            runEditorNonStreaming(prompt, scenario.initialFiles),
+            runEditorNonStreaming(prompt, variantBFiles.length > 0 ? variantBFiles : scenario.initialFiles),
           ]);
 
           const filesAfterA = applyEditorOutput(variantA.output, scenario.initialFiles);
           const filesAfterB = applyEditorOutput(variantB.output, scenario.initialFiles);
 
           const [reviewA, reviewB] = await Promise.all([
-            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterA, scenario.expectedOutput),
-            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterB, scenario.expectedOutput),
+            runVerifierOnOutput(scenario.userRequest, step, scenario.initialFiles, filesAfterA, scenario.expectedOutput),
+            runVerifierOnOutput(scenario.userRequest, step, scenario.initialFiles, filesAfterB, scenario.expectedOutput),
           ]);
 
           return {
@@ -797,6 +814,7 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
               verifierStatus: reviewA.status,
               matchPercent: reviewA.matchPercent,
               summary: reviewA.summary,
+              rawOutput: variantA.output,
             },
             variantB: {
               filesCount: variantBFiles.length > 0 ? variantBFiles.length : scenario.initialFiles.length,
@@ -805,6 +823,7 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
               verifierStatus: reviewB.status,
               matchPercent: reviewB.matchPercent,
               summary: reviewB.summary,
+              rawOutput: variantB.output,
             },
           };
         }),
