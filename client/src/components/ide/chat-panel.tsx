@@ -113,6 +113,7 @@ function normalizeSteps(plan: any): ManagerSubTask[] {
   }));
 }
 
+const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
 const PROJECT_NAME_REGEX_GLOBAL = /\[\[PROJECT_NAME:[^\]]+\]\]/g;
 
 function stripProjectNameMarker(text: string): string {
@@ -1385,14 +1386,19 @@ export function ChatPanel() {
 
       const data = await response.json();
 
-      if (data.project_name && projectId) {
-        renameProject(projectId, data.project_name.trim());
+      if (projectId) {
+        const nameFromField = data.project_name?.trim();
+        const nameFromMarker = data.message ? data.message.match(PROJECT_NAME_REGEX)?.[1]?.trim() : undefined;
+        const detectedName = nameFromField || nameFromMarker;
+        if (detectedName) {
+          renameProject(projectId, detectedName);
+        }
       }
 
       if (data.error && !data.plan && !data.message) {
         addManagerMessage({ role: "assistant", content: "Hmm, I had a little trouble understanding that. Could you try rephrasing your request? 🤔", source: "communicator" });
       } else if (data.message) {
-        addManagerMessage({ role: "assistant", content: data.message, source: "communicator" });
+        addManagerMessage({ role: "assistant", content: stripProjectNameMarker(data.message), source: "communicator" });
       } else if (data.plan) {
         clearManagerPlan();
         const steps = normalizeSteps(data.plan);
@@ -1518,7 +1524,6 @@ export function ChatPanel() {
         body: JSON.stringify({
           messages: editorMessages,
           files: fileContext,
-          ...(managerContext ? { mode: "manager" as const } : {}),
         }),
         signal: controller.signal,
       });
