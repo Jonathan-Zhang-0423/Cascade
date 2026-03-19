@@ -125,7 +125,8 @@ You MUST output ONLY valid JSON — no markdown, no extra text, no explanations.
       "title": "Short fix action title (3-8 words)",
       "description": "Clear description of what to fix, including file paths and specific changes needed",
       "acceptance_criteria": "Testable statement of what must be true when the fix is complete",
-      "fixes_bug": "BUG-1"
+      "fixes_bug": "BUG-1",
+      "required_files": ["/project/index.html"]
     }
   ],
   "needs_input": ["Items needing user decision, empty array if none"]
@@ -140,6 +141,11 @@ You MUST output ONLY valid JSON — no markdown, no extra text, no explanations.
 - For missing features, create targeted steps that add ONLY the missing parts.
 - For regressions, describe exactly what content needs to be restored and where.
 - Never create steps that rewrite entire files — only targeted fixes.
+
+### required_files (CRITICAL)
+- Every step MUST include a \`required_files\` array listing the exact file paths the coding agent needs to read or write for that step.
+- Only list files that are directly read or modified by that step. Do NOT include files that are merely referenced or unrelated.
+- Example: if a step only fixes /project/app.js, set \`"required_files": ["/project/app.js"]\`.
 
 ### Language matching (CRITICAL)
 - ALL output text MUST be in the same language as the original user request.

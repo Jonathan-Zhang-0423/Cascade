@@ -33,6 +33,7 @@ export interface ManagerSubTask {
   title: string;
   description: string;
   acceptance_criteria?: string;
+  required_files?: string[];
 }
 
 export interface ManagerPlan {

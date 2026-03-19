@@ -109,6 +109,7 @@ function normalizeSteps(plan: any): ManagerSubTask[] {
     title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
     description: t.description ?? "",
     acceptance_criteria: t.acceptance_criteria ?? "",
+    required_files: Array.isArray(t.required_files) ? t.required_files : [],
   }));
 }
 
@@ -1463,7 +1464,7 @@ export function ChatPanel() {
   const executeSubTask = useCallback(async (
     description: string,
     title: string,
-    managerContext?: { sub_task_id: string; acceptance_criteria: string }
+    managerContext?: { sub_task_id: string; acceptance_criteria: string; required_files?: string[] }
   ): Promise<boolean> => {
     let prompt = description;
 
@@ -1489,21 +1490,13 @@ export function ChatPanel() {
     const allFiles = flattenFiles(useIDEStore.getState().files);
 
     let fileContext: { path: string; content: string }[];
-    if (managerContext) {
-      const pathPattern = /\/project\/[\w\-./]+\.\w+/g;
-      const mentionedPaths = new Set(description.match(pathPattern) || []);
-      if (mentionedPaths.size > 0) {
-        const relevant = allFiles.filter((f) => mentionedPaths.has(f.path));
-        const indexFile = allFiles.find((f) => f.path === "/project/index.html");
-        if (indexFile && !mentionedPaths.has("/project/index.html")) {
-          relevant.push(indexFile);
-        }
-        fileContext = relevant.length > 0
-          ? relevant.map((f) => ({ path: f.path, content: f.content || "" }))
-          : allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-      } else {
-        fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-      }
+    const requiredFiles = managerContext?.required_files;
+    if (requiredFiles && requiredFiles.length > 0) {
+      const requiredSet = new Set(requiredFiles);
+      const matched = allFiles.filter((f) => requiredSet.has(f.path));
+      fileContext = matched.length > 0
+        ? matched.map((f) => ({ path: f.path, content: f.content || "" }))
+        : allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
     } else {
       fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
     }
@@ -1750,6 +1743,7 @@ export function ChatPanel() {
       const success = await executeSubTask(task.description, task.title, {
         sub_task_id: task.sub_task_id || "",
         acceptance_criteria: task.acceptance_criteria || "",
+        required_files: task.required_files,
       });
 
       if (executionAbortRef.current) {
@@ -1914,6 +1908,7 @@ export function ChatPanel() {
         const fixSuccess = await executeSubTask(fixTask.description, fixTask.title, {
           sub_task_id: fixTask.sub_task_id || "",
           acceptance_criteria: fixTask.acceptance_criteria || "",
+          required_files: fixTask.required_files,
         });
 
         if (fixSuccess) {
