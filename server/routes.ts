@@ -26,6 +26,7 @@ import {
   MENTOR_OPTIMIZE_PROMPT,
 } from "./mentor-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
+import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -249,10 +250,96 @@ async function runEditorNonStreaming(
   };
 }
 
+const buildSessions = new Map<string, BuildSessionState>();
+
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [id, session] of buildSessions.entries()) {
+    if ((session as any)._startedAt && (session as any)._startedAt < cutoff) {
+      session.aborted = true;
+      buildSessions.delete(id);
+    }
+  }
+}, 60_000);
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  app.post("/api/build-session", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation } = req.body as {
+        sessionId: string;
+        plan: any;
+        userRequest: string;
+        userLang: string;
+        files: Array<{ path: string; content: string }>;
+        taskStatuses?: Record<string, string>;
+        userConfirmation?: string;
+      };
+      if (!sessionId || !plan || !userRequest) {
+        res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
+        return;
+      }
+      const fileMap = new Map<string, string>();
+      if (files && Array.isArray(files)) {
+        for (const f of files) {
+          fileMap.set(f.path, f.content);
+        }
+      }
+      const session: BuildSessionState & { _startedAt: number } = {
+        id: sessionId,
+        aborted: false,
+        files: fileMap,
+        plan,
+        userRequest,
+        userLang: userLang || "English",
+        taskStatuses: taskStatuses || undefined,
+        userConfirmation: userConfirmation || undefined,
+        _startedAt: Date.now(),
+      };
+      buildSessions.set(sessionId, session);
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      res.on("close", () => { session.aborted = true; });
+
+      const emit = (data: Record<string, unknown>) => {
+        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+      };
+
+      try {
+        await runBuildSession(session, emit);
+      } catch (err: any) {
+        emit({ type: "build_error", message: err?.message || "Unknown error" });
+        emit({ type: "done" });
+      } finally {
+        buildSessions.delete(sessionId);
+        res.end();
+      }
+    } catch (error: any) {
+      console.error("Build session error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Build session failed" });
+      }
+    }
+  });
+
+  app.delete("/api/build-session/:sessionId", (req, res) => {
+    const session = buildSessions.get(req.params.sessionId);
+    if (session) {
+      session.aborted = true;
+    }
+    res.json({ ok: true });
+  });
+
   app.post("/api/chat", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {

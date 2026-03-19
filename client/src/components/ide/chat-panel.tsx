@@ -41,6 +41,11 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     fixingIssues: "修复问题中（第 {n}/3 轮）...",
     thinking: "思考中...",
     planning: "规划中...",
+    whatAndWhy: "任务目标",
+    doneLooksLike: "完成后是什么样",
+    outOfScope: "暂不包含",
+    tasks: "任务步骤",
+    relevantFiles: "相关文件",
   },
   English: {
     startBuilding: "Start building",
@@ -68,6 +73,11 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     fixingIssues: "Fixing issues (cycle {n}/3)...",
     thinking: "Thinking...",
     planning: "Planning...",
+    whatAndWhy: "What & Why",
+    doneLooksLike: "Done looks like",
+    outOfScope: "Out of scope",
+    tasks: "Tasks",
+    relevantFiles: "Relevant files",
   },
 };
 
@@ -90,25 +100,57 @@ function detectPlanCardLang(): PlanCardLang {
   return "English";
 }
 
-function parsePlanLocalization(text: string): { summary?: string; stepTitles?: string[] } | null {
+function parsePlanLocalization(text: string): {
+  summary?: string;
+  stepTitles?: string[];
+  whatAndWhy?: string;
+  doneLooksLike?: string;
+  outOfScope?: string;
+} | null {
   const lines = text.split("\n");
   let summary: string | undefined;
   const stepTitles: string[] = [];
+  let whatAndWhy: string | undefined;
+  let doneLooksLike: string | undefined;
+  let outOfScope: string | undefined;
 
   for (const line of lines) {
     const trimmed = line.trim();
     const summaryMatch = trimmed.match(/^\[PLAN[_ ]SUMMARY\]\s*(.+)/i);
     if (summaryMatch) {
       summary = summaryMatch[1].trim();
+      continue;
     }
     const stepMatch = trimmed.match(/^\[STEP[_ ](\d+)\]\s*(.+)/i);
     if (stepMatch) {
       stepTitles[parseInt(stepMatch[1]) - 1] = stepMatch[2].trim();
+      continue;
+    }
+    const whatMatch = trimmed.match(/^\[WHAT[_ ]AND[_ ]WHY\]\s*(.+)/i);
+    if (whatMatch) {
+      whatAndWhy = whatMatch[1].trim();
+      continue;
+    }
+    const doneMatch = trimmed.match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]\s*(.+)/i);
+    if (doneMatch) {
+      doneLooksLike = doneMatch[1].trim();
+      continue;
+    }
+    const scopeMatch = trimmed.match(/^\[OUT[_ ]OF[_ ]SCOPE\]\s*(.+)/i);
+    if (scopeMatch) {
+      outOfScope = scopeMatch[1].trim();
+      continue;
     }
   }
 
-  if (!summary && stepTitles.length === 0) return null;
-  return { summary, stepTitles: stepTitles.length > 0 ? stepTitles : undefined };
+  if (!summary && stepTitles.length === 0 && !whatAndWhy && !doneLooksLike && !outOfScope) return null;
+  return {
+    summary,
+    stepTitles: stepTitles.length > 0 ? stepTitles : undefined,
+    whatAndWhy,
+    doneLooksLike,
+    outOfScope,
+  };
 }
 
 function normalizeSteps(plan: any): ManagerSubTask[] {
@@ -957,26 +999,106 @@ function TaskPlanCard({
     ? steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2)
     : [];
 
+  const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
+  const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
+  const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
+  const relevantFiles = plan.relevant_files;
+  const hasRichSections = !!(whatAndWhy || doneLooksLike || outOfScope);
+
   return (
     <>
       <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
-        <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
-          <p className={cn("text-[13px] leading-snug min-w-0 flex-1", isFullyComplete ? "text-muted-foreground" : "text-foreground")}>{plan.summary || (plan as any).user_requirement || ""}</p>
-          {isPreExecution && (
-            <button
-              onClick={() => setModalOpen(true)}
-              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
-              title={t(lang, "viewFullPlan")}
-              data-testid="button-expand-plan"
-            >
-              <Maximize2 className="w-3 h-3" />
-            </button>
-          )}
-        </div>
 
-        <div className="relative px-3 pb-2">
-          {isPreExecution ? (
-            <>
+        {isPreExecution && hasRichSections ? (
+          <>
+            {whatAndWhy && (
+              <div className="px-3 pt-2.5 pb-2 border-b border-border/20">
+                <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">{t(lang, "whatAndWhy")}</p>
+                <p className="text-[12px] text-foreground/80 leading-relaxed">{whatAndWhy}</p>
+              </div>
+            )}
+            {doneLooksLike && (
+              <div className="px-3 py-2 border-b border-border/20">
+                <p className="text-[10px] font-semibold text-green-500/70 uppercase tracking-wide mb-1">{t(lang, "doneLooksLike")}</p>
+                <p className="text-[12px] text-foreground/80 leading-relaxed">{doneLooksLike}</p>
+              </div>
+            )}
+            {outOfScope && (
+              <div className="px-3 py-2 border-b border-border/20">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{t(lang, "outOfScope")}</p>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">{outOfScope}</p>
+              </div>
+            )}
+
+            <div className="px-3 py-2 border-b border-border/20">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wide">{t(lang, "tasks")}</p>
+                {hasMore && (
+                  <button
+                    onClick={() => setStepsExpanded(!stepsExpanded)}
+                    className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
+                    data-testid="button-expand-steps"
+                  >
+                    {stepsExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                    {stepsExpanded ? t(lang, "collapse") : t(lang, "showAllSteps", { n: steps.length })}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-0">
+                {visibleSteps.map((task: ManagerSubTask) => (
+                  <div key={task.step} className="flex items-start gap-2 py-0.5">
+                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
+                    </div>
+                    <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
+                  </div>
+                ))}
+              </div>
+              {peekSteps.length > 0 && !stepsExpanded && (
+                <div className="relative mt-0">
+                  <div className="space-y-0">
+                    {peekSteps.map((task: ManagerSubTask) => (
+                      <div key={task.step} className="flex items-start gap-2 py-0.5 blur-[2px] select-none pointer-events-none opacity-50">
+                        <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
+                        </div>
+                        <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
+                </div>
+              )}
+            </div>
+
+            {relevantFiles && relevantFiles.length > 0 && (
+              <div className="px-3 py-2">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{t(lang, "relevantFiles")}</p>
+                <div className="flex flex-wrap gap-1">
+                  {relevantFiles.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 text-[10px] text-muted-foreground font-mono" data-testid={`file-badge-${i}`}>
+                      <FileCode className="w-2.5 h-2.5 shrink-0" />
+                      {f.split("/").pop() || f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : isPreExecution ? (
+          <>
+            <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
+              <p className="text-[13px] leading-snug min-w-0 flex-1 text-foreground">{plan.summary || (plan as any).user_requirement || ""}</p>
+              <button
+                onClick={() => setModalOpen(true)}
+                className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                title={t(lang, "viewFullPlan")}
+                data-testid="button-expand-plan"
+              >
+                <Maximize2 className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="relative px-3 pb-2">
               <div className="space-y-0">
                 {visibleSteps.map((task: ManagerSubTask) => (
                   <div key={task.step} className="flex items-start gap-2 py-1">
@@ -987,7 +1109,6 @@ function TaskPlanCard({
                   </div>
                 ))}
               </div>
-
               {peekSteps.length > 0 && (
                 <div className="relative mt-0">
                   <div className="space-y-0">
@@ -1022,8 +1143,10 @@ function TaskPlanCard({
                   {t(lang, "collapse")}
                 </button>
               )}
-            </>
-          ) : (
+            </div>
+          </>
+        ) : (
+          <div className="px-3 pb-2">
             <div className="space-y-0">
               {steps.map((task: ManagerSubTask) => (
                 <StepItem
@@ -1034,8 +1157,8 @@ function TaskPlanCard({
                 />
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {doneCount > 0 && !isFullyComplete && (
           <div className="px-3 pb-2 flex items-center gap-1.5">
@@ -1370,8 +1493,9 @@ export function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingHandled = useRef(false);
-  const executionAbortRef = useRef(false);
-  const preBuildSnapshotRef = useRef<{ path: string; content: string }[] | null>(null);
+  const buildSessionIdRef = useRef<string | null>(null);
+  const buildReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const userConfirmationRef = useRef<string>("");
   const autoExecutePlanRef = useRef(false);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
@@ -1444,6 +1568,11 @@ export function ChatPanel() {
       bugCount?: number;
       fixCycle?: number;
       maxFixCycles?: number;
+      whatAndWhy?: string;
+      doneLooksLike?: string;
+      outOfScope?: string;
+      relevantFiles?: string[];
+      changedFiles?: string[];
     },
   ): Promise<string> => {
     let messageInserted = false;
@@ -1576,12 +1705,25 @@ export function ChatPanel() {
           planSummary: data.plan.summary || "",
           totalSteps: steps.length,
           stepTitles: steps.map((s) => s.title),
+          whatAndWhy: data.plan.what_and_why || "",
+          doneLooksLike: data.plan.done_looks_like || "",
+          outOfScope: data.plan.out_of_scope || "",
+          relevantFiles: data.plan.relevant_files || [],
         });
 
         const localized = parsePlanLocalization(communicatorResponse);
         const displayPlan = { ...data.plan };
         if (localized?.summary) {
           displayPlan.summary = localized.summary;
+        }
+        if (localized?.whatAndWhy) {
+          displayPlan.narrated_what_and_why = localized.whatAndWhy;
+        }
+        if (localized?.doneLooksLike) {
+          displayPlan.narrated_done_looks_like = localized.doneLooksLike;
+        }
+        if (localized?.outOfScope) {
+          displayPlan.narrated_out_of_scope = localized.outOfScope;
         }
         const rawSteps = displayPlan.steps || (displayPlan as any).sub_tasks;
         if (localized?.stepTitles && Array.isArray(rawSteps)) {
@@ -1599,7 +1741,7 @@ export function ChatPanel() {
         if (communicatorResponse) {
           const friendlyLines = communicatorResponse
             .split("\n")
-            .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i))
+            .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i) && !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) && !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) && !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i))
             .map((l) => l.trim())
             .filter(Boolean)
             .join("\n");
@@ -1635,84 +1777,67 @@ export function ChatPanel() {
     }
   }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject, chatMode]);
 
-  const executeSubTask = useCallback(async (
-    description: string,
-    title: string,
-    managerContext?: { sub_task_id: string; acceptance_criteria: string; required_files?: string[] }
-  ): Promise<boolean> => {
-    let prompt = description;
+  const handleExecutePlan = useCallback(async () => {
+    const plan = useIDEStore.getState().managerPlan;
+    if (!plan) return;
 
-    if (managerContext && (managerContext.sub_task_id || managerContext.acceptance_criteria)) {
-      const contextLines: string[] = [];
-      contextLines.push(`[Plan Mode] You are executing subtask ${managerContext.sub_task_id || title}: ${title}`);
-      contextLines.push(`Task description: ${description}`);
-      if (managerContext.acceptance_criteria) {
-        contextLines.push(`Acceptance criteria: ${managerContext.acceptance_criteria}`);
-      }
-      if (userConfirmationRef.current) {
-        contextLines.push("");
-        contextLines.push(`User's response to confirmation items: ${userConfirmationRef.current}`);
-        userConfirmationRef.current = "";
-      }
-      contextLines.push("");
-      contextLines.push("IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.");
-      contextLines.push("");
-      contextLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
-      prompt = contextLines.join("\n");
-    }
+    setChatMode("build");
+    setReviewPhase("building");
+    setFixCycle(0);
+    setHolisticReview(null);
+
+    const normalizedSteps = normalizeSteps(plan);
+    const firstUserMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+    const userRequest = firstUserMsg?.content || "";
+    const userLang = firstUserMsg ? detectLanguage(userRequest) : "English";
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
+    const filesForServer = allFiles
+      .filter(f => f.path)
+      .map(f => ({ path: f.path!, content: f.content || "" }));
 
-    let fileContext: { path: string; content: string }[];
-    const requiredFiles = managerContext?.required_files;
-    if (requiredFiles && requiredFiles.length > 0) {
-      const requiredSet = new Set(requiredFiles);
-      const matched = allFiles.filter((f) => requiredSet.has(f.path));
-      fileContext = matched.map((f) => ({ path: f.path, content: f.content || "" }));
-    } else {
-      fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-    }
+    const taskStatuses = useIDEStore.getState().taskStatuses;
+    const userConfirmation = userConfirmationRef.current;
+    userConfirmationRef.current = "";
 
-    const editorMessages = [{ role: "user" as const, content: prompt }];
+    const sessionId = (crypto as any).randomUUID ? (crypto as any).randomUUID() : Math.random().toString(36).slice(2);
+    buildSessionIdRef.current = sessionId;
 
-    if (!managerContext) {
-      addChatMessage({ role: "user", content: prompt });
-    }
-    addChatMessage({ role: "assistant", content: "", ...(managerContext ? { hidden: true } : {}) });
-    setAiResponding(true);
+    let commAccumulated = "";
+    let commInserted = false;
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const finalizeComm = () => {
+      commAccumulated = "";
+      commInserted = false;
+    };
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/build-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: editorMessages,
-          files: fileContext,
+          sessionId,
+          plan,
+          userRequest,
+          userLang,
+          files: filesForServer,
+          taskStatuses,
+          userConfirmation: userConfirmation || undefined,
         }),
-        signal: controller.signal,
       });
 
       if (!response.ok) {
-        updateLastAssistantMessage("Failed to execute subtask.");
-        return false;
+        addManagerMessage({ role: "assistant", content: "Build failed to start. Please try again. 🔄", source: "communicator" });
+        return;
       }
 
       const reader = response.body?.getReader();
-      if (!reader) {
-        updateLastAssistantMessage("Could not read response.");
-        return false;
-      }
+      if (!reader) return;
+      buildReaderRef.current = reader;
 
       const decoder = new TextDecoder();
-      let accumulated = "";
       let buffer = "";
       let streamDone = false;
-      const appliedBlockCount = { current: 0 };
-      let lastUIUpdate = 0;
-      let uiUpdatePending = false;
 
       while (!streamDone) {
         const { done, value } = await reader.read();
@@ -1723,403 +1848,105 @@ export function ChatPanel() {
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (trimmedLine.startsWith("data: ")) {
-            const data = trimmedLine.slice(6).trim();
-            if (data === "[DONE]") {
-              streamDone = true;
-              break;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                accumulated += parsed.content;
-                uiUpdatePending = true;
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          const raw = trimmed.slice(6).trim();
+          if (raw === "[DONE]") { streamDone = true; break; }
 
-                const now = performance.now();
+          let ev: any;
+          try { ev = JSON.parse(raw); } catch { continue; }
 
-                if (now - lastUIUpdate > 16) {
-                  updateLastAssistantMessage(stripProjectNameMarker(accumulated));
-                  lastUIUpdate = now;
-                  uiUpdatePending = false;
-                }
+          const type = ev.type;
 
-                const hasCodeFence = parsed.content.includes("```");
-                if (hasCodeFence) {
-                  const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
-                  if (currentBlocks.length > appliedBlockCount.current) {
-                    for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
-                      await applyCodeBlock(currentBlocks[bi]);
-                      refreshPreview();
-                    }
-                    appliedBlockCount.current = currentBlocks.length;
-                  }
-                }
+          if (type === "step_starting") {
+            updateTaskStatus(String(ev.stepNumber), "running");
+            setExecutingTaskIndex((ev.stepNumber as number) - 1);
+          } else if (type === "code_applied") {
+            await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
+            refreshPreview();
+          } else if (type === "step_completed") {
+            updateTaskStatus(String(ev.stepNumber), "done");
+          } else if (type === "step_failed") {
+            updateTaskStatus(String(ev.stepNumber), "failed");
+          } else if (type === "step_cancelled") {
+            updateTaskStatus(String(ev.stepNumber), "pending");
+          } else if (type === "communicator_token") {
+            commAccumulated += ev.token;
+            if (!commInserted) {
+              addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+              commInserted = true;
+            } else {
+              const msgs = useIDEStore.getState().managerMessages;
+              const last = msgs[msgs.length - 1];
+              if (last?.role === "assistant") {
+                useIDEStore.setState({
+                  managerMessages: [...msgs.slice(0, -1), { ...last, content: commAccumulated }],
+                });
               }
-            } catch {}
+            }
+          } else if (type === "communicator_done") {
+            finalizeComm();
+          } else if (type === "reviewing") {
+            setReviewPhase("reviewing");
+          } else if (type === "review_passed") {
+            setReviewPhase("review_passed");
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+            });
+          } else if (type === "bugs_found") {
+            setReviewPhase("review_failed");
+            if (ev.review) setHolisticReview(ev.review);
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "done" || s === "failed") updateTaskStatus(key, "bug");
+            });
+          } else if (type === "fixing") {
+            setReviewPhase("fixing");
+            setFixCycle(ev.fixCycle || 1);
+          } else if (type === "needs_input") {
+            setPendingConfirmation({ stepKey: "review", items: ev.items || [] });
+          } else if (type === "all_complete") {
+            setReviewPhase("review_passed");
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+            });
+          } else if (type === "build_error") {
+            addManagerMessage({ role: "assistant", content: `Something went wrong during the build. Please try again. 🔄`, source: "communicator" });
+          } else if (type === "done") {
+            streamDone = true;
+            break;
           }
         }
       }
-
-      if (uiUpdatePending) {
-        updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        addManagerMessage({ role: "assistant", content: "Build connection interrupted. Please try again. 🔄", source: "communicator" });
       }
-
-      const finalBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
-      for (let bi = appliedBlockCount.current; bi < finalBlocks.length; bi++) {
-        await applyCodeBlock(finalBlocks[bi]);
-        refreshPreview();
-      }
-      if (finalBlocks.length > 0) {
-        createCheckpoint(title);
-      }
-
-      return true;
-    } catch (error: any) {
-      if (error.name === "AbortError") return false;
-      updateLastAssistantMessage("Error executing subtask.");
-      return false;
     } finally {
-      setAiResponding(false);
-      abortRef.current = null;
-    }
-  }, [addChatMessage, updateLastAssistantMessage, setAiResponding, refreshPreview, createCheckpoint, applyCodeBlock]);
-
-  const MAX_FIX_CYCLES = 3;
-
-  const performHolisticReview = useCallback(async (
-    userRequest: string,
-    planSteps: ManagerSubTask[],
-    filesBefore: { path: string; content: string }[],
-    userFeedback?: string,
-  ): Promise<HolisticReviewResult | null> => {
-    const allFiles = flattenFiles(useIDEStore.getState().files);
-    const filesAfter = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-
-    try {
-      const body: Record<string, unknown> = {
-        user_request: userRequest,
-        plan_steps: planSteps.map((s) => ({
-          step: s.step,
-          title: s.title,
-          description: s.description,
-          acceptance_criteria: s.acceptance_criteria || "",
-        })),
-        files_before: filesBefore,
-        files_after: filesAfter,
-      };
-      if (userFeedback) body.user_feedback = userFeedback;
-
-      const resp = await fetch("/api/verifier-holistic", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await resp.json();
-      if (data.review) return data.review as HolisticReviewResult;
-      return null;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const requestFixPlan = useCallback(async (
-    reviewResult: HolisticReviewResult,
-    userRequest: string,
-  ): Promise<ManagerPlan | null> => {
-    const allFiles = flattenFiles(useIDEStore.getState().files);
-    const fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
-
-    try {
-      const resp = await fetch("/api/manager-fix-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          files: fileContext,
-          bug_report: {
-            bugs: reviewResult.bugs || [],
-            missing_features: reviewResult.missing_features || [],
-            regressions: reviewResult.regressions || [],
-            summary: reviewResult.summary || "",
-            suggestion: reviewResult.suggestion || "",
-          },
-          original_request: userRequest,
-        }),
-      });
-      const data = await resp.json();
-      if (data.plan) return data.plan as ManagerPlan;
-      return null;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const handleExecutePlan = useCallback(async () => {
-    const plan = useIDEStore.getState().managerPlan;
-    if (!plan) return;
-
-    setChatMode("build");
-
-    const normalizedSteps = normalizeSteps(plan);
-
-    const firstUserMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
-    const userRequest = firstUserMsg?.content || "";
-    const userLang = firstUserMsg ? detectLanguage(userRequest) : "English";
-
-    executionAbortRef.current = false;
-
-    const allStepsDone = normalizedSteps.every(
-      t => useIDEStore.getState().taskStatuses[String(t.step)] === "done" ||
-           useIDEStore.getState().taskStatuses[String(t.step)] === "bug"
-    );
-    const isResume = allStepsDone && preBuildSnapshotRef.current !== null;
-
-    if (!isResume) {
-      preBuildSnapshotRef.current = flattenFiles(useIDEStore.getState().files)
-        .map((f) => ({ path: f.path, content: f.content || "" }));
-    }
-    const filesBeforeBuild = preBuildSnapshotRef.current!;
-
-    setReviewPhase("building");
-    setFixCycle(0);
-    setHolisticReview(null);
-
-    await callCommunicator({
-      event: "build_starting",
-      userLanguage: userLang,
-      totalSteps: normalizedSteps.length,
-      planSummary: plan.summary,
-    });
-
-    for (let i = 0; i < normalizedSteps.length; i++) {
-      if (executionAbortRef.current) break;
-
-      const task = normalizedSteps[i];
-      const key = String(task.step);
-      const currentStatus = useIDEStore.getState().taskStatuses[key];
-      if (currentStatus === "done") continue;
-
-      setExecutingTaskIndex(i);
-      updateTaskStatus(key, "running");
-
-      await callCommunicator({
-        event: "step_starting",
-        userLanguage: userLang,
-        stepNumber: task.step,
-        stepTitle: task.title,
-        stepDescription: task.description,
-        totalSteps: normalizedSteps.length,
-      });
-
-      const success = await executeSubTask(task.description, task.title, {
-        sub_task_id: task.sub_task_id || "",
-        acceptance_criteria: task.acceptance_criteria || "",
-        required_files: task.required_files,
-      });
-
-      if (executionAbortRef.current) {
-        updateTaskStatus(key, "pending");
-        setReviewPhase("idle");
-        break;
-      }
-
-      if (success) {
-        updateTaskStatus(key, "done");
-        await callCommunicator({
-          event: "step_completed",
-          userLanguage: userLang,
-          stepNumber: task.step,
-          stepTitle: task.title,
-        });
-      } else {
-        updateTaskStatus(key, "failed");
-        break;
-      }
-    }
-
-    if (executionAbortRef.current) {
+      buildSessionIdRef.current = null;
+      buildReaderRef.current = null;
       setExecutingTaskIndex(null);
-      return;
     }
-
-    const buildStatuses = useIDEStore.getState().taskStatuses;
-    const allBuilt = normalizedSteps.every(t => buildStatuses[String(t.step)] === "done");
-
-    if (allBuilt) {
-      await callCommunicator({
-        event: "build_complete",
-        userLanguage: userLang,
-        totalSteps: normalizedSteps.length,
-      });
-    }
-    // Whether all steps built or some failed, proceed to holistic review.
-    // The verifier will detect incomplete/broken work and trigger fix cycles.
-
-    let currentCycle = 0;
-    let currentPlanSteps = normalizedSteps;
-    let passed = false;
-
-    while (currentCycle < MAX_FIX_CYCLES && !passed && !executionAbortRef.current) {
-      currentCycle++;
-      setFixCycle(currentCycle);
-      setReviewPhase("reviewing");
-
-      await callCommunicator({
-        event: "reviewing",
-        userLanguage: userLang,
-      });
-
-      const feedback = userConfirmationRef.current || undefined;
-      if (feedback) userConfirmationRef.current = "";
-      const review = await performHolisticReview(userRequest, currentPlanSteps, filesBeforeBuild, feedback);
-
-      if (executionAbortRef.current) {
-        setReviewPhase("idle");
-        break;
-      }
-
-      if (!review) {
-        setReviewPhase("review_failed");
-        await callCommunicator({
-          event: "bugs_found",
-          userLanguage: userLang,
-          bugCount: 0,
-          reviewSummary: "Review failed due to an error. Treating as inconclusive.",
-          fixCycle: currentCycle,
-          maxFixCycles: MAX_FIX_CYCLES,
-        });
-        break;
-      }
-
-      setHolisticReview(review);
-
-      if (review.user_confirmation_needed?.length > 0 &&
-          review.user_confirmation_needed[0] !== "") {
-        setPendingConfirmation({ stepKey: "review", items: review.user_confirmation_needed });
-        await callCommunicator({
-          event: "needs_input",
-          userLanguage: userLang,
-          confirmationItems: review.user_confirmation_needed,
-        });
-        setReviewPhase("review_failed");
-        setExecutingTaskIndex(null);
-        return;
-      }
-
-      if (review.overall_status === "pass") {
-        setReviewPhase("review_passed");
-        passed = true;
-        for (const step of currentPlanSteps) {
-          const key = String(step.step);
-          const s = useIDEStore.getState().taskStatuses[key];
-          if (s === "bug" || s === "failed") {
-            updateTaskStatus(key, "done");
-          }
-        }
-        await callCommunicator({
-          event: "review_passed",
-          userLanguage: userLang,
-          reviewSummary: review.summary,
-        });
-        break;
-      }
-
-      setReviewPhase("review_failed");
-
-      for (const step of currentPlanSteps) {
-        const key = String(step.step);
-        const s = useIDEStore.getState().taskStatuses[key];
-        if (s === "done" || s === "failed") {
-          updateTaskStatus(key, "bug");
-        }
-      }
-
-      const issueCount = (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0);
-
-      await callCommunicator({
-        event: "bugs_found",
-        userLanguage: userLang,
-        bugCount: issueCount,
-        reviewSummary: review.summary,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-
-      setReviewPhase("fixing");
-
-      await callCommunicator({
-        event: "fixing",
-        userLanguage: userLang,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-
-      const fixPlan = await requestFixPlan(review, userRequest);
-
-      if (!fixPlan || !fixPlan.steps || fixPlan.steps.length === 0) {
-        setReviewPhase("review_failed");
-        break;
-      }
-
-      const fixSteps = normalizeSteps(fixPlan);
-
-      for (let i = 0; i < fixSteps.length; i++) {
-        if (executionAbortRef.current) break;
-
-        const fixTask = fixSteps[i];
-
-        await callCommunicator({
-          event: "step_starting",
-          userLanguage: userLang,
-          stepNumber: fixTask.step,
-          stepTitle: fixTask.title,
-          stepDescription: fixTask.description,
-          totalSteps: fixSteps.length,
-        });
-
-        const fixSuccess = await executeSubTask(fixTask.description, fixTask.title, {
-          sub_task_id: fixTask.sub_task_id || "",
-          acceptance_criteria: fixTask.acceptance_criteria || "",
-          required_files: fixTask.required_files,
-        });
-
-        if (fixSuccess) {
-          await callCommunicator({
-            event: "step_completed",
-            userLanguage: userLang,
-            stepNumber: fixTask.step,
-            stepTitle: fixTask.title,
-          });
-        }
-      }
-
-      currentPlanSteps = [...normalizedSteps, ...fixSteps];
-    }
-
-    if (passed) {
-      preBuildSnapshotRef.current = null;
-      await callCommunicator({
-        event: "all_complete",
-        userLanguage: userLang,
-        totalSteps: normalizedSteps.length,
-      });
-    }
-
-    setExecutingTaskIndex(null);
-  }, [executeSubTask, performHolisticReview, requestFixPlan, setExecutingTaskIndex, updateTaskStatus, callCommunicator, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
 
   const handleStopExecution = useCallback(() => {
-    executionAbortRef.current = true;
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
+    if (buildSessionIdRef.current) {
+      fetch(`/api/build-session/${buildSessionIdRef.current}`, { method: "DELETE" }).catch(() => {});
+      buildSessionIdRef.current = null;
+    }
+    if (buildReaderRef.current) {
+      buildReaderRef.current.cancel().catch(() => {});
+      buildReaderRef.current = null;
     }
     setAiResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
   }, [setAiResponding, setExecutingTaskIndex, setReviewPhase]);
-
-  const userConfirmationRef = useRef<string>("");
 
   const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
@@ -2173,7 +2000,7 @@ export function ChatPanel() {
 
   const handleStop = useCallback(() => {
     if (isExecuting) {
-      executionAbortRef.current = true;
+      handleStopExecution();
     }
     if (abortRef.current) {
       abortRef.current.abort();
@@ -2181,7 +2008,7 @@ export function ChatPanel() {
     }
     setAiResponding(false);
     setManagerResponding(false);
-  }, [setAiResponding, setManagerResponding, isExecuting]);
+  }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution]);
 
   const handleToggleMode = useCallback(() => {
     const next = chatMode === "manager" ? "build" : "manager";

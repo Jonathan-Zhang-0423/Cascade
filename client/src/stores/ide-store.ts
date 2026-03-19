@@ -40,6 +40,13 @@ export interface ManagerPlan {
   summary: string;
   steps: ManagerSubTask[];
   needs_input: string[];
+  what_and_why?: string;
+  done_looks_like?: string;
+  out_of_scope?: string;
+  relevant_files?: string[];
+  narrated_what_and_why?: string;
+  narrated_done_looks_like?: string;
+  narrated_out_of_scope?: string;
 }
 
 export interface VerificationItem {
