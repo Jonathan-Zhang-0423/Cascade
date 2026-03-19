@@ -1357,7 +1357,7 @@ export function ChatPanel() {
 
   const handleManagerSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
-    if (!trimmed || isManagerResponding) return;
+    if (!trimmed || isManagerResponding || isAiResponding) return;
 
     addManagerMessage({ role: "user", content: trimmed });
     if (!overrideMessage) setInput("");
@@ -1471,7 +1471,7 @@ export function ChatPanel() {
     } finally {
       setManagerResponding(false);
     }
-  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject, chatMode]);
+  }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject, chatMode]);
 
   const executeSubTask = useCallback(async (
     description: string,
