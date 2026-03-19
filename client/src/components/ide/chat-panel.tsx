@@ -1933,6 +1933,7 @@ export function ChatPanel() {
         });
       } else {
         updateTaskStatus(key, "failed");
+        break;
       }
     }
 
@@ -1944,17 +1945,15 @@ export function ChatPanel() {
     const buildStatuses = useIDEStore.getState().taskStatuses;
     const allBuilt = normalizedSteps.every(t => buildStatuses[String(t.step)] === "done");
 
-    if (!allBuilt) {
-      setReviewPhase("idle");
-      setExecutingTaskIndex(null);
-      return;
+    if (allBuilt) {
+      await callCommunicator({
+        event: "build_complete",
+        userLanguage: userLang,
+        totalSteps: normalizedSteps.length,
+      });
     }
-
-    await callCommunicator({
-      event: "build_complete",
-      userLanguage: userLang,
-      totalSteps: normalizedSteps.length,
-    });
+    // Whether all steps built or some failed, proceed to holistic review.
+    // The verifier will detect incomplete/broken work and trigger fix cycles.
 
     let currentCycle = 0;
     let currentPlanSteps = normalizedSteps;
@@ -2012,7 +2011,8 @@ export function ChatPanel() {
         passed = true;
         for (const step of currentPlanSteps) {
           const key = String(step.step);
-          if (useIDEStore.getState().taskStatuses[key] === "bug") {
+          const s = useIDEStore.getState().taskStatuses[key];
+          if (s === "bug" || s === "failed") {
             updateTaskStatus(key, "done");
           }
         }
@@ -2028,7 +2028,8 @@ export function ChatPanel() {
 
       for (const step of currentPlanSteps) {
         const key = String(step.step);
-        if (useIDEStore.getState().taskStatuses[key] === "done") {
+        const s = useIDEStore.getState().taskStatuses[key];
+        if (s === "done" || s === "failed") {
           updateTaskStatus(key, "bug");
         }
       }
@@ -2292,7 +2293,7 @@ export function ChatPanel() {
                 <ManagerMessageBubble
                   key={`m-${msg.id}`}
                   message={msg}
-                  taskStatuses={taskStatuses}
+                  taskStatuses={isLastPlan ? taskStatuses : {}}
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
                   onRevise={isLastPlan ? handleRevisePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}
