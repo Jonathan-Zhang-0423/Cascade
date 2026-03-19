@@ -42,7 +42,9 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     thinking: "思考中...",
     planning: "规划中...",
     whatAndWhy: "任务目标",
+    whatAndWhyNone: "未指定目标",
     doneLooksLike: "完成后是什么样",
+    doneLooksLikeNone: "未指定完成标准",
     outOfScope: "暂不包含",
     outOfScopeNone: "无特别限制",
     tasks: "任务步骤",
@@ -75,7 +77,9 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     thinking: "Thinking...",
     planning: "Planning...",
     whatAndWhy: "What & Why",
+    whatAndWhyNone: "Not specified",
     doneLooksLike: "Done looks like",
+    doneLooksLikeNone: "Not specified",
     outOfScope: "Out of scope",
     outOfScopeNone: "Nothing specific noted",
     tasks: "Tasks",
@@ -1013,18 +1017,14 @@ function TaskPlanCard({
 
         {hasRichSections ? (
           <>
-            {whatAndWhy && (
-              <div className="px-3 pt-2.5 pb-2 border-b border-border/20">
-                <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">{t(lang, "whatAndWhy")}</p>
-                <p className="text-[12px] text-foreground/80 leading-relaxed">{whatAndWhy}</p>
-              </div>
-            )}
-            {doneLooksLike && (
-              <div className="px-3 py-2 border-b border-border/20">
-                <p className="text-[10px] font-semibold text-green-500/70 uppercase tracking-wide mb-1">{t(lang, "doneLooksLike")}</p>
-                <p className="text-[12px] text-foreground/80 leading-relaxed">{doneLooksLike}</p>
-              </div>
-            )}
+            <div className="px-3 pt-2.5 pb-2 border-b border-border/20">
+              <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">{t(lang, "whatAndWhy")}</p>
+              <p className="text-[12px] text-foreground/80 leading-relaxed">{whatAndWhy || t(lang, "whatAndWhyNone")}</p>
+            </div>
+            <div className="px-3 py-2 border-b border-border/20">
+              <p className="text-[10px] font-semibold text-green-500/70 uppercase tracking-wide mb-1">{t(lang, "doneLooksLike")}</p>
+              <p className="text-[12px] text-foreground/80 leading-relaxed">{doneLooksLike || t(lang, "doneLooksLikeNone")}</p>
+            </div>
             <div className="px-3 py-2 border-b border-border/20">
               <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{t(lang, "outOfScope")}</p>
               <p className="text-[12px] text-muted-foreground leading-relaxed">{outOfScope || t(lang, "outOfScopeNone")}</p>
