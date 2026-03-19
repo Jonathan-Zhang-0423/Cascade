@@ -113,8 +113,6 @@ function normalizeSteps(plan: any): ManagerSubTask[] {
   }));
 }
 
-const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
-
 const PROJECT_NAME_REGEX_GLOBAL = /\[\[PROJECT_NAME:[^\]]+\]\]/g;
 
 function stripProjectNameMarker(text: string): string {
@@ -1209,11 +1207,10 @@ export function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingHandled = useRef(false);
-  const projectNameExtracted = useRef(false);
   const executionAbortRef = useRef(false);
   const preBuildSnapshotRef = useRef<{ path: string; content: string }[] | null>(null);
-  const [autoAppliedMessageIds, setAutoAppliedMessageIds] = useState<Set<string>>(new Set());
-  const [appliedBlockIndices, setAppliedBlockIndices] = useState<Set<number>>(new Set());
+  const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
+  const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const inputBoxRef = useRef<HTMLDivElement>(null);
@@ -1388,6 +1385,10 @@ export function ChatPanel() {
 
       const data = await response.json();
 
+      if (data.project_name && projectId) {
+        renameProject(projectId, data.project_name.trim());
+      }
+
       if (data.error && !data.plan && !data.message) {
         addManagerMessage({ role: "assistant", content: "Hmm, I had a little trouble understanding that. Could you try rephrasing your request? 🤔", source: "communicator" });
       } else if (data.message) {
@@ -1459,7 +1460,7 @@ export function ChatPanel() {
     } finally {
       setManagerResponding(false);
     }
-  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator]);
+  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject]);
 
   const executeSubTask = useCallback(async (
     description: string,
@@ -1973,156 +1974,20 @@ export function ChatPanel() {
     handleExecutePlan();
   }, [handleExecutePlan, updateTaskStatus, addChatMessage, setPendingConfirmation, setUserConfirmationInput]);
 
-  const handleSend = useCallback(async (overrideMessage?: string) => {
-    const trimmed = overrideMessage?.trim() || input.trim();
-    if (!trimmed || isAiResponding) return;
-
-    addChatMessage({ role: "user", content: trimmed });
-    if (!overrideMessage) setInput("");
-
-    const allFiles = flattenFiles(files);
-    const fileContext = allFiles.map((f) => ({
-      path: f.path,
-      content: f.content || "",
-    }));
-
-    const messagesForApi = [
-      ...chatMessages
-        .filter((m) => m.id !== "welcome" && m.role !== "checkpoint")
-        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { role: "user" as const, content: trimmed },
-    ];
-
-    setAiResponding(true);
-    addChatMessage({ role: "assistant", content: "" });
-    projectNameExtracted.current = false;
-    setAppliedBlockIndices(new Set());
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const appliedBlockCount = { current: 0 };
-    const appliedIndices = new Set<number>();
-    let anyBlockApplied = false;
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: "Request failed" }));
-        updateLastAssistantMessage(
-          `Sorry, something went wrong: ${err.error || "Unknown error"}. Please try again!`
-        );
-        setAiResponding(false);
-        return;
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        updateLastAssistantMessage("Sorry, couldn't read the response. Please try again!");
-        setAiResponding(false);
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let accumulated = "";
-      let buffer = "";
-      let streamDone = false;
-
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (trimmedLine.startsWith("data: ")) {
-            const data = trimmedLine.slice(6).trim();
-            if (data === "[DONE]") {
-              streamDone = true;
-              break;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                accumulated += parsed.content;
-
-                if (!projectNameExtracted.current) {
-                  const nameMatch = accumulated.match(PROJECT_NAME_REGEX);
-                  if (nameMatch && projectId) {
-                    projectNameExtracted.current = true;
-                    renameProject(projectId, nameMatch[1].trim());
-                  }
-                }
-
-                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
-
-                const currentBlocks = extractCodeBlocks(stripProjectNameMarker(accumulated));
-                if (currentBlocks.length > appliedBlockCount.current) {
-                  for (let bi = appliedBlockCount.current; bi < currentBlocks.length; bi++) {
-                    const block = currentBlocks[bi];
-                    anyBlockApplied = true;
-                    await applyCodeBlock(block);
-                    appliedIndices.add(bi);
-                    setAppliedBlockIndices(new Set(appliedIndices));
-                    refreshPreview();
-                  }
-                  appliedBlockCount.current = currentBlocks.length;
-                }
-              }
-              if (parsed.error) {
-                accumulated += `\n\nError: ${parsed.error}`;
-                updateLastAssistantMessage(stripProjectNameMarker(accumulated));
-              }
-            } catch {
-            }
-          }
-        }
-      }
-
-      if (anyBlockApplied) {
-        const currentMessages = useIDEStore.getState().chatMessages;
-        const lastAssistantMsg = [...currentMessages].reverse().find((m) => m.role === "assistant");
-        if (lastAssistantMsg) {
-          setAutoAppliedMessageIds((prev) => new Set(prev).add(lastAssistantMsg.id));
-        }
-
-        const checkpointLabel = trimmed.length > 40 ? trimmed.slice(0, 40) + "..." : trimmed;
-        createCheckpoint(checkpointLabel);
-      }
-    } catch (error: any) {
-      if (error.name !== "AbortError") {
-        updateLastAssistantMessage(
-          "Sorry, I had trouble connecting. Please check your connection and try again!"
-        );
-      }
-    } finally {
-      setAiResponding(false);
-      abortRef.current = null;
-    }
-  }, [input, isAiResponding, chatMessages, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, refreshPreview, createCheckpoint, applyCodeBlock]);
 
   useEffect(() => {
     pendingHandled.current = false;
   }, [projectId]);
 
   useEffect(() => {
-    if (pendingPrompt && !pendingHandled.current && !isAiResponding) {
+    if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
-      handleSend(prompt).then(() => {
+      handleManagerSend(prompt).then(() => {
         clearPendingPrompt();
       });
     }
-  }, [pendingPrompt, isAiResponding, clearPendingPrompt, handleSend]);
+  }, [pendingPrompt, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend]);
 
   const isExecuting = executingTaskIndex !== null;
 
@@ -2139,7 +2004,7 @@ export function ChatPanel() {
   }, [setAiResponding, setManagerResponding, isExecuting]);
 
   const handleCurrentSend = useCallback(() => {
-    if (chatMode === "manager" && pendingConfirmation) {
+    if (pendingConfirmation) {
       const trimmed = input.trim();
       if (trimmed) {
         setInput("");
@@ -2147,12 +2012,8 @@ export function ChatPanel() {
       }
       return;
     }
-    if (chatMode === "manager") {
-      handleManagerSend();
-    } else {
-      handleSend();
-    }
-  }, [chatMode, handleManagerSend, handleSend, pendingConfirmation, input, handleContinueExecution]);
+    handleManagerSend();
+  }, [handleManagerSend, pendingConfirmation, input, handleContinueExecution]);
 
   const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

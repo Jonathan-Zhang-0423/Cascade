@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
-import { VIBE_AGENT_SYSTEM_PROMPT, buildContextMessage } from "./vibe-prompt";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerContextMessage, buildManagerFixPlanMessage } from "./manager-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
@@ -212,14 +211,12 @@ export async function registerRoutes(
         return;
       }
 
-      const isManagerMode = mode === "manager";
-      const systemPrompt = isManagerMode ? EDITOR_AGENT_SYSTEM_PROMPT : VIBE_AGENT_SYSTEM_PROMPT;
       const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
       ];
 
       if (files && files.length > 0) {
-        const contextMsg = isManagerMode ? buildEditorContextMessage(files) : buildContextMessage(files);
+        const contextMsg = buildEditorContextMessage(files);
         systemMessages.push({ role: "system", content: contextMsg });
       }
 
