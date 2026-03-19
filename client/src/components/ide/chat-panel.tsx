@@ -1088,7 +1088,7 @@ function TaskPlanCard({
   );
 }
 
-const PREVIEW_STEP_COUNT = 4;
+const PREVIEW_STEP_COUNT = 10;
 
 function PlanReviewCard({
   plan,
@@ -2191,14 +2191,14 @@ export function ChatPanel() {
 
   const handleToggleMode = useCallback(() => {
     const next = chatMode === "manager" ? "build" : "manager";
-    if (next === "build" && managerPlan) {
+    if (next === "build" && managerPlan && !isExecuting) {
       setChatMode("build");
       setShowPlanReview(true);
     } else {
       setChatMode(next);
       setShowPlanReview(false);
     }
-  }, [chatMode, managerPlan, setChatMode]);
+  }, [chatMode, managerPlan, isExecuting, setChatMode]);
 
   const handleRevisePlan = useCallback(() => {
     setChatMode("manager");
