@@ -200,10 +200,9 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files, mode } = req.body as {
+      const { messages, files } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
-        mode?: "vibe" | "manager";
       };
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -298,16 +297,21 @@ export async function registerRoutes(
         return;
       }
 
+      const projectName: string | undefined = parsed.project_name || undefined;
+
       if (parsed.type === "message" && parsed.content) {
-        res.json({ message: parsed.content });
+        res.json({ message: parsed.content, project_name: projectName });
       } else if (parsed.type === "plan" || parsed.steps) {
         const plan = { ...parsed };
         delete plan.type;
-        res.json({ plan });
+        delete plan.project_name;
+        res.json({ plan, project_name: projectName });
       } else if (parsed.summary && parsed.steps) {
-        res.json({ plan: parsed });
+        const plan = { ...parsed };
+        delete plan.project_name;
+        res.json({ plan, project_name: projectName });
       } else {
-        res.json({ message: parsed.content || responseContent });
+        res.json({ message: parsed.content || responseContent, project_name: projectName });
       }
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
