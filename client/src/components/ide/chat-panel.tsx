@@ -17,6 +17,11 @@ type PlanCardLang = "Chinese" | "English";
 const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
   Chinese: {
     startBuilding: "开始构建",
+    revisePlan: "修改方案",
+    buildNow: "立即构建",
+    showAllSteps: "显示全部 {n} 步",
+    collapse: "收起",
+    viewFullPlan: "查看完整方案",
     stop: "停止",
     allStepsBuilt: "全部 {n} 步已完成",
     stepsDone: "{done}/{total} 步已完成",
@@ -39,6 +44,11 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
   },
   English: {
     startBuilding: "Start building",
+    revisePlan: "Revise Plan",
+    buildNow: "Build Now",
+    showAllSteps: "Show all {n} steps",
+    collapse: "Collapse",
+    viewFullPlan: "View full plan",
     stop: "Stop",
     allStepsBuilt: "All {n} steps built",
     stepsDone: "{done}/{total} steps done",
@@ -899,6 +909,7 @@ function TaskPlanCard({
   plan,
   taskStatuses,
   onExecute,
+  onRevise,
   isExecuting,
   onStop,
   onContinueWithInput,
@@ -912,6 +923,7 @@ function TaskPlanCard({
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   onExecute?: () => void;
+  onRevise?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
   onContinueWithInput?: (userInput?: string) => void;
@@ -932,279 +944,256 @@ function TaskPlanCard({
   const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
   const showConfirmation = hasNeedsInput || hasReviewConfirmation;
   const isFullyComplete = phase === "review_passed" && allDone;
+  const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
 
-  return (
-    <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
-      <div className="px-3 pt-2.5 pb-1.5">
-        <p className={cn("text-[13px] leading-snug", isFullyComplete ? "text-muted-foreground" : "text-foreground")}>{plan.summary || (plan as any).user_requirement || ""}</p>
-      </div>
-
-      <div className="px-3 pb-2 space-y-0">
-        {steps.map((task: ManagerSubTask) => (
-          <StepItem
-            key={task.step}
-            task={task}
-            status={taskStatuses[String(task.step)]}
-            isCompleted={isFullyComplete}
-          />
-        ))}
-      </div>
-
-      {doneCount > 0 && !isFullyComplete && (
-        <div className="px-3 pb-2 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground">
-            {allDone ? t(lang, "allStepsBuilt", { n: total }) : t(lang, "stepsDone", { done: doneCount, total })}
-          </span>
-        </div>
-      )}
-
-      <ReviewStatusBadge phase={phase} fixCycle={fixCycle || 0} review={holisticReview || null} lang={lang} />
-
-      {isFullyComplete && (
-        <div className="px-3 pb-2 flex items-center gap-1.5">
-          <ShieldCheck className="w-3 h-3 text-green-500" />
-          <span className="text-[10px] text-green-500 font-medium">
-            {t(lang, "allVerified")}
-          </span>
-        </div>
-      )}
-
-      {holisticReview && phase === "review_failed" && holisticReview.bugs.length > 0 && (
-        <div className="px-3 pb-2" data-testid="review-bugs-list">
-          {holisticReview.bugs.map((bug, i) => (
-            <div key={bug.id || i} className="flex items-start gap-1.5 py-0.5">
-              <XCircle className="w-2.5 h-2.5 text-red-400 mt-0.5 shrink-0" />
-              <span className="text-[10px] text-red-400/80 leading-snug">
-                <span className="font-medium">[{bug.severity}]</span> {bug.description}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {(() => {
-        const inputs: string[] = plan.needs_input || (plan as any).user_confirmation_needed || [];
-        return inputs.length > 0 && inputs[0] !== "" ? (
-          <div className="px-3 pb-2">
-            <div className="flex items-center gap-1 mb-0.5">
-              <AlertTriangle className="w-3 h-3 text-yellow-500" />
-              <span className="text-[10px] font-medium text-yellow-500">{t(lang, "needsInput")}</span>
-            </div>
-            {inputs.map((item, i) => (
-              <p key={i} className="text-[11px] text-foreground/70 pl-4 leading-snug">• {item}</p>
-            ))}
-          </div>
-        ) : null;
-      })()}
-
-      {showConfirmation && pendingConfirmation && onContinueWithInput && (
-        <div className="px-3 pb-2 space-y-2" data-testid="confirmation-input-area">
-          <div className="flex items-center gap-1 mb-1">
-            <HelpCircle className="w-3 h-3 text-yellow-500" />
-            <span className="text-[10px] font-medium text-yellow-500">{t(lang, "pleaseRespond")}</span>
-          </div>
-          {pendingConfirmation.items.map((item, i) => (
-            <p key={i} className="text-[11px] text-foreground/80 pl-4 leading-snug">• {item}</p>
-          ))}
-          <Textarea
-            value={confirmationInput || ""}
-            onChange={(e) => onConfirmationInputChange?.(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                onContinueWithInput(confirmationInput || "");
-              }
-            }}
-            placeholder={t(lang, "inputPlaceholder")}
-            className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-muted/30 border-border/30"
-            rows={1}
-            data-testid="input-confirmation"
-          />
-          <div className="flex gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex-1 h-6 text-[10px]"
-              onClick={() => onContinueWithInput("Looks good, proceed as planned")}
-              data-testid="button-approve-all"
-            >
-              <Check className="w-2.5 h-2.5 mr-0.5" />
-              {t(lang, "approve")}
-            </Button>
-            <Button
-              size="sm"
-              className="flex-1 h-6 text-[10px]"
-              onClick={() => onContinueWithInput(confirmationInput || "")}
-              disabled={!confirmationInput?.trim()}
-              data-testid="button-submit-confirmation"
-            >
-              <Send className="w-2.5 h-2.5 mr-0.5" />
-              {t(lang, "submitContinue")}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {isFullyComplete ? (
-        <div className="px-3 py-2 border-t border-green-500/20">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full h-7 text-[11px] border-green-500/30 text-green-500 cursor-default pointer-events-none"
-            disabled
-            data-testid="button-plan-completed"
-          >
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            {t(lang, "completed")}
-          </Button>
-        </div>
-      ) : onExecute && (
-        <div className="px-3 py-2 border-t border-border/30">
-          {isExecuting ? (
-            <Button
-              size="sm"
-              variant="destructive"
-              className="w-full h-7 text-[11px]"
-              onClick={onStop}
-              data-testid="button-stop-execution"
-            >
-              <StopCircle className="w-3 h-3 mr-1" />
-              {t(lang, "stop")}
-            </Button>
-          ) : showConfirmation ? null : (
-            <Button
-              size="sm"
-              className="w-full h-7 text-[11px]"
-              onClick={onExecute}
-              data-testid="button-execute-plan"
-            >
-              <Play className="w-3 h-3 mr-1" />
-              {t(lang, "startBuilding")}
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const PREVIEW_STEP_COUNT = 10;
-
-function PlanReviewCard({
-  plan,
-  onBuildNow,
-  onRevise,
-  onDismiss,
-}: {
-  plan: ManagerPlan;
-  onBuildNow: () => void;
-  onRevise: () => void;
-  onDismiss: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
+  const [stepsExpanded, setStepsExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const steps = normalizeSteps(plan);
-  const visibleSteps = expanded ? steps : steps.slice(0, PREVIEW_STEP_COUNT);
+
   const hasMore = steps.length > PREVIEW_STEP_COUNT;
+  const visibleSteps = isPreExecution
+    ? (stepsExpanded ? steps : steps.slice(0, PREVIEW_STEP_COUNT))
+    : steps;
+  const peekSteps = isPreExecution && hasMore && !stepsExpanded
+    ? steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2)
+    : [];
 
   return (
     <>
-      <div className="mx-3 my-1 rounded-lg border border-primary/30 bg-card/60 overflow-hidden shadow-sm" data-testid="plan-review-card">
+      <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
         <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <ClipboardList className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-            <p className="text-[13px] font-medium text-foreground leading-snug">{plan.summary}</p>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <p className={cn("text-[13px] leading-snug min-w-0 flex-1", isFullyComplete ? "text-muted-foreground" : "text-foreground")}>{plan.summary || (plan as any).user_requirement || ""}</p>
+          {isPreExecution && (
             <button
               onClick={() => setModalOpen(true)}
-              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
-              title="View full plan"
+              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+              title={t(lang, "viewFullPlan")}
               data-testid="button-expand-plan"
             >
               <Maximize2 className="w-3 h-3" />
             </button>
-            <button
-              onClick={onDismiss}
-              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
-              title="Dismiss"
-              data-testid="button-dismiss-review"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
+          )}
         </div>
 
         <div className="relative px-3 pb-2">
-          <div className="space-y-0">
-            {visibleSteps.map((step) => (
-              <div key={step.step} className="flex items-start gap-2 py-1">
-                <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[9px] text-muted-foreground font-medium">{step.step}</span>
+          {isPreExecution ? (
+            <>
+              <div className="space-y-0">
+                {visibleSteps.map((task: ManagerSubTask) => (
+                  <div key={task.step} className="flex items-start gap-2 py-1">
+                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
+                    </div>
+                    <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
+                  </div>
+                ))}
+              </div>
+
+              {peekSteps.length > 0 && (
+                <div className="relative mt-0">
+                  <div className="space-y-0">
+                    {peekSteps.map((task: ManagerSubTask) => (
+                      <div key={task.step} className="flex items-start gap-2 py-1 blur-[2px] select-none pointer-events-none opacity-50">
+                        <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
+                        </div>
+                        <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
+                      </div>
+                    ))}
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
+                  </div>
+                  <button
+                    onClick={() => setStepsExpanded(true)}
+                    className="flex items-center gap-1 mt-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
+                    data-testid="button-expand-steps"
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                    {t(lang, "showAllSteps", { n: steps.length })}
+                  </button>
                 </div>
-                <span className="text-[12px] text-foreground/80 leading-snug">{step.title}</span>
+              )}
+
+              {stepsExpanded && hasMore && (
+                <button
+                  onClick={() => setStepsExpanded(false)}
+                  className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="button-collapse-steps"
+                >
+                  <ChevronUp className="w-3 h-3" />
+                  {t(lang, "collapse")}
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="space-y-0">
+              {steps.map((task: ManagerSubTask) => (
+                <StepItem
+                  key={task.step}
+                  task={task}
+                  status={taskStatuses[String(task.step)]}
+                  isCompleted={isFullyComplete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {doneCount > 0 && !isFullyComplete && (
+          <div className="px-3 pb-2 flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground">
+              {allDone ? t(lang, "allStepsBuilt", { n: total }) : t(lang, "stepsDone", { done: doneCount, total })}
+            </span>
+          </div>
+        )}
+
+        <ReviewStatusBadge phase={phase} fixCycle={fixCycle || 0} review={holisticReview || null} lang={lang} />
+
+        {isFullyComplete && (
+          <div className="px-3 pb-2 flex items-center gap-1.5">
+            <ShieldCheck className="w-3 h-3 text-green-500" />
+            <span className="text-[10px] text-green-500 font-medium">
+              {t(lang, "allVerified")}
+            </span>
+          </div>
+        )}
+
+        {holisticReview && phase === "review_failed" && holisticReview.bugs.length > 0 && (
+          <div className="px-3 pb-2" data-testid="review-bugs-list">
+            {holisticReview.bugs.map((bug, i) => (
+              <div key={bug.id || i} className="flex items-start gap-1.5 py-0.5">
+                <XCircle className="w-2.5 h-2.5 text-red-400 mt-0.5 shrink-0" />
+                <span className="text-[10px] text-red-400/80 leading-snug">
+                  <span className="font-medium">[{bug.severity}]</span> {bug.description}
+                </span>
               </div>
             ))}
           </div>
+        )}
 
-          {hasMore && !expanded && (
-            <div className="relative mt-1">
-              <div className="space-y-0">
-                {steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2).map((step) => (
-                  <div key={step.step} className="flex items-start gap-2 py-1 blur-[2px] select-none pointer-events-none opacity-50">
-                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-[9px] text-muted-foreground font-medium">{step.step}</span>
-                    </div>
-                    <span className="text-[12px] text-foreground/80 leading-snug">{step.title}</span>
-                  </div>
-                ))}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
+        {(() => {
+          const inputs: string[] = plan.needs_input || (plan as any).user_confirmation_needed || [];
+          return inputs.length > 0 && inputs[0] !== "" ? (
+            <div className="px-3 pb-2">
+              <div className="flex items-center gap-1 mb-0.5">
+                <AlertTriangle className="w-3 h-3 text-yellow-500" />
+                <span className="text-[10px] font-medium text-yellow-500">{t(lang, "needsInput")}</span>
               </div>
-              <button
-                onClick={() => setExpanded(true)}
-                className="flex items-center gap-1 mt-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
-                data-testid="button-expand-steps"
-              >
-                <ChevronDown className="w-3 h-3" />
-                Show all {steps.length} steps
-              </button>
+              {inputs.map((item, i) => (
+                <p key={i} className="text-[11px] text-foreground/70 pl-4 leading-snug">• {item}</p>
+              ))}
             </div>
-          )}
+          ) : null;
+        })()}
 
-          {expanded && hasMore && (
-            <button
-              onClick={() => setExpanded(false)}
-              className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="button-collapse-steps"
+        {showConfirmation && pendingConfirmation && onContinueWithInput && (
+          <div className="px-3 pb-2 space-y-2" data-testid="confirmation-input-area">
+            <div className="flex items-center gap-1 mb-1">
+              <HelpCircle className="w-3 h-3 text-yellow-500" />
+              <span className="text-[10px] font-medium text-yellow-500">{t(lang, "pleaseRespond")}</span>
+            </div>
+            {pendingConfirmation.items.map((item, i) => (
+              <p key={i} className="text-[11px] text-foreground/80 pl-4 leading-snug">• {item}</p>
+            ))}
+            <Textarea
+              value={confirmationInput || ""}
+              onChange={(e) => onConfirmationInputChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  onContinueWithInput(confirmationInput || "");
+                }
+              }}
+              placeholder={t(lang, "inputPlaceholder")}
+              className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-muted/30 border-border/30"
+              rows={1}
+              data-testid="input-confirmation"
+            />
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 h-6 text-[10px]"
+                onClick={() => onContinueWithInput("Looks good, proceed as planned")}
+                data-testid="button-approve-all"
+              >
+                <Check className="w-2.5 h-2.5 mr-0.5" />
+                {t(lang, "approve")}
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 h-6 text-[10px]"
+                onClick={() => onContinueWithInput(confirmationInput || "")}
+                disabled={!confirmationInput?.trim()}
+                data-testid="button-submit-confirmation"
+              >
+                <Send className="w-2.5 h-2.5 mr-0.5" />
+                {t(lang, "submitContinue")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isFullyComplete ? (
+          <div className="px-3 py-2 border-t border-green-500/20">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-7 text-[11px] border-green-500/30 text-green-500 cursor-default pointer-events-none"
+              disabled
+              data-testid="button-plan-completed"
             >
-              <ChevronUp className="w-3 h-3" />
-              Collapse
-            </button>
-          )}
-        </div>
-
-        <div className="px-3 py-2 border-t border-border/30 flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-[11px] gap-1.5"
-            onClick={onRevise}
-            data-testid="button-revise-plan"
-          >
-            <PenLine className="w-3 h-3" />
-            Revise Plan
-          </Button>
-          <div className="flex-1" />
-          <Button
-            size="sm"
-            className="h-7 text-[11px] gap-1.5"
-            onClick={onBuildNow}
-            data-testid="button-build-now"
-          >
-            <Hammer className="w-3 h-3" />
-            Build Now
-          </Button>
-        </div>
+              <CheckCircle2 className="w-3 h-3 mr-1" />
+              {t(lang, "completed")}
+            </Button>
+          </div>
+        ) : onExecute && (
+          <div className="px-3 py-2 border-t border-border/30">
+            {isExecuting ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full h-7 text-[11px]"
+                onClick={onStop}
+                data-testid="button-stop-execution"
+              >
+                <StopCircle className="w-3 h-3 mr-1" />
+                {t(lang, "stop")}
+              </Button>
+            ) : showConfirmation ? null : isPreExecution ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px] gap-1.5"
+                  onClick={onRevise}
+                  data-testid="button-revise-plan"
+                >
+                  <PenLine className="w-3 h-3" />
+                  {t(lang, "revisePlan")}
+                </Button>
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px] gap-1.5"
+                  onClick={onExecute}
+                  data-testid="button-execute-plan"
+                >
+                  <Hammer className="w-3 h-3" />
+                  {t(lang, "buildNow")}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                className="w-full h-7 text-[11px]"
+                onClick={onExecute}
+                data-testid="button-execute-plan"
+              >
+                <Play className="w-3 h-3 mr-1" />
+                {t(lang, "startBuilding")}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -1232,21 +1221,21 @@ function PlanReviewCard({
               size="sm"
               variant="outline"
               className="h-7 text-[11px] gap-1.5"
-              onClick={() => { setModalOpen(false); onRevise(); }}
+              onClick={() => { setModalOpen(false); onRevise?.(); }}
               data-testid="button-revise-plan-modal"
             >
               <PenLine className="w-3 h-3" />
-              Revise Plan
+              {t(lang, "revisePlan")}
             </Button>
             <div className="flex-1" />
             <Button
               size="sm"
               className="h-7 text-[11px] gap-1.5"
-              onClick={() => { setModalOpen(false); onBuildNow(); }}
+              onClick={() => { setModalOpen(false); onExecute?.(); }}
               data-testid="button-build-now-modal"
             >
               <Hammer className="w-3 h-3" />
-              Build Now
+              {t(lang, "buildNow")}
             </Button>
           </div>
         </DialogContent>
@@ -1255,10 +1244,13 @@ function PlanReviewCard({
   );
 }
 
+const PREVIEW_STEP_COUNT = 10;
+
 function ManagerMessageBubble({
   message,
   taskStatuses,
   onExecute,
+  onRevise,
   isExecuting,
   onStop,
   onContinueWithInput,
@@ -1272,6 +1264,7 @@ function ManagerMessageBubble({
   message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   onExecute?: () => void;
+  onRevise?: () => void;
   isExecuting?: boolean;
   onStop?: () => void;
   onContinueWithInput?: (userInput?: string) => void;
@@ -1298,6 +1291,7 @@ function ManagerMessageBubble({
         plan={message.plan}
         taskStatuses={taskStatuses}
         onExecute={onExecute}
+        onRevise={onRevise}
         isExecuting={isExecuting}
         onStop={onStop}
         onContinueWithInput={onContinueWithInput}
@@ -1381,7 +1375,6 @@ export function ChatPanel() {
   const autoExecutePlanRef = useRef(false);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
-  const [showPlanReview, setShowPlanReview] = useState(false);
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const inputBoxRef = useRef<HTMLDivElement>(null);
@@ -1398,7 +1391,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages, showPlanReview]);
+  }, [chatMessages, managerMessages]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2191,25 +2184,13 @@ export function ChatPanel() {
 
   const handleToggleMode = useCallback(() => {
     const next = chatMode === "manager" ? "build" : "manager";
-    if (next === "build" && managerPlan && !isExecuting) {
-      setChatMode("build");
-      setShowPlanReview(true);
-    } else {
-      setChatMode(next);
-      setShowPlanReview(false);
-    }
-  }, [chatMode, managerPlan, isExecuting, setChatMode]);
+    setChatMode(next);
+  }, [chatMode, setChatMode]);
 
   const handleRevisePlan = useCallback(() => {
     setChatMode("manager");
-    setShowPlanReview(false);
     setTimeout(() => textareaRef.current?.focus(), 50);
   }, [setChatMode]);
-
-  const handleBuildNow = useCallback(() => {
-    setShowPlanReview(false);
-    handleExecutePlan();
-  }, [handleExecutePlan]);
 
   const handleCurrentSend = useCallback(() => {
     if (pendingConfirmation) {
@@ -2313,6 +2294,7 @@ export function ChatPanel() {
                   message={msg}
                   taskStatuses={taskStatuses}
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
+                  onRevise={isLastPlan ? handleRevisePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}
                   onStop={isLastPlan ? handleStopExecution : undefined}
                   onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
@@ -2327,14 +2309,6 @@ export function ChatPanel() {
             }
           });
         })()}
-        {showPlanReview && managerPlan && (
-          <PlanReviewCard
-            plan={managerPlan}
-            onBuildNow={handleBuildNow}
-            onRevise={handleRevisePlan}
-            onDismiss={() => setShowPlanReview(false)}
-          />
-        )}
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
