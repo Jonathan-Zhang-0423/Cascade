@@ -1,0 +1,21 @@
+# Agent - User Chat Flow 
+- Take this as an example: imagine a hypothetical scenario where the user is asking the agent to build a classic 1985 version Super Mario game 
+    - User: Please build me a classic 1985 version Super Mario Game
+    - Agent: This sounds fantastic, Super Mario is a classic game… Before we start, there are a few things I would like to clarify with you [here the Communicator Agent transcribes the Manager Agent’s clarification requests into simple language asking the user for classification]
+    - User: [Confirms or edits the details proposed by the agent]
+    - Agent: [Upon the user confirming and/or editing the details, the Manager Agent takes in all the specified requirements, and breaks down the request into executable pieces for the Editor Agent. Then the Communicator Agent takes information from the Manager Agent and writes out a detailed plan description that gets displayed on the *plan card* for the user to confirm. What the task description contains is described in the below section on task description]
+    - User: [if the user confirms what is on the plan card, Build Mode gets started and Manager, Editor, and Verifier Agents starts with building and doing their jobs respectively; if the user proposes a revision plan, the previous step gets repeated and the Manager Agent will come up with a revised plan that gets displayed on a new plan card (the old plan card goes away), waiting for the user’s confirmation]
+    - Agent: The Communicator Agent streams the Manager, Editor, and Verifier Agent’s action live. Each action output should get streamed with streamed output (流式输出) like a stream of thoughts, can refer to Replit Agent’s behavior. This streamed output is VERY IMPORTANT because it enhances user experience significantly. In the end, after the actions are completed, the Communicator Agent will output a summary message of what was done, what was changed, and the importance, then propose some follow up steps as necessary. All other detailed actions messages will get folded away, but the user can expand the action message items as they want, but the idea is we should hide the unnecessary details away if not needed
+        - An example of the Agent’s message at the end upon completion: Great, all the steps are complete and all tests are passed, here’s what I have done: ...
+- The server side should be aware when “planning” and “building” are happening, not just the client side. This is critical and we need to implement this 
+- Streamed output is a MUST. The Communicator Agent’s message should not come out all at once, but it should come out live, sort of like a stream of consciousness way
+
+## Task Description
+- Task Description always contains the following sections:
+    - What & Why: This describes what the existing problem/task is. It is a build task that the Manager Agent has identified, and the reasons behind this problem or the logic behind this building task that the Manager Agent has identified or proposed
+    - Done looks like: This is what the end state after this task is completed should look like. The user tend to focus on this section since it is the most intuitive way of examining whether a proposed task plan is in line with the user’s requirements 
+    - Out of scope: What the Manager Agent considers relevant but not directed related to the current task that is being carried out. This is a nice-to-have section for the user to understand what are some areas worth considering implementing next 
+    - Tasks: The Manager Agent’s proposed tasks to be sent to the Editor Agent for coding and what the Verifier Agent will verify 
+    - Relevant files: These are the files that the Manager Agents have identified that needs to be edited/created/changed
+- Please refer to Plan #37 from Replit Agent 
+- Tone: For “What & Why”, “Done looks like”, “Out of scope”, and “Tasks”, the output should follow the Communicator’s output tone
