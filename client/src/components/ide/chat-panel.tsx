@@ -992,8 +992,8 @@ function TaskPlanCard({
   const [modalOpen, setModalOpen] = useState(false);
 
   const hasMore = steps.length > PREVIEW_STEP_COUNT;
-  const visibleSteps = isPreExecution
-    ? (stepsExpanded ? steps : steps.slice(0, PREVIEW_STEP_COUNT))
+  const visibleSteps = isPreExecution && !stepsExpanded
+    ? steps.slice(0, PREVIEW_STEP_COUNT)
     : steps;
   const peekSteps = isPreExecution && hasMore && !stepsExpanded
     ? steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2)
@@ -1009,7 +1009,7 @@ function TaskPlanCard({
     <>
       <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
 
-        {isPreExecution && hasRichSections ? (
+        {hasRichSections ? (
           <>
             {whatAndWhy && (
               <div className="px-3 pt-2.5 pb-2 border-b border-border/20">
@@ -1030,10 +1030,10 @@ function TaskPlanCard({
               </div>
             )}
 
-            <div className="px-3 py-2 border-b border-border/20">
+            <div className={cn("px-3 py-2", !(relevantFiles && relevantFiles.length > 0) && "border-b-0", "border-b border-border/20")}>
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wide">{t(lang, "tasks")}</p>
-                {hasMore && (
+                {isPreExecution && hasMore && (
                   <button
                     onClick={() => setStepsExpanded(!stepsExpanded)}
                     className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
@@ -1046,24 +1046,24 @@ function TaskPlanCard({
               </div>
               <div className="space-y-0">
                 {visibleSteps.map((task: ManagerSubTask) => (
-                  <div key={task.step} className="flex items-start gap-2 py-0.5">
-                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
-                    </div>
-                    <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
-                  </div>
+                  <StepItem
+                    key={task.step}
+                    task={task}
+                    status={taskStatuses[String(task.step)]}
+                    isCompleted={isFullyComplete}
+                  />
                 ))}
               </div>
               {peekSteps.length > 0 && !stepsExpanded && (
                 <div className="relative mt-0">
-                  <div className="space-y-0">
+                  <div className="space-y-0 blur-[2px] select-none pointer-events-none opacity-50">
                     {peekSteps.map((task: ManagerSubTask) => (
-                      <div key={task.step} className="flex items-start gap-2 py-0.5 blur-[2px] select-none pointer-events-none opacity-50">
-                        <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                          <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
-                        </div>
-                        <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
-                      </div>
+                      <StepItem
+                        key={task.step}
+                        task={task}
+                        status={taskStatuses[String(task.step)]}
+                        isCompleted={isFullyComplete}
+                      />
                     ))}
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
@@ -1101,27 +1101,17 @@ function TaskPlanCard({
             <div className="relative px-3 pb-2">
               <div className="space-y-0">
                 {visibleSteps.map((task: ManagerSubTask) => (
-                  <div key={task.step} className="flex items-start gap-2 py-1">
-                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
-                    </div>
-                    <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
-                  </div>
+                  <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} isCompleted={isFullyComplete} />
                 ))}
               </div>
               {peekSteps.length > 0 && (
                 <div className="relative mt-0">
-                  <div className="space-y-0">
+                  <div className="space-y-0 blur-[2px] select-none pointer-events-none opacity-50">
                     {peekSteps.map((task: ManagerSubTask) => (
-                      <div key={task.step} className="flex items-start gap-2 py-1 blur-[2px] select-none pointer-events-none opacity-50">
-                        <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                          <span className="text-[9px] text-muted-foreground font-medium">{task.step}</span>
-                        </div>
-                        <span className="text-[12px] text-foreground/80 leading-snug">{task.title}</span>
-                      </div>
+                      <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} isCompleted={isFullyComplete} />
                     ))}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
                   </div>
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
                   <button
                     onClick={() => setStepsExpanded(true)}
                     className="flex items-center gap-1 mt-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
@@ -1132,7 +1122,6 @@ function TaskPlanCard({
                   </button>
                 </div>
               )}
-
               {stepsExpanded && hasMore && (
                 <button
                   onClick={() => setStepsExpanded(false)}
