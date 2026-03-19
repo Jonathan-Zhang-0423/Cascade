@@ -3,7 +3,8 @@ import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, t
 import { useProjectStore } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, Maximize2, Hammer, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function detectLanguage(text: string): string {
@@ -1087,6 +1088,173 @@ function TaskPlanCard({
   );
 }
 
+const PREVIEW_STEP_COUNT = 4;
+
+function PlanReviewCard({
+  plan,
+  onBuildNow,
+  onRevise,
+  onDismiss,
+}: {
+  plan: ManagerPlan;
+  onBuildNow: () => void;
+  onRevise: () => void;
+  onDismiss: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const steps = normalizeSteps(plan);
+  const visibleSteps = expanded ? steps : steps.slice(0, PREVIEW_STEP_COUNT);
+  const hasMore = steps.length > PREVIEW_STEP_COUNT;
+
+  return (
+    <>
+      <div className="mx-3 my-1 rounded-lg border border-primary/30 bg-card/60 overflow-hidden shadow-sm" data-testid="plan-review-card">
+        <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <ClipboardList className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+            <p className="text-[13px] font-medium text-foreground leading-snug">{plan.summary}</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+              title="View full plan"
+              data-testid="button-expand-plan"
+            >
+              <Maximize2 className="w-3 h-3" />
+            </button>
+            <button
+              onClick={onDismiss}
+              className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+              title="Dismiss"
+              data-testid="button-dismiss-review"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative px-3 pb-2">
+          <div className="space-y-0">
+            {visibleSteps.map((step) => (
+              <div key={step.step} className="flex items-start gap-2 py-1">
+                <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[9px] text-muted-foreground font-medium">{step.step}</span>
+                </div>
+                <span className="text-[12px] text-foreground/80 leading-snug">{step.title}</span>
+              </div>
+            ))}
+          </div>
+
+          {hasMore && !expanded && (
+            <div className="relative mt-1">
+              <div className="space-y-0">
+                {steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2).map((step) => (
+                  <div key={step.step} className="flex items-start gap-2 py-1 blur-[2px] select-none pointer-events-none opacity-50">
+                    <div className="w-4 h-4 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[9px] text-muted-foreground font-medium">{step.step}</span>
+                    </div>
+                    <span className="text-[12px] text-foreground/80 leading-snug">{step.title}</span>
+                  </div>
+                ))}
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
+              </div>
+              <button
+                onClick={() => setExpanded(true)}
+                className="flex items-center gap-1 mt-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
+                data-testid="button-expand-steps"
+              >
+                <ChevronDown className="w-3 h-3" />
+                Show all {steps.length} steps
+              </button>
+            </div>
+          )}
+
+          {expanded && hasMore && (
+            <button
+              onClick={() => setExpanded(false)}
+              className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-collapse-steps"
+            >
+              <ChevronUp className="w-3 h-3" />
+              Collapse
+            </button>
+          )}
+        </div>
+
+        <div className="px-3 py-2 border-t border-border/30 flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px] gap-1.5"
+            onClick={onRevise}
+            data-testid="button-revise-plan"
+          >
+            <PenLine className="w-3 h-3" />
+            Revise Plan
+          </Button>
+          <div className="flex-1" />
+          <Button
+            size="sm"
+            className="h-7 text-[11px] gap-1.5"
+            onClick={onBuildNow}
+            data-testid="button-build-now"
+          >
+            <Hammer className="w-3 h-3" />
+            Build Now
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-full-plan">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold leading-snug">{plan.summary}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2 space-y-3">
+            {steps.map((step) => (
+              <div key={step.step} className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[10px] text-muted-foreground font-medium">{step.step}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-foreground">{step.title}</p>
+                  {step.description && (
+                    <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{step.description}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] gap-1.5"
+              onClick={() => { setModalOpen(false); onRevise(); }}
+              data-testid="button-revise-plan-modal"
+            >
+              <PenLine className="w-3 h-3" />
+              Revise Plan
+            </Button>
+            <div className="flex-1" />
+            <Button
+              size="sm"
+              className="h-7 text-[11px] gap-1.5"
+              onClick={() => { setModalOpen(false); onBuildNow(); }}
+              data-testid="button-build-now-modal"
+            >
+              <Hammer className="w-3 h-3" />
+              Build Now
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ManagerMessageBubble({
   message,
   taskStatuses,
@@ -1213,6 +1381,7 @@ export function ChatPanel() {
   const autoExecutePlanRef = useRef(false);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
+  const [showPlanReview, setShowPlanReview] = useState(false);
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const inputBoxRef = useRef<HTMLDivElement>(null);
@@ -1229,7 +1398,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages]);
+  }, [chatMessages, managerMessages, showPlanReview]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2020,6 +2189,28 @@ export function ChatPanel() {
     setManagerResponding(false);
   }, [setAiResponding, setManagerResponding, isExecuting]);
 
+  const handleToggleMode = useCallback(() => {
+    const next = chatMode === "manager" ? "build" : "manager";
+    if (next === "build" && managerPlan) {
+      setChatMode("build");
+      setShowPlanReview(true);
+    } else {
+      setChatMode(next);
+      setShowPlanReview(false);
+    }
+  }, [chatMode, managerPlan, setChatMode]);
+
+  const handleRevisePlan = useCallback(() => {
+    setChatMode("manager");
+    setShowPlanReview(false);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, [setChatMode]);
+
+  const handleBuildNow = useCallback(() => {
+    setShowPlanReview(false);
+    handleExecutePlan();
+  }, [handleExecutePlan]);
+
   const handleCurrentSend = useCallback(() => {
     if (pendingConfirmation) {
       const trimmed = input.trim();
@@ -2136,6 +2327,14 @@ export function ChatPanel() {
             }
           });
         })()}
+        {showPlanReview && managerPlan && (
+          <PlanReviewCard
+            plan={managerPlan}
+            onBuildNow={handleBuildNow}
+            onRevise={handleRevisePlan}
+            onDismiss={() => setShowPlanReview(false)}
+          />
+        )}
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
@@ -2171,7 +2370,7 @@ export function ChatPanel() {
           <div className="flex items-center gap-1 px-2 pb-2">
             <button
               className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors group"
-              onClick={() => setChatMode(chatMode === "manager" ? "build" : "manager")}
+              onClick={handleToggleMode}
               data-testid="toggle-plan-mode"
               title={chatMode === "manager" ? "Switch to Build mode" : "Switch to Plan mode"}
             >
