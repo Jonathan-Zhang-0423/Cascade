@@ -1,22 +1,46 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
-import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
-import { MANAGER_AGENT_SYSTEM_PROMPT, MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerContextMessage, buildManagerFixPlanMessage } from "./manager-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
-import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
+import {
+  EDITOR_AGENT_SYSTEM_PROMPT,
+  buildEditorContextMessage,
+} from "./editor-prompt";
+import {
+  MANAGER_AGENT_SYSTEM_PROMPT,
+  MANAGER_FIX_MODE_SYSTEM_PROMPT,
+  buildManagerContextMessage,
+  buildManagerFixPlanMessage,
+} from "./manager-prompt";
+import {
+  VERIFIER_AGENT_SYSTEM_PROMPT,
+  buildHolisticVerifierMessage,
+} from "./verifier-prompt";
+import {
+  COMMUNICATOR_AGENT_SYSTEM_PROMPT,
+  buildCommunicatorMessage,
+} from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
-import { MENTOR_SYSTEM_PROMPT, MENTOR_PATCH_PROMPT, MENTOR_OPTIMIZE_PROMPT } from "./mentor-prompt";
+import {
+  MENTOR_SYSTEM_PROMPT,
+  MENTOR_PATCH_PROMPT,
+  MENTOR_OPTIMIZE_PROMPT,
+} from "./mentor-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 
-function parseMarkdownCodeBlock(raw: string): { code: string; language: string } {
+function parseMarkdownCodeBlock(raw: string): {
+  code: string;
+  language: string;
+} {
   const fenceMatch = raw.match(/^```(\w*)\s*\n?([\s\S]*?)```\s*$/);
   if (fenceMatch) {
     return { code: fenceMatch[2].trim(), language: fenceMatch[1] || "text" };
   }
   const partialMatch = raw.match(/^```(\w*)\s*\n?([\s\S]*)$/);
   if (partialMatch) {
-    return { code: partialMatch[2].trim(), language: partialMatch[1] || "text" };
+    return {
+      code: partialMatch[2].trim(),
+      language: partialMatch[1] || "text",
+    };
   }
   return { code: raw.trim(), language: "text" };
 }
@@ -32,23 +56,38 @@ function normalizeFeatures(breakdowns: any[]): any[] {
         feat.explanation = feat.walkthrough;
       }
       if (!feat.explanation) {
-        feat.explanation = feat.label ? `This section covers the "${feat.label}" feature of the project.` : "";
+        feat.explanation = feat.label
+          ? `This section covers the "${feat.label}" feature of the project.`
+          : "";
       }
 
       if (!Array.isArray(feat.code_blocks) || feat.code_blocks.length === 0) {
-        if (typeof feat.code_block === "string" && feat.code_block.trim().length > 0) {
+        if (
+          typeof feat.code_block === "string" &&
+          feat.code_block.trim().length > 0
+        ) {
           const { code, language } = parseMarkdownCodeBlock(feat.code_block);
-          feat.code_blocks = [{
-            code,
-            language,
-            walkthrough: typeof feat.walkthrough === "string" ? feat.walkthrough : "",
-          }];
-        } else if (typeof feat.code === "string" && feat.code.trim().length > 0) {
-          feat.code_blocks = [{
-            code: feat.code.trim(),
-            language: typeof feat.language === "string" ? feat.language : "text",
-            walkthrough: typeof feat.walkthrough === "string" ? feat.walkthrough : "",
-          }];
+          feat.code_blocks = [
+            {
+              code,
+              language,
+              walkthrough:
+                typeof feat.walkthrough === "string" ? feat.walkthrough : "",
+            },
+          ];
+        } else if (
+          typeof feat.code === "string" &&
+          feat.code.trim().length > 0
+        ) {
+          feat.code_blocks = [
+            {
+              code: feat.code.trim(),
+              language:
+                typeof feat.language === "string" ? feat.language : "text",
+              walkthrough:
+                typeof feat.walkthrough === "string" ? feat.walkthrough : "",
+            },
+          ];
         } else {
           feat.code_blocks = [];
         }
@@ -62,14 +101,24 @@ function normalizeFeatures(breakdowns: any[]): any[] {
               block.language = language;
             }
           }
-          if ((!block.walkthrough || (typeof block.walkthrough === "string" && block.walkthrough.trim().length === 0)) && typeof feat.walkthrough === "string" && feat.walkthrough.trim().length > 0) {
+          if (
+            (!block.walkthrough ||
+              (typeof block.walkthrough === "string" &&
+                block.walkthrough.trim().length === 0)) &&
+            typeof feat.walkthrough === "string" &&
+            feat.walkthrough.trim().length > 0
+          ) {
             block.walkthrough = feat.walkthrough;
           }
           return block;
         });
       }
 
-      if (!feat.prompt_tip || typeof feat.prompt_tip !== "string" || feat.prompt_tip.trim().length === 0) {
+      if (
+        !feat.prompt_tip ||
+        typeof feat.prompt_tip !== "string" ||
+        feat.prompt_tip.trim().length === 0
+      ) {
         feat.prompt_tip = "";
       }
 
@@ -83,7 +132,10 @@ function normalizeFeatures(breakdowns: any[]): any[] {
 }
 
 function parseAIJson(raw: string): any {
-  let text = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim();
+  let text = raw
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
 
   try {
     return JSON.parse(text);
@@ -127,7 +179,13 @@ function parseAIJson(raw: string): any {
         if (c === '"') {
           if (inStr) {
             const rest = extracted.substring(i + 1).trimStart();
-            if (rest[0] === ":" || rest[0] === "," || rest[0] === "}" || rest[0] === "]" || rest.length === 0) {
+            if (
+              rest[0] === ":" ||
+              rest[0] === "," ||
+              rest[0] === "}" ||
+              rest[0] === "]" ||
+              rest.length === 0
+            ) {
               inStr = false;
               result += c;
               continue;
@@ -156,9 +214,10 @@ async function runEditorNonStreaming(
   userMessage: string,
   files: Array<{ path: string; content: string }>,
 ): Promise<{ output: string; latencyMs: number; charsInContext: number }> {
-  const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-    { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
-  ];
+  const systemMessages: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }> = [{ role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT }];
   if (files.length > 0) {
     const contextMsg = buildEditorContextMessage(files);
     systemMessages.push({ role: "system", content: contextMsg });
@@ -168,7 +227,7 @@ async function runEditorNonStreaming(
       model: DOUBAO_MODEL,
       messages: [...systemMessages, { role: "user", content: userMessage }],
       stream: false,
-      max_tokens: 4096,
+      max_tokens: 16384,
     });
     return {
       output: completion.choices[0]?.message?.content || "",
@@ -181,7 +240,7 @@ async function runEditorNonStreaming(
     model: DOUBAO_MODEL,
     messages: [...systemMessages, { role: "user", content: userMessage }],
     stream: false,
-    max_tokens: 4096,
+    max_tokens: 16384,
   });
   return {
     output: completion.choices[0]?.message?.content || "",
@@ -192,7 +251,7 @@ async function runEditorNonStreaming(
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
   app.post("/api/chat", async (req, res) => {
     try {
@@ -210,9 +269,10 @@ export async function registerRoutes(
         return;
       }
 
-      const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
-      ];
+      const systemMessages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }> = [{ role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT }];
 
       if (files && files.length > 0) {
         const contextMsg = buildEditorContextMessage(files);
@@ -230,7 +290,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: true,
-        max_tokens: 4096,
+        max_tokens: 16384,
       });
 
       for await (const chunk of stream) {
@@ -245,9 +305,13 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Chat API error:", error?.message || error);
       if (!res.headersSent) {
-        res.status(500).json({ error: error?.message || "Failed to get AI response" });
+        res
+          .status(500)
+          .json({ error: error?.message || "Failed to get AI response" });
       } else {
-        res.write(`data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
+        );
         res.end();
       }
     }
@@ -269,15 +333,19 @@ export async function registerRoutes(
         return;
       }
 
-      const systemMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: MANAGER_AGENT_SYSTEM_PROMPT },
-      ];
+      const systemMessages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }> = [{ role: "system", content: MANAGER_AGENT_SYSTEM_PROMPT }];
 
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
         systemMessages.push({ role: "system", content: contextMsg });
       } else {
-        systemMessages.push({ role: "system", content: "The project currently has no files." });
+        systemMessages.push({
+          role: "system",
+          content: "The project currently has no files.",
+        });
       }
 
       const allMessages = [...systemMessages, ...messages];
@@ -286,7 +354,7 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages: allMessages,
         stream: false,
-        max_tokens: 4096,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
@@ -311,11 +379,16 @@ export async function registerRoutes(
         delete plan.project_name;
         res.json({ plan, project_name: projectName });
       } else {
-        res.json({ message: parsed.content || responseContent, project_name: projectName });
+        res.json({
+          message: parsed.content || responseContent,
+          project_name: projectName,
+        });
       }
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get Manager response" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get Manager response" });
     }
   });
 
@@ -326,16 +399,31 @@ export async function registerRoutes(
         return;
       }
 
-      const { user_request, plan_steps, files_before, files_after, user_feedback } = req.body as {
+      const {
+        user_request,
+        plan_steps,
+        files_before,
+        files_after,
+        user_feedback,
+      } = req.body as {
         user_request: string;
-        plan_steps: Array<{ step: number; title: string; description: string; acceptance_criteria?: string }>;
+        plan_steps: Array<{
+          step: number;
+          title: string;
+          description: string;
+          acceptance_criteria?: string;
+        }>;
         files_before: Array<{ path: string; content: string }>;
         files_after: Array<{ path: string; content: string }>;
         user_feedback?: string;
       };
 
       if (!user_request || !plan_steps || !files_after) {
-        res.status(400).json({ error: "user_request, plan_steps, and files_after are required" });
+        res
+          .status(400)
+          .json({
+            error: "user_request, plan_steps, and files_after are required",
+          });
         return;
       }
 
@@ -359,21 +447,26 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
-        max_tokens: 500,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
 
       const review = parseAIJson(responseContent);
       if (!review) {
-        res.json({ raw: responseContent, error: "Verifier did not return valid JSON" });
+        res.json({
+          raw: responseContent,
+          error: "Verifier did not return valid JSON",
+        });
         return;
       }
 
       res.json({ review });
     } catch (error: any) {
       console.error("Holistic verifier API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get holistic review" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get holistic review" });
     }
   });
 
@@ -387,8 +480,19 @@ export async function registerRoutes(
       const { files, bug_report, original_request } = req.body as {
         files: Array<{ path: string; content: string }>;
         bug_report: {
-          bugs: Array<{ id: string; severity: string; file: string; description: string; expected: string; actual: string }>;
-          missing_features: Array<{ id: string; description: string; related_step: number }>;
+          bugs: Array<{
+            id: string;
+            severity: string;
+            file: string;
+            description: string;
+            expected: string;
+            actual: string;
+          }>;
+          missing_features: Array<{
+            id: string;
+            description: string;
+            related_step: number;
+          }>;
           regressions: Array<{ id: string; file: string; description: string }>;
           summary: string;
           suggestion: string;
@@ -397,7 +501,9 @@ export async function registerRoutes(
       };
 
       if (!bug_report || !original_request) {
-        res.status(400).json({ error: "bug_report and original_request are required" });
+        res
+          .status(400)
+          .json({ error: "bug_report and original_request are required" });
         return;
       }
 
@@ -416,21 +522,26 @@ export async function registerRoutes(
         model: DOUBAO_MODEL,
         messages,
         stream: false,
-        max_tokens: 500,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
 
       const plan = parseAIJson(responseContent);
       if (!plan) {
-        res.json({ raw: responseContent, error: "Manager did not return valid fix plan JSON" });
+        res.json({
+          raw: responseContent,
+          error: "Manager did not return valid fix plan JSON",
+        });
         return;
       }
 
       res.json({ plan });
     } catch (error: any) {
       console.error("Manager fix plan API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get fix plan" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get fix plan" });
     }
   });
 
@@ -444,7 +555,9 @@ export async function registerRoutes(
       const { event } = req.body as { event: CommunicatorEvent };
 
       if (!event || !event.event) {
-        res.status(400).json({ error: "event object with event type is required" });
+        res
+          .status(400)
+          .json({ error: "event object with event type is required" });
         return;
       }
 
@@ -460,7 +573,7 @@ export async function registerRoutes(
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
 
-      const maxTokens = event.event === "plan_created" ? 500 : 150;
+      const maxTokens = 16384;
 
       const stream = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
@@ -481,9 +594,15 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Communicator chat API error:", error?.message || error);
       if (!res.headersSent) {
-        res.status(500).json({ error: error?.message || "Failed to get Communicator response" });
+        res
+          .status(500)
+          .json({
+            error: error?.message || "Failed to get Communicator response",
+          });
       } else {
-        res.write(`data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
+        );
         res.end();
       }
     }
@@ -504,7 +623,10 @@ export async function registerRoutes(
       }
 
       const fileContext = files
-        .map((f: { path: string; content: string }) => `--- ${f.path} ---\n${f.content}`)
+        .map(
+          (f: { path: string; content: string }) =>
+            `--- ${f.path} ---\n${f.content}`,
+        )
         .join("\n\n");
 
       const messages = [
@@ -519,14 +641,17 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 8192,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
 
       const notebook = parseAIJson(responseContent);
       if (!notebook) {
-        res.json({ raw: responseContent, error: "Mentor did not return valid JSON" });
+        res.json({
+          raw: responseContent,
+          error: "Mentor did not return valid JSON",
+        });
         return;
       }
 
@@ -537,7 +662,9 @@ export async function registerRoutes(
       res.json({ notebook });
     } catch (error: any) {
       console.error("Mentor analyze API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get Mentor analysis" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get Mentor analysis" });
     }
   });
 
@@ -550,14 +677,20 @@ export async function registerRoutes(
 
       const { changedFiles, notebookOutline, affectedSections } = req.body;
 
-      if (!changedFiles || !Array.isArray(changedFiles) || changedFiles.length === 0) {
+      if (
+        !changedFiles ||
+        !Array.isArray(changedFiles) ||
+        changedFiles.length === 0
+      ) {
         res.status(400).json({ error: "No changed files provided" });
         return;
       }
 
       const fileContext = changedFiles
-        .map((f: { path: string; content: string; status: string }) =>
-          `--- ${f.path} [${f.status}] ---\n${f.status === "deleted" ? "(file deleted)" : f.content}`)
+        .map(
+          (f: { path: string; content: string; status: string }) =>
+            `--- ${f.path} [${f.status}] ---\n${f.status === "deleted" ? "(file deleted)" : f.content}`,
+        )
         .join("\n\n");
 
       const outlineText = notebookOutline || "No existing notebook outline.";
@@ -577,13 +710,16 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 8192,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
       const patch = parseAIJson(responseContent);
       if (!patch) {
-        res.json({ raw: responseContent, error: "Mentor did not return valid JSON patch" });
+        res.json({
+          raw: responseContent,
+          error: "Mentor did not return valid JSON patch",
+        });
         return;
       }
 
@@ -597,7 +733,9 @@ export async function registerRoutes(
       res.json({ patch });
     } catch (error: any) {
       console.error("Mentor patch API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get Mentor patch" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get Mentor patch" });
     }
   });
 
@@ -616,7 +754,10 @@ export async function registerRoutes(
       }
 
       const fileContext = files
-        .map((f: { path: string; content: string }) => `--- ${f.path} ---\n${f.content}`)
+        .map(
+          (f: { path: string; content: string }) =>
+            `--- ${f.path} ---\n${f.content}`,
+        )
         .join("\n\n");
 
       const messages = [
@@ -631,24 +772,31 @@ export async function registerRoutes(
         model: DOUBAO_LITE_MODEL,
         messages,
         stream: false,
-        max_tokens: 8192,
+        max_tokens: 16384,
       });
 
       const responseContent = completion.choices[0]?.message?.content || "";
       const optimized = parseAIJson(responseContent);
       if (!optimized) {
-        res.json({ raw: responseContent, error: "Mentor did not return valid JSON" });
+        res.json({
+          raw: responseContent,
+          error: "Mentor did not return valid JSON",
+        });
         return;
       }
 
       if (optimized.file_breakdowns) {
-        optimized.file_breakdowns = normalizeFeatures(optimized.file_breakdowns);
+        optimized.file_breakdowns = normalizeFeatures(
+          optimized.file_breakdowns,
+        );
       }
 
       res.json({ notebook: optimized });
     } catch (error: any) {
       console.error("Mentor optimize API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get Mentor optimization" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to get Mentor optimization" });
     }
   });
 
@@ -690,18 +838,21 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
           })),
           {
             role: "user",
-            content: "[Generate a suggested response for me to send to the assistant. Output only the response text itself.]",
+            content:
+              "[Generate a suggested response for me to send to the assistant. Output only the response text itself.]",
           },
         ],
         stream: false,
-        max_tokens: 256,
+        max_tokens: 16384,
       });
 
       const suggestion = completion.choices[0]?.message?.content?.trim() || "";
       res.json({ suggestion });
     } catch (error: any) {
       console.error("Smart response API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to generate smart response" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to generate smart response" });
     }
   });
 
@@ -713,7 +864,10 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
       }
 
       function buildEditorPrompt(step: {
-        sub_task_id: string; title: string; description: string; acceptance_criteria: string;
+        sub_task_id: string;
+        title: string;
+        description: string;
+        acceptance_criteria: string;
       }): string {
         return [
           `[Plan Mode] You are executing subtask ${step.sub_task_id}: ${step.title}`,
@@ -750,14 +904,30 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
 
       async function runVerifierOnOutput(
         userRequest: string,
-        step: { step: number; title: string; description: string; acceptance_criteria: string },
+        step: {
+          step: number;
+          title: string;
+          description: string;
+          acceptance_criteria: string;
+        },
         filesBefore: { path: string; content: string }[],
         filesAfter: { path: string; content: string }[],
         expectedOutput?: string,
-      ): Promise<{ status: "pass" | "fail"; matchPercent: number; summary: string }> {
+      ): Promise<{
+        status: "pass" | "fail";
+        matchPercent: number;
+        summary: string;
+      }> {
         let contextMsg = buildHolisticVerifierMessage(
           userRequest,
-          [{ step: step.step, title: step.title, description: step.description, acceptance_criteria: step.acceptance_criteria }],
+          [
+            {
+              step: step.step,
+              title: step.title,
+              description: step.description,
+              acceptance_criteria: step.acceptance_criteria,
+            },
+          ],
           filesBefore,
           filesAfter,
         );
@@ -771,13 +941,23 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
             { role: "user", content: contextMsg },
           ],
           stream: false,
-          max_tokens: 500,
+          max_tokens: 16384,
         });
-        const review = parseAIJson(completion.choices[0]?.message?.content || "");
-        if (!review) return { status: "fail", matchPercent: 0, summary: "Verifier returned invalid JSON" };
+        const review = parseAIJson(
+          completion.choices[0]?.message?.content || "",
+        );
+        if (!review)
+          return {
+            status: "fail",
+            matchPercent: 0,
+            summary: "Verifier returned invalid JSON",
+          };
         return {
           status: review.overall_status === "pass" ? "pass" : "fail",
-          matchPercent: typeof review.requirement_match_percent === "number" ? review.requirement_match_percent : 0,
+          matchPercent:
+            typeof review.requirement_match_percent === "number"
+              ? review.requirement_match_percent
+              : 0,
           summary: typeof review.summary === "string" ? review.summary : "",
         };
       }
@@ -793,15 +973,36 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
 
           const [variantA, variantB] = await Promise.all([
             runEditorNonStreaming(prompt, scenario.initialFiles),
-            runEditorNonStreaming(prompt, variantBFiles.length > 0 ? variantBFiles : scenario.initialFiles),
+            runEditorNonStreaming(
+              prompt,
+              variantBFiles.length > 0 ? variantBFiles : scenario.initialFiles,
+            ),
           ]);
 
-          const filesAfterA = applyEditorOutput(variantA.output, scenario.initialFiles);
-          const filesAfterB = applyEditorOutput(variantB.output, scenario.initialFiles);
+          const filesAfterA = applyEditorOutput(
+            variantA.output,
+            scenario.initialFiles,
+          );
+          const filesAfterB = applyEditorOutput(
+            variantB.output,
+            scenario.initialFiles,
+          );
 
           const [reviewA, reviewB] = await Promise.all([
-            runVerifierOnOutput(scenario.userRequest, step, scenario.initialFiles, filesAfterA, scenario.expectedOutput),
-            runVerifierOnOutput(scenario.userRequest, step, scenario.initialFiles, filesAfterB, scenario.expectedOutput),
+            runVerifierOnOutput(
+              scenario.userRequest,
+              step,
+              scenario.initialFiles,
+              filesAfterA,
+              scenario.expectedOutput,
+            ),
+            runVerifierOnOutput(
+              scenario.userRequest,
+              step,
+              scenario.initialFiles,
+              filesAfterB,
+              scenario.expectedOutput,
+            ),
           ]);
 
           return {
@@ -818,7 +1019,10 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
               rawOutput: variantA.output,
             },
             variantB: {
-              filesCount: variantBFiles.length > 0 ? variantBFiles.length : scenario.initialFiles.length,
+              filesCount:
+                variantBFiles.length > 0
+                  ? variantBFiles.length
+                  : scenario.initialFiles.length,
               charsInContext: variantB.charsInContext,
               latencyMs: variantB.latencyMs,
               verifierStatus: reviewB.status,
@@ -833,7 +1037,9 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
       res.json({ results: scenarioResults });
     } catch (error: any) {
       console.error("A/B test API error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to run A/B test" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to run A/B test" });
     }
   });
 
