@@ -44,6 +44,7 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     whatAndWhy: "任务目标",
     doneLooksLike: "完成后是什么样",
     outOfScope: "暂不包含",
+    outOfScopeNone: "无特别限制",
     tasks: "任务步骤",
     relevantFiles: "相关文件",
   },
@@ -76,6 +77,7 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     whatAndWhy: "What & Why",
     doneLooksLike: "Done looks like",
     outOfScope: "Out of scope",
+    outOfScopeNone: "Nothing specific noted",
     tasks: "Tasks",
     relevantFiles: "Relevant files",
   },
@@ -1023,12 +1025,10 @@ function TaskPlanCard({
                 <p className="text-[12px] text-foreground/80 leading-relaxed">{doneLooksLike}</p>
               </div>
             )}
-            {outOfScope && (
-              <div className="px-3 py-2 border-b border-border/20">
-                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{t(lang, "outOfScope")}</p>
-                <p className="text-[12px] text-muted-foreground leading-relaxed">{outOfScope}</p>
-              </div>
-            )}
+            <div className="px-3 py-2 border-b border-border/20">
+              <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{t(lang, "outOfScope")}</p>
+              <p className="text-[12px] text-muted-foreground leading-relaxed">{outOfScope || t(lang, "outOfScopeNone")}</p>
+            </div>
 
             <div className={cn("px-3 py-2", !(relevantFiles && relevantFiles.length > 0) && "border-b-0", "border-b border-border/20")}>
               <div className="flex items-center justify-between mb-1">
@@ -1136,6 +1136,11 @@ function TaskPlanCard({
           </>
         ) : (
           <div className="px-3 pb-2">
+            {(plan.summary || (plan as any).user_requirement) && (
+              <p className="text-[12px] text-foreground/70 leading-snug pt-2.5 pb-1">
+                {plan.summary || (plan as any).user_requirement}
+              </p>
+            )}
             <div className="space-y-0">
               {steps.map((task: ManagerSubTask) => (
                 <StepItem
