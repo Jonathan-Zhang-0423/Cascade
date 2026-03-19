@@ -1210,6 +1210,7 @@ export function ChatPanel() {
   const pendingHandled = useRef(false);
   const executionAbortRef = useRef(false);
   const preBuildSnapshotRef = useRef<{ path: string; content: string }[] | null>(null);
+  const autoExecutePlanRef = useRef(false);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
@@ -1460,13 +1461,17 @@ export function ChatPanel() {
 
         setManagerPlan(displayPlan);
         addManagerMessage({ role: "assistant", content: "", plan: displayPlan });
+
+        if (chatMode === "build") {
+          autoExecutePlanRef.current = true;
+        }
       }
     } catch (error: any) {
       addManagerMessage({ role: "assistant", content: "Oops, I couldn't connect to the team right now. Please try again in a moment! 🔄", source: "communicator" });
     } finally {
       setManagerResponding(false);
     }
-  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject]);
+  }, [input, isManagerResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject, chatMode]);
 
   const executeSubTask = useCallback(async (
     description: string,
@@ -1993,6 +1998,13 @@ export function ChatPanel() {
       });
     }
   }, [pendingPrompt, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend]);
+
+  useEffect(() => {
+    if (!isManagerResponding && autoExecutePlanRef.current) {
+      autoExecutePlanRef.current = false;
+      handleExecutePlan();
+    }
+  }, [isManagerResponding, handleExecutePlan]);
 
   const isExecuting = executingTaskIndex !== null;
 
