@@ -6,14 +6,22 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
-import ABTestPage from "@/pages/ab-test";
+import { lazy, Suspense } from "react";
+
+const ABTestPage = lazy(() => import("@/pages/ab-test"));
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
-      <Route path="/ab-test" component={ABTestPage} />
+      {import.meta.env.DEV && (
+        <Route path="/ab-test">
+          <Suspense fallback={<div className="p-8 text-muted-foreground">Loading…</div>}>
+            <ABTestPage />
+          </Suspense>
+        </Route>
+      )}
     </Switch>
   );
 }

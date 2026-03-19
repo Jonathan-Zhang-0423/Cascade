@@ -186,8 +186,8 @@ export default function ABTestPage() {
 
   const runTest = useMutation({
     mutationFn: async () => {
-      const data = await apiRequest("POST", "/api/ab-test", {});
-      return data as ABTestResponse;
+      const res = await apiRequest("POST", "/api/ab-test", {});
+      return await res.json() as ABTestResponse;
     },
     onSuccess: (data) => {
       setResults(data.results);

@@ -12,6 +12,7 @@ export interface ABTestScenario {
     acceptance_criteria: string;
     required_files: string[];
   };
+  expectedOutput: string;
 }
 
 export const AB_TEST_SCENARIOS: ABTestScenario[] = [
@@ -83,6 +84,7 @@ function updateScore() {
       acceptance_criteria: "A button with id='clickBtn' and text 'Click me!' is present inside .container in index.html, positioned after the score display.",
       required_files: ["/project/index.html"],
     },
+    expectedOutput: "index.html should have a <button id='clickBtn'>Click me!</button> element inside .container, after <div id='score'>. style.css and app.js must be unchanged from their initial content.",
   },
 
   {
@@ -173,6 +175,7 @@ clickBtn.addEventListener('click', function() {
       acceptance_criteria: "A reset button with id='resetBtn' is present in index.html after the click button. Clicking reset sets the score display back to 0.",
       required_files: ["/project/index.html", "/project/app.js"],
     },
+    expectedOutput: "index.html should have <button id='resetBtn'>Reset</button> after #clickBtn. app.js should have a resetBtn click listener that sets count=0 and calls updateScore(). style.css must be unchanged.",
   },
 
   {
@@ -323,5 +326,6 @@ resetBtn.addEventListener('click', resetCounter);`,
       acceptance_criteria: "Pressing the spacebar on the page increments the counter by 1 and shows the keyboard status message, without scrolling the page.",
       required_files: ["/project/app.js"],
     },
+    expectedOutput: "app.js should have a document keydown listener that checks for Space key, calls updateScore('keyboard'), and calls event.preventDefault(). index.html, style.css, and animations.css must be unchanged.",
   },
 ];

@@ -736,13 +736,17 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
         step: { step: number; title: string; description: string; acceptance_criteria: string },
         filesBefore: { path: string; content: string }[],
         filesAfter: { path: string; content: string }[],
+        expectedOutput?: string,
       ): Promise<{ status: "pass" | "fail"; matchPercent: number; summary: string }> {
-        const contextMsg = buildHolisticVerifierMessage(
+        let contextMsg = buildHolisticVerifierMessage(
           userRequest,
           [{ step: step.step, title: step.title, description: step.description, acceptance_criteria: step.acceptance_criteria }],
           filesBefore,
           filesAfter,
         );
+        if (expectedOutput) {
+          contextMsg += `\n\n--- EXPECTED OUTPUT NOTES ---\n${expectedOutput}`;
+        }
         const completion = await doubaoClient.chat.completions.create({
           model: DOUBAO_MODEL,
           messages: [
@@ -778,8 +782,8 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
           const filesAfterB = applyEditorOutput(variantB.output, scenario.initialFiles);
 
           const [reviewA, reviewB] = await Promise.all([
-            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterA),
-            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterB),
+            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterA, scenario.expectedOutput),
+            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterB, scenario.expectedOutput),
           ]);
 
           return {
