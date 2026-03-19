@@ -1494,9 +1494,7 @@ export function ChatPanel() {
     if (requiredFiles && requiredFiles.length > 0) {
       const requiredSet = new Set(requiredFiles);
       const matched = allFiles.filter((f) => requiredSet.has(f.path));
-      fileContext = matched.length > 0
-        ? matched.map((f) => ({ path: f.path, content: f.content || "" }))
-        : allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
+      fileContext = matched.map((f) => ({ path: f.path, content: f.content || "" }));
     } else {
       fileContext = allFiles.map((f) => ({ path: f.path, content: f.content || "" }));
     }
