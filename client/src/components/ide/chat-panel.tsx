@@ -868,10 +868,11 @@ function TypingIndicator({ text }: { text?: string }) {
   );
 }
 
-function StepItem({ task, status, isCompleted }: {
+function StepItem({ task, status, isCompleted, showNumber }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
   isCompleted?: boolean;
+  showNumber?: boolean;
 }) {
   const s = status || "pending";
   const icons: Record<string, JSX.Element> = {
@@ -887,6 +888,11 @@ function StepItem({ task, status, isCompleted }: {
     <div className="py-1" data-testid={`step-${task.step}`}>
       <div className="flex items-center gap-2">
         <div className="shrink-0">{icons[s] || icons.pending}</div>
+        {showNumber && (
+          <span className="text-[10px] text-muted-foreground/50 font-mono shrink-0 w-4 text-right leading-none">
+            {task.step}.
+          </span>
+        )}
         <span className={cn(
           "text-[12px] leading-snug flex-1",
           isCompleted ? "text-muted-foreground/50 line-through" :
@@ -1051,6 +1057,7 @@ function TaskPlanCard({
                     task={task}
                     status={taskStatuses[String(task.step)]}
                     isCompleted={isFullyComplete}
+                    showNumber
                   />
                 ))}
               </div>
@@ -1063,6 +1070,7 @@ function TaskPlanCard({
                         task={task}
                         status={taskStatuses[String(task.step)]}
                         isCompleted={isFullyComplete}
+                        showNumber
                       />
                     ))}
                   </div>
