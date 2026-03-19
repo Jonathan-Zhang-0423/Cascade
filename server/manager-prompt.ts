@@ -30,7 +30,8 @@ When the user has a clear, concrete build request — generate a structured task
       "sub_task_id": "T001-01",
       "title": "Short action title (3-8 words)",
       "description": "Clear description of what the coding agent should do, including file paths",
-      "acceptance_criteria": "Testable statement of what must be true when complete"
+      "acceptance_criteria": "Testable statement of what must be true when complete",
+      "required_files": ["/project/index.html"]
     }
   ],
   "needs_input": []
@@ -75,6 +76,14 @@ Use this mode when:
 - Keep step titles short (3-8 words).
 - Step descriptions must be specific enough to execute without ambiguity.
 - Never write code — only describe what should be done.
+
+### required_files (CRITICAL)
+- Every step MUST include a \`required_files\` array listing the exact file paths the coding agent needs to read or write for that step.
+- Only list files that are directly read or modified by that step. Do NOT include files that are merely referenced or unrelated.
+- If the step creates a new file, include the new file path in \`required_files\`.
+- If the step modifies an existing file, include that file's path.
+- Example: if a step only modifies /project/app.js, set \`"required_files": ["/project/app.js"]\`.
+- Example: if a step modifies both /project/index.html and /project/app.js, set \`"required_files": ["/project/index.html", "/project/app.js"]\`.
 
 ### Language matching (CRITICAL)
 - ALL output text MUST be in the same language as the user's message.

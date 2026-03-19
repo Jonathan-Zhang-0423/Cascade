@@ -8,6 +8,7 @@ import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./ve
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
 import { MENTOR_SYSTEM_PROMPT, MENTOR_PATCH_PROMPT, MENTOR_OPTIMIZE_PROMPT } from "./mentor-prompt";
+import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 
 function parseMarkdownCodeBlock(raw: string): { code: string; language: string } {
   const fenceMatch = raw.match(/^```(\w*)\s*\n?([\s\S]*?)```\s*$/);
@@ -662,6 +663,153 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
     } catch (error: any) {
       console.error("Smart response API error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to generate smart response" });
+    }
+  });
+
+  app.post("/api/ab-test", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+
+      function buildEditorPrompt(step: {
+        sub_task_id: string; title: string; description: string; acceptance_criteria: string;
+      }): string {
+        return [
+          `[Plan Mode] You are executing subtask ${step.sub_task_id}: ${step.title}`,
+          `Task description: ${step.description}`,
+          `Acceptance criteria: ${step.acceptance_criteria}`,
+          ``,
+          `IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.`,
+          ``,
+          `Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.`,
+        ].join("\n");
+      }
+
+      async function runEditorVariant(
+        prompt: string,
+        files: { path: string; content: string }[],
+      ): Promise<{ output: string; latencyMs: number; charsInContext: number }> {
+        const contextMsg = buildEditorContextMessage(files);
+        const charsInContext = contextMsg.length;
+        const t0 = Date.now();
+        const completion = await doubaoClient.chat.completions.create({
+          model: DOUBAO_MODEL,
+          messages: [
+            { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
+            { role: "system", content: contextMsg },
+            { role: "user", content: prompt },
+          ],
+          stream: false,
+          max_tokens: 4096,
+        });
+        const latencyMs = Date.now() - t0;
+        const output = completion.choices[0]?.message?.content || "";
+        return { output, latencyMs, charsInContext };
+      }
+
+      function applyEditorOutput(
+        output: string,
+        initialFiles: { path: string; content: string }[],
+      ): { path: string; content: string }[] {
+        const regex = /```(\w*)\s+file="([^"]+)"\n([\s\S]*?)```/g;
+        const updates = new Map<string, string>();
+        let match;
+        while ((match = regex.exec(output)) !== null) {
+          updates.set(match[2], match[3].trimEnd());
+        }
+        const result = initialFiles.map((f) => ({
+          path: f.path,
+          content: updates.get(f.path) ?? f.content,
+        }));
+        for (const [path, content] of updates) {
+          if (!result.find((f) => f.path === path)) {
+            result.push({ path, content });
+          }
+        }
+        return result;
+      }
+
+      async function runVerifierOnOutput(
+        userRequest: string,
+        step: { step: number; title: string; description: string; acceptance_criteria: string },
+        filesBefore: { path: string; content: string }[],
+        filesAfter: { path: string; content: string }[],
+      ): Promise<{ status: "pass" | "fail"; matchPercent: number; summary: string }> {
+        const contextMsg = buildHolisticVerifierMessage(
+          userRequest,
+          [{ step: step.step, title: step.title, description: step.description, acceptance_criteria: step.acceptance_criteria }],
+          filesBefore,
+          filesAfter,
+        );
+        const completion = await doubaoClient.chat.completions.create({
+          model: DOUBAO_MODEL,
+          messages: [
+            { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
+            { role: "user", content: contextMsg },
+          ],
+          stream: false,
+          max_tokens: 500,
+        });
+        const review = parseAIJson(completion.choices[0]?.message?.content || "");
+        if (!review) return { status: "fail", matchPercent: 0, summary: "Verifier returned invalid JSON" };
+        return {
+          status: review.overall_status === "pass" ? "pass" : "fail",
+          matchPercent: typeof review.requirement_match_percent === "number" ? review.requirement_match_percent : 0,
+          summary: typeof review.summary === "string" ? review.summary : "",
+        };
+      }
+
+      const scenarioResults = await Promise.all(
+        AB_TEST_SCENARIOS.map(async (scenario) => {
+          const prompt = buildEditorPrompt(scenario.step);
+
+          const variantBFiles = scenario.initialFiles.filter((f) =>
+            scenario.step.required_files.includes(f.path),
+          );
+
+          const [variantA, variantB] = await Promise.all([
+            runEditorVariant(prompt, scenario.initialFiles),
+            runEditorVariant(prompt, variantBFiles.length > 0 ? variantBFiles : scenario.initialFiles),
+          ]);
+
+          const filesAfterA = applyEditorOutput(variantA.output, scenario.initialFiles);
+          const filesAfterB = applyEditorOutput(variantB.output, scenario.initialFiles);
+
+          const [reviewA, reviewB] = await Promise.all([
+            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterA),
+            runVerifierOnOutput(scenario.userRequest, scenario.step, scenario.initialFiles, filesAfterB),
+          ]);
+
+          return {
+            scenarioId: scenario.id,
+            scenarioName: scenario.name,
+            scenarioDescription: scenario.description,
+            variantA: {
+              filesCount: scenario.initialFiles.length,
+              charsInContext: variantA.charsInContext,
+              latencyMs: variantA.latencyMs,
+              verifierStatus: reviewA.status,
+              matchPercent: reviewA.matchPercent,
+              summary: reviewA.summary,
+            },
+            variantB: {
+              filesCount: variantBFiles.length > 0 ? variantBFiles.length : scenario.initialFiles.length,
+              charsInContext: variantB.charsInContext,
+              latencyMs: variantB.latencyMs,
+              verifierStatus: reviewB.status,
+              matchPercent: reviewB.matchPercent,
+              summary: reviewB.summary,
+            },
+          };
+        }),
+      );
+
+      res.json({ results: scenarioResults });
+    } catch (error: any) {
+      console.error("A/B test API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to run A/B test" });
     }
   });
 

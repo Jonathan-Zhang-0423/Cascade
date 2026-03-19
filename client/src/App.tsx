@@ -6,12 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
+import ABTestPage from "@/pages/ab-test";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
+      <Route path="/ab-test" component={ABTestPage} />
     </Switch>
   );
 }
