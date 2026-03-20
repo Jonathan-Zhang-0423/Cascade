@@ -442,11 +442,24 @@ export async function registerRoutes(
             if (c === "\\") {
               if (i + 1 < raw.length) {
                 const next = raw[i + 1];
-                if (next === "n") newChars += "\n";
-                else if (next === "t") newChars += "\t";
-                else if (next === "r") newChars += "\r";
-                else newChars += next;
-                i += 2;
+                if (next === "n") { newChars += "\n"; i += 2; }
+                else if (next === "t") { newChars += "\t"; i += 2; }
+                else if (next === "r") { newChars += "\r"; i += 2; }
+                else if (next === "u") {
+                  if (i + 5 < raw.length) {
+                    const hex = raw.slice(i + 2, i + 6);
+                    if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                      newChars += String.fromCharCode(parseInt(hex, 16));
+                      i += 6;
+                    } else {
+                      newChars += next;
+                      i += 2;
+                    }
+                  } else {
+                    break;
+                  }
+                }
+                else { newChars += next; i += 2; }
               } else {
                 break;
               }
