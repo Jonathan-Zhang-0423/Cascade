@@ -1813,7 +1813,7 @@ export function ChatPanel() {
         }
       }
     } catch (error: any) {
-      addManagerMessage({ role: "assistant", content: "Oops, I couldn't connect to the team right now. Please try again in a moment! 🔄", source: "communicator" });
+      addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
     } finally {
       setManagerResponding(false);
     }
@@ -1874,7 +1874,7 @@ export function ChatPanel() {
       });
 
       if (!response.ok) {
-        addManagerMessage({ role: "assistant", content: "Build failed to start. Please try again. 🔄", source: "communicator" });
+        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildStart"), source: "communicator" });
         return;
       }
 
@@ -1970,7 +1970,7 @@ export function ChatPanel() {
               if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
             });
           } else if (type === "build_error") {
-            addManagerMessage({ role: "assistant", content: `Something went wrong during the build. Please try again. 🔄`, source: "communicator" });
+            addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildGeneric"), source: "communicator" });
           } else if (type === "done") {
             finalizeEditor();
             streamDone = true;
@@ -1980,7 +1980,7 @@ export function ChatPanel() {
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") {
-        addManagerMessage({ role: "assistant", content: "Build connection interrupted. Please try again. 🔄", source: "communicator" });
+        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
       }
     } finally {
       buildSessionIdRef.current = null;
