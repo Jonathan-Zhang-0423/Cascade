@@ -1814,10 +1814,15 @@ export function ChatPanel() {
 
     let commAccumulated = "";
     let commInserted = false;
+    let editorAccumulated = "";
 
     const finalizeComm = () => {
       commAccumulated = "";
       commInserted = false;
+    };
+
+    const finalizeEditor = () => {
+      editorAccumulated = "";
     };
 
     try {
@@ -1868,16 +1873,22 @@ export function ChatPanel() {
           const type = ev.type;
 
           if (type === "step_starting") {
+            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "running");
             setExecutingTaskIndex((ev.stepNumber as number) - 1);
+          } else if (type === "editor_token") {
+            editorAccumulated += ev.token || "";
           } else if (type === "code_applied") {
             await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
             refreshPreview();
           } else if (type === "step_completed") {
+            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "done");
           } else if (type === "step_failed") {
+            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "failed");
           } else if (type === "step_cancelled") {
+            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "pending");
           } else if (type === "communicator_token") {
             commAccumulated += ev.token;
@@ -1927,6 +1938,7 @@ export function ChatPanel() {
           } else if (type === "build_error") {
             addManagerMessage({ role: "assistant", content: `Something went wrong during the build. Please try again. 🔄`, source: "communicator" });
           } else if (type === "done") {
+            finalizeEditor();
             streamDone = true;
             break;
           }
