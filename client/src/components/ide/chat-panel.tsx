@@ -1499,6 +1499,7 @@ export function ChatPanel() {
   const buildReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const userConfirmationRef = useRef<string>("");
   const autoExecutePlanRef = useRef(false);
+  const handleExecutePlanRef = useRef<(() => Promise<void>) | null>(null);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
@@ -1651,6 +1652,12 @@ export function ChatPanel() {
   const handleManagerSend = useCallback(async (overrideMessage?: string) => {
     const trimmed = overrideMessage?.trim() || input.trim();
     if (!trimmed || isManagerResponding || isAiResponding) return;
+
+    if (!overrideMessage && useIDEStore.getState().managerPlan && useIDEStore.getState().executingTaskIndex === null) {
+      setInput("");
+      handleExecutePlanRef.current?.();
+      return;
+    }
 
     addManagerMessage({ role: "user", content: trimmed });
     if (!overrideMessage) setInput("");
@@ -1936,6 +1943,8 @@ export function ChatPanel() {
     }
   }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
 
+  handleExecutePlanRef.current = handleExecutePlan;
+
   const handleStopExecution = useCallback(() => {
     if (buildSessionIdRef.current) {
       fetch(`/api/build-session/${buildSessionIdRef.current}`, { method: "DELETE" }).catch(() => {});
@@ -2031,8 +2040,13 @@ export function ChatPanel() {
       }
       return;
     }
+    if (chatMode === "build" && managerPlan && !isExecuting) {
+      setInput("");
+      handleExecutePlan();
+      return;
+    }
     handleManagerSend();
-  }, [handleManagerSend, pendingConfirmation, input, handleContinueExecution]);
+  }, [handleManagerSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
 
   const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -2167,7 +2181,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
-            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : "Describe what you want to build..."}
+            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : managerPlan ? "Press Enter to start building your plan..." : "Describe what you want to build..."}
             className="resize-none text-[13px] min-h-[60px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
             data-testid="input-chat"
           />
