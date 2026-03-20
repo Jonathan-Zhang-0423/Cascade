@@ -109,58 +109,6 @@ function getPlanCardLang(): PlanCardLang {
   return lang === "zh" ? "Chinese" : "English";
 }
 
-function parsePlanLocalization(text: string): {
-  summary?: string;
-  stepTitles?: string[];
-  whatAndWhy?: string;
-  doneLooksLike?: string;
-  outOfScope?: string;
-} | null {
-  const lines = text.split("\n");
-  let summary: string | undefined;
-  const stepTitles: string[] = [];
-  let whatAndWhy: string | undefined;
-  let doneLooksLike: string | undefined;
-  let outOfScope: string | undefined;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const summaryMatch = trimmed.match(/^\[PLAN[_ ]SUMMARY\]\s*(.+)/i);
-    if (summaryMatch) {
-      summary = summaryMatch[1].trim();
-      continue;
-    }
-    const stepMatch = trimmed.match(/^\[STEP[_ ](\d+)\]\s*(.+)/i);
-    if (stepMatch) {
-      stepTitles[parseInt(stepMatch[1]) - 1] = stepMatch[2].trim();
-      continue;
-    }
-    const whatMatch = trimmed.match(/^\[WHAT[_ ]AND[_ ]WHY\]\s*(.+)/i);
-    if (whatMatch) {
-      whatAndWhy = whatMatch[1].trim();
-      continue;
-    }
-    const doneMatch = trimmed.match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]\s*(.+)/i);
-    if (doneMatch) {
-      doneLooksLike = doneMatch[1].trim();
-      continue;
-    }
-    const scopeMatch = trimmed.match(/^\[OUT[_ ]OF[_ ]SCOPE\]\s*(.+)/i);
-    if (scopeMatch) {
-      outOfScope = scopeMatch[1].trim();
-      continue;
-    }
-  }
-
-  if (!summary && stepTitles.length === 0 && !whatAndWhy && !doneLooksLike && !outOfScope) return null;
-  return {
-    summary,
-    stepTitles: stepTitles.length > 0 ? stepTitles : undefined,
-    whatAndWhy,
-    doneLooksLike,
-    outOfScope,
-  };
-}
 
 function normalizeSteps(plan: any): ManagerSubTask[] {
   const raw = plan?.steps ?? plan?.sub_tasks;
@@ -1730,9 +1678,7 @@ export function ChatPanel() {
 
       let commAccumulated = "";
       let commInserted = false;
-
-      let pendingPlan: any = null;
-      let pendingProjectName: string | undefined;
+      let commNarrationMsgIndex = -1;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1769,24 +1715,40 @@ export function ChatPanel() {
               }
             }
           } else if (evType === "plan_ready") {
-            pendingPlan = ev.plan;
-            pendingProjectName = ev.project_name;
+            const plan = ev.plan;
+            if (projectId && ev.project_name) {
+              renameProject(projectId, (ev.project_name as string).trim());
+            }
+            clearManagerPlan();
+            const steps = normalizeSteps(plan);
+            for (const step of steps) {
+              updateTaskStatus(String(step.step), "pending");
+            }
+            setManagerPlan(plan);
+            addManagerMessage({ role: "assistant", content: "", plan });
+            if (chatMode === "build") {
+              autoExecutePlanRef.current = true;
+            }
           } else if (evType === "communicator_token") {
             commAccumulated += ev.token;
             if (!commInserted) {
               addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
               commInserted = true;
+              const newMsgs = useIDEStore.getState().managerMessages;
+              commNarrationMsgIndex = newMsgs.length - 1;
             } else {
               const msgs = useIDEStore.getState().managerMessages;
-              const last = msgs[msgs.length - 1];
-              if (last?.role === "assistant" && last.source === "communicator" && !last.plan) {
-                useIDEStore.setState({
-                  managerMessages: [...msgs.slice(0, -1), { ...last, content: commAccumulated }],
-                });
+              if (commNarrationMsgIndex >= 0 && commNarrationMsgIndex < msgs.length) {
+                const target = msgs[commNarrationMsgIndex];
+                if (target?.role === "assistant" && !target.plan) {
+                  const updated = [...msgs];
+                  updated[commNarrationMsgIndex] = { ...target, content: commAccumulated };
+                  useIDEStore.setState({ managerMessages: updated });
+                }
               }
             }
           } else if (evType === "manager_done") {
-            const nameFromDone = ev.project_name?.trim();
+            const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
             }
@@ -1796,62 +1758,29 @@ export function ChatPanel() {
         }
       }
 
-      if (pendingPlan) {
-        if (projectId && pendingProjectName) {
-          renameProject(projectId, pendingProjectName.trim());
-        }
-
-        clearManagerPlan();
-        const steps = normalizeSteps(pendingPlan);
-        for (const step of steps) {
-          updateTaskStatus(String(step.step), "pending");
-        }
-
-        const localized = parsePlanLocalization(commAccumulated);
-        const displayPlan = { ...pendingPlan };
-        if (localized?.summary) displayPlan.summary = localized.summary;
-        if (localized?.whatAndWhy) displayPlan.narrated_what_and_why = localized.whatAndWhy;
-        if (localized?.doneLooksLike) displayPlan.narrated_done_looks_like = localized.doneLooksLike;
-        if (localized?.outOfScope) displayPlan.narrated_out_of_scope = localized.outOfScope;
-        const rawSteps = displayPlan.steps || (displayPlan as any).sub_tasks;
-        if (localized?.stepTitles && Array.isArray(rawSteps)) {
-          const localizedSteps = rawSteps.map((step: any, i: number) => ({
-            ...step,
-            title: localized.stepTitles?.[i] || step.title,
-          }));
-          if (displayPlan.steps) displayPlan.steps = localizedSteps;
-          else (displayPlan as any).sub_tasks = localizedSteps;
-        }
-
-        if (commAccumulated && commInserted) {
-          const friendlyLines = commAccumulated
-            .split("\n")
-            .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i) && !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) && !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) && !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i))
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .join("\n");
-          const msgs = useIDEStore.getState().managerMessages;
-          const lastIdx = msgs.length - 1;
-          if (lastIdx >= 0 && msgs[lastIdx].source === "communicator" && !msgs[lastIdx].plan) {
+      if (commInserted && commAccumulated && commNarrationMsgIndex >= 0) {
+        const friendlyLines = commAccumulated
+          .split("\n")
+          .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i) && !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) && !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) && !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i))
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .join("\n");
+        const msgs = useIDEStore.getState().managerMessages;
+        if (commNarrationMsgIndex < msgs.length) {
+          const target = msgs[commNarrationMsgIndex];
+          if (target?.role === "assistant" && !target.plan) {
+            const updated = [...msgs];
             if (friendlyLines) {
-              useIDEStore.setState({
-                managerMessages: [...msgs.slice(0, lastIdx), { ...msgs[lastIdx], content: friendlyLines }],
-              });
+              updated[commNarrationMsgIndex] = { ...target, content: friendlyLines };
             } else {
-              useIDEStore.setState({ managerMessages: msgs.slice(0, lastIdx) });
+              updated.splice(commNarrationMsgIndex, 1);
             }
+            useIDEStore.setState({ managerMessages: updated });
           }
-        }
-
-        setManagerPlan(displayPlan);
-        addManagerMessage({ role: "assistant", content: "", plan: displayPlan });
-
-        if (chatMode === "build") {
-          autoExecutePlanRef.current = true;
         }
       }
 
-      if (!pendingPlan && managerAccumulated && projectId) {
+      if (!commInserted && managerAccumulated && projectId) {
         const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
         if (nameFromMarker) renameProject(projectId, nameFromMarker);
       }
