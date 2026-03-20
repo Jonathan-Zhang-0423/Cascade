@@ -106,12 +106,14 @@ async function callCommunicatorNarration(ev: CommunicatorEvent, emit: SseEmit): 
   }
 }
 
+type EditorResult = { success: true } | { success: false; reason: "no_code" | "editor_error" };
+
 async function callEditor(
   prompt: string,
   files: BuildFile[],
   emit: SseEmit,
   session: BuildSessionState,
-): Promise<boolean> {
+): Promise<EditorResult> {
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
   ];
@@ -158,9 +160,13 @@ async function callEditor(
       appliedCount++;
     }
 
-    return true;
+    if (finalBlocks.length === 0) {
+      return { success: false, reason: "no_code" };
+    }
+
+    return { success: true };
   } catch {
-    return false;
+    return { success: false, reason: "editor_error" };
   }
 }
 
@@ -287,14 +293,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     promptLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
     const prompt = promptLines.join("\n");
 
-    const success = await callEditor(prompt, fileContext, emit, session);
+    const result = await callEditor(prompt, fileContext, emit, session);
 
     if (session.aborted) {
       emit({ type: "step_cancelled", stepNumber: task.step });
       break;
     }
 
-    if (success) {
+    if (result.success) {
       emit({ type: "step_completed", stepNumber: task.step });
       callCommunicatorNarration({
         event: "step_completed",
@@ -303,7 +309,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         stepTitle: task.title,
       }, emit).catch(() => {});
     } else {
-      emit({ type: "step_failed", stepNumber: task.step });
+      emit({ type: "step_failed", stepNumber: task.step, reason: result.reason });
       break;
     }
   }
@@ -447,12 +453,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         fixPromptLines.push("IMPORTANT: Preserve ALL existing content not related to this fix. Output the COMPLETE file with your changes applied.");
         const fixPrompt = fixPromptLines.join("\n");
 
-        const fixSuccess = await callEditor(fixPrompt, fixFiles, emit, session);
+        const fixResult = await callEditor(fixPrompt, fixFiles, emit, session);
 
         if (session.aborted) break;
 
-        if (fixSuccess) {
+        if (fixResult.success) {
           emit({ type: "step_completed", stepNumber: fixTask.step });
+        } else {
+          emit({ type: "step_failed", stepNumber: fixTask.step, reason: fixResult.reason });
         }
       }
     }

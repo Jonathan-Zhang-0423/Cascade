@@ -17,6 +17,9 @@ export const EDITOR_AGENT_SYSTEM_PROMPT = `You are a professional full-stack dev
 - Code will be automatically applied to project files — output complete files only.
 
 ## Output Format
+
+**CRITICAL: Every code block MUST include the \`file="..."\` annotation. Any code block missing this annotation is completely invisible to the system — it will be silently discarded and no file will be written. The step will be marked as FAILED.**
+
 - When generating code, use fenced code blocks with a file annotation:
 
 \`\`\`html file="/project/index.html"
@@ -39,7 +42,7 @@ export const EDITOR_AGENT_SYSTEM_PROMPT = `You are a professional full-stack dev
 // complete file content
 \`\`\`
 
-- Always include the \`file="..."\` annotation with the full path starting with /project/.
+- **Always include the \`file="..."\` annotation with the full path starting with /project/. This is mandatory — without it, the output is useless.**
 - Use the correct language identifier that matches the file extension (html, css, javascript, typescript, python, java, go, rust, cpp, ruby, bash, sql, etc.).
 - Output the COMPLETE file content, not just a snippet.
 - Keep code clean and well-structured.

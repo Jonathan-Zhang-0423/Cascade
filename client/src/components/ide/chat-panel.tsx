@@ -868,9 +868,10 @@ function TypingIndicator({ text }: { text?: string }) {
   );
 }
 
-function StepItem({ task, status, isCompleted, showNumber }: {
+function StepItem({ task, status, failureReason, isCompleted, showNumber }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
+  failureReason?: string;
   isCompleted?: boolean;
   showNumber?: boolean;
 }) {
@@ -884,9 +885,15 @@ function StepItem({ task, status, isCompleted, showNumber }: {
     bug: <AlertTriangle className="w-3 h-3 text-orange-500" />,
   };
 
+  const failureReasonLabel = s === "failed"
+    ? failureReason === "no_code" ? "No code output"
+    : failureReason === "editor_error" ? "Editor error"
+    : null
+    : null;
+
   return (
     <div className="py-1" data-testid={`step-${task.step}`}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="shrink-0">{icons[s] || icons.pending}</div>
         {showNumber && (
           <span className="text-[10px] text-muted-foreground/50 font-mono shrink-0 w-4 text-right leading-none">
@@ -905,6 +912,11 @@ function StepItem({ task, status, isCompleted, showNumber }: {
         )}>
           {task.title}
         </span>
+        {failureReasonLabel && (
+          <span className="text-[10px] bg-red-500/15 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5 shrink-0" data-testid={`step-failure-reason-${task.step}`}>
+            {failureReasonLabel}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -962,6 +974,7 @@ function ReviewStatusBadge({ phase, fixCycle, review, lang }: {
 function TaskPlanCard({
   plan,
   taskStatuses,
+  taskFailureReasons,
   onExecute,
   onRevise,
   isExecuting,
@@ -976,6 +989,7 @@ function TaskPlanCard({
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
   onRevise?: () => void;
   isExecuting?: boolean;
@@ -1056,6 +1070,7 @@ function TaskPlanCard({
                     key={task.step}
                     task={task}
                     status={taskStatuses[String(task.step)]}
+                    failureReason={taskFailureReasons?.[String(task.step)]}
                     isCompleted={isFullyComplete}
                     showNumber
                   />
@@ -1069,6 +1084,7 @@ function TaskPlanCard({
                         key={task.step}
                         task={task}
                         status={taskStatuses[String(task.step)]}
+                        failureReason={taskFailureReasons?.[String(task.step)]}
                         isCompleted={isFullyComplete}
                         showNumber
                       />
@@ -1109,14 +1125,14 @@ function TaskPlanCard({
             <div className="relative px-3 pb-2">
               <div className="space-y-0">
                 {visibleSteps.map((task: ManagerSubTask) => (
-                  <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} isCompleted={isFullyComplete} />
+                  <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} failureReason={taskFailureReasons?.[String(task.step)]} isCompleted={isFullyComplete} />
                 ))}
               </div>
               {peekSteps.length > 0 && (
                 <div className="relative mt-0">
                   <div className="space-y-0 blur-[2px] select-none pointer-events-none opacity-50">
                     {peekSteps.map((task: ManagerSubTask) => (
-                      <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} isCompleted={isFullyComplete} />
+                      <StepItem key={task.step} task={task} status={taskStatuses[String(task.step)]} failureReason={taskFailureReasons?.[String(task.step)]} isCompleted={isFullyComplete} />
                     ))}
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
@@ -1155,6 +1171,7 @@ function TaskPlanCard({
                   key={task.step}
                   task={task}
                   status={taskStatuses[String(task.step)]}
+                  failureReason={taskFailureReasons?.[String(task.step)]}
                   isCompleted={isFullyComplete}
                 />
               ))}
@@ -1374,6 +1391,7 @@ const PREVIEW_STEP_COUNT = 10;
 function ManagerMessageBubble({
   message,
   taskStatuses,
+  taskFailureReasons,
   onExecute,
   onRevise,
   isExecuting,
@@ -1388,6 +1406,7 @@ function ManagerMessageBubble({
 }: {
   message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
   onRevise?: () => void;
   isExecuting?: boolean;
@@ -1415,6 +1434,7 @@ function ManagerMessageBubble({
       <TaskPlanCard
         plan={message.plan}
         taskStatuses={taskStatuses}
+        taskFailureReasons={taskFailureReasons}
         onExecute={onExecute}
         onRevise={onRevise}
         isExecuting={isExecuting}
@@ -1473,7 +1493,9 @@ export function ChatPanel() {
     managerMessages,
     addManagerMessage,
     taskStatuses,
+    taskFailureReasons,
     updateTaskStatus,
+    setTaskFailureReason,
     executingTaskIndex,
     setExecutingTaskIndex,
     isManagerResponding,
@@ -1887,6 +1909,7 @@ export function ChatPanel() {
           } else if (type === "step_failed") {
             finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "failed");
+            if (ev.reason) setTaskFailureReason(String(ev.stepNumber), ev.reason);
           } else if (type === "step_cancelled") {
             finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "pending");
@@ -1953,7 +1976,7 @@ export function ChatPanel() {
       buildReaderRef.current = null;
       setExecutingTaskIndex(null);
     }
-  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
 
   handleExecutePlanRef.current = handleExecutePlan;
 
@@ -2149,6 +2172,7 @@ export function ChatPanel() {
                   key={`m-${msg.id}`}
                   message={msg}
                   taskStatuses={isLastPlan ? taskStatuses : {}}
+                  taskFailureReasons={isLastPlan ? taskFailureReasons : undefined}
                   onExecute={isLastPlan ? handleExecutePlan : undefined}
                   onRevise={isLastPlan ? handleRevisePlan : undefined}
                   isExecuting={isLastPlan ? isExecuting : undefined}

@@ -301,6 +301,7 @@ interface IDEState {
   managerMessages: ManagerMessage[];
   executingTaskIndex: number | null;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
@@ -343,6 +344,7 @@ interface IDEState {
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
+  setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
@@ -534,6 +536,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   managerMessages: [],
   executingTaskIndex: null,
   taskStatuses: {},
+  taskFailureReasons: {},
   isManagerResponding: false,
   verificationResults: {},
   pendingConfirmation: null,
@@ -587,6 +590,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
         executingTaskIndex: null,
         taskStatuses: {},
+        taskFailureReasons: {},
         isManagerResponding: false,
         verificationResults: {},
         pendingConfirmation: null,
@@ -618,6 +622,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerPlan: null,
         executingTaskIndex: null,
         taskStatuses: {},
+        taskFailureReasons: {},
         isManagerResponding: false,
         verificationResults: {},
         pendingConfirmation: null,
@@ -935,6 +940,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskStatuses: { ...state.taskStatuses, [subTaskId]: status },
     })),
 
+  setTaskFailureReason: (subTaskId, reason) =>
+    set((state) => ({
+      taskFailureReasons: { ...state.taskFailureReasons, [subTaskId]: reason },
+    })),
+
   setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
 
   setManagerResponding: (v) => set({ isManagerResponding: v }),
@@ -944,6 +954,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       managerPlan: null,
       executingTaskIndex: null,
       taskStatuses: {},
+      taskFailureReasons: {},
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
