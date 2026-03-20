@@ -53,7 +53,7 @@ export default function DashboardPage() {
     const idea = ideaText.trim();
     if (!idea) return;
     const emoji = getProjectEmoji(idea);
-    const id = createProject("New Project", idea, emoji);
+    const id = createProject(t("dashboard.newProject"), idea, emoji);
     setIdeaText("");
     setShowNewDialog(false);
     navigate(`/project/${id}`);

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useCallback } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { getThemeConfig, THEMES } from "@/lib/themes";
+import { useT } from "@/lib/i18n";
 
 let themesRegistered = false;
 
@@ -23,6 +24,7 @@ export function CodeEditor() {
   const { activeFile, openFiles, files, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
   const { themeId } = useTheme();
+  const t = useT();
 
   const handleBeforeMount = useCallback((monaco: Monaco) => {
     registerCustomThemes(monaco);
@@ -51,7 +53,7 @@ export function CodeEditor() {
           <div
             className="flex items-center border-b border-border/50 shrink-0 overflow-x-auto h-9"
             role="tablist"
-            aria-label="Open files"
+            aria-label={t("editor.openFiles")}
           >
             {openFiles.map((filePath) => (
               <div
@@ -81,7 +83,7 @@ export function CodeEditor() {
                     e.stopPropagation();
                     closeFile(filePath);
                   }}
-                  aria-label={`Close ${getFileName(filePath)}`}
+                  aria-label={t("editor.closeTab", { name: getFileName(filePath) })}
                   data-testid={`button-close-tab-${getFileName(filePath)}`}
                 >
                   <X className="w-3 h-3" />
@@ -91,7 +93,7 @@ export function CodeEditor() {
             <button
               className="flex items-center justify-center h-full px-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               onClick={openCommandPalette}
-              aria-label="Open file"
+              aria-label={t("editor.openFile")}
               data-testid="button-open-file-palette"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -137,9 +139,9 @@ export function CodeEditor() {
               <FileCode className="w-7 h-7 text-muted-foreground/50" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">No file open</p>
+              <p className="text-sm text-muted-foreground">{t("editor.noFileOpen")}</p>
               <p className="text-xs text-muted-foreground/50">
-                Select a file from the explorer
+                {t("editor.selectFile")}
               </p>
             </div>
           </div>

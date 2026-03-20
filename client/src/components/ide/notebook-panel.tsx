@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, BookOpen, ChevronDown, ChevronRight, Lightbulb, FileCode, Link2, AlertTriangle, Sparkles, Loader2, Code2, Copy, Check, Wand2 } from "lucide-react";
 import { prism, prismReadyPromise } from "@/lib/prism";
 import "prismjs/themes/prism-tomorrow.css";
-import { useT } from "@/lib/i18n";
+import { useT, tr } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 
 function normalizeLang(lang: string | undefined | null): string {
@@ -378,7 +378,8 @@ export function NotebookPanel() {
     const flatFiles = flattenFiles(files);
     const nonEmpty = flatFiles.filter((f) => f.content.trim().length > 0);
     if (nonEmpty.length === 0) {
-      setNotebookError("Your project doesn't have any code yet! Build something first, then come back to learn about it.");
+      const lang = useLanguageStore.getState().lang;
+      setNotebookError(tr(lang, "notebook.errorNoCode"));
       return;
     }
 
@@ -403,7 +404,8 @@ export function NotebookPanel() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to analyze project");
+        const lang2 = useLanguageStore.getState().lang;
+        throw new Error(tr(lang2, "notebook.errorAnalyze"));
       }
 
       const data = await res.json();
@@ -419,7 +421,8 @@ export function NotebookPanel() {
       };
       setNotebookContent(notebook);
     } catch (err: any) {
-      setNotebookError(err.message || "Something went wrong while analyzing your project.");
+      const lang3 = useLanguageStore.getState().lang;
+      setNotebookError(err.message || tr(lang3, "notebook.errorGeneric"));
     } finally {
       setNotebookLoading(false);
     }

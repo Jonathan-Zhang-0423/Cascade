@@ -73,6 +73,12 @@ const zh: Dict = {
   "preview.refresh": "刷新预览",
   "preview.title": "预览",
 
+  "editor.noFileOpen": "未打开文件",
+  "editor.selectFile": "从文件管理器中选择文件",
+  "editor.openFiles": "已打开的文件",
+  "editor.openFile": "打开文件",
+  "editor.closeTab": "关闭 {name}",
+
   "notebook.title": "我的编程笔记",
   "notebook.emptyDesc": "你的专属代码学习指南",
   "notebook.generate": "生成笔记",
@@ -101,6 +107,9 @@ const zh: Dict = {
   "notebook.detailsPending": "详情待生成",
   "notebook.oops": "出错啦！",
   "notebook.retry": "重试",
+  "notebook.errorNoCode": "你的项目还没有代码！先构建一些内容，然后再来查看学习笔记。",
+  "notebook.errorAnalyze": "分析项目失败",
+  "notebook.errorGeneric": "分析项目时出了点问题，请重试。",
 };
 
 const en: Dict = {
@@ -174,6 +183,12 @@ const en: Dict = {
   "preview.refresh": "Refresh preview",
   "preview.title": "Preview",
 
+  "editor.noFileOpen": "No file open",
+  "editor.selectFile": "Select a file from the explorer",
+  "editor.openFiles": "Open files",
+  "editor.openFile": "Open file",
+  "editor.closeTab": "Close {name}",
+
   "notebook.title": "My Coding Notebook",
   "notebook.emptyDesc": "Your personal guide to understanding your code",
   "notebook.generate": "Generate Notebook",
@@ -202,6 +217,9 @@ const en: Dict = {
   "notebook.detailsPending": "Details pending",
   "notebook.oops": "Oops!",
   "notebook.retry": "Try Again",
+  "notebook.errorNoCode": "Your project doesn't have any code yet! Build something first, then come back to learn about it.",
+  "notebook.errorAnalyze": "Failed to analyze project",
+  "notebook.errorGeneric": "Something went wrong while analyzing your project.",
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
