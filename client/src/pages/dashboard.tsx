@@ -33,6 +33,8 @@ import { getProjectEmoji } from "@/lib/project-emoji";
 import logoSrc from "@assets/CodeStart_Logo_EN_v1_1773815402242.png";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
+import { LangToggle } from "@/components/lang-toggle";
+import { useT } from "@/lib/i18n";
 
 migrateOldState();
 
@@ -45,6 +47,7 @@ export default function DashboardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const t = useT();
 
   const handleCreate = () => {
     const idea = ideaText.trim();
@@ -86,15 +89,16 @@ export default function DashboardPage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <LangToggle />
             <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
               <SelectTrigger className="w-[150px] h-8 text-xs" data-testid="select-theme">
                 <Palette className="w-3.5 h-3.5 mr-1 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {THEME_LIST.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.label}
+                {THEME_LIST.map((th) => (
+                  <SelectItem key={th.id} value={th.id}>
+                    {th.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -105,7 +109,7 @@ export default function DashboardPage() {
               data-testid="button-new-project"
             >
               <Plus className="w-4 h-4" />
-              New Project
+              {t("dashboard.newProject")}
             </Button>
           </div>
         </div>
@@ -113,10 +117,10 @@ export default function DashboardPage() {
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <h1 className="text-2xl font-bold text-foreground mb-1" data-testid="text-dashboard-title">
-          My Projects
+          {t("dashboard.myProjects")}
         </h1>
         <p className="text-muted-foreground mb-6">
-          Create a new project or open an existing one to start building.
+          {t("dashboard.subtitle")}
         </p>
 
         {sortedProjects.length === 0 ? (
@@ -124,9 +128,9 @@ export default function DashboardPage() {
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
               <FolderOpen className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold text-foreground mb-2">No projects yet</h2>
+            <h2 className="text-lg font-semibold text-foreground mb-2">{t("dashboard.noProjects")}</h2>
             <p className="text-muted-foreground mb-6 max-w-sm">
-              Tell us what you want to build and we'll get started right away!
+              {t("dashboard.noProjectsDesc")}
             </p>
             <Button
               onClick={() => setShowNewDialog(true)}
@@ -134,7 +138,7 @@ export default function DashboardPage() {
               data-testid="button-new-project-empty"
             >
               <Plus className="w-4 h-4" />
-              Start Building
+              {t("dashboard.startBuilding")}
             </Button>
           </div>
         ) : (
@@ -194,10 +198,10 @@ export default function DashboardPage() {
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-new-project">
           <DialogHeader>
-            <DialogTitle className="text-lg">What do you want to build today? 😉</DialogTitle>
+            <DialogTitle className="text-lg">{t("dashboard.dialogTitle")}</DialogTitle>
           </DialogHeader>
           <Textarea
-            placeholder="e.g. A snake game, a personal portfolio, a to-do list..."
+            placeholder={t("dashboard.ideaPlaceholder")}
             value={ideaText}
             onChange={(e) => setIdeaText(e.target.value)}
             onKeyDown={(e) => {
@@ -212,11 +216,11 @@ export default function DashboardPage() {
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewDialog(false)} data-testid="button-cancel-new">
-              Cancel
+              {t("dashboard.cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={!ideaText.trim()} className="gap-2" data-testid="button-create-project">
               <Send className="w-3.5 h-3.5" />
-              Let's Go!
+              {t("dashboard.letsGo")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -225,10 +229,10 @@ export default function DashboardPage() {
       <Dialog open={renameId !== null} onOpenChange={(open) => !open && setRenameId(null)}>
         <DialogContent data-testid="dialog-rename-project">
           <DialogHeader>
-            <DialogTitle>Rename Project</DialogTitle>
+            <DialogTitle>{t("dashboard.renameProject")}</DialogTitle>
           </DialogHeader>
           <Input
-            placeholder="New name"
+            placeholder={t("dashboard.newName")}
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleRename()}
@@ -237,10 +241,10 @@ export default function DashboardPage() {
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenameId(null)} data-testid="button-cancel-rename">
-              Cancel
+              {t("dashboard.cancel")}
             </Button>
             <Button onClick={handleRename} disabled={!renameName.trim()} data-testid="button-confirm-rename">
-              Rename
+              {t("dashboard.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -249,19 +253,19 @@ export default function DashboardPage() {
       <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent data-testid="dialog-delete-project">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+            <AlertDialogTitle>{t("dashboard.deleteProject")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this project and all its files. This action cannot be undone.
+              {t("dashboard.deleteDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-delete">{t("dashboard.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
-              Delete
+              {t("dashboard.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 function ConsoleEntryRow({ entry }: { entry: ConsoleEntry }) {
   const time = new Date(entry.timestamp).toLocaleTimeString("en-US", {
@@ -67,6 +68,7 @@ export function ConsolePanel() {
   const { consoleEntries, clearConsole, toggleConsole } =
     useIDEStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -83,7 +85,7 @@ export function ConsolePanel() {
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-1.5">
             <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium text-foreground">Console</span>
+            <span className="text-xs font-medium text-foreground">{t("console.title")}</span>
           </div>
 
           {(errorCount > 0 || warnCount > 0) && (
@@ -110,7 +112,7 @@ export function ConsolePanel() {
             variant="ghost"
             className="h-6 w-6"
             onClick={clearConsole}
-            aria-label="Clear console"
+            aria-label={t("console.clear")}
             data-testid="button-clear-console"
           >
             <Trash2 className="w-3 h-3" />
@@ -120,7 +122,7 @@ export function ConsolePanel() {
             variant="ghost"
             className="h-6 w-6"
             onClick={toggleConsole}
-            aria-label="Close console"
+            aria-label={t("console.close")}
             data-testid="button-close-console"
           >
             <X className="w-3 h-3" />
@@ -132,7 +134,7 @@ export function ConsolePanel() {
         {consoleEntries.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-xs text-muted-foreground/50 font-mono">
-              No console output yet. Run your code to see results here.
+              {t("console.empty")}
             </p>
           </div>
         ) : (

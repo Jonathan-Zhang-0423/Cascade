@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useLanguageStore } from "@/stores/language-store";
+import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -97,13 +99,14 @@ function t(lang: PlanCardLang, key: string, vars?: Record<string, string | numbe
   return str;
 }
 
-function detectPlanCardLang(): PlanCardLang {
-  const msgs = useIDEStore.getState().managerMessages;
-  const firstUserMsg = msgs.find((m) => m.role === "user");
-  if (firstUserMsg) {
-    return detectLanguage(firstUserMsg.content) as PlanCardLang;
-  }
-  return "English";
+function usePlanCardLang(): PlanCardLang {
+  const { lang } = useLanguageStore();
+  return lang === "zh" ? "Chinese" : "English";
+}
+
+function getPlanCardLang(): PlanCardLang {
+  const lang = useLanguageStore.getState().lang;
+  return lang === "zh" ? "Chinese" : "English";
 }
 
 function parsePlanLocalization(text: string): {
@@ -859,7 +862,7 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
 }
 
 function TypingIndicator({ text }: { text?: string }) {
-  const lang = detectPlanCardLang();
+  const lang = usePlanCardLang();
   return (
     <div className="px-3 flex items-center gap-1.5" data-testid="typing-indicator">
       <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
@@ -1002,7 +1005,7 @@ function TaskPlanCard({
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
 }) {
-  const lang = detectPlanCardLang();
+  const lang = usePlanCardLang();
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((s) => taskStatuses[String(s.step)] === "done").length;
   const total = steps.length;
@@ -1513,6 +1516,8 @@ export function ChatPanel() {
     setFixCycle,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
+  const tGlobal = useT();
+  const chatTitle = tGlobal("chat.title");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -2122,8 +2127,8 @@ export function ChatPanel() {
       <div className="flex items-center justify-between gap-2 px-3 h-9 border-b border-border/50 shrink-0">
         <div className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-medium text-foreground">
-            AI Chat
+          <span className="text-xs font-medium text-foreground" data-testid="text-chat-title">
+            {chatTitle}
           </span>
         </div>
         <Button
@@ -2193,7 +2198,7 @@ export function ChatPanel() {
           <TypingIndicator />
         )}
         {isManagerResponding && (
-          <TypingIndicator text={t(detectPlanCardLang(), "planning")} />
+          <TypingIndicator text={t(getPlanCardLang(), "planning")} />
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">

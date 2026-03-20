@@ -14,6 +14,8 @@ import {
 import { Play, ChevronLeft, BookOpen, Wrench } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { getProjectEmoji } from "@/lib/project-emoji";
+import { LangToggle } from "@/components/lang-toggle";
+import { useT } from "@/lib/i18n";
 
 interface NavbarProps {
   projectName: string;
@@ -32,6 +34,7 @@ export function Navbar({ projectName }: NavbarProps) {
   } = useIDEStore();
   const { themeId, setThemeId } = useTheme();
   const [, navigate] = useLocation();
+  const t = useT();
 
   const currentHash = useMemo(() => computeFilesHash(files), [files]);
   const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
@@ -80,7 +83,7 @@ export function Navbar({ projectName }: NavbarProps) {
           data-testid="button-workspace"
         >
           <Wrench className="w-3 h-3" />
-          Workspace
+          {t("navbar.workspace")}
         </button>
         <button
           className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
@@ -92,25 +95,26 @@ export function Navbar({ projectName }: NavbarProps) {
           data-testid="button-learner-space"
         >
           <BookOpen className="w-3 h-3" />
-          My Coding Notebook
+          {t("navbar.notebook")}
           {isNotebookStale && activeSpace !== "learner" && (
             <span
               className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500"
               data-testid="notebook-stale-dot"
-              title="Notebook is outdated"
+              title={t("navbar.notebookOutdated")}
             />
           )}
         </button>
       </div>
       <div className="flex items-center gap-2">
+        <LangToggle />
         <Select value={themeId} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-[150px] h-7 text-xs" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {THEME_LIST.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.label}
+            {THEME_LIST.map((th) => (
+              <SelectItem key={th.id} value={th.id}>
+                {th.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -129,7 +133,7 @@ export function Navbar({ projectName }: NavbarProps) {
           }}
         >
           <Play className="w-3 h-3 fill-current" />
-          Run
+          {t("navbar.run")}
         </Button>
       </div>
     </header>

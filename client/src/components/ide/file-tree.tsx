@@ -37,6 +37,7 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 function getFileIcon(name: string) {
   const lower = name.toLowerCase();
@@ -184,6 +185,7 @@ function FileTreeItem({
   const isActive = activeFile === node.path;
   const isFolder = node.type === "folder";
   const [newItemType, setNewItemType] = useState<"file" | "folder" | null>(null);
+  const t = useT();
 
   const handleCreateNew = (type: "file" | "folder") => {
     if (isFolder) {
@@ -259,14 +261,14 @@ function FileTreeItem({
                 data-testid="ctx-new-file"
               >
                 <FilePlus className="w-4 h-4 mr-2" />
-                New File
+                {t("files.newFile")}
               </ContextMenuItem>
               <ContextMenuItem
                 onClick={() => handleCreateNew("folder")}
                 data-testid="ctx-new-folder"
               >
                 <FolderPlus className="w-4 h-4 mr-2" />
-                New Folder
+                {t("files.newFolder")}
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
@@ -278,7 +280,7 @@ function FileTreeItem({
                 data-testid="ctx-preview"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Preview
+                {t("files.preview")}
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
@@ -288,7 +290,7 @@ function FileTreeItem({
             data-testid="ctx-rename"
           >
             <Pencil className="w-4 h-4 mr-2" />
-            Rename
+            {t("files.rename")}
           </ContextMenuItem>
           {!isFolder && (
             <ContextMenuItem
@@ -306,7 +308,7 @@ function FileTreeItem({
               data-testid="ctx-duplicate"
             >
               <Copy className="w-4 h-4 mr-2" />
-              Duplicate
+              {t("files.duplicate")}
             </ContextMenuItem>
           )}
           <ContextMenuSeparator />
@@ -316,7 +318,7 @@ function FileTreeItem({
             data-testid="ctx-delete"
           >
             <Trash2 className="w-4 h-4 mr-2" />
-            Delete
+            {t("files.delete")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -352,14 +354,15 @@ function FileTreeItem({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isFolder ? "folder" : "file"}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isFolder ? t("files.deleteFolder") : t("files.deleteFile")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{node.name}"? This action cannot be
-              undone.
+              {t("files.deleteDesc", { name: node.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-delete">{t("files.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteTarget) {
@@ -369,7 +372,7 @@ function FileTreeItem({
               }}
               data-testid="button-confirm-delete"
             >
-              Delete
+              {t("files.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -381,12 +384,13 @@ function FileTreeItem({
 export function FileTree() {
   const { files, addFile, setActiveTool } = useIDEStore();
   const [newItemType, setNewItemType] = useState<"file" | "folder" | null>(null);
+  const t = useT();
 
   return (
     <div className="h-full flex flex-col" data-testid="file-tree">
       <div className="flex items-center justify-between gap-1 px-3 h-9 border-b border-border/50 shrink-0">
         <span className="text-xs font-medium text-foreground">
-          Files
+          {t("files.title")}
         </span>
         <div className="flex items-center gap-0.5">
           <Button
@@ -394,7 +398,7 @@ export function FileTree() {
             variant="ghost"
             className="h-6 w-6"
             onClick={() => setNewItemType("file")}
-            aria-label="New file"
+            aria-label={t("files.ariaNewFile")}
             data-testid="button-new-file"
           >
             <FilePlus className="w-3.5 h-3.5" />
@@ -404,7 +408,7 @@ export function FileTree() {
             variant="ghost"
             className="h-6 w-6"
             onClick={() => setNewItemType("folder")}
-            aria-label="New folder"
+            aria-label={t("files.ariaNewFolder")}
             data-testid="button-new-folder"
           >
             <FolderPlus className="w-3.5 h-3.5" />
@@ -414,7 +418,7 @@ export function FileTree() {
             variant="ghost"
             className="h-6 w-6"
             onClick={() => setActiveTool(null)}
-            aria-label="Close panel"
+            aria-label={t("files.ariaClose")}
             data-testid="button-close-files"
           >
             <X className="w-3.5 h-3.5" />

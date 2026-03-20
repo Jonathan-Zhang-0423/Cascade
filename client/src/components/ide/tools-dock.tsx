@@ -1,6 +1,7 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { FolderClosed, Sparkles, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 function DockButton({
   icon,
@@ -37,6 +38,7 @@ function DockButton({
 
 export function ToolsDock() {
   const { activeTool, setActiveTool, isConsoleOpen, toggleConsole } = useIDEStore();
+  const t = useT();
 
   return (
     <div
@@ -46,21 +48,21 @@ export function ToolsDock() {
       <div className="flex flex-col items-center gap-1">
         <DockButton
           icon={<FolderClosed className="w-[18px] h-[18px]" />}
-          label="Files"
+          label={t("dock.files")}
           isActive={activeTool === "files"}
           onClick={() => setActiveTool("files")}
           testId="dock-files"
         />
         <DockButton
           icon={<Sparkles className="w-[18px] h-[18px]" />}
-          label="AI Chat"
+          label={t("dock.chat")}
           isActive={activeTool === "chat"}
           onClick={() => setActiveTool("chat")}
           testId="dock-chat"
         />
         <DockButton
           icon={<Terminal className="w-[18px] h-[18px]" />}
-          label="Console"
+          label={t("dock.console")}
           isActive={isConsoleOpen}
           onClick={toggleConsole}
           testId="dock-console"
