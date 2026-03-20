@@ -539,6 +539,7 @@ function tokenizeLine(code: string, lang: "html" | "css" | "js" | "text"): Token
 function CodeBlockView({ block, applied }: { block: CodeBlock; autoApplied?: boolean; applied?: boolean }) {
   const [collapsed, setCollapsed] = useState(true);
   const { openFile, theme } = useIDEStore();
+  const tGlobalRef = useT();
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
 
@@ -593,7 +594,7 @@ function CodeBlockView({ block, applied }: { block: CodeBlock; autoApplied?: boo
           {applied && (
             <span className="inline-flex items-center gap-0.5 text-green-500/80 text-[10px] font-medium" data-testid={`applied-${block.filePath}`}>
               <Check className="w-3 h-3" />
-              Applied
+              {tGlobalRef("chat.applied")}
             </span>
           )}
           <button
@@ -602,7 +603,7 @@ function CodeBlockView({ block, applied }: { block: CodeBlock; autoApplied?: boo
             data-testid={`button-open-${block.filePath}`}
           >
             <ExternalLink className="w-3 h-3" />
-            <span>Open</span>
+            <span>{tGlobalRef("chat.open")}</span>
           </button>
         </div>
       </div>
@@ -810,6 +811,7 @@ function MessageBubble({ message, autoApplied, appliedBlockIndices }: { message:
 function CheckpointMarker({ message }: { message: ChatMessage }) {
   const { restoreCheckpoint, refreshPreview, checkpoints } = useIDEStore();
   const [restored, setRestored] = useState(false);
+  const tCp = useT();
 
   const isAvailable = message.checkpointId
     ? checkpoints.some((cp) => cp.id === message.checkpointId)
@@ -846,12 +848,12 @@ function CheckpointMarker({ message }: { message: ChatMessage }) {
             {restored ? (
               <span className="inline-flex items-center gap-0.5">
                 <Check className="w-3 h-3" />
-                Restored
+                {tCp("chat.restored")}
               </span>
             ) : (
               <span className="inline-flex items-center gap-0.5 underline underline-offset-2">
                 <RotateCcw className="w-2.5 h-2.5" />
-                Restore
+                {tCp("chat.restore")}
               </span>
             )}
           </span>
@@ -879,6 +881,7 @@ function StepItem({ task, status, failureReason, isCompleted, showNumber }: {
   showNumber?: boolean;
 }) {
   const s = status || "pending";
+  const tStep = useT();
   const icons: Record<string, JSX.Element> = {
     pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
     running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
@@ -889,8 +892,8 @@ function StepItem({ task, status, failureReason, isCompleted, showNumber }: {
   };
 
   const failureReasonLabel = s === "failed"
-    ? failureReason === "no_code" ? "No code output"
-    : failureReason === "editor_error" ? "Editor error"
+    ? failureReason === "no_code" ? tStep("chat.noCodeOutput")
+    : failureReason === "editor_error" ? tStep("chat.editorError")
     : null
     : null;
 
@@ -1257,7 +1260,7 @@ function TaskPlanCard({
                 size="sm"
                 variant="outline"
                 className="flex-1 h-6 text-[10px]"
-                onClick={() => onContinueWithInput("Looks good, proceed as planned")}
+                onClick={() => onContinueWithInput(tMb("chat.looksGood"))}
                 data-testid="button-approve-all"
               >
                 <Check className="w-2.5 h-2.5 mr-0.5" />
@@ -1422,6 +1425,7 @@ function ManagerMessageBubble({
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
 }) {
+  const tMb = useT();
   if (message.role === "user") {
     return (
       <div className="flex justify-end px-3">
@@ -1464,7 +1468,7 @@ function ManagerMessageBubble({
           <ClipboardList className="w-3 h-3 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <span className="text-[10px] font-medium text-primary/70 block mb-0.5">Plan</span>
+          <span className="text-[10px] font-medium text-primary/70 block mb-0.5">{tMb("chat.planLabel")}</span>
           <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
         </div>
       </div>
@@ -2136,7 +2140,7 @@ export function ChatPanel() {
           variant="ghost"
           className="h-6 w-6"
           onClick={() => setActiveTool(null)}
-          aria-label="Close panel"
+          aria-label={tGlobal("chat.close")}
           data-testid="button-close-chat"
         >
           <X className="w-3.5 h-3.5" />
@@ -2222,7 +2226,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleCurrentKeyDown}
-            placeholder={chatMode === "manager" && pendingConfirmation ? "Type your response to continue..." : chatMode === "manager" ? "Ask questions, brainstorm, or describe what to build..." : managerPlan ? "Press Enter to start building your plan..." : "Describe what you want to build..."}
+            placeholder={chatMode === "manager" && pendingConfirmation ? tGlobal("chat.placeholderResponse") : chatMode === "manager" ? tGlobal("chat.placeholderManager") : managerPlan ? tGlobal("chat.placeholderStartBuild") : tGlobal("chat.placeholderDefault")}
             className="resize-none text-[13px] min-h-[60px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
             data-testid="input-chat"
           />
@@ -2231,7 +2235,7 @@ export function ChatPanel() {
               className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors group"
               onClick={handleToggleMode}
               data-testid="toggle-plan-mode"
-              title={chatMode === "manager" ? "Switch to Build mode" : "Switch to Plan mode"}
+              title={chatMode === "manager" ? tGlobal("chat.switchToBuild") : tGlobal("chat.switchToPlan")}
             >
               <div className={cn(
                 "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0",
@@ -2241,7 +2245,7 @@ export function ChatPanel() {
               )}>
                 {chatMode === "manager" && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
               </div>
-              <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">Plan</span>
+              <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">{tGlobal("chat.planMode")}</span>
             </button>
             <div className="flex-1" />
             <Button
@@ -2254,7 +2258,7 @@ export function ChatPanel() {
                   ? !managerMessages.some(m => m.role === "assistant")
                   : !chatMessages.some(m => m.role === "assistant")
               )}
-              title="Smart Response — let AI suggest a reply"
+              title={tGlobal("chat.smartResponse")}
               data-testid="button-smart-response"
             >
               {smartResponseLoading ? (

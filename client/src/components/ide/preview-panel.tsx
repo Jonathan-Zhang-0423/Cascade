@@ -2,6 +2,7 @@ import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store"
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Globe, RefreshCw, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -69,6 +70,7 @@ export function PreviewPanel() {
   const { files, addConsoleEntry, clearConsole, previewFile, previewRefreshKey } = useIDEStore();
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const t = useT();
 
   const effectiveRefresh = refreshKey + previewRefreshKey;
 
@@ -157,7 +159,7 @@ export function PreviewPanel() {
           variant="ghost"
           className="h-6 w-6 shrink-0"
           onClick={handleRefresh}
-          aria-label="Refresh preview"
+          aria-label={t("preview.refresh")}
           data-testid="button-refresh-preview"
         >
           <RefreshCw className="w-3 h-3" />
@@ -169,7 +171,7 @@ export function PreviewPanel() {
           key={effectiveRefresh}
           srcDoc={injectedHtml}
           className="w-full h-full border-0"
-          title="Preview"
+          title={t("preview.title")}
           sandbox="allow-scripts allow-modals allow-same-origin"
           data-testid="preview-iframe"
         />

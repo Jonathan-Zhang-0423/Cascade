@@ -106,7 +106,6 @@ export function Navbar({ projectName }: NavbarProps) {
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <LangToggle />
         <Select value={themeId} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-[150px] h-7 text-xs" data-testid="select-theme">
             <SelectValue />
@@ -119,7 +118,7 @@ export function Navbar({ projectName }: NavbarProps) {
             ))}
           </SelectContent>
         </Select>
-
+        <LangToggle />
         <Button
           size="sm"
           className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white"

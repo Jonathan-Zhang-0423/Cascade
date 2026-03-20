@@ -138,6 +138,7 @@ function InlineInput({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(defaultValue);
+  const t = useT();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -164,7 +165,7 @@ function InlineInput({
         }
       }}
       className="h-6 text-xs px-1 py-0 rounded-sm"
-      aria-label="Enter file or folder name"
+      aria-label={t("files.ariaNameInput")}
       data-testid="input-inline-rename"
     />
   );
@@ -426,7 +427,7 @@ export function FileTree() {
         </div>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-1.5" role="tree" aria-label="File explorer">
+        <div className="p-1.5" role="tree" aria-label={t("files.ariaExplorer")}>
           {newItemType && (
             <div className="py-0.5 px-2">
               <InlineInput
