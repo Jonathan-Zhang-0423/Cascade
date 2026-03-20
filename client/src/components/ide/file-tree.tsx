@@ -227,7 +227,7 @@ function FileTreeItem({
                     setActiveFile(node.path);
                   }
                 }}
-                aria-label={isFolder ? `${node.name} folder` : node.name}
+                aria-label={isFolder ? t("files.ariaFolder", { name: node.name }) : node.name}
                 data-testid={`tree-item-${node.name}`}
               >
                 {isFolder ? (

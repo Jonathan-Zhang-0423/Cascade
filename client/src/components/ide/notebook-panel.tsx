@@ -120,7 +120,7 @@ function FeatureCard({ feature, index }: { feature: NotebookFeature; index: numb
         data-testid={`feature-card-${index}`}
       >
         <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
-        <span className="text-sm font-medium text-foreground">{feature.label || "Feature"}</span>
+        <span className="text-sm font-medium text-foreground">{feature.label || t("notebook.feature")}</span>
         <span className="text-xs text-muted-foreground italic ml-auto">{t("notebook.detailsPending")}</span>
       </div>
     );
@@ -139,7 +139,7 @@ function FeatureCard({ feature, index }: { feature: NotebookFeature; index: numb
           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         )}
         <Code2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
-        <span className="text-sm font-medium text-foreground">{feature.label || "Feature"}</span>
+        <span className="text-sm font-medium text-foreground">{feature.label || t("notebook.feature")}</span>
       </button>
 
       {isOpen && (

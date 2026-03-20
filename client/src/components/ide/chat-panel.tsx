@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
-import { useT } from "@/lib/i18n";
+import { useT, tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -228,15 +228,16 @@ function extractCodeBlocks(content: string): CodeBlock[] {
 }
 
 function formatRelativeTime(timestamp: number): string {
+  const lang = useLanguageStore.getState().lang;
   const now = Date.now();
   const diff = Math.floor((now - timestamp) / 1000);
-  if (diff < 10) return "just now";
-  if (diff < 60) return `${diff}s ago`;
+  if (diff < 10) return tr(lang, "chat.timeJustNow");
+  if (diff < 60) return tr(lang, "chat.timeSAgo", { n: String(diff) });
   const mins = Math.floor(diff / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return tr(lang, "chat.timeMAgo", { n: String(mins) });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return tr(lang, "chat.timeHAgo", { n: String(hours) });
+  return tr(lang, "chat.timeDAgo", { n: String(Math.floor(hours / 24)) });
 }
 
 const THEME_COLORS = {
