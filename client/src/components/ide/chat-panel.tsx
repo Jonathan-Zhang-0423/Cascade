@@ -1010,6 +1010,7 @@ function TaskPlanCard({
   fixCycle?: number;
 }) {
   const lang = usePlanCardLang();
+  const tCard = useT();
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((s) => taskStatuses[String(s.step)] === "done").length;
   const total = steps.length;
@@ -1261,7 +1262,7 @@ function TaskPlanCard({
                 size="sm"
                 variant="outline"
                 className="flex-1 h-6 text-[10px]"
-                onClick={() => onContinueWithInput(tMb("chat.looksGood"))}
+                onClick={() => onContinueWithInput(tCard("chat.looksGood"))}
                 data-testid="button-approve-all"
               >
                 <Check className="w-2.5 h-2.5 mr-0.5" />
