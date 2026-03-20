@@ -250,6 +250,27 @@ async function runEditorNonStreaming(
   };
 }
 
+function detectUserLanguage(
+  messages: Array<{ role: string; content: string }>,
+): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user" && messages[i].content) {
+      const chineseRe = /[\u4e00-\u9fff]/;
+      return chineseRe.test(messages[i].content) ? "Chinese" : "English";
+    }
+  }
+  return "English";
+}
+
+function normalizeStepsList(plan: any): Array<{ step: number; title: string }> {
+  const raw = plan?.steps ?? plan?.sub_tasks;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((t: any, i: number) => ({
+    step: t.step ?? i + 1,
+    title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
+  }));
+}
+
 const buildSessions = new Map<string, BuildSessionState>();
 
 setInterval(() => {
@@ -340,70 +361,6 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  app.post("/api/chat", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
-        return;
-      }
-      const { messages, files } = req.body as {
-        messages: Array<{ role: "user" | "assistant"; content: string }>;
-        files?: Array<{ path: string; content: string }>;
-      };
-
-      if (!messages || !Array.isArray(messages) || messages.length === 0) {
-        res.status(400).json({ error: "messages array is required" });
-        return;
-      }
-
-      const systemMessages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }> = [{ role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT }];
-
-      if (files && files.length > 0) {
-        const contextMsg = buildEditorContextMessage(files);
-        systemMessages.push({ role: "system", content: contextMsg });
-      }
-
-      const allMessages = [...systemMessages, ...messages];
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-
-      const stream = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages: allMessages,
-        stream: true,
-        max_tokens: 16384,
-      });
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
-        }
-      }
-
-      res.write("data: [DONE]\n\n");
-      res.end();
-    } catch (error: any) {
-      console.error("Chat API error:", error?.message || error);
-      if (!res.headersSent) {
-        res
-          .status(500)
-          .json({ error: error?.message || "Failed to get AI response" });
-      } else {
-        res.write(
-          `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
-        );
-        res.end();
-      }
-    }
-  });
-
   app.post("/api/manager-chat", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
@@ -437,45 +394,150 @@ export async function registerRoutes(
 
       const allMessages = [...systemMessages, ...messages];
 
-      const completion = await doubaoClient.chat.completions.create({
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const emit = (data: Record<string, unknown>) => {
+        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+      };
+
+      const stream = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
         messages: allMessages,
-        stream: false,
+        stream: true,
         max_tokens: 16384,
       });
 
-      const responseContent = completion.choices[0]?.message?.content || "";
+      let accumulated = "";
+      let contentMode = false;
+      let contentStart = -1;
+      let lastEmitted = 0;
+      let contentDone = false;
 
-      const parsed = parseAIJson(responseContent);
+      for await (const chunk of stream) {
+        const token = chunk.choices[0]?.delta?.content;
+        if (!token) continue;
+        accumulated += token;
+
+        if (!contentMode && !contentDone) {
+          const isMessage = /"type"\s*:\s*"message"/.test(accumulated);
+          if (isMessage) {
+            const contentMatch = accumulated.match(/"content"\s*:\s*"/);
+            if (contentMatch && contentMatch.index !== undefined) {
+              contentStart = contentMatch.index + contentMatch[0].length;
+              contentMode = true;
+            }
+          }
+        }
+
+        if (contentMode && contentStart >= 0) {
+          const raw = accumulated.slice(contentStart);
+          let i = lastEmitted;
+          let newChars = "";
+
+          while (i < raw.length) {
+            const c = raw[i];
+            if (c === "\\") {
+              if (i + 1 < raw.length) {
+                const next = raw[i + 1];
+                if (next === "n") newChars += "\n";
+                else if (next === "t") newChars += "\t";
+                else if (next === "r") newChars += "\r";
+                else newChars += next;
+                i += 2;
+              } else {
+                break;
+              }
+            } else if (c === '"') {
+              contentMode = false;
+              contentDone = true;
+              break;
+            } else {
+              newChars += c;
+              i++;
+            }
+          }
+
+          if (newChars) {
+            emit({ type: "manager_token", token: newChars });
+          }
+          lastEmitted = i;
+        }
+      }
+
+      const parsed = parseAIJson(accumulated);
       if (!parsed) {
-        res.json({ message: responseContent });
+        emit({ type: "manager_error" });
+        res.write("data: [DONE]\n\n");
+        res.end();
         return;
       }
 
       const projectName: string | undefined = parsed.project_name || undefined;
+      const isPlan = parsed.type === "plan" || (parsed.steps && parsed.type !== "message");
 
-      if (parsed.type === "message" && parsed.content) {
-        res.json({ message: parsed.content, project_name: projectName });
-      } else if (parsed.type === "plan" || parsed.steps) {
+      if (isPlan) {
         const plan = { ...parsed };
         delete plan.type;
         delete plan.project_name;
-        res.json({ plan, project_name: projectName });
-      } else if (parsed.summary && parsed.steps) {
-        const plan = { ...parsed };
-        delete plan.project_name;
-        res.json({ plan, project_name: projectName });
+
+        emit({ type: "plan_ready", plan, project_name: projectName });
+
+        const userLang = detectUserLanguage(messages);
+        const steps = normalizeStepsList(plan);
+        const commPrompt = buildCommunicatorMessage({
+          event: "plan_created",
+          userLanguage: userLang,
+          planSummary: plan.summary || "",
+          totalSteps: steps.length,
+          stepTitles: steps.map((s) => s.title),
+          whatAndWhy: plan.what_and_why || "",
+          doneLooksLike: plan.done_looks_like || "",
+          outOfScope: plan.out_of_scope || "",
+          relevantFiles: plan.relevant_files || [],
+        } as CommunicatorEvent);
+
+        try {
+          const commStream = await doubaoClient.chat.completions.create({
+            model: DOUBAO_MODEL,
+            messages: [
+              { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+              { role: "user", content: commPrompt },
+            ],
+            stream: true,
+            max_tokens: 16384,
+          });
+
+          for await (const chunk of commStream) {
+            const token = chunk.choices[0]?.delta?.content;
+            if (token) {
+              emit({ type: "communicator_token", token });
+            }
+          }
+        } catch (commErr: any) {
+          console.error("Communicator stream error:", commErr?.message || commErr);
+        }
+
+        emit({ type: "manager_done" });
       } else {
-        res.json({
-          message: parsed.content || responseContent,
-          project_name: projectName,
-        });
+        emit({ type: "manager_done", project_name: projectName });
       }
+
+      res.write("data: [DONE]\n\n");
+      res.end();
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
-      res
-        .status(500)
-        .json({ error: error?.message || "Failed to get Manager response" });
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Failed to get Manager response" });
+      } else {
+        try {
+          res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } catch {}
+      }
     }
   });
 

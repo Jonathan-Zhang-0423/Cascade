@@ -1705,77 +1705,126 @@ export function ChatPanel() {
 
     setManagerResponding(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      if (!response.ok || !response.body) {
+        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+        return;
+      }
 
-      if (projectId) {
-        const nameFromField = data.project_name?.trim();
-        const nameFromMarker = data.message ? data.message.match(PROJECT_NAME_REGEX)?.[1]?.trim() : undefined;
-        const detectedName = nameFromField || nameFromMarker;
-        if (detectedName) {
-          renameProject(projectId, detectedName);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let bufferStr = "";
+
+      let managerAccumulated = "";
+      let messageInserted = false;
+
+      let commAccumulated = "";
+      let commInserted = false;
+
+      let pendingPlan: any = null;
+      let pendingProjectName: string | undefined;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        bufferStr += decoder.decode(value, { stream: true });
+        const lines = bufferStr.split("\n");
+        bufferStr = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine.startsWith("data: ")) continue;
+          const raw = trimmedLine.slice(6).trim();
+          if (raw === "[DONE]") break;
+
+          let ev: any;
+          try { ev = JSON.parse(raw); } catch { continue; }
+
+          const evType = ev.type;
+
+          if (evType === "manager_token") {
+            managerAccumulated += ev.token;
+            const display = stripProjectNameMarker(managerAccumulated);
+            if (!messageInserted) {
+              addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+              messageInserted = true;
+            } else {
+              const msgs = useIDEStore.getState().managerMessages;
+              const last = msgs[msgs.length - 1];
+              if (last?.role === "assistant") {
+                useIDEStore.setState({
+                  managerMessages: [...msgs.slice(0, -1), { ...last, content: display }],
+                });
+              }
+            }
+          } else if (evType === "plan_ready") {
+            pendingPlan = ev.plan;
+            pendingProjectName = ev.project_name;
+          } else if (evType === "communicator_token") {
+            commAccumulated += ev.token;
+            if (!commInserted) {
+              addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+              commInserted = true;
+            } else {
+              const msgs = useIDEStore.getState().managerMessages;
+              const last = msgs[msgs.length - 1];
+              if (last?.role === "assistant" && last.source === "communicator" && !last.plan) {
+                useIDEStore.setState({
+                  managerMessages: [...msgs.slice(0, -1), { ...last, content: commAccumulated }],
+                });
+              }
+            }
+          } else if (evType === "manager_done") {
+            const nameFromDone = ev.project_name?.trim();
+            if (projectId && nameFromDone) {
+              renameProject(projectId, nameFromDone);
+            }
+          } else if (evType === "manager_error") {
+            addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+          }
         }
       }
 
-      if (data.error && !data.plan && !data.message) {
-        addManagerMessage({ role: "assistant", content: "Hmm, I had a little trouble understanding that. Could you try rephrasing your request? 🤔", source: "communicator" });
-      } else if (data.message) {
-        addManagerMessage({ role: "assistant", content: stripProjectNameMarker(data.message), source: "communicator" });
-      } else if (data.plan) {
+      if (pendingPlan) {
+        if (projectId && pendingProjectName) {
+          renameProject(projectId, pendingProjectName.trim());
+        }
+
         clearManagerPlan();
-        const steps = normalizeSteps(data.plan);
-        for (const t of steps) {
-          updateTaskStatus(String(t.step), "pending");
+        const steps = normalizeSteps(pendingPlan);
+        for (const step of steps) {
+          updateTaskStatus(String(step.step), "pending");
         }
 
-        const userLang = detectLanguage(trimmed);
-        const communicatorResponse = await callCommunicator({
-          event: "plan_created",
-          userLanguage: userLang,
-          planSummary: data.plan.summary || "",
-          totalSteps: steps.length,
-          stepTitles: steps.map((s) => s.title),
-          whatAndWhy: data.plan.what_and_why || "",
-          doneLooksLike: data.plan.done_looks_like || "",
-          outOfScope: data.plan.out_of_scope || "",
-          relevantFiles: data.plan.relevant_files || [],
-        });
-
-        const localized = parsePlanLocalization(communicatorResponse);
-        const displayPlan = { ...data.plan };
-        if (localized?.summary) {
-          displayPlan.summary = localized.summary;
-        }
-        if (localized?.whatAndWhy) {
-          displayPlan.narrated_what_and_why = localized.whatAndWhy;
-        }
-        if (localized?.doneLooksLike) {
-          displayPlan.narrated_done_looks_like = localized.doneLooksLike;
-        }
-        if (localized?.outOfScope) {
-          displayPlan.narrated_out_of_scope = localized.outOfScope;
-        }
+        const localized = parsePlanLocalization(commAccumulated);
+        const displayPlan = { ...pendingPlan };
+        if (localized?.summary) displayPlan.summary = localized.summary;
+        if (localized?.whatAndWhy) displayPlan.narrated_what_and_why = localized.whatAndWhy;
+        if (localized?.doneLooksLike) displayPlan.narrated_done_looks_like = localized.doneLooksLike;
+        if (localized?.outOfScope) displayPlan.narrated_out_of_scope = localized.outOfScope;
         const rawSteps = displayPlan.steps || (displayPlan as any).sub_tasks;
         if (localized?.stepTitles && Array.isArray(rawSteps)) {
           const localizedSteps = rawSteps.map((step: any, i: number) => ({
             ...step,
             title: localized.stepTitles?.[i] || step.title,
           }));
-          if (displayPlan.steps) {
-            displayPlan.steps = localizedSteps;
-          } else {
-            (displayPlan as any).sub_tasks = localizedSteps;
-          }
+          if (displayPlan.steps) displayPlan.steps = localizedSteps;
+          else (displayPlan as any).sub_tasks = localizedSteps;
         }
 
-        if (communicatorResponse) {
-          const friendlyLines = communicatorResponse
+        if (commAccumulated && commInserted) {
+          const friendlyLines = commAccumulated
             .split("\n")
             .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i) && !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) && !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) && !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i))
             .map((l) => l.trim())
@@ -1783,18 +1832,13 @@ export function ChatPanel() {
             .join("\n");
           const msgs = useIDEStore.getState().managerMessages;
           const lastIdx = msgs.length - 1;
-          if (lastIdx >= 0 && msgs[lastIdx].source === "communicator") {
+          if (lastIdx >= 0 && msgs[lastIdx].source === "communicator" && !msgs[lastIdx].plan) {
             if (friendlyLines) {
               useIDEStore.setState({
-                managerMessages: [
-                  ...msgs.slice(0, lastIdx),
-                  { ...msgs[lastIdx], content: friendlyLines },
-                ],
+                managerMessages: [...msgs.slice(0, lastIdx), { ...msgs[lastIdx], content: friendlyLines }],
               });
             } else {
-              useIDEStore.setState({
-                managerMessages: msgs.slice(0, lastIdx),
-              });
+              useIDEStore.setState({ managerMessages: msgs.slice(0, lastIdx) });
             }
           }
         }
@@ -1806,12 +1850,20 @@ export function ChatPanel() {
           autoExecutePlanRef.current = true;
         }
       }
+
+      if (!pendingPlan && managerAccumulated && projectId) {
+        const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
+        if (nameFromMarker) renameProject(projectId, nameFromMarker);
+      }
     } catch (error: any) {
-      addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+      if (error?.name !== "AbortError") {
+        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setManagerResponding(false);
     }
-  }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, callCommunicator, projectId, renameProject, chatMode]);
+  }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, projectId, renameProject, chatMode, clearManagerPlan]);
 
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
