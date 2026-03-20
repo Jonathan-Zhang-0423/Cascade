@@ -400,7 +400,7 @@ export function NotebookPanel() {
       const res = await fetch("/api/mentor-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: nonEmpty }),
+        body: JSON.stringify({ files: nonEmpty, lang: useLanguageStore.getState().lang }),
       });
 
       if (!res.ok) {
@@ -462,6 +462,7 @@ export function NotebookPanel() {
           changedFiles,
           notebookOutline: outline,
           affectedSections: affectedSections.length > 0 ? affectedSections : undefined,
+          lang: useLanguageStore.getState().lang,
         }),
       });
 
@@ -509,6 +510,7 @@ export function NotebookPanel() {
         body: JSON.stringify({
           notebook: notebookForApi,
           files: nonEmpty,
+          lang: useLanguageStore.getState().lang,
         }),
       });
 

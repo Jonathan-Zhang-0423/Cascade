@@ -702,7 +702,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { files } = req.body;
+      const { files, lang } = req.body;
 
       if (!files || !Array.isArray(files) || files.length === 0) {
         res.status(400).json({ error: "No files provided" });
@@ -716,11 +716,18 @@ export async function registerRoutes(
         )
         .join("\n\n");
 
+      const langDirective =
+        lang === "zh"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field — project_summary, what_it_does, explanations, walkthroughs, learning_tips, mind map labels, key concepts — must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
+          : lang === "en"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
+          : "";
+
       const messages = [
         { role: "system" as const, content: MENTOR_SYSTEM_PROMPT },
         {
           role: "user" as const,
-          content: `Please analyze the following project files and generate the Coding Notebook:\n\n${fileContext}`,
+          content: `${langDirective}Please analyze the following project files and generate the Coding Notebook:\n\n${fileContext}`,
         },
       ];
 
@@ -762,7 +769,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { changedFiles, notebookOutline, affectedSections } = req.body;
+      const { changedFiles, notebookOutline, affectedSections, lang } = req.body;
 
       if (
         !changedFiles ||
@@ -785,11 +792,18 @@ export async function registerRoutes(
         ? `\n\nAffected existing sections:\n${JSON.stringify(affectedSections, null, 2)}`
         : "";
 
+      const patchLangDirective =
+        lang === "zh"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
+          : lang === "en"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
+          : "";
+
       const messages = [
         { role: "system" as const, content: MENTOR_PATCH_PROMPT },
         {
           role: "user" as const,
-          content: `## Existing Notebook Outline\n${outlineText}${sectionsText}\n\n## Changed Files\n${fileContext}`,
+          content: `${patchLangDirective}## Existing Notebook Outline\n${outlineText}${sectionsText}\n\n## Changed Files\n${fileContext}`,
         },
       ];
 
@@ -833,7 +847,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { notebook, files } = req.body;
+      const { notebook, files, lang } = req.body;
 
       if (!notebook || !files || !Array.isArray(files) || files.length === 0) {
         res.status(400).json({ error: "Notebook and files are required" });
@@ -847,11 +861,18 @@ export async function registerRoutes(
         )
         .join("\n\n");
 
+      const optimizeLangDirective =
+        lang === "zh"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
+          : lang === "en"
+          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
+          : "";
+
       const messages = [
         { role: "system" as const, content: MENTOR_OPTIMIZE_PROMPT },
         {
           role: "user" as const,
-          content: `## Existing Notebook\n${JSON.stringify(notebook, null, 2)}\n\n## All Current Project Files\n${fileContext}`,
+          content: `${optimizeLangDirective}## Existing Notebook\n${JSON.stringify(notebook, null, 2)}\n\n## All Current Project Files\n${fileContext}`,
         },
       ];
 

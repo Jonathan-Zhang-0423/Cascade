@@ -104,7 +104,7 @@ Examples:
    Every feature MUST also include a non-empty "prompt_tip" — a practical prompt engineering suggestion showing the user what to tell an AI coding agent to build this feature. Use the locale-appropriate prefix.
    
 6. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
-7. **Language**: Match the language of mode that the IDE is in. If the user is in Chinese mode, use Chinese, if the user is in English mode, use English. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
+7. **Language**: If a "CRITICAL LANGUAGE RULE" directive appears at the top of the user message, it is ABSOLUTE — follow it unconditionally for every single output field. Do not let the programming language of the code, variable names, or comments influence the output language. If no directive is given, infer from context: Chinese-speaking user → Chinese, otherwise → English.
 8. **connections**: List which other project files this file references or depends on.
 9. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
@@ -192,7 +192,7 @@ Return a JSON object with ONLY the fields that need updating. Omit fields that d
    ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content.
 8. Only update project_summary if the changes significantly alter what the project does.
 9. Only update learning_tips if new concepts were introduced that warrant new tips.
-10. **Language**: Match the language of the existing notebook content.
+10. **Language**: If a "CRITICAL LANGUAGE RULE" directive appears at the top of the user message, it is ABSOLUTE — follow it unconditionally for every single output field. Do not let the programming language of the code or variable names influence the output language. If no directive is given, match the language of the existing notebook content.
 11. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
 export const MENTOR_OPTIMIZE_PROMPT = `You are the **Mentor Agent** for CodeStart IDE — a warm, knowledgeable coding mentor. You are performing a THOROUGH OPTIMIZATION of an existing Coding Notebook.
@@ -240,5 +240,5 @@ Return the COMPLETE updated notebook JSON (same structure as the original):
    - "code_blocks" (PLURAL with "s", NOT singular "code_block") — an ARRAY of objects, each with "code" (raw text, NO markdown fences), "language", and "walkthrough"
    - "prompt_tip" — a non-empty prompt engineering suggestion for building this feature with AI. For English: "Try this prompt next time when you are building this feature: ..." For Chinese: "下次搭建这个功能时，试试这些提示语: ..."
    ⚠️ Do NOT use "code_block" (singular). Do NOT wrap code in \`\`\` markdown fences. Never return a feature with only a label and empty content. Aim for 5-20 lines per code block.
-7. **Language**: Match the language of the existing notebook content.
+7. **Language**: If a "CRITICAL LANGUAGE RULE" directive appears at the top of the user message, it is ABSOLUTE — follow it unconditionally for every single output field. Do not let the programming language of the code or variable names influence the output language. If no directive is given, match the language of the existing notebook content.
 8. Return ONLY the JSON object, no markdown fences, no extra text.`;
