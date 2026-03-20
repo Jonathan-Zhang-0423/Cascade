@@ -6,6 +6,10 @@ import {
   buildEditorContextMessage,
 } from "./editor-prompt";
 import {
+  VIBE_AGENT_SYSTEM_PROMPT,
+  buildVibeContextMessage,
+} from "./vibe-prompt";
+import {
   MANAGER_AGENT_SYSTEM_PROMPT,
   MANAGER_FIX_MODE_SYSTEM_PROMPT,
   buildManagerContextMessage,
@@ -547,6 +551,78 @@ export async function registerRoutes(
       } else {
         try {
           res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } catch {}
+      }
+    }
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+      const { messages, files } = req.body as {
+        messages: Array<{ role: "user" | "assistant"; content: string }>;
+        files?: Array<{ path: string; content: string }>;
+      };
+
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        res.status(400).json({ error: "messages array is required" });
+        return;
+      }
+
+      const systemMessages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }> = [{ role: "system", content: VIBE_AGENT_SYSTEM_PROMPT }];
+
+      if (files && files.length > 0) {
+        const contextMsg = buildVibeContextMessage(files);
+        systemMessages.push({ role: "system", content: contextMsg });
+      } else {
+        systemMessages.push({
+          role: "system",
+          content: "The project currently has no files. Start fresh!",
+        });
+      }
+
+      const allMessages = [...systemMessages, ...messages];
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const emit = (data: Record<string, unknown>) => {
+        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+      };
+
+      const stream = await doubaoClient.chat.completions.create({
+        model: DOUBAO_MODEL,
+        messages: allMessages,
+        stream: true,
+        max_tokens: 16384,
+      });
+
+      for await (const chunk of stream) {
+        if (res.destroyed) break;
+        const token = chunk.choices[0]?.delta?.content;
+        if (token) {
+          emit({ content: token });
+        }
+      }
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (error: any) {
+      console.error("Vibe chat API error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Failed to get Vibe Agent response" });
+      } else {
+        try {
           res.write("data: [DONE]\n\n");
           res.end();
         } catch {}

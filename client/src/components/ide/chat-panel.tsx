@@ -1829,6 +1829,104 @@ export function ChatPanel() {
     }
   }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, projectId, renameProject, chatMode, clearManagerPlan]);
 
+  const handleVibeSend = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isAiResponding || isManagerResponding) return;
+
+    const priorMsgs = useIDEStore.getState().chatMessages;
+    const isFirstUserMessage = !priorMsgs.some((m) => m.role === "user");
+
+    const messagesForApi = [
+      ...priorMsgs
+        .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      { role: "user" as const, content: trimmed },
+    ];
+
+    addChatMessage({ role: "user", content: trimmed });
+    addChatMessage({ role: "assistant", content: "" });
+    setInput("");
+    setAiResponding(true);
+
+    const allFiles = flattenFiles(files);
+    const fileContext = allFiles.map((f) => ({
+      path: f.path,
+      content: f.content || "",
+    }));
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let accumulated = "";
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        updateLastAssistantMessage(tr(useLanguageStore.getState().lang, "chat.errorConnect"));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let bufferStr = "";
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        bufferStr += decoder.decode(value, { stream: true });
+        const lines = bufferStr.split("\n");
+        bufferStr = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine.startsWith("data: ")) continue;
+          const raw = trimmedLine.slice(6).trim();
+          if (raw === "[DONE]") break outer;
+
+          let ev: any;
+          try { ev = JSON.parse(raw); } catch { continue; }
+
+          if (ev.content) {
+            accumulated += ev.content;
+            updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+          }
+        }
+      }
+
+      if (isFirstUserMessage && projectId) {
+        const nameFromMarker = accumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
+        if (nameFromMarker) renameProject(projectId, nameFromMarker);
+      }
+
+      const stripped = stripProjectNameMarker(accumulated);
+      updateLastAssistantMessage(stripped);
+
+      createCheckpoint("AI response");
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        if (!accumulated) {
+          const msgs = useIDEStore.getState().chatMessages;
+          const lastIdx = msgs.length - 1;
+          if (lastIdx >= 0 && msgs[lastIdx].role === "assistant" && msgs[lastIdx].content === "") {
+            useIDEStore.setState({ chatMessages: msgs.slice(0, lastIdx) });
+          }
+        }
+      } else {
+        updateLastAssistantMessage(tr(useLanguageStore.getState().lang, "chat.errorConnect"));
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setAiResponding(false);
+    }
+  }, [input, isAiResponding, isManagerResponding, files, addChatMessage, updateLastAssistantMessage, setAiResponding, projectId, renameProject, createCheckpoint]);
+
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
@@ -2101,8 +2199,12 @@ export function ChatPanel() {
       handleExecutePlan();
       return;
     }
+    if (chatMode === "build") {
+      handleVibeSend();
+      return;
+    }
     handleManagerSend();
-  }, [handleManagerSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
+  }, [handleManagerSend, handleVibeSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
 
   const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
