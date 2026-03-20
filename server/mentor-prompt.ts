@@ -47,7 +47,7 @@ You MUST return valid JSON with this exact structure:
     "central_node": "Project name or short description",
     "branches": [
       {
-        "label": "Short label for this branch (usually the filename)",
+        "label": "Short label for this branch (each branch is the filename)",
         "file": "/project/filename.ext",
         "description": "A beginner-friendly explanation of this file's purpose and key features (2-3 sentences). This appears when hovering over the file node in the mind map.",
         "children": [
@@ -104,7 +104,7 @@ Examples:
    Every feature MUST also include a non-empty "prompt_tip" — a practical prompt engineering suggestion showing the user what to tell an AI coding agent to build this feature. Use the locale-appropriate prefix.
    
 6. **Learning tips**: Provide 3-5 actionable, encouraging tips based on the concepts in the project. Include emojis.
-7. **Language**: Match the language of the code comments or file content. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
+7. **Language**: Match the language of mode that the IDE is in. If the user is in Chinese mode, use Chinese, if the user is in English mode, use English. If the project appears to be by a Chinese-speaking user, respond in Chinese. Otherwise, respond in English.
 8. **connections**: List which other project files this file references or depends on.
 9. Return ONLY the JSON object, no markdown fences, no extra text.`;
 
