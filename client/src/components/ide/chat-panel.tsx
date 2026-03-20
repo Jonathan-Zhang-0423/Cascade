@@ -1360,7 +1360,7 @@ function ManagerMessageBubble({
   holisticReview,
   fixCycle,
 }: {
-  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" };
+  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw"; typing?: boolean };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
@@ -1404,6 +1404,18 @@ function ManagerMessageBubble({
         holisticReview={holisticReview}
         fixCycle={fixCycle}
       />
+    );
+  }
+
+  if (message.typing) {
+    return (
+      <div className="px-3 flex items-center gap-1.5" data-testid="manager-typing-bubble">
+        <div className="flex items-center gap-1 bg-muted/60 rounded-xl px-3 py-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
     );
   }
 
@@ -1645,13 +1657,23 @@ export function ChatPanel() {
 
     const currentMsgs = useIDEStore.getState().managerMessages;
     const messagesForApi = currentMsgs
-      .filter((m) => m.role === "user" || m.plan || (m.role === "assistant" && m.source !== "communicator"))
+      .filter((m) => !m.typing && (m.role === "user" || m.plan || (m.role === "assistant" && m.source !== "communicator")))
       .map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.plan ? JSON.stringify(m.plan) : m.content,
       }));
 
     setManagerResponding(true);
+
+    addManagerMessage({ role: "assistant", content: "", source: "communicator", typing: true });
+
+    const removeTypingBubble = () => {
+      const msgs = useIDEStore.getState().managerMessages;
+      const typingIdx = msgs.findIndex((m) => m.typing === true);
+      if (typingIdx !== -1) {
+        useIDEStore.setState({ managerMessages: msgs.filter((_, i) => i !== typingIdx) });
+      }
+    };
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1665,6 +1687,7 @@ export function ChatPanel() {
       });
 
       if (!response.ok || !response.body) {
+        removeTypingBubble();
         addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
         return;
       }
@@ -1703,6 +1726,7 @@ export function ChatPanel() {
             managerAccumulated += ev.token;
             const display = stripProjectNameMarker(managerAccumulated);
             if (!messageInserted) {
+              removeTypingBubble();
               addManagerMessage({ role: "assistant", content: display, source: "communicator" });
               messageInserted = true;
             } else {
@@ -1715,6 +1739,7 @@ export function ChatPanel() {
               }
             }
           } else if (evType === "plan_ready") {
+            removeTypingBubble();
             const plan = ev.plan;
             if (projectId && ev.project_name) {
               renameProject(projectId, (ev.project_name as string).trim());
@@ -1753,6 +1778,7 @@ export function ChatPanel() {
               renameProject(projectId, nameFromDone);
             }
           } else if (evType === "manager_error") {
+            removeTypingBubble();
             addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
           }
         }
@@ -1785,10 +1811,12 @@ export function ChatPanel() {
         if (nameFromMarker) renameProject(projectId, nameFromMarker);
       }
     } catch (error: any) {
+      removeTypingBubble();
       if (error?.name !== "AbortError") {
         addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
       }
     } finally {
+      removeTypingBubble();
       if (abortRef.current === controller) abortRef.current = null;
       setManagerResponding(false);
     }

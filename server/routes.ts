@@ -404,7 +404,7 @@ export async function registerRoutes(
       };
 
       const stream = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
+        model: DOUBAO_LITE_MODEL,
         messages: allMessages,
         stream: true,
         max_tokens: 16384,
@@ -514,7 +514,7 @@ export async function registerRoutes(
 
         try {
           const commStream = await doubaoClient.chat.completions.create({
-            model: DOUBAO_MODEL,
+            model: DOUBAO_LITE_MODEL,
             messages: [
               { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
               { role: "user", content: commPrompt },

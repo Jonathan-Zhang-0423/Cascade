@@ -151,6 +151,8 @@ export interface ManagerMessage {
   plan?: ManagerPlan;
   timestamp: number;
   source?: "communicator" | "manager_raw";
+  typing?: boolean;
+  hidden?: boolean;
 }
 
 interface FlatFile {
