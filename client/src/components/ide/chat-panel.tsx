@@ -1686,12 +1686,6 @@ export function ChatPanel() {
     const trimmed = overrideMessage?.trim() || input.trim();
     if (!trimmed || isManagerResponding || isAiResponding) return;
 
-    if (!overrideMessage && useIDEStore.getState().managerPlan && useIDEStore.getState().executingTaskIndex === null) {
-      setInput("");
-      handleExecutePlanRef.current?.();
-      return;
-    }
-
     addManagerMessage({ role: "user", content: trimmed });
     if (!overrideMessage) setInput("");
 
