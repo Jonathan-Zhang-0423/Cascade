@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useProjectStore, migrateOldState } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
@@ -39,10 +39,15 @@ import { useT } from "@/lib/i18n";
 migrateOldState();
 
 export default function DashboardPage() {
-  const { projects, createProject, deleteProject, renameProject } = useProjectStore();
+  const { projects, createProject, deleteProject, renameProject, syncFromServer } = useProjectStore();
   const [, navigate] = useLocation();
   const { themeId, setThemeId } = useTheme();
   const [showNewDialog, setShowNewDialog] = useState(false);
+
+  useEffect(() => {
+    syncFromServer();
+  }, [syncFromServer]);
+
   const [ideaText, setIdeaText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);

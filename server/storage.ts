@@ -1,38 +1,122 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, users, projects, projectFiles } from "@shared/schema";
+import { db } from "./db";
 import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+
+  getProject(id: string): Promise<Project | undefined>;
+  getProjects(): Promise<Project[]>;
+  createProject(project: InsertProject): Promise<Project>;
+  updateProjectName(id: string, name: string): Promise<void>;
+  deleteProject(id: string): Promise<void>;
+
+  getProjectFiles(projectId: string): Promise<ProjectFile[]>;
+  upsertProjectFile(projectId: string, path: string, content: string): Promise<void>;
+  upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void>;
+  deleteProjectFile(projectId: string, path: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values({ ...insertUser, id }).returning();
     return user;
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project;
+  }
+
+  async getProjects(): Promise<Project[]> {
+    return db.select().from(projects).orderBy(projects.createdAt);
+  }
+
+  async createProject(project: InsertProject): Promise<Project> {
+    const [created] = await db.insert(projects).values(project).returning();
+    return created;
+  }
+
+  async updateProjectName(id: string, name: string): Promise<void> {
+    await db.update(projects).set({ name }).where(eq(projects.id, id));
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
+    return db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
+  }
+
+  async upsertProjectFile(projectId: string, path: string, content: string): Promise<void> {
+    const [existing] = await db.select().from(projectFiles)
+      .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+
+    if (existing) {
+      await db.update(projectFiles).set({ content })
+        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+    } else {
+      await db.insert(projectFiles).values({ projectId, path, content });
+    }
+  }
+
+  async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
+    const existing = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
+    const existingMap = new Map(existing.map((f) => [f.path, f]));
+    const incomingPaths = new Set(files.map((f) => f.path));
+
+    const toInsert: { projectId: string; path: string; content: string }[] = [];
+    const toUpdate: { path: string; content: string }[] = [];
+    const toDelete: string[] = [];
+
+    for (const file of files) {
+      if (existingMap.has(file.path)) {
+        toUpdate.push(file);
+      } else {
+        toInsert.push({ projectId, path: file.path, content: file.content });
+      }
+    }
+
+    for (const existingPath of existingMap.keys()) {
+      if (!incomingPaths.has(existingPath)) {
+        toDelete.push(existingPath);
+      }
+    }
+
+    if (toInsert.length > 0) {
+      await db.insert(projectFiles).values(toInsert);
+    }
+
+    for (const file of toUpdate) {
+      await db.update(projectFiles).set({ content: file.content })
+        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, file.path)));
+    }
+
+    for (const path of toDelete) {
+      await db.delete(projectFiles)
+        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+    }
+  }
+
+  async deleteProjectFile(projectId: string, path: string): Promise<void> {
+    await db.delete(projectFiles)
+      .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { z } from "zod";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
+import { storage } from "./storage";
+import { insertProjectSchema } from "@shared/schema";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   buildEditorContextMessage,
@@ -1299,6 +1302,226 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
       res
         .status(500)
         .json({ error: error?.message || "Failed to run A/B test" });
+    }
+  });
+
+  app.post("/api/generate-codestart", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+        return;
+      }
+
+      const { plan, userPrompt, projectName, currentFiles } = req.body as {
+        plan: any;
+        userPrompt: string;
+        projectName?: string;
+        currentFiles?: { path: string; content: string }[];
+      };
+
+      if (!plan || !userPrompt) {
+        res.status(400).json({ error: "plan and userPrompt are required" });
+        return;
+      }
+
+      const systemPrompt = `You are a technical documentation writer. Generate a codestart.md file for a software project. Use both the project plan AND the actual current file tree to produce an accurate, up-to-date architecture document.
+
+Output ONLY valid markdown — no JSON, no extra text, no code fences wrapping the whole document.
+
+The document MUST have exactly these four fixed sections, plus additional project-specific sections:
+
+## Overview
+3-5 sentences describing what this project is and what it does.
+
+## User Preferences
+List any preferences or constraints expressed in the user prompt: language, framework, style, color scheme, design constraints, etc. Use bullet points.
+
+## System Architecture
+Describe the actual frontend approach, file structure, core design patterns, and how key parts connect — based on the real files if provided. Use bullet points or sub-sections.
+
+## External Dependencies
+List all libraries, frameworks, APIs, or browser APIs used. Derive from actual file contents when available (e.g. <script src="...">, import statements). Use a markdown list.
+
+Then add 1-4 additional sections with meaningful names specific to this project. Good examples:
+- ## Authentication Model (if auth is involved)
+- ## Data Flow (for interactive apps)
+- ## Game Loop (for games)
+- ## Scoring System (for games with scores)
+- ## State Management (for complex state)
+- ## Animation Strategy (for visual effects)
+
+Do NOT use a generic catch-all like "## Additional Notes". Each section name must be specific and meaningful.
+
+Keep the document concise but informative. Use technical language appropriate for a developer.
+If current files are provided, prioritize them over the plan for describing actual architecture and dependencies.`;
+
+      const stepsText = Array.isArray(plan.steps)
+        ? plan.steps.map((s: any) => `- Step ${s.step}: ${s.title}: ${s.description}`).join("\n")
+        : "";
+
+      let filesContext = "";
+      if (currentFiles && currentFiles.length > 0) {
+        const nonCodestart = currentFiles.filter(f => !f.path.endsWith("codestart.md"));
+        const fileSummaries = nonCodestart.slice(0, 10).map(f => {
+          const preview = f.content.slice(0, 400).replace(/\n+/g, " ").trim();
+          return `### ${f.path}\n${preview}${f.content.length > 400 ? "..." : ""}`;
+        }).join("\n\n");
+        if (fileSummaries) {
+          filesContext = `\n\nCurrent Project Files (actual implementation):\n${fileSummaries}`;
+        }
+      }
+
+      const userMessage = `Project: ${projectName || "Untitled"}
+      
+User Request: ${userPrompt}
+
+Plan Overview: ${plan.overview || plan.summary || ""}
+
+What & Why: ${plan.what_and_why || ""}
+
+Done Looks Like: ${plan.done_looks_like || ""}
+
+Plan Steps:
+${stepsText}
+
+Relevant Files from Plan: ${(plan.relevant_files || []).join(", ")}
+${filesContext}
+
+Generate the codestart.md content for this project based on both the plan and the actual current files.`;
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        stream: false,
+        max_tokens: 4096,
+      });
+
+      const content = completion.choices[0]?.message?.content || "";
+      res.json({ content });
+    } catch (error: any) {
+      console.error("Generate codestart error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to generate codestart.md" });
+    }
+  });
+
+  app.get("/api/projects", async (req, res) => {
+    try {
+      const allProjects = await storage.getProjects();
+      res.json({ projects: allProjects });
+    } catch (error: any) {
+      console.error("Get projects error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get projects" });
+    }
+  });
+
+  const createProjectSchema = insertProjectSchema;
+
+  const updateProjectSchema = z.object({ name: z.string().min(1) });
+
+  const projectFilesSchema = z.object({
+    files: z.array(z.object({ path: z.string().min(1), content: z.string() })),
+  });
+
+  const singleFileSchema = z.object({ path: z.string().min(1), content: z.string() });
+
+  const deleteFileSchema = z.object({ path: z.string().min(1) });
+
+  app.post("/api/projects", async (req, res) => {
+    try {
+      const parsed = createProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      const { id, name, emoji } = parsed.data;
+      const project = await storage.createProject({ id, name, emoji: emoji ?? null });
+      res.json({ project });
+    } catch (error: any) {
+      console.error("Create project error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to create project" });
+    }
+  });
+
+  app.patch("/api/projects/:id", async (req, res) => {
+    try {
+      const parsed = updateProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      await storage.updateProjectName(req.params.id, parsed.data.name);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Update project error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to update project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      await storage.deleteProject(req.params.id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Delete project error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to delete project" });
+    }
+  });
+
+  app.get("/api/projects/:id/files", async (req, res) => {
+    try {
+      const files = await storage.getProjectFiles(req.params.id);
+      res.json({ files });
+    } catch (error: any) {
+      console.error("Get project files error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to get project files" });
+    }
+  });
+
+  app.put("/api/projects/:id/files", async (req, res) => {
+    try {
+      const parsed = projectFilesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      await storage.upsertProjectFiles(req.params.id, parsed.data.files);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Upsert project files error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to save files" });
+    }
+  });
+
+  app.put("/api/projects/:id/files/single", async (req, res) => {
+    try {
+      const parsed = singleFileSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      await storage.upsertProjectFile(req.params.id, parsed.data.path, parsed.data.content);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Upsert project file error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to save file" });
+    }
+  });
+
+  app.delete("/api/projects/:id/files", async (req, res) => {
+    try {
+      const parsed = deleteFileSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      await storage.deleteProjectFile(req.params.id, parsed.data.path);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error("Delete project file error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to delete file" });
     }
   });
 

@@ -1803,8 +1803,9 @@ export function ChatPanel() {
           } else if (evType === "plan_ready") {
             removeTypingBubble();
             const plan = ev.plan;
-            if (projectId && ev.project_name) {
-              renameProject(projectId, (ev.project_name as string).trim());
+            const resolvedProjectName = ((ev.project_name as string | undefined) || "").trim() || undefined;
+            if (projectId && resolvedProjectName) {
+              renameProject(projectId, resolvedProjectName);
             }
             clearManagerPlan();
             const steps = normalizeSteps(plan);
@@ -1815,6 +1816,23 @@ export function ChatPanel() {
             addManagerMessage({ role: "assistant", content: "", plan });
             if (chatMode === "build") {
               autoExecutePlanRef.current = true;
+            }
+
+            if (projectId) {
+              const userPromptForCodestart = input.trim() || (useIDEStore.getState().managerMessages.find(m => m.role === "user")?.content || "");
+              const currentFileNodes = flattenFiles(useIDEStore.getState().files);
+              const currentFilesForCS = currentFileNodes.filter(f => f.path && !f.path.endsWith("codestart.md")).map(f => ({ path: f.path!, content: f.content || "" }));
+              fetch("/api/generate-codestart", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ plan, userPrompt: userPromptForCodestart, projectName: resolvedProjectName, currentFiles: currentFilesForCS }),
+              }).then(async (r) => {
+                if (!r.ok) return;
+                const data = await r.json();
+                if (data.content) {
+                  useIDEStore.getState().updateFileContent("/project/codestart.md", data.content);
+                }
+              }).catch(() => {});
             }
           } else if (evType === "communicator_token") {
             commAccumulated += ev.token;
@@ -1838,6 +1856,25 @@ export function ChatPanel() {
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
+            }
+
+            const archKeywords = ["architect", "restructur", "refactor", "replac", "migrat", "rewrite", "framework", "library", "dependenc", "api", "backend", "frontend", "database", "stack"];
+            const managerText = managerAccumulated.toLowerCase();
+            const hasArchChange = archKeywords.some(kw => managerText.includes(kw));
+            const existingPlan = useIDEStore.getState().managerPlan;
+            if (hasArchChange && existingPlan && projectId) {
+              const promptMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+              const archFileNodes = flattenFiles(useIDEStore.getState().files);
+              const archCurrentFiles = archFileNodes.filter(f => f.path && !f.path.endsWith("codestart.md")).map(f => ({ path: f.path!, content: f.content || "" }));
+              fetch("/api/generate-codestart", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ plan: existingPlan, userPrompt: input.trim() || promptMsg?.content || "", projectName: undefined, currentFiles: archCurrentFiles }),
+              }).then(async (r) => {
+                if (!r.ok) return;
+                const d = await r.json();
+                if (d.content) useIDEStore.getState().updateFileContent("/project/codestart.md", d.content);
+              }).catch(() => {});
             }
           } else if (evType === "manager_error") {
             removeTypingBubble();
@@ -2080,6 +2117,28 @@ export function ChatPanel() {
           } else if (type === "step_completed") {
             finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "done");
+
+            const stepNum = ev.stepNumber as number;
+            const lastStep = normalizedSteps[normalizedSteps.length - 1];
+            const isLastStep = lastStep && String(lastStep.step) === String(stepNum);
+            if (isLastStep) {
+              const midPlan = useIDEStore.getState().managerPlan;
+              const midProjectId = useIDEStore.getState().projectId;
+              if (midPlan && midProjectId) {
+                const midMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+                const midFileNodes = flattenFiles(useIDEStore.getState().files);
+                const midCurrentFiles = midFileNodes.filter(f => f.path && !f.path.endsWith("codestart.md")).map(f => ({ path: f.path!, content: f.content || "" }));
+                fetch("/api/generate-codestart", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ plan: midPlan, userPrompt: midMsg?.content || userRequest, projectName: undefined, currentFiles: midCurrentFiles }),
+                }).then(async (r) => {
+                  if (!r.ok) return;
+                  const d = await r.json();
+                  if (d.content) useIDEStore.getState().updateFileContent("/project/codestart.md", d.content);
+                }).catch(() => {});
+              }
+            }
           } else if (type === "step_failed") {
             finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "failed");
@@ -2132,6 +2191,32 @@ export function ChatPanel() {
               const s = useIDEStore.getState().taskStatuses[key];
               if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
             });
+
+            const currentPlan = useIDEStore.getState().managerPlan;
+            const currentProjectId = useIDEStore.getState().projectId;
+            if (currentPlan && currentProjectId) {
+              const userMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+              const userPromptForUpdate = userMsg?.content || userRequest;
+              const currentAllFiles = flattenFiles(useIDEStore.getState().files);
+              const currentFilesForServer = currentAllFiles.filter(f => f.path).map(f => ({ path: f.path!, content: f.content || "" }));
+              const existingCodestart = currentFilesForServer.find(f => f.path === "/project/codestart.md");
+              const existingContent = existingCodestart?.content || "";
+              const hasStubContent = existingContent.includes("_Generated after planning is complete._") || existingContent.includes("_Populated after");
+              if (hasStubContent || currentAllFiles.length > 4) {
+                const nonCSFiles = currentFilesForServer.filter(f => !f.path.endsWith("codestart.md"));
+                fetch("/api/generate-codestart", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ plan: currentPlan, userPrompt: userPromptForUpdate, projectName: undefined, currentFiles: nonCSFiles }),
+                }).then(async (r) => {
+                  if (!r.ok) return;
+                  const data = await r.json();
+                  if (data.content) {
+                    useIDEStore.getState().updateFileContent("/project/codestart.md", data.content);
+                  }
+                }).catch(() => {});
+              }
+            }
           } else if (type === "build_error") {
             addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildGeneric"), source: "communicator" });
           } else if (type === "done") {

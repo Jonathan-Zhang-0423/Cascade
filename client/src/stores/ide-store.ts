@@ -401,6 +401,29 @@ const defaultFiles: FileNode[] = [
         type: "file",
         content: "",
       },
+      {
+        name: "codestart.md",
+        path: "/project/codestart.md",
+        type: "file",
+        content: `# codestart.md
+
+## Overview
+
+_Generated after planning is complete._
+
+## User Preferences
+
+_Populated after the first plan is created._
+
+## System Architecture
+
+_Populated after the first plan is created._
+
+## External Dependencies
+
+_Populated after the first plan is created._
+`,
+      },
     ],
   },
 ];
@@ -474,6 +497,42 @@ function debouncedPersist(state: IDEState) {
     persistState(state);
     persistTimer = null;
   }, 500);
+}
+
+let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingServerSync: { projectId: string; files: { path: string; content: string }[] } | null = null;
+
+function syncFilesToServer(projectId: string, files: FileNode[]) {
+  const flat = flattenToFlatFiles(files);
+
+  if (serverSyncTimer) clearTimeout(serverSyncTimer);
+  pendingServerSync = { projectId, files: flat };
+
+  serverSyncTimer = setTimeout(() => {
+    if (!pendingServerSync) return;
+    const { projectId: pid, files: flatFiles } = pendingServerSync;
+    pendingServerSync = null;
+    serverSyncTimer = null;
+
+    fetch(`/api/projects/${pid}/files`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files: flatFiles }),
+    }).catch(() => {});
+  }, 1000);
+}
+
+async function fetchFilesFromServer(projectId: string): Promise<{ path: string; content: string }[] | null> {
+  try {
+    const resp = await fetch(`/api/projects/${projectId}/files`);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const files: { path: string; content: string }[] = data.files || [];
+    if (files.length === 0) return null;
+    return files;
+  } catch {
+    return null;
+  }
 }
 
 function loadCheckpoints(projectId: string): Checkpoint[] {
@@ -572,74 +631,99 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       },
     ];
 
-    if (saved) {
-      set({
-        projectId: id,
-        files: saved.files || defaultFiles,
-        openFiles: saved.openFiles || ["/project/index.html"],
-        activeFile: saved.activeFile || "/project/index.html",
-        previewFile: saved.previewFile || "/project/index.html",
-        chatMessages: saved.chatMessages || defaultChat,
-        pendingPrompt: saved.pendingPrompt || null,
-        checkpoints: savedCheckpoints,
-        consoleEntries: [],
-        isAiResponding: false,
+    const baseState = saved ? {
+      projectId: id,
+      files: saved.files || defaultFiles,
+      openFiles: saved.openFiles || ["/project/index.html"],
+      activeFile: saved.activeFile || "/project/index.html",
+      previewFile: saved.previewFile || "/project/index.html",
+      chatMessages: saved.chatMessages || defaultChat,
+      pendingPrompt: saved.pendingPrompt || null,
+      checkpoints: savedCheckpoints,
+      consoleEntries: [],
+      isAiResponding: false,
+      previewRefreshKey: Date.now(),
+      activeTool: "chat" as ToolPanel,
+      isChatOpen: true,
+      isSidebarOpen: false,
+      chatMode: (saved.chatMode === "manager" ? "manager" : "build") as ChatMode,
+      managerMessages: saved.managerMessages || [],
+      managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
+      executingTaskIndex: null,
+      taskStatuses: {},
+      taskFailureReasons: {},
+      isManagerResponding: false,
+      verificationResults: {},
+      pendingConfirmation: null,
+      userConfirmationInput: "",
+      reviewPhase: "idle" as ReviewPhase,
+      holisticReview: null,
+      fixCycle: 0,
+      activeSpace: (saved.activeSpace || "workspace") as ActiveSpace,
+      notebookContent: saved.notebookContent || null,
+      isNotebookLoading: false,
+      isNotebookOptimizing: false,
+      notebookError: null,
+    } : {
+      projectId: id,
+      files: defaultFiles,
+      openFiles: ["/project/index.html"],
+      activeFile: "/project/index.html",
+      previewFile: "/project/index.html",
+      chatMessages: defaultChat,
+      pendingPrompt: null,
+      checkpoints: [],
+      consoleEntries: [],
+      isAiResponding: false,
+      previewRefreshKey: Date.now(),
+      activeTool: "chat" as ToolPanel,
+      isChatOpen: true,
+      isSidebarOpen: false,
+      chatMode: "build" as ChatMode,
+      managerMessages: [],
+      managerPlan: null,
+      executingTaskIndex: null,
+      taskStatuses: {},
+      taskFailureReasons: {},
+      isManagerResponding: false,
+      verificationResults: {},
+      pendingConfirmation: null,
+      userConfirmationInput: "",
+      reviewPhase: "idle" as ReviewPhase,
+      holisticReview: null,
+      fixCycle: 0,
+      activeSpace: "workspace" as ActiveSpace,
+      notebookContent: null,
+      isNotebookLoading: false,
+      isNotebookOptimizing: false,
+      notebookError: null,
+    };
+
+    set(baseState);
+
+    fetchFilesFromServer(id).then((serverFiles) => {
+      if (!serverFiles || serverFiles.length === 0) return;
+      const fileTree = rebuildFileTree(serverFiles);
+      const currentState = get();
+      if (currentState.projectId !== id) return;
+
+      const allPaths = serverFiles.map((f) => f.path);
+      const validOpenFiles = baseState.openFiles.filter((f) => allPaths.includes(f));
+      const htmlFile = allPaths.find((p) => p.endsWith(".html")) || allPaths[0] || "/project/index.html";
+      const openFiles = validOpenFiles.length > 0 ? validOpenFiles : [htmlFile];
+      const activeFile = openFiles.includes(baseState.activeFile || "") ? baseState.activeFile : openFiles[0];
+
+      const updated = {
+        ...currentState,
+        files: fileTree,
+        openFiles,
+        activeFile,
+        previewFile: allPaths.includes(baseState.previewFile) ? baseState.previewFile : htmlFile,
         previewRefreshKey: Date.now(),
-        activeTool: "chat",
-        isChatOpen: true,
-        isSidebarOpen: false,
-        chatMode: (saved.chatMode === "manager" ? "manager" : "build"),
-        managerMessages: saved.managerMessages || [],
-        managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
-        executingTaskIndex: null,
-        taskStatuses: {},
-        taskFailureReasons: {},
-        isManagerResponding: false,
-        verificationResults: {},
-        pendingConfirmation: null,
-        userConfirmationInput: "",
-        reviewPhase: "idle",
-        holisticReview: null,
-        fixCycle: 0,
-        activeSpace: saved.activeSpace || "workspace",
-        notebookContent: saved.notebookContent || null,
-        isNotebookLoading: false,
-        isNotebookOptimizing: false,
-        notebookError: null,
-      });
-    } else {
-      set({
-        projectId: id,
-        files: defaultFiles,
-        openFiles: ["/project/index.html"],
-        activeFile: "/project/index.html",
-        previewFile: "/project/index.html",
-        chatMessages: defaultChat,
-        pendingPrompt: null,
-        checkpoints: [],
-        consoleEntries: [],
-        isAiResponding: false,
-        previewRefreshKey: Date.now(),
-        chatMode: "build",
-        managerMessages: [],
-        managerPlan: null,
-        executingTaskIndex: null,
-        taskStatuses: {},
-        taskFailureReasons: {},
-        isManagerResponding: false,
-        verificationResults: {},
-        pendingConfirmation: null,
-        userConfirmationInput: "",
-        reviewPhase: "idle",
-        holisticReview: null,
-        fixCycle: 0,
-        activeSpace: "workspace",
-        notebookContent: null,
-        isNotebookLoading: false,
-        isNotebookOptimizing: false,
-        notebookError: null,
-      });
-    }
+      };
+      set(updated);
+      persistState(updated);
+    }).catch(() => {});
   },
 
   saveProject: () => {
@@ -726,6 +810,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     set(next);
     debouncedPersist(next);
+    if (state.projectId) {
+      syncFilesToServer(state.projectId, restoredTree);
+    }
   },
 
   setActiveFile: (path) =>
@@ -776,6 +863,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         files: updateFileInTree(state.files, path, content),
       };
       debouncedPersist(next);
+      if (state.projectId) {
+        syncFilesToServer(state.projectId, next.files);
+      }
       return next;
     }),
 
@@ -852,6 +942,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         files: addFileToTree(state.files, parentPath, name, type),
       };
       debouncedPersist(next);
+      if (state.projectId) {
+        syncFilesToServer(state.projectId, next.files);
+      }
       return next;
     }),
 
@@ -878,6 +971,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
+      if (state.projectId) {
+        syncFilesToServer(state.projectId, next.files);
+      }
       return next;
     }),
 
@@ -900,6 +996,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
+      if (state.projectId) {
+        syncFilesToServer(state.projectId, next.files);
+        if (path) {
+          fetch(`/api/projects/${state.projectId}/files`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+          }).catch(() => {});
+        }
+      }
       return next;
     }),
 

@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+interface StoredFileNode {
+  name: string;
+  path: string;
+  type: "file" | "folder";
+  children?: StoredFileNode[];
+  content?: string;
+}
+
 export interface ProjectEntry {
   id: string;
   name: string;
@@ -10,12 +18,14 @@ export interface ProjectEntry {
 
 interface ProjectStoreState {
   projects: ProjectEntry[];
+  serverSynced: boolean;
   createProject: (name: string, initialPrompt?: string, emoji?: string) => string;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
+  syncFromServer: () => Promise<void>;
 }
 
-const BLANK_FILES = [
+export const BLANK_FILES = [
   {
     name: "project",
     path: "/project",
@@ -50,6 +60,29 @@ const BLANK_FILES = [
         path: "/project/app.js",
         type: "file" as const,
         content: "",
+      },
+      {
+        name: "codestart.md",
+        path: "/project/codestart.md",
+        type: "file" as const,
+        content: `# codestart.md
+
+## Overview
+
+_Generated after planning is complete._
+
+## User Preferences
+
+_Populated after the first plan is created._
+
+## System Architecture
+
+_Populated after the first plan is created._
+
+## External Dependencies
+
+_Populated after the first plan is created._
+`,
       },
     ],
   },
@@ -140,10 +173,39 @@ export function migrateOldState() {
   }
 }
 
+async function syncProjectToServer(id: string, name: string, emoji?: string) {
+  try {
+    await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name, emoji }),
+    });
+  } catch {}
+}
+
+async function updateProjectOnServer(id: string, name: string) {
+  try {
+    await fetch(`/api/projects/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch {}
+}
+
+async function deleteProjectOnServer(id: string) {
+  try {
+    await fetch(`/api/projects/${id}`, {
+      method: "DELETE",
+    });
+  } catch {}
+}
+
 export const useProjectStore = create<ProjectStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       projects: [],
+      serverSynced: false,
 
       createProject: (name: string, initialPrompt?: string, emoji?: string) => {
         const id = generateId();
@@ -160,6 +222,26 @@ export const useProjectStore = create<ProjectStoreState>()(
           ],
         }));
 
+        syncProjectToServer(id, name, emoji).then(() => {
+          const flatFiles: { path: string; content: string }[] = [];
+          function flattenNode(nodes: typeof BLANK_FILES) {
+            for (const n of nodes) {
+              if (n.type === "file" && "content" in n) {
+                flatFiles.push({ path: n.path, content: n.content || "" });
+              }
+              if ("children" in n && n.children) {
+                flattenNode(n.children as typeof BLANK_FILES);
+              }
+            }
+          }
+          flattenNode(BLANK_FILES);
+          fetch(`/api/projects/${id}/files`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ files: flatFiles }),
+          }).catch(() => {});
+        });
+
         return id;
       },
 
@@ -168,6 +250,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
         }));
+        deleteProjectOnServer(id);
       },
 
       renameProject: (id: string, newName: string) => {
@@ -176,6 +259,67 @@ export const useProjectStore = create<ProjectStoreState>()(
             p.id === id ? { ...p, name: newName } : p
           ),
         }));
+        updateProjectOnServer(id, newName);
+      },
+
+      syncFromServer: async () => {
+        try {
+          const resp = await fetch("/api/projects");
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const serverProjects: Array<{ id: string; name: string; emoji?: string | null; createdAt: string }> = data.projects || [];
+
+          const converted: ProjectEntry[] = serverProjects.map((p) => ({
+            id: p.id,
+            name: p.name,
+            createdAt: new Date(p.createdAt).getTime(),
+            ...(p.emoji ? { emoji: p.emoji } : {}),
+          }));
+
+          const currentState = get();
+          const serverIds = new Set(converted.map((p) => p.id));
+
+          const merged = [
+            ...converted,
+            ...currentState.projects.filter((p) => !serverIds.has(p.id)),
+          ];
+
+          merged.sort((a, b) => a.createdAt - b.createdAt);
+
+          set({ projects: merged, serverSynced: true });
+
+          const localOnlyProjects = currentState.projects.filter((p) => !serverIds.has(p.id));
+          for (const p of localOnlyProjects) {
+            await syncProjectToServer(p.id, p.name, p.emoji);
+
+            const projectStateRaw = localStorage.getItem(`codestart-project-${p.id}`);
+            if (projectStateRaw) {
+              try {
+                const projectState = JSON.parse(projectStateRaw) as { files?: StoredFileNode[]; state?: { files?: StoredFileNode[] } };
+                const fileNodes: StoredFileNode[] = projectState?.files || projectState?.state?.files || [];
+                const flatFiles: { path: string; content: string }[] = [];
+                function flattenForSync(nodes: StoredFileNode[]) {
+                  for (const n of nodes) {
+                    if (n.type === "file" && n.path) {
+                      flatFiles.push({ path: n.path, content: n.content || "" });
+                    }
+                    if (n.children) flattenForSync(n.children);
+                  }
+                }
+                flattenForSync(fileNodes);
+                if (flatFiles.length > 0) {
+                  fetch(`/api/projects/${p.id}/files`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ files: flatFiles }),
+                  }).catch(() => {});
+                }
+              } catch {}
+            }
+          }
+        } catch {
+          set({ serverSynced: true });
+        }
       },
     }),
     {
