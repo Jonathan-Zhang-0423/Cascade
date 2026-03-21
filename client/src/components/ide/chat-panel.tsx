@@ -990,7 +990,7 @@ function TaskPlanCard({
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
   const relevantFiles = plan.relevant_files;
-  const hasRichSections = !!(whatAndWhy || doneLooksLike || outOfScope);
+  const hasRichSections = !!(overview || whatAndWhy || doneLooksLike || outOfScope);
 
   return (
     <>
