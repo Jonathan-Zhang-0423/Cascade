@@ -2038,12 +2038,12 @@ export function ChatPanel() {
     buildSessionIdRef.current = sessionId;
 
     let commAccumulated = "";
-    let commInserted = false;
+    let commMsgIndex = -1;
     let editorAccumulated = "";
 
     const finalizeComm = () => {
       commAccumulated = "";
-      commInserted = false;
+      commMsgIndex = -1;
     };
 
     const finalizeEditor = () => {
@@ -2140,16 +2140,16 @@ export function ChatPanel() {
             updateTaskStatus(String(ev.stepNumber), "pending");
           } else if (type === "communicator_token") {
             commAccumulated += ev.token;
-            if (!commInserted) {
+            if (commMsgIndex === -1) {
               addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
-              commInserted = true;
+              commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             } else {
               const msgs = useIDEStore.getState().managerMessages;
-              const last = msgs[msgs.length - 1];
-              if (last?.role === "assistant") {
-                useIDEStore.setState({
-                  managerMessages: [...msgs.slice(0, -1), { ...last, content: commAccumulated }],
-                });
+              const target = msgs[commMsgIndex];
+              if (target?.role === "assistant") {
+                const updated = [...msgs];
+                updated[commMsgIndex] = { ...target, content: commAccumulated };
+                useIDEStore.setState({ managerMessages: updated });
               }
             }
           } else if (type === "communicator_done") {

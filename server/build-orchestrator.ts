@@ -242,12 +242,12 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
-  callCommunicatorNarration({
+  await callCommunicatorNarration({
     event: "build_starting",
     userLanguage: userLang,
     totalSteps,
     planSummary: plan.summary,
-  }, emit).catch(() => {});
+  }, emit);
 
   for (let i = 0; i < normalizedSteps.length; i++) {
     if (session.aborted) break;
@@ -260,14 +260,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     emit({ type: "step_starting", stepNumber: task.step, stepTitle: task.title, totalSteps });
 
-    callCommunicatorNarration({
+    await callCommunicatorNarration({
       event: "step_starting",
       userLanguage: userLang,
       stepNumber: task.step,
       stepTitle: task.title,
       stepDescription: task.description,
       totalSteps,
-    }, emit).catch(() => {});
+    }, emit);
+
+    if (session.aborted) break;
 
     const requiredFiles = task.required_files;
     let fileContext: BuildFile[];
@@ -302,12 +304,12 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     if (result.success) {
       emit({ type: "step_completed", stepNumber: task.step });
-      callCommunicatorNarration({
+      await callCommunicatorNarration({
         event: "step_completed",
         userLanguage: userLang,
         stepNumber: task.step,
         stepTitle: task.title,
-      }, emit).catch(() => {});
+      }, emit);
     } else {
       emit({ type: "step_failed", stepNumber: task.step, reason: result.reason });
       break;
@@ -319,11 +321,11 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     return;
   }
 
-  callCommunicatorNarration({
+  await callCommunicatorNarration({
     event: "build_complete",
     userLanguage: userLang,
     totalSteps,
-  }, emit).catch(() => {});
+  }, emit);
 
   let currentCycle = 0;
   let passed = false;
@@ -413,12 +415,12 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       if (currentCycle >= MAX_FIX_CYCLES) break;
 
       emit({ type: "fixing", fixCycle: currentCycle });
-      callCommunicatorNarration({
+      await callCommunicatorNarration({
         event: "fixing",
         userLanguage: userLang,
         fixCycle: currentCycle,
         maxFixCycles: MAX_FIX_CYCLES,
-      }, emit).catch(() => {});
+      }, emit);
 
       const fixPlan = await callFixPlan(review, userRequest, filesMapToArray(session.files));
       if (!fixPlan) break;
@@ -432,14 +434,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         const fixTask = fixSteps[i];
         emit({ type: "step_starting", stepNumber: fixTask.step, stepTitle: fixTask.title, totalSteps: fixSteps.length });
 
-        callCommunicatorNarration({
+        await callCommunicatorNarration({
           event: "step_starting",
           userLanguage: userLang,
           stepNumber: fixTask.step,
           stepTitle: fixTask.title,
           stepDescription: fixTask.description,
           totalSteps: fixSteps.length,
-        }, emit).catch(() => {});
+        }, emit);
+
+        if (session.aborted) break;
 
         const fixFiles = filesMapToArray(session.files);
         const fixPromptLines: string[] = [
@@ -459,6 +463,12 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
         if (fixResult.success) {
           emit({ type: "step_completed", stepNumber: fixTask.step });
+          await callCommunicatorNarration({
+            event: "step_completed",
+            userLanguage: userLang,
+            stepNumber: fixTask.step,
+            stepTitle: fixTask.title,
+          }, emit);
         } else {
           emit({ type: "step_failed", stepNumber: fixTask.step, reason: fixResult.reason });
         }
