@@ -396,6 +396,19 @@ export async function registerRoutes(
         });
       }
 
+      const hasNoPriorAssistant = !messages.some((m) => m.role === "assistant");
+      if (hasNoPriorAssistant) {
+        systemMessages.push({
+          role: "system",
+          content:
+            "⚠️ FIRST MESSAGE DETECTED: This is the user's very first message in this conversation. " +
+            "You MUST respond with Mode 1 (type: \"message\") and ask 1–2 focused clarifying questions, " +
+            "UNLESS the request already explicitly states ALL THREE of: (1) what to build, " +
+            "(2) the main features or functionality, AND (3) the visual style or interaction details. " +
+            "When in doubt, ask first. Do NOT jump straight to a plan.",
+        });
+      }
+
       const allMessages = [...systemMessages, ...messages];
 
       res.setHeader("Content-Type", "text/event-stream");
