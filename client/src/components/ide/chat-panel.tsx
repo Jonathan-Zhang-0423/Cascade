@@ -1133,9 +1133,19 @@ function TaskPlanCard({
         ) : (
           <div className="px-3 pb-2">
             {(plan.summary || (plan as any).user_requirement) && (
-              <p className="text-[12px] text-foreground/70 leading-snug pt-2.5 pb-1">
-                {plan.summary || (plan as any).user_requirement}
-              </p>
+              <div className="flex items-start justify-between gap-2 pt-2.5 pb-1">
+                <p className="text-[12px] text-foreground/70 leading-snug flex-1 min-w-0">
+                  {plan.summary || (plan as any).user_requirement}
+                </p>
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                  title={t(lang, "viewPlanDoc")}
+                  data-testid="button-view-plan-doc-completed"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                </button>
+              </div>
             )}
             <div className="space-y-0">
               {steps.map((task: ManagerSubTask) => (
@@ -1311,11 +1321,11 @@ function TaskPlanCard({
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-full-plan">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-semibold leading-snug pr-6">{plan.summary}</DialogTitle>
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none flex flex-col p-0 overflow-hidden" data-testid="dialog-full-plan">
+          <DialogHeader className="px-6 pt-5 pb-4 border-b border-border/30 shrink-0">
+            <DialogTitle className="text-base font-semibold leading-snug pr-8">{plan.summary}</DialogTitle>
           </DialogHeader>
-          <div className="mt-3 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {overview && (
               <div>
                 <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wide mb-1.5">{t(lang, "overview")}</p>
@@ -1359,7 +1369,7 @@ function TaskPlanCard({
               </div>
             </div>
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="px-6 py-4 border-t border-border/30 shrink-0 flex gap-2">
             <Button
               size="sm"
               variant="outline"
