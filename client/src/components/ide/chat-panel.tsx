@@ -51,6 +51,8 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     outOfScopeNone: "无特别限制",
     tasks: "任务步骤",
     relevantFiles: "相关文件",
+    overview: "概述",
+    viewPlanDoc: "查看完整方案文档",
   },
   English: {
     startBuilding: "Start building",
@@ -86,6 +88,8 @@ const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     outOfScopeNone: "Nothing specific noted",
     tasks: "Tasks",
     relevantFiles: "Relevant files",
+    overview: "Overview",
+    viewPlanDoc: "View plan document",
   },
 };
 
@@ -984,6 +988,7 @@ function TaskPlanCard({
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
+  const overview = plan.overview;
   const relevantFiles = plan.relevant_files;
   const hasRichSections = !!(whatAndWhy || doneLooksLike || outOfScope);
 
@@ -993,7 +998,18 @@ function TaskPlanCard({
 
         {hasRichSections ? (
           <>
-            <div className="px-3 pt-2.5 pb-2 border-b border-border/20">
+            <div className="px-3 pt-2.5 pb-1.5 border-b border-border/20 flex items-center gap-2">
+              <p className="text-[12px] font-medium text-foreground leading-snug flex-1 min-w-0">{plan.summary}</p>
+              <button
+                onClick={() => setModalOpen(true)}
+                className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                title={t(lang, "viewPlanDoc")}
+                data-testid="button-view-plan-doc"
+              >
+                <Maximize2 className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="px-3 pt-2 pb-2 border-b border-border/20">
               <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">{t(lang, "whatAndWhy")}</p>
               <p className="text-[12px] text-foreground/80 leading-relaxed">{whatAndWhy || t(lang, "whatAndWhyNone")}</p>
             </div>
@@ -1295,24 +1311,53 @@ function TaskPlanCard({
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-full-plan">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-full-plan">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold leading-snug">{plan.summary}</DialogTitle>
+            <DialogTitle className="text-sm font-semibold leading-snug pr-6">{plan.summary}</DialogTitle>
           </DialogHeader>
-          <div className="mt-2 space-y-3">
-            {steps.map((step) => (
-              <div key={step.step} className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[10px] text-muted-foreground font-medium">{step.step}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-foreground">{step.title}</p>
-                  {step.description && (
-                    <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{step.description}</p>
-                  )}
-                </div>
+          <div className="mt-3 space-y-4">
+            {overview && (
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wide mb-1.5">{t(lang, "overview")}</p>
+                <p className="text-[13px] text-foreground/80 leading-relaxed">{overview}</p>
               </div>
-            ))}
+            )}
+            {whatAndWhy && (
+              <div>
+                <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1.5">{t(lang, "whatAndWhy")}</p>
+                <p className="text-[13px] text-foreground/80 leading-relaxed">{whatAndWhy}</p>
+              </div>
+            )}
+            {doneLooksLike && (
+              <div>
+                <p className="text-[10px] font-semibold text-green-500/70 uppercase tracking-wide mb-1.5">{t(lang, "doneLooksLike")}</p>
+                <p className="text-[13px] text-foreground/80 leading-relaxed">{doneLooksLike}</p>
+              </div>
+            )}
+            {outOfScope && (
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1.5">{t(lang, "outOfScope")}</p>
+                <p className="text-[13px] text-muted-foreground leading-relaxed">{outOfScope}</p>
+              </div>
+            )}
+            <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-border/30 pt-4")}>
+              <p className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wide mb-2">{t(lang, "tasks")}</p>
+              <div className="space-y-3">
+                {steps.map((step) => (
+                  <div key={step.step} className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground font-medium">{step.step}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-foreground">{step.title}</p>
+                      {step.description && (
+                        <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{step.description}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex gap-2">
             <Button

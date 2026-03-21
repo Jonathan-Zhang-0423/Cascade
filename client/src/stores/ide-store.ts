@@ -40,6 +40,7 @@ export interface ManagerPlan {
   summary: string;
   steps: ManagerSubTask[];
   needs_input: string[];
+  overview?: string;
   what_and_why?: string;
   done_looks_like?: string;
   out_of_scope?: string;
