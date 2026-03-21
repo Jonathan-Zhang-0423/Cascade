@@ -6,7 +6,7 @@ import { useT, tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, Maximize2, Hammer, PenLine } from "lucide-react";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function detectLanguage(text: string): string {
@@ -1006,7 +1006,7 @@ function TaskPlanCard({
                 title={t(lang, "viewPlanDoc")}
                 data-testid="button-view-plan-doc"
               >
-                <Maximize2 className="w-3 h-3" />
+                <FileText className="w-3 h-3" />
               </button>
             </div>
             <div className="px-3 pt-2 pb-2 border-b border-border/20">
@@ -1088,10 +1088,10 @@ function TaskPlanCard({
               <button
                 onClick={() => setModalOpen(true)}
                 className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
-                title={t(lang, "viewFullPlan")}
-                data-testid="button-expand-plan"
+                title={t(lang, "viewPlanDoc")}
+                data-testid="button-view-plan-doc-preexec"
               >
-                <Maximize2 className="w-3 h-3" />
+                <FileText className="w-3 h-3" />
               </button>
             </div>
             <div className="relative px-3 pb-2">
@@ -1143,7 +1143,7 @@ function TaskPlanCard({
                   title={t(lang, "viewPlanDoc")}
                   data-testid="button-view-plan-doc-completed"
                 >
-                  <Maximize2 className="w-3 h-3" />
+                  <FileText className="w-3 h-3" />
                 </button>
               </div>
             )}
