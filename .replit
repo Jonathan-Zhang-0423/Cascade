@@ -33,6 +33,10 @@ args = "Start application"
 task = "workflow.run"
 args = "plan-mode-streaming"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "build-session-streaming"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -49,6 +53,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx tests/plan-mode-streaming.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "build-session-streaming"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx tests/build-session-streaming.ts"
 
 [workflows.workflow.metadata]
 isValidation = true

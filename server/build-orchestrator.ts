@@ -82,6 +82,7 @@ function filesMapToArray(files: Map<string, string>): BuildFile[] {
 }
 
 async function callCommunicatorNarration(ev: CommunicatorEvent, emit: SseEmit): Promise<void> {
+  emit({ type: "communicator_narration_starting" });
   try {
     const contextMessage = buildCommunicatorMessage(ev);
     const messages: Array<{ role: "system" | "user"; content: string }> = [
@@ -98,11 +99,13 @@ async function callCommunicatorNarration(ev: CommunicatorEvent, emit: SseEmit): 
       const token = chunk.choices[0]?.delta?.content;
       if (token) {
         emit({ type: "communicator_token", token });
+        await new Promise<void>(r => setTimeout(r, 0));
       }
     }
     emit({ type: "communicator_done" });
-  } catch {
-    emit({ type: "communicator_done" });
+  } catch (err) {
+    console.error("[CommunicatorAgent] Narration error:", err);
+    emit({ type: "communicator_error", message: "Communicator narration unavailable" });
   }
 }
 

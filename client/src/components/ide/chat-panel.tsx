@@ -6,7 +6,7 @@ import { useT, tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseAIJson } from "@/lib/parseAIJson";
 
@@ -1464,6 +1464,20 @@ function ManagerMessageBubble({
   }
 
   if (message.typing) {
+    if (message.source === "communicator") {
+      return (
+        <div className="px-3 flex items-center gap-2" data-testid="communicator-typing-bubble">
+          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+            <Bot className="w-3 h-3 text-primary" />
+          </div>
+          <div className="flex items-center gap-1 bg-muted/60 rounded-xl px-3 py-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="px-3 flex items-center gap-1.5" data-testid="manager-typing-bubble">
         <div className="flex items-center gap-1 bg-muted/60 rounded-xl px-3 py-2">
@@ -1477,6 +1491,19 @@ function ManagerMessageBubble({
 
   if (message.source === "manager_raw") {
     return null;
+  }
+
+  if (message.source === "communicator") {
+    return (
+      <div className="px-3" data-testid="communicator-message-bubble">
+        <div className="flex items-start gap-2">
+          <div className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+            <Bot className="w-3 h-3 text-primary" />
+          </div>
+          <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -2155,9 +2182,26 @@ export function ChatPanel() {
 
     let commAccumulated = "";
     let commMsgIndex = -1;
+    let commTypingIdx = -1;
     let editorAccumulated = "";
 
+    const insertCommTypingBubble = () => {
+      if (commTypingIdx !== -1) return;
+      addManagerMessage({ role: "assistant", content: "", source: "communicator", typing: true });
+      commTypingIdx = useIDEStore.getState().managerMessages.length - 1;
+    };
+
+    const removeCommTypingBubble = () => {
+      if (commTypingIdx === -1) return;
+      const msgs = useIDEStore.getState().managerMessages;
+      if (msgs[commTypingIdx]?.typing) {
+        useIDEStore.setState({ managerMessages: msgs.filter((_, i) => i !== commTypingIdx) });
+      }
+      commTypingIdx = -1;
+    };
+
     const finalizeComm = () => {
+      removeCommTypingBubble();
       commAccumulated = "";
       commMsgIndex = -1;
     };
@@ -2255,11 +2299,29 @@ export function ChatPanel() {
           } else if (type === "step_cancelled") {
             finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "pending");
+          } else if (type === "communicator_narration_starting") {
+            insertCommTypingBubble();
           } else if (type === "communicator_token") {
             commAccumulated += ev.token;
             if (commMsgIndex === -1) {
-              addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
-              commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+              if (commTypingIdx !== -1) {
+                const msgs = useIDEStore.getState().managerMessages;
+                const target = msgs[commTypingIdx];
+                if (target?.typing) {
+                  const updated = [...msgs];
+                  updated[commTypingIdx] = { ...target, content: commAccumulated, typing: false };
+                  useIDEStore.setState({ managerMessages: updated });
+                  commMsgIndex = commTypingIdx;
+                  commTypingIdx = -1;
+                } else {
+                  removeCommTypingBubble();
+                  addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+                  commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                }
+              } else {
+                addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+                commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+              }
             } else {
               const msgs = useIDEStore.getState().managerMessages;
               const target = msgs[commMsgIndex];
@@ -2270,6 +2332,9 @@ export function ChatPanel() {
               }
             }
             await new Promise<void>(r => setTimeout(r, 0));
+          } else if (type === "communicator_error") {
+            removeCommTypingBubble();
+            finalizeComm();
           } else if (type === "communicator_done") {
             finalizeComm();
           } else if (type === "reviewing") {
