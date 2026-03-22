@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
@@ -836,13 +837,15 @@ function StepItem({ task, status, failureReason, isCompleted, showNumber }: {
 }) {
   const s = status || "pending";
   const tStep = useT();
+  const isRunning = s === "running";
+  const isDone = s === "done";
   const icons: Record<string, JSX.Element> = {
-    pending: <Circle className="w-3 h-3 text-muted-foreground/40" />,
-    running: <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />,
-    done: <CheckCircle2 className={cn("w-3 h-3", isCompleted ? "text-muted-foreground/40" : "text-green-500")} />,
-    failed: <XCircle className="w-3 h-3 text-red-500" />,
-    "needs-input": <HelpCircle className="w-3 h-3 text-yellow-500" />,
-    bug: <AlertTriangle className="w-3 h-3 text-orange-500" />,
+    pending: <Circle className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />,
+    running: <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />,
+    done: <CheckCircle2 className={cn("w-3.5 h-3.5 shrink-0", isCompleted ? "text-muted-foreground/30" : "text-green-500")} />,
+    failed: <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />,
+    "needs-input": <HelpCircle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />,
+    bug: <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0" />,
   };
 
   const failureReasonLabel = s === "failed"
@@ -852,23 +855,29 @@ function StepItem({ task, status, failureReason, isCompleted, showNumber }: {
     : null;
 
   return (
-    <div className="py-1" data-testid={`step-${task.step}`}>
+    <div
+      className={cn(
+        "py-1 px-1.5 rounded-md -mx-1.5 transition-colors",
+        isRunning && "bg-blue-500/8"
+      )}
+      data-testid={`step-${task.step}`}
+    >
       <div className="flex items-center gap-2 flex-wrap">
         <div className="shrink-0">{icons[s] || icons.pending}</div>
         {showNumber && (
-          <span className="text-[10px] text-muted-foreground/50 font-mono shrink-0 w-4 text-right leading-none">
+          <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 w-4 text-right leading-none">
             {task.step}.
           </span>
         )}
         <span className={cn(
           "text-[12px] leading-snug flex-1",
-          isCompleted ? "text-muted-foreground/50 line-through" :
-          s === "done" ? "text-muted-foreground line-through" :
+          isCompleted ? "text-muted-foreground/40" :
+          isDone ? "text-muted-foreground/60" :
           s === "failed" ? "text-red-400" :
-          s === "running" ? "text-foreground font-medium" :
+          isRunning ? "text-foreground font-medium" :
           s === "needs-input" ? "text-yellow-500" :
           s === "bug" ? "text-orange-500" :
-          "text-foreground/80"
+          "text-foreground/50"
         )}>
           {task.title}
         </span>
@@ -1026,7 +1035,11 @@ function TaskPlanCard({
             <div className={cn("px-3 py-2", !(relevantFiles && relevantFiles.length > 0) && "border-b-0", "border-b border-border/20")}>
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wide">{t(lang, "tasks")}</p>
-                {isPreExecution && hasMore && (
+                {isExecuting && total > 0 ? (
+                  <span className="text-[10px] font-mono text-muted-foreground/60" data-testid="step-progress-counter">
+                    {doneCount}/{total}
+                  </span>
+                ) : isPreExecution && hasMore ? (
                   <button
                     onClick={() => setStepsExpanded(!stepsExpanded)}
                     className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
@@ -1035,7 +1048,7 @@ function TaskPlanCard({
                     {stepsExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
                     {stepsExpanded ? t(lang, "collapse") : t(lang, "showAllSteps", { n: steps.length })}
                   </button>
-                )}
+                ) : null}
               </div>
               <div className="space-y-0">
                 {visibleSteps.map((task: ManagerSubTask) => (
@@ -1146,6 +1159,14 @@ function TaskPlanCard({
                 >
                   <FileText className="w-3 h-3" />
                 </button>
+              </div>
+            )}
+            {isExecuting && total > 0 && (
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-semibold text-foreground/50 uppercase tracking-wide">Steps</span>
+                <span className="text-[10px] font-mono text-muted-foreground/60" data-testid="step-progress-counter">
+                  {doneCount}/{total}
+                </span>
               </div>
             )}
             <div className="space-y-0">
@@ -2249,7 +2270,9 @@ export function ChatPanel() {
           } else if (type === "narration_token") {
             commAccumulated += ev.token || "";
             if (commMsgIndex === -1) {
-              addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+              flushSync(() => {
+                addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+              });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             } else {
               const msgs = useIDEStore.getState().managerMessages;
@@ -2257,10 +2280,11 @@ export function ChatPanel() {
               if (target?.role === "assistant") {
                 const updated = [...msgs];
                 updated[commMsgIndex] = { ...target, content: commAccumulated };
-                useIDEStore.setState({ managerMessages: updated });
+                flushSync(() => {
+                  useIDEStore.setState({ managerMessages: updated });
+                });
               }
             }
-            await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "editor_token") {
             editorAccumulated += ev.token || "";
           } else if (type === "code_applied") {

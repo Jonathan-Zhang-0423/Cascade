@@ -78,19 +78,54 @@ function filesMapToArray(files: Map<string, string>): BuildFile[] {
 
 type EditorResult = { success: true } | { success: false; reason: "no_code" | "editor_error" };
 
+function langInstruction(userLang: string): string {
+  const l = userLang.toLowerCase();
+  if (l.includes("chinese") || l === "zh") return "Write your preamble in Chinese (中文).";
+  if (l.includes("japanese") || l === "ja") return "Write your preamble in Japanese (日本語).";
+  if (l.includes("korean") || l === "ko") return "Write your preamble in Korean (한국어).";
+  if (l.includes("spanish") || l === "es") return "Write your preamble in Spanish (Español).";
+  if (l.includes("french") || l === "fr") return "Write your preamble in French (Français).";
+  if (l.includes("german") || l === "de") return "Write your preamble in German (Deutsch).";
+  if (l.includes("portuguese") || l === "pt") return "Write your preamble in Portuguese (Português).";
+  if (l.includes("russian") || l === "ru") return "Write your preamble in Russian (Русский).";
+  return "";
+}
+
+function stepNarrationText(stepNum: number, title: string, userLang: string, mode: "build" | "fix"): string {
+  const l = userLang.toLowerCase();
+  if (l.includes("chinese") || l === "zh") {
+    return mode === "fix" ? `正在修复第${stepNum}步：${title}。` : `正在执行第${stepNum}步：${title}。`;
+  }
+  if (l.includes("japanese") || l === "ja") {
+    return mode === "fix" ? `ステップ${stepNum}を修正中：${title}。` : `ステップ${stepNum}を実行中：${title}。`;
+  }
+  if (l.includes("korean") || l === "ko") {
+    return mode === "fix" ? `${stepNum}단계 수정 중: ${title}.` : `${stepNum}단계 실행 중: ${title}.`;
+  }
+  if (l.includes("spanish") || l === "es") {
+    return mode === "fix" ? `Corrigiendo paso ${stepNum}: ${title}.` : `Trabajando en el paso ${stepNum}: ${title}.`;
+  }
+  if (l.includes("french") || l === "fr") {
+    return mode === "fix" ? `Correction de l'étape ${stepNum}: ${title}.` : `Travail sur l'étape ${stepNum}: ${title}.`;
+  }
+  return mode === "fix" ? `Fixing step ${stepNum}: ${title}.` : `Working on step ${stepNum}: ${title}.`;
+}
+
 async function callEditor(
   prompt: string,
   files: BuildFile[],
   emit: SseEmit,
   session: BuildSessionState,
 ): Promise<EditorResult> {
+  const langHint = langInstruction(session.userLang || "English");
+  const fullPrompt = langHint ? `${prompt}\n\n${langHint}` : prompt;
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
   ];
   if (files.length > 0) {
     messages.push({ role: "system", content: buildEditorContextMessage(files) });
   }
-  messages.push({ role: "user", content: prompt });
+  messages.push({ role: "user", content: fullPrompt });
 
   let accumulated = "";
   let appliedCount = 0;
@@ -164,6 +199,7 @@ async function callVerifier(
   filesAfter: BuildFile[],
   emit: SseEmit,
   userFeedback?: string,
+  userLang?: string,
 ): Promise<any> {
   let contextMessage = buildHolisticVerifierMessage(
     userRequest,
@@ -178,6 +214,10 @@ async function callVerifier(
   );
   if (userFeedback) {
     contextMessage += `\n\n--- USER FEEDBACK ---\nThe user provided the following feedback:\n${userFeedback}\nPlease take this into account.`;
+  }
+  if (userLang) {
+    const hint = langInstruction(userLang).replace("preamble", "friendly summary");
+    if (hint) contextMessage += `\n\n${hint}`;
   }
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
@@ -269,12 +309,9 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     if (session.aborted) break;
 
-    const stepNarrationWords = `Working on step ${task.step}: ${task.title}.`.split(" ");
-    for (const word of stepNarrationWords) {
-      if (session.aborted) break;
-      emit({ type: "narration_token", token: word + " " });
-      await new Promise<void>(r => setTimeout(r, 0));
-    }
+    const stepNarration = stepNarrationText(task.step, task.title, session.userLang || "English", "build");
+    emit({ type: "narration_token", token: stepNarration + " " });
+    await new Promise<void>(r => setTimeout(r, 0));
 
     if (session.aborted) break;
 
@@ -336,7 +373,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     if (session.userConfirmation) session.userConfirmation = undefined;
     let review: any = null;
     try {
-      review = await callVerifier(userRequest, currentPlanSteps, initialFiles, filesAfter, emit, feedback);
+      review = await callVerifier(userRequest, currentPlanSteps, initialFiles, filesAfter, emit, feedback, session.userLang);
     } catch {}
 
     if (session.aborted) break;
@@ -394,12 +431,9 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
         if (session.aborted) break;
 
-        const fixNarrationWords = `Fixing step ${fixTask.step}: ${fixTask.title}.`.split(" ");
-        for (const word of fixNarrationWords) {
-          if (session.aborted) break;
-          emit({ type: "narration_token", token: word + " " });
-          await new Promise<void>(r => setTimeout(r, 0));
-        }
+        const fixNarration = stepNarrationText(fixTask.step, fixTask.title, session.userLang || "English", "fix");
+        emit({ type: "narration_token", token: fixNarration + " " });
+        await new Promise<void>(r => setTimeout(r, 0));
 
         if (session.aborted) break;
 
