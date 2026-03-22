@@ -1,35 +1,46 @@
 /**
- * Plan-mode streaming validation test.
+ * Plan-mode manager-chat streaming validation.
  *
- * Tests that /api/manager-chat emits raw_token SSE events progressively
- * (not all-at-once after a long delay).
+ * Verifies that /api/manager-chat streams raw_token events progressively —
+ * i.e. tokens arrive spread over time, NOT all delivered in one burst after
+ * a long silence (which was the pre-fix behaviour caused by server-side JSON
+ * pattern accumulation).
  *
- * UI-level assertions (typing indicator visible, text rendering progressively)
- * are validated separately via Playwright e2e tests (runTest).
- * This script validates the SERVER-SIDE streaming guarantee:
- *   - First raw_token arrives within FIRST_TOKEN_TIMEOUT_MS of the request
- *   - Multiple tokens received (not a single all-at-once dump)
+ * Key facts about this stack:
+ *  - UI typing indicator: injected by the FRONTEND immediately on send (0ms).
+ *    Not dependent on AI response time. Cannot be verified here.
+ *  - First raw_token: depends on Doubao AI latency (~8-15s from this host to
+ *    Beijing). Threshold is intentionally lenient (15s) to avoid flaky results.
+ *  - Progressive streaming proof: once tokens start, they should arrive
+ *    spread across several seconds (not all within 1s), proving the server
+ *    is not buffering and then dumping them in a single write.
+ *  - Completion: the full stream must finish within 60s.
+ *
+ * UI-level assertions (typing indicator timing, rendered text) are validated
+ * by the Playwright runTest suite run during development.
  */
+
 import http from "http";
 
 const BASE_URL = "http://localhost:5000";
-/** Max ms from request start to first raw_token. Accounts for Doubao API latency. */
-const FIRST_TOKEN_TIMEOUT_MS = 15000;
-/** Max ms to wait for [DONE] before giving up. */
-const DONE_TIMEOUT_MS = 120000;
-/** Minimum number of raw_token events to confirm progressive streaming. */
-const MIN_TOKEN_COUNT = 3;
+const FIRST_TOKEN_MAX_MS = 15_000;
+const COMPLETION_MAX_MS = 60_000;
+const MIN_TOKENS = 5;
+/** Progressive streaming: span between first and last token must exceed this. */
+const MIN_STREAM_SPAN_MS = 500;
 
-async function createProject(name: string): Promise<string> {
+type ParsedResponse = Record<string, unknown>;
+
+function postJson(path: string, body: object): Promise<ParsedResponse> {
+  const payload = JSON.stringify(body);
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ name });
     const req = http.request(
-      `${BASE_URL}/api/projects`,
+      `${BASE_URL}${path}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
+          "Content-Length": Buffer.byteLength(payload),
         },
       },
       (res) => {
@@ -37,36 +48,38 @@ async function createProject(name: string): Promise<string> {
         res.on("data", (c) => (data += c));
         res.on("end", () => {
           try {
-            resolve(JSON.parse(data).id);
+            resolve(JSON.parse(data) as ParsedResponse);
           } catch {
-            reject(new Error(`createProject parse failed: ${data}`));
+            reject(new Error(`JSON parse failed: ${data.slice(0, 200)}`));
           }
         });
       }
     );
     req.on("error", reject);
-    req.write(body);
+    req.write(payload);
     req.end();
   });
 }
 
-async function deleteProject(id: string): Promise<void> {
+function deleteReq(path: string): Promise<void> {
   return new Promise((resolve) => {
-    const req = http.request(
-      `${BASE_URL}/api/projects/${id}`,
-      { method: "DELETE" },
-      () => resolve()
-    );
+    const req = http.request(`${BASE_URL}${path}`, { method: "DELETE" }, () => resolve());
     req.on("error", () => resolve());
     req.end();
   });
 }
 
-function testManagerChatStreaming(
-  projectId: string
-): Promise<{ firstTokenMs: number; tokenCount: number }> {
+interface StreamResult {
+  firstTokenMs: number;
+  lastTokenMs: number;
+  totalMs: number;
+  tokenCount: number;
+  seenManagerDone: boolean;
+}
+
+function streamManagerChat(projectId: string): Promise<StreamResult> {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
+    const payload = JSON.stringify({
       messages: [{ role: "user", content: "I want to build a simple calculator" }],
       projectId,
       isFirstMessage: true,
@@ -79,52 +92,56 @@ function testManagerChatStreaming(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
+          "Content-Length": Buffer.byteLength(payload),
           Accept: "text/event-stream",
         },
       },
       (res) => {
         const startMs = Date.now();
         let firstTokenMs = -1;
+        let lastTokenMs = -1;
         let tokenCount = 0;
+        let seenManagerDone = false;
         let buf = "";
         let done = false;
 
-        const timer = setTimeout(() => {
-          if (!done) {
+        const firstTokenGuard = setTimeout(() => {
+          if (!done && firstTokenMs === -1) {
             done = true;
-            res.destroy();
-            if (tokenCount === 0) {
-              reject(new Error(`Timed out: no raw_token in ${DONE_TIMEOUT_MS}ms`));
-            } else {
-              resolve({ firstTokenMs, tokenCount });
-            }
-          }
-        }, DONE_TIMEOUT_MS);
-
-        const firstTokenTimer = setTimeout(() => {
-          if (!done && tokenCount === 0) {
-            done = true;
-            clearTimeout(timer);
             res.destroy();
             reject(
               new Error(
-                `No raw_token within ${FIRST_TOKEN_TIMEOUT_MS}ms — streaming may be blocked`
+                `No raw_token within ${FIRST_TOKEN_MAX_MS}ms — likely server-side buffering`
               )
             );
           }
-        }, FIRST_TOKEN_TIMEOUT_MS);
+        }, FIRST_TOKEN_MAX_MS);
+
+        const completionGuard = setTimeout(() => {
+          if (!done) {
+            done = true;
+            clearTimeout(firstTokenGuard);
+            res.destroy();
+            reject(new Error(`Stream did not finish within ${COMPLETION_MAX_MS}ms`));
+          }
+        }, COMPLETION_MAX_MS);
 
         const finish = () => {
           if (done) return;
           done = true;
-          clearTimeout(timer);
-          clearTimeout(firstTokenTimer);
+          clearTimeout(firstTokenGuard);
+          clearTimeout(completionGuard);
           res.destroy();
           if (firstTokenMs === -1) {
-            reject(new Error("Stream ended without any raw_token"));
+            reject(new Error("Stream ended with no raw_token events"));
           } else {
-            resolve({ firstTokenMs, tokenCount });
+            resolve({
+              firstTokenMs,
+              lastTokenMs,
+              totalMs: Date.now() - startMs,
+              tokenCount,
+              seenManagerDone,
+            });
           }
         };
 
@@ -135,18 +152,19 @@ function testManagerChatStreaming(
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             const raw = line.slice(6).trim();
-            if (raw === "[DONE]") {
-              finish();
-              return;
-            }
+            if (raw === "[DONE]") { finish(); return; }
             try {
               const ev = JSON.parse(raw);
               if (ev.type === "raw_token") {
+                const nowMs = Date.now() - startMs;
                 tokenCount++;
                 if (firstTokenMs === -1) {
-                  firstTokenMs = Date.now() - startMs;
-                  clearTimeout(firstTokenTimer);
+                  firstTokenMs = nowMs;
+                  clearTimeout(firstTokenGuard);
                 }
+                lastTokenMs = nowMs;
+              } else if (ev.type === "manager_done") {
+                seenManagerDone = true;
               }
             } catch {}
           }
@@ -155,8 +173,8 @@ function testManagerChatStreaming(
         res.on("error", (e) => {
           if (!done) {
             done = true;
-            clearTimeout(timer);
-            clearTimeout(firstTokenTimer);
+            clearTimeout(firstTokenGuard);
+            clearTimeout(completionGuard);
             reject(e);
           }
         });
@@ -165,57 +183,81 @@ function testManagerChatStreaming(
     );
 
     req.on("error", reject);
-    req.write(body);
+    req.write(payload);
     req.end();
   });
 }
 
+function check(label: string, pass: boolean, detail: string): boolean {
+  console.log(`  ${pass ? "PASS" : "FAIL"}: ${label} — ${detail}`);
+  return pass;
+}
+
 async function run() {
-  console.log("=== Plan-mode /api/manager-chat streaming validation ===");
+  console.log("=== Plan-mode /api/manager-chat streaming validation ===\n");
 
   let projectId: string | null = null;
-  let passed = true;
+  const results: boolean[] = [];
 
   try {
-    console.log("1. Creating blank test project (no files = plan mode)...");
-    projectId = await createProject("__streaming_test__");
-    console.log(`   Project ID: ${projectId}`);
+    console.log("[1] Creating blank project (no files = plan mode)...");
+    const testId = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const created = await postJson("/api/projects", { id: testId, name: "__streaming_test__" });
+    const projectObj = created.project as { id: string } | undefined;
+    if (!projectObj?.id) throw new Error(`Unexpected create-project response: ${JSON.stringify(created)}`);
+    projectId = projectObj.id;
+    console.log(`    Created project: ${projectId}\n`);
 
-    console.log("2. Sending message to /api/manager-chat (SSE)...");
-    const { firstTokenMs, tokenCount } = await testManagerChatStreaming(projectId);
+    console.log("[2] Streaming /api/manager-chat (this may take 8-15s for first AI token)...");
+    const r = await streamManagerChat(projectId);
 
-    console.log(`   First raw_token latency: ${firstTokenMs}ms`);
-    console.log(`   Total raw_tokens received: ${tokenCount}`);
+    console.log(`    First raw_token: ${r.firstTokenMs}ms`);
+    console.log(`    Last  raw_token: ${r.lastTokenMs}ms`);
+    console.log(`    Token stream span: ${r.lastTokenMs - r.firstTokenMs}ms`);
+    console.log(`    Total tokens: ${r.tokenCount}`);
+    console.log(`    Total duration: ${r.totalMs}ms`);
+    console.log(`    manager_done seen: ${r.seenManagerDone}\n`);
 
-    if (firstTokenMs > FIRST_TOKEN_TIMEOUT_MS) {
-      console.error(
-        `FAIL: First token at ${firstTokenMs}ms exceeds ${FIRST_TOKEN_TIMEOUT_MS}ms threshold`
-      );
-      passed = false;
-    } else {
-      console.log(`PASS: First token within ${FIRST_TOKEN_TIMEOUT_MS}ms threshold`);
-    }
-
-    if (tokenCount < MIN_TOKEN_COUNT) {
-      console.error(
-        `FAIL: Only ${tokenCount} tokens — need at least ${MIN_TOKEN_COUNT} for progressive streaming`
-      );
-      passed = false;
-    } else {
-      console.log(`PASS: ${tokenCount} tokens received (streaming is progressive)`);
-    }
+    console.log("[3] Assertions:");
+    results.push(check(
+      "First token within 15s (API latency budget)",
+      r.firstTokenMs <= FIRST_TOKEN_MAX_MS,
+      `${r.firstTokenMs}ms / ${FIRST_TOKEN_MAX_MS}ms`
+    ));
+    results.push(check(
+      `Progressive streaming (≥${MIN_TOKENS} tokens received)`,
+      r.tokenCount >= MIN_TOKENS,
+      `${r.tokenCount} tokens`
+    ));
+    results.push(check(
+      `Tokens span ≥${MIN_STREAM_SPAN_MS}ms (not all-at-once burst)`,
+      r.lastTokenMs - r.firstTokenMs >= MIN_STREAM_SPAN_MS,
+      `span=${r.lastTokenMs - r.firstTokenMs}ms`
+    ));
+    results.push(check(
+      `Complete within ${COMPLETION_MAX_MS / 1000}s`,
+      r.totalMs <= COMPLETION_MAX_MS,
+      `${r.totalMs}ms`
+    ));
+    results.push(check(
+      "manager_done event received",
+      r.seenManagerDone,
+      r.seenManagerDone ? "yes" : "missing — stream may be truncated"
+    ));
   } catch (err: any) {
-    console.error("FAIL:", err?.message ?? String(err));
-    passed = false;
+    console.error("\nFAIL (exception):", err?.message ?? String(err));
+    results.push(false);
   } finally {
     if (projectId) {
-      await deleteProject(projectId);
-      console.log("Cleanup: test project deleted.");
+      await deleteReq(`/api/projects/${projectId}`);
+      console.log("\nCleanup: test project deleted.");
     }
   }
 
-  if (!passed) process.exit(1);
-  console.log("=== All server-side streaming checks passed ===");
+  const allPassed = results.every(Boolean);
+  const failCount = results.filter((r) => !r).length;
+  console.log(`\n=== ${allPassed ? "All checks passed" : `${failCount} FAILED`} ===`);
+  if (!allPassed) process.exit(1);
 }
 
 run();

@@ -513,7 +513,9 @@ export async function registerRoutes(
       } else {
         try {
           res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
+          (res as any).flush?.();
           res.write("data: [DONE]\n\n");
+          (res as any).flush?.();
           res.end();
         } catch {}
       }
