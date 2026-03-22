@@ -461,8 +461,6 @@ export async function registerRoutes(
         delete plan.type;
         delete plan.project_name;
 
-        emit({ type: "plan_ready", plan, project_name: projectName });
-
         const userLang = detectUserLanguage(messages);
         const steps = normalizeStepsList(plan);
         const commPrompt = buildCommunicatorMessage({
@@ -477,6 +475,7 @@ export async function registerRoutes(
           relevantFiles: plan.relevant_files || [],
         } as CommunicatorEvent);
 
+        emit({ type: "communicator_narration_starting" });
         try {
           const commStream = await doubaoClient.chat.completions.create({
             model: DOUBAO_MODEL,
@@ -492,12 +491,15 @@ export async function registerRoutes(
             const token = chunk.choices[0]?.delta?.content;
             if (token) {
               emit({ type: "communicator_token", token });
+              await new Promise<void>(r => setTimeout(r, 0));
             }
           }
         } catch (commErr: any) {
           console.error("Communicator stream error:", commErr?.message || commErr);
+          emit({ type: "communicator_error", message: "Communicator narration unavailable" });
         }
 
+        emit({ type: "plan_ready", plan, project_name: projectName });
         emit({ type: "manager_done" });
       } else {
         emit({ type: "manager_done", project_name: projectName });

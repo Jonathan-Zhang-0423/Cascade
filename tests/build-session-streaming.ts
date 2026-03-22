@@ -1,19 +1,20 @@
 /**
- * Build-session communicator streaming validation.
+ * Build-session narration streaming validation.
  *
- * This script validates that /api/build-session streams communicator_token
- * events progressively before the first code step completes.
+ * This script validates that /api/build-session streams narration_token
+ * events (from the Editor's preamble) progressively before the first
+ * code step completes.
  *
  * Facts about latency:
  *   - Doubao AI endpoint: ark.cn-beijing.volces.com (Beijing)
- *   - Expected first communicator_token latency: 5–25s (narration starts
- *     immediately when the orchestrator calls callCommunicatorNarration)
+ *   - Expected first narration_token latency: 5–25s (editor starts narrating
+ *     immediately at the beginning of each step)
  *   - FIRST_TOKEN_MAX_MS is set generously to 25s to avoid false failures
- *   - At least 3 communicator_token events expected per narration phase
+ *   - At least 3 narration_token events expected per step narration
  *   - Total stream completes within 120s (single-step plan)
  *
  * The test uses a minimal one-step plan so the full build session
- * finishes quickly while still exercising the communicator path.
+ * finishes quickly while still exercising the editor narration path.
  */
 
 import http from "http";
@@ -21,7 +22,7 @@ import http from "http";
 const BASE_URL = "http://localhost:5000";
 const FIRST_TOKEN_MAX_MS = 25_000;
 const COMPLETION_MAX_MS = 120_000;
-const MIN_COMM_TOKENS = 3;
+const MIN_NARRATION_TOKENS = 3;
 
 type ParsedJson = Record<string, unknown>;
 
@@ -61,12 +62,11 @@ function deleteReq(path: string): Promise<void> {
 }
 
 interface StreamResult {
-  firstCommTokenMs: number;
-  lastCommTokenMs: number;
+  firstNarrationTokenMs: number;
+  lastNarrationTokenMs: number;
   totalMs: number;
-  commTokenCount: number;
+  narrationTokenCount: number;
   seenDone: boolean;
-  seenNarrationStarting: boolean;
 }
 
 function streamBuildSession(projectId: string): Promise<StreamResult> {
@@ -106,21 +106,20 @@ function streamBuildSession(projectId: string): Promise<StreamResult> {
       },
       (res) => {
         const startMs = Date.now();
-        let firstCommTokenMs = -1;
-        let lastCommTokenMs = -1;
-        let commTokenCount = 0;
+        let firstNarrationTokenMs = -1;
+        let lastNarrationTokenMs = -1;
+        let narrationTokenCount = 0;
         let seenDone = false;
-        let seenNarrationStarting = false;
         let buf = "";
         let done = false;
 
         const firstTokenGuard = setTimeout(() => {
-          if (!done && firstCommTokenMs === -1) {
+          if (!done && firstNarrationTokenMs === -1) {
             done = true;
             res.destroy();
             reject(new Error(
-              `No communicator_token within ${FIRST_TOKEN_MAX_MS}ms — ` +
-              `communicator may be failing silently or narration_starting event missing`
+              `No narration_token within ${FIRST_TOKEN_MAX_MS}ms — ` +
+              `editor preamble may be failing silently`
             ));
           }
         }, FIRST_TOKEN_MAX_MS);
@@ -140,16 +139,15 @@ function streamBuildSession(projectId: string): Promise<StreamResult> {
           clearTimeout(firstTokenGuard);
           clearTimeout(completionGuard);
           res.destroy();
-          if (firstCommTokenMs === -1) {
-            reject(new Error("Stream ended without any communicator_token events"));
+          if (firstNarrationTokenMs === -1) {
+            reject(new Error("Stream ended without any narration_token events"));
           } else {
             resolve({
-              firstCommTokenMs,
-              lastCommTokenMs,
+              firstNarrationTokenMs,
+              lastNarrationTokenMs,
               totalMs: Date.now() - startMs,
-              commTokenCount,
+              narrationTokenCount,
               seenDone,
-              seenNarrationStarting,
             });
           }
         };
@@ -164,25 +162,17 @@ function streamBuildSession(projectId: string): Promise<StreamResult> {
             if (raw === "[DONE]") { finish(); return; }
             try {
               const ev = JSON.parse(raw);
-              if (ev.type === "communicator_narration_starting") {
-                seenNarrationStarting = true;
-              } else if (ev.type === "communicator_token") {
+              if (ev.type === "narration_token") {
                 const nowMs = Date.now() - startMs;
-                commTokenCount++;
-                if (firstCommTokenMs === -1) {
-                  firstCommTokenMs = nowMs;
+                narrationTokenCount++;
+                if (firstNarrationTokenMs === -1) {
+                  firstNarrationTokenMs = nowMs;
                   clearTimeout(firstTokenGuard);
                 }
-                lastCommTokenMs = nowMs;
+                lastNarrationTokenMs = nowMs;
               } else if (ev.type === "done") {
                 seenDone = true;
                 finish();
-              } else if (ev.type === "communicator_error") {
-                done = true;
-                clearTimeout(firstTokenGuard);
-                clearTimeout(completionGuard);
-                res.destroy();
-                reject(new Error(`communicator_error received: ${ev.message}`));
               }
             } catch {}
           }
@@ -212,7 +202,7 @@ function check(label: string, pass: boolean, detail: string): boolean {
 }
 
 async function run() {
-  console.log("=== Build-session communicator streaming (server-side) ===\n");
+  console.log("=== Build-session editor narration streaming (server-side) ===\n");
 
   let projectId: string | null = null;
   const results: boolean[] = [];
@@ -229,28 +219,22 @@ async function run() {
     console.log(`[2] Streaming /api/build-session (AI latency to Beijing: 5-25s)...`);
     const r = await streamBuildSession(projectId);
 
-    console.log(`    narration_starting seen: ${r.seenNarrationStarting}`);
-    console.log(`    First communicator_token: ${r.firstCommTokenMs}ms`);
-    console.log(`    Last  communicator_token: ${r.lastCommTokenMs}ms`);
-    console.log(`    Total comm tokens:        ${r.commTokenCount}`);
-    console.log(`    Total duration:           ${r.totalMs}ms`);
-    console.log(`    done event:               ${r.seenDone}\n`);
+    console.log(`    First narration_token: ${r.firstNarrationTokenMs}ms`);
+    console.log(`    Last  narration_token: ${r.lastNarrationTokenMs}ms`);
+    console.log(`    Total narration tokens: ${r.narrationTokenCount}`);
+    console.log(`    Total duration:         ${r.totalMs}ms`);
+    console.log(`    done event:             ${r.seenDone}\n`);
 
     console.log("[3] Assertions:");
     results.push(check(
-      "communicator_narration_starting event received",
-      r.seenNarrationStarting,
-      r.seenNarrationStarting ? "yes" : "missing"
+      `First narration_token within ${FIRST_TOKEN_MAX_MS / 1000}s`,
+      r.firstNarrationTokenMs <= FIRST_TOKEN_MAX_MS,
+      `${r.firstNarrationTokenMs}ms`
     ));
     results.push(check(
-      `First communicator_token within ${FIRST_TOKEN_MAX_MS / 1000}s`,
-      r.firstCommTokenMs <= FIRST_TOKEN_MAX_MS,
-      `${r.firstCommTokenMs}ms`
-    ));
-    results.push(check(
-      `At least ${MIN_COMM_TOKENS} communicator_tokens received`,
-      r.commTokenCount >= MIN_COMM_TOKENS,
-      `${r.commTokenCount} tokens`
+      `At least ${MIN_NARRATION_TOKENS} narration_tokens received`,
+      r.narrationTokenCount >= MIN_NARRATION_TOKENS,
+      `${r.narrationTokenCount} tokens`
     ));
     results.push(check(
       `Completes within ${COMPLETION_MAX_MS / 1000}s`,

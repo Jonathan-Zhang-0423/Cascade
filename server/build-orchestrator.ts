@@ -2,11 +2,6 @@ import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerFixPlanMessage } from "./manager-prompt";
-import {
-  COMMUNICATOR_AGENT_SYSTEM_PROMPT,
-  buildCommunicatorMessage,
-  type CommunicatorEvent,
-} from "./communicator-prompt";
 
 export interface BuildFile {
   path: string;
@@ -81,34 +76,6 @@ function filesMapToArray(files: Map<string, string>): BuildFile[] {
   return Array.from(files.entries()).map(([path, content]) => ({ path, content }));
 }
 
-async function callCommunicatorNarration(ev: CommunicatorEvent, emit: SseEmit): Promise<void> {
-  emit({ type: "communicator_narration_starting" });
-  try {
-    const contextMessage = buildCommunicatorMessage(ev);
-    const messages: Array<{ role: "system" | "user"; content: string }> = [
-      { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-      { role: "user", content: contextMessage },
-    ];
-    const stream = await doubaoClient.chat.completions.create({
-      model: DOUBAO_MODEL,
-      messages,
-      stream: true,
-      max_tokens: 512,
-    });
-    for await (const chunk of stream) {
-      const token = chunk.choices[0]?.delta?.content;
-      if (token) {
-        emit({ type: "communicator_token", token });
-        await new Promise<void>(r => setTimeout(r, 0));
-      }
-    }
-    emit({ type: "communicator_done" });
-  } catch (err) {
-    console.error("[CommunicatorAgent] Narration error:", err);
-    emit({ type: "communicator_error", message: "Communicator narration unavailable" });
-  }
-}
-
 type EditorResult = { success: true } | { success: false; reason: "no_code" | "editor_error" };
 
 async function callEditor(
@@ -127,6 +94,8 @@ async function callEditor(
 
   let accumulated = "";
   let appliedCount = 0;
+  let pastFirstCodeBlock = false;
+  let preambleEmittedLength = 0;
 
   try {
     const stream = await doubaoClient.chat.completions.create({
@@ -141,7 +110,22 @@ async function callEditor(
       const token = chunk.choices[0]?.delta?.content;
       if (token) {
         accumulated += token;
-        emit({ type: "editor_token", token });
+
+        if (!pastFirstCodeBlock) {
+          const fenceIdx = accumulated.indexOf("```");
+          if (fenceIdx !== -1) {
+            pastFirstCodeBlock = true;
+            const preamble = accumulated.slice(preambleEmittedLength, fenceIdx).trim();
+            if (preamble) {
+              emit({ type: "narration_token", token: preamble });
+              await new Promise<void>(r => setTimeout(r, 0));
+            }
+          } else {
+            emit({ type: "narration_token", token });
+            preambleEmittedLength = accumulated.length;
+            await new Promise<void>(r => setTimeout(r, 0));
+          }
+        }
 
         if (token.includes("```")) {
           const blocks = extractCodeBlocks(accumulated);
@@ -178,6 +162,7 @@ async function callVerifier(
   planSteps: BuildStep[],
   filesBefore: BuildFile[],
   filesAfter: BuildFile[],
+  emit: SseEmit,
   userFeedback?: string,
 ): Promise<any> {
   let contextMessage = buildHolisticVerifierMessage(
@@ -198,14 +183,40 @@ async function callVerifier(
     { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
     { role: "user", content: contextMessage },
   ];
-  const completion = await doubaoClient.chat.completions.create({
-    model: DOUBAO_MODEL,
-    messages,
-    stream: false,
-    max_tokens: 16384,
-  });
-  const raw = completion.choices[0]?.message?.content || "";
-  return parseAIJson(raw);
+
+  let accumulated = "";
+  let preambleDone = false;
+
+  try {
+    const stream = await doubaoClient.chat.completions.create({
+      model: DOUBAO_MODEL,
+      messages,
+      stream: true,
+      max_tokens: 16384,
+    });
+
+    for await (const chunk of stream) {
+      const token = chunk.choices[0]?.delta?.content;
+      if (!token) continue;
+      accumulated += token;
+
+      if (!preambleDone) {
+        const sepIdx = accumulated.indexOf("\n---");
+        if (sepIdx !== -1) {
+          preambleDone = true;
+        } else {
+          emit({ type: "narration_token", token });
+          await new Promise<void>(r => setTimeout(r, 0));
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[VerifierAgent] Stream error:", err);
+  }
+
+  const sepIdx = accumulated.indexOf("\n---");
+  const jsonPart = sepIdx !== -1 ? accumulated.slice(sepIdx + 4).trim() : accumulated;
+  return parseAIJson(jsonPart);
 }
 
 async function callFixPlan(
@@ -240,17 +251,10 @@ async function callFixPlan(
 const MAX_FIX_CYCLES = 3;
 
 export async function runBuildSession(session: BuildSessionState, emit: SseEmit): Promise<void> {
-  const { plan, userRequest, userLang } = session;
+  const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
-
-  await callCommunicatorNarration({
-    event: "build_starting",
-    userLanguage: userLang,
-    totalSteps,
-    planSummary: plan.summary,
-  }, emit);
 
   for (let i = 0; i < normalizedSteps.length; i++) {
     if (session.aborted) break;
@@ -263,14 +267,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     emit({ type: "step_starting", stepNumber: task.step, stepTitle: task.title, totalSteps });
 
-    await callCommunicatorNarration({
-      event: "step_starting",
-      userLanguage: userLang,
-      stepNumber: task.step,
-      stepTitle: task.title,
-      stepDescription: task.description,
-      totalSteps,
-    }, emit);
+    if (session.aborted) break;
+
+    const stepNarrationWords = `Working on step ${task.step}: ${task.title}.`.split(" ");
+    for (const word of stepNarrationWords) {
+      if (session.aborted) break;
+      emit({ type: "narration_token", token: word + " " });
+      await new Promise<void>(r => setTimeout(r, 0));
+    }
 
     if (session.aborted) break;
 
@@ -307,12 +311,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     if (result.success) {
       emit({ type: "step_completed", stepNumber: task.step });
-      await callCommunicatorNarration({
-        event: "step_completed",
-        userLanguage: userLang,
-        stepNumber: task.step,
-        stepTitle: task.title,
-      }, emit);
     } else {
       emit({ type: "step_failed", stepNumber: task.step, reason: result.reason });
       break;
@@ -324,12 +322,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     return;
   }
 
-  await callCommunicatorNarration({
-    event: "build_complete",
-    userLanguage: userLang,
-    totalSteps,
-  }, emit);
-
   let currentCycle = 0;
   let passed = false;
   let currentPlanSteps = normalizedSteps;
@@ -339,17 +331,12 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     emit({ type: "reviewing" });
 
-    await callCommunicatorNarration({
-      event: "reviewing",
-      userLanguage: userLang,
-    }, emit);
-
     const filesAfter = filesMapToArray(session.files);
     const feedback = session.userConfirmation || undefined;
     if (session.userConfirmation) session.userConfirmation = undefined;
     let review: any = null;
     try {
-      review = await callVerifier(userRequest, currentPlanSteps, initialFiles, filesAfter, feedback);
+      review = await callVerifier(userRequest, currentPlanSteps, initialFiles, filesAfter, emit, feedback);
     } catch {}
 
     if (session.aborted) break;
@@ -362,24 +349,11 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         fixCycle: currentCycle,
         maxFixCycles: MAX_FIX_CYCLES,
       });
-      await callCommunicatorNarration({
-        event: "bugs_found",
-        userLanguage: userLang,
-        bugCount: 0,
-        reviewSummary: "Review failed due to an error.",
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      }, emit);
       break;
     }
 
     if (review.user_confirmation_needed?.length > 0 && review.user_confirmation_needed[0] !== "") {
       emit({ type: "needs_input", items: review.user_confirmation_needed });
-      await callCommunicatorNarration({
-        event: "needs_input",
-        userLanguage: userLang,
-        confirmationItems: review.user_confirmation_needed,
-      }, emit);
       emit({ type: "done" });
       return;
     }
@@ -391,11 +365,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         summary: review.summary,
         requirementMatchPercent: review.requirement_match_percent,
       });
-      await callCommunicatorNarration({
-        event: "review_passed",
-        userLanguage: userLang,
-        reviewSummary: review.summary,
-      }, emit);
     } else {
       const issueCount = (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0);
       emit({
@@ -406,24 +375,10 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         maxFixCycles: MAX_FIX_CYCLES,
         review,
       });
-      await callCommunicatorNarration({
-        event: "bugs_found",
-        userLanguage: userLang,
-        bugCount: issueCount,
-        reviewSummary: review.summary,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      }, emit);
 
       if (currentCycle >= MAX_FIX_CYCLES) break;
 
       emit({ type: "fixing", fixCycle: currentCycle });
-      await callCommunicatorNarration({
-        event: "fixing",
-        userLanguage: userLang,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      }, emit);
 
       const fixPlan = await callFixPlan(review, userRequest, filesMapToArray(session.files));
       if (!fixPlan) break;
@@ -437,14 +392,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         const fixTask = fixSteps[i];
         emit({ type: "step_starting", stepNumber: fixTask.step, stepTitle: fixTask.title, totalSteps: fixSteps.length });
 
-        await callCommunicatorNarration({
-          event: "step_starting",
-          userLanguage: userLang,
-          stepNumber: fixTask.step,
-          stepTitle: fixTask.title,
-          stepDescription: fixTask.description,
-          totalSteps: fixSteps.length,
-        }, emit);
+        if (session.aborted) break;
+
+        const fixNarrationWords = `Fixing step ${fixTask.step}: ${fixTask.title}.`.split(" ");
+        for (const word of fixNarrationWords) {
+          if (session.aborted) break;
+          emit({ type: "narration_token", token: word + " " });
+          await new Promise<void>(r => setTimeout(r, 0));
+        }
 
         if (session.aborted) break;
 
@@ -466,12 +421,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
         if (fixResult.success) {
           emit({ type: "step_completed", stepNumber: fixTask.step });
-          await callCommunicatorNarration({
-            event: "step_completed",
-            userLanguage: userLang,
-            stepNumber: fixTask.step,
-            stepTitle: fixTask.title,
-          }, emit);
         } else {
           emit({ type: "step_failed", stepNumber: fixTask.step, reason: fixResult.reason });
         }
@@ -487,13 +436,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       .map(f => f.path);
 
     emit({ type: "all_complete", changedFiles, summary: plan.summary || "" });
-    await callCommunicatorNarration({
-      event: "all_complete",
-      userLanguage: userLang,
-      totalSteps,
-      planSummary: plan.summary,
-      changedFiles,
-    }, emit);
   }
 
   emit({ type: "done" });
