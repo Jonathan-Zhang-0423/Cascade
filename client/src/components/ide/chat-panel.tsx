@@ -1990,7 +1990,7 @@ export function ChatPanel() {
         }
       }
 
-      if (commInserted && commAccumulated && commNarrationMsgIndex >= 0) {
+      if (useIDEStore.getState().projectId === projectId && commInserted && commAccumulated && commNarrationMsgIndex >= 0) {
         const friendlyLines = commAccumulated
           .split("\n")
           .filter((l) => !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) && !l.trim().match(/^\[STEP[_ ]\d+\]/i) && !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) && !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) && !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i))
@@ -2012,7 +2012,7 @@ export function ChatPanel() {
         }
       }
 
-      if (!commInserted && managerAccumulated && projectId) {
+      if (useIDEStore.getState().projectId === projectId && !commInserted && managerAccumulated) {
         const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
         if (nameFromMarker) renameProject(projectId, nameFromMarker);
       }
