@@ -2222,9 +2222,9 @@ export function ChatPanel() {
 
     const flushNarrationToStore = () => {
       if (!narrationDirty) return;
-      narrationDirty = false;
       const isCurrentProject = useIDEStore.getState().projectId === projectId;
-      if (!isCurrentProject) return;
+      if (!isCurrentProject) return; // keep flag set; RAF will flush when user switches back
+      narrationDirty = false;
       const content = commAccumulated;
       if (commMsgIndex === -1) {
         addManagerMessage({ role: "assistant", content, source: "communicator" });
