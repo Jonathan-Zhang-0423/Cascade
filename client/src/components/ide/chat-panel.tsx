@@ -1780,7 +1780,6 @@ export function ChatPanel() {
       let commTypingIdx = -1;
 
       while (true) {
-        if (useIDEStore.getState().projectId !== projectId) { controller.abort(); break; }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -1798,6 +1797,7 @@ export function ChatPanel() {
           try { ev = JSON.parse(raw); } catch { continue; }
 
           const evType = ev.type;
+          const isCurrentProject = useIDEStore.getState().projectId === projectId;
 
           if (evType === "raw_token") {
             rawAccumulated += ev.token;
@@ -1841,63 +1841,68 @@ export function ChatPanel() {
 
               if (newChars) {
                 managerAccumulated += newChars;
-                const display = stripProjectNameMarker(managerAccumulated);
-                if (!messageInserted) {
-                  const msgs = useIDEStore.getState().managerMessages;
-                  const typingIdx = msgs.findIndex((m) => m.typing === true);
-                  if (typingIdx !== -1) {
-                    const updated = [...msgs];
-                    updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
-                    useIDEStore.setState({ managerMessages: updated });
-                    streamingMsgIndex = typingIdx;
-                  } else {
-                    addManagerMessage({ role: "assistant", content: display, source: "communicator" });
-                    streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-                  }
-                  messageInserted = true;
-                } else {
-                  const msgs = useIDEStore.getState().managerMessages;
-                  if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
-                    const target = msgs[streamingMsgIndex];
-                    if (target?.role === "assistant" && !target.plan) {
+                if (isCurrentProject) {
+                  const display = stripProjectNameMarker(managerAccumulated);
+                  if (!messageInserted) {
+                    const msgs = useIDEStore.getState().managerMessages;
+                    const typingIdx = msgs.findIndex((m) => m.typing === true);
+                    if (typingIdx !== -1) {
                       const updated = [...msgs];
-                      updated[streamingMsgIndex] = { ...target, content: display };
+                      updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
                       useIDEStore.setState({ managerMessages: updated });
+                      streamingMsgIndex = typingIdx;
+                    } else {
+                      addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                      streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                    }
+                    messageInserted = true;
+                  } else {
+                    const msgs = useIDEStore.getState().managerMessages;
+                    if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
+                      const target = msgs[streamingMsgIndex];
+                      if (target?.role === "assistant" && !target.plan) {
+                        const updated = [...msgs];
+                        updated[streamingMsgIndex] = { ...target, content: display };
+                        useIDEStore.setState({ managerMessages: updated });
+                      }
                     }
                   }
+                  await new Promise<void>(r => setTimeout(r, 0));
                 }
-                await new Promise<void>(r => setTimeout(r, 0));
               }
             }
           } else if (evType === "manager_token") {
             managerAccumulated += ev.token;
-            const display = stripProjectNameMarker(managerAccumulated);
-            if (!messageInserted) {
-              const msgs = useIDEStore.getState().managerMessages;
-              const typingIdx = msgs.findIndex((m) => m.typing === true);
-              if (typingIdx !== -1) {
-                const updated = [...msgs];
-                updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
-                useIDEStore.setState({ managerMessages: updated });
-                streamingMsgIndex = typingIdx;
-              } else {
-                addManagerMessage({ role: "assistant", content: display, source: "communicator" });
-                streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-              }
-              messageInserted = true;
-            } else {
-              const msgs = useIDEStore.getState().managerMessages;
-              if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
-                const target = msgs[streamingMsgIndex];
-                if (target?.role === "assistant" && !target.plan) {
+            if (isCurrentProject) {
+              const display = stripProjectNameMarker(managerAccumulated);
+              if (!messageInserted) {
+                const msgs = useIDEStore.getState().managerMessages;
+                const typingIdx = msgs.findIndex((m) => m.typing === true);
+                if (typingIdx !== -1) {
                   const updated = [...msgs];
-                  updated[streamingMsgIndex] = { ...target, content: display };
+                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
                   useIDEStore.setState({ managerMessages: updated });
+                  streamingMsgIndex = typingIdx;
+                } else {
+                  addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                  streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                }
+                messageInserted = true;
+              } else {
+                const msgs = useIDEStore.getState().managerMessages;
+                if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
+                  const target = msgs[streamingMsgIndex];
+                  if (target?.role === "assistant" && !target.plan) {
+                    const updated = [...msgs];
+                    updated[streamingMsgIndex] = { ...target, content: display };
+                    useIDEStore.setState({ managerMessages: updated });
+                  }
                 }
               }
+              await new Promise<void>(r => setTimeout(r, 0));
             }
-            await new Promise<void>(r => setTimeout(r, 0));
           } else if (evType === "plan_ready") {
+            if (!isCurrentProject) continue;
             removeTypingBubble();
             if (messageInserted && streamingMsgIndex >= 0) {
               const msgs = useIDEStore.getState().managerMessages;
@@ -1945,51 +1950,55 @@ export function ChatPanel() {
               }).catch(() => {});
             }
           } else if (evType === "communicator_narration_starting") {
+            if (!isCurrentProject) continue;
             const msgs = useIDEStore.getState().managerMessages;
             const tIdx = msgs.findIndex((m) => m.typing === true);
             commTypingIdx = tIdx;
           } else if (evType === "communicator_error") {
-            if (commTypingIdx !== -1) {
+            if (isCurrentProject && commTypingIdx !== -1) {
               const msgs = useIDEStore.getState().managerMessages;
               if (msgs[commTypingIdx]?.typing) {
                 useIDEStore.setState({ managerMessages: msgs.filter((_, i) => i !== commTypingIdx) });
               }
-              commTypingIdx = -1;
             }
+            commTypingIdx = -1;
           } else if (evType === "communicator_token") {
             commAccumulated += ev.token;
-            if (!commInserted) {
-              if (commTypingIdx !== -1) {
-                const msgs = useIDEStore.getState().managerMessages;
-                const target = msgs[commTypingIdx];
-                if (target?.typing) {
-                  const updated = [...msgs];
-                  updated[commTypingIdx] = { ...target, content: commAccumulated, typing: false, source: "communicator" as const };
-                  useIDEStore.setState({ managerMessages: updated });
-                  commNarrationMsgIndex = commTypingIdx;
-                  commTypingIdx = -1;
+            if (isCurrentProject) {
+              if (!commInserted) {
+                if (commTypingIdx !== -1) {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  const target = msgs[commTypingIdx];
+                  if (target?.typing) {
+                    const updated = [...msgs];
+                    updated[commTypingIdx] = { ...target, content: commAccumulated, typing: false, source: "communicator" as const };
+                    useIDEStore.setState({ managerMessages: updated });
+                    commNarrationMsgIndex = commTypingIdx;
+                    commTypingIdx = -1;
+                  } else {
+                    addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
+                    commNarrationMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                  }
                 } else {
                   addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
                   commNarrationMsgIndex = useIDEStore.getState().managerMessages.length - 1;
                 }
+                commInserted = true;
               } else {
-                addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
-                commNarrationMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-              }
-              commInserted = true;
-            } else {
-              const msgs = useIDEStore.getState().managerMessages;
-              if (commNarrationMsgIndex >= 0 && commNarrationMsgIndex < msgs.length) {
-                const target = msgs[commNarrationMsgIndex];
-                if (target?.role === "assistant" && !target.plan) {
-                  const updated = [...msgs];
-                  updated[commNarrationMsgIndex] = { ...target, content: commAccumulated };
-                  useIDEStore.setState({ managerMessages: updated });
+                const msgs = useIDEStore.getState().managerMessages;
+                if (commNarrationMsgIndex >= 0 && commNarrationMsgIndex < msgs.length) {
+                  const target = msgs[commNarrationMsgIndex];
+                  if (target?.role === "assistant" && !target.plan) {
+                    const updated = [...msgs];
+                    updated[commNarrationMsgIndex] = { ...target, content: commAccumulated };
+                    useIDEStore.setState({ managerMessages: updated });
+                  }
                 }
               }
+              await new Promise<void>(r => setTimeout(r, 0));
             }
-            await new Promise<void>(r => setTimeout(r, 0));
           } else if (evType === "manager_done") {
+            if (!isCurrentProject) continue;
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
@@ -2032,6 +2041,7 @@ export function ChatPanel() {
               }).catch(() => {});
             }
           } else if (evType === "manager_error") {
+            if (!isCurrentProject) continue;
             removeTypingBubble();
             addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
           }
@@ -2243,7 +2253,6 @@ export function ChatPanel() {
       let streamDone = false;
 
       while (!streamDone) {
-        if (useIDEStore.getState().projectId !== projectId) { reader.cancel(); break; }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -2262,13 +2271,25 @@ export function ChatPanel() {
 
           const type = ev.type;
 
+          // Local bookkeeping — always runs regardless of which project is active
+          if (type === "step_starting") { finalizeEditor(); resetNarration(); }
+          else if (type === "narration_token") { commAccumulated += ev.token || ""; }
+          else if (type === "editor_token") { editorAccumulated += ev.token || ""; }
+          else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") { finalizeEditor(); }
+          else if (type === "reviewing") { resetNarration(); }
+          else if (type === "done") { finalizeEditor(); streamDone = true; break; }
+
+          // Skip all Zustand state mutations when the user is viewing a different project.
+          // The SSE reader stays alive so the server-side build continues uninterrupted.
+          // When the user switches back, isCurrentProject becomes true and UI updates resume.
+          const isCurrentProject = useIDEStore.getState().projectId === projectId;
+          if (!isCurrentProject) continue;
+
+          // UI / Zustand updates (only when on the correct project)
           if (type === "step_starting") {
-            finalizeEditor();
-            resetNarration();
             updateTaskStatus(String(ev.stepNumber), "running");
             setExecutingTaskIndex((ev.stepNumber as number) - 1);
           } else if (type === "narration_token") {
-            commAccumulated += ev.token || "";
             if (commMsgIndex === -1) {
               flushSync(() => {
                 addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
@@ -2285,13 +2306,10 @@ export function ChatPanel() {
                 });
               }
             }
-          } else if (type === "editor_token") {
-            editorAccumulated += ev.token || "";
           } else if (type === "code_applied") {
             await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
             refreshPreview();
           } else if (type === "step_completed") {
-            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "done");
 
             const stepNum = ev.stepNumber as number;
@@ -2316,14 +2334,11 @@ export function ChatPanel() {
               }
             }
           } else if (type === "step_failed") {
-            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "failed");
             if (ev.reason) setTaskFailureReason(String(ev.stepNumber), ev.reason);
           } else if (type === "step_cancelled") {
-            finalizeEditor();
             updateTaskStatus(String(ev.stepNumber), "pending");
           } else if (type === "reviewing") {
-            resetNarration();
             setReviewPhase("reviewing");
           } else if (type === "review_passed") {
             setReviewPhase("review_passed");
@@ -2380,10 +2395,6 @@ export function ChatPanel() {
             }
           } else if (type === "build_error") {
             addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildGeneric"), source: "communicator" });
-          } else if (type === "done") {
-            finalizeEditor();
-            streamDone = true;
-            break;
           }
         }
       }
