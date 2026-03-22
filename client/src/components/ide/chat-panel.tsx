@@ -2354,8 +2354,10 @@ export function ChatPanel() {
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
       setExecutingTaskIndex(null);
+      setAiResponding(false);
+      setManagerResponding(false);
     }
-  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding]);
 
   handleExecutePlanRef.current = handleExecutePlan;
 
@@ -2454,8 +2456,7 @@ export function ChatPanel() {
       }
       return;
     }
-    if (chatMode === "build" && managerPlan && !isExecuting) {
-      setInput("");
+    if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
       handleExecutePlan();
       return;
     }
@@ -2656,7 +2657,7 @@ export function ChatPanel() {
                 size="icon"
                 className="h-7 w-7 rounded-lg shrink-0"
                 onClick={handleCurrentSend}
-                disabled={!input.trim()}
+                disabled={!input.trim() && !(chatMode === "build" && managerPlan && !isExecuting)}
                 data-testid="button-send-chat"
               >
                 <ArrowUp className="w-3.5 h-3.5" />
