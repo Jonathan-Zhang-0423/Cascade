@@ -1873,6 +1873,19 @@ export function ChatPanel() {
             }
           } else if (evType === "plan_ready") {
             removeTypingBubble();
+            if (messageInserted && streamingMsgIndex >= 0) {
+              const msgs = useIDEStore.getState().managerMessages;
+              if (streamingMsgIndex < msgs.length) {
+                const stale = msgs[streamingMsgIndex];
+                if (stale?.role === "assistant" && !stale.plan) {
+                  const cleaned = [...msgs];
+                  cleaned.splice(streamingMsgIndex, 1);
+                  useIDEStore.setState({ managerMessages: cleaned });
+                }
+              }
+              messageInserted = false;
+              streamingMsgIndex = -1;
+            }
             const plan = ev.plan;
             const resolvedProjectName = ((ev.project_name as string | undefined) || "").trim() || undefined;
             if (projectId && resolvedProjectName) {
