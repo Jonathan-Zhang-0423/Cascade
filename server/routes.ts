@@ -335,7 +335,9 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
+      res.socket?.setNoDelay(true);
 
       res.on("close", () => { session.aborted = true; });
 
@@ -404,7 +406,9 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
+      res.socket?.setNoDelay(true);
 
       const emit = (data: Record<string, unknown>) => {
         try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
@@ -597,7 +601,9 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
+      res.socket?.setNoDelay(true);
 
       const emit = (data: Record<string, unknown>) => {
         try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
@@ -812,7 +818,9 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
+      res.socket?.setNoDelay(true);
 
       const maxTokens = 16384;
 
