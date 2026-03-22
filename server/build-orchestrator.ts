@@ -91,6 +91,19 @@ function langInstruction(userLang: string): string {
   return "";
 }
 
+function langNativeLabel(userLang: string): string {
+  const l = userLang.toLowerCase();
+  if (l.includes("chinese") || l === "zh") return "Chinese (中文)";
+  if (l.includes("japanese") || l === "ja") return "Japanese (日本語)";
+  if (l.includes("korean") || l === "ko") return "Korean (한국어)";
+  if (l.includes("spanish") || l === "es") return "Spanish (Español)";
+  if (l.includes("french") || l === "fr") return "French (Français)";
+  if (l.includes("german") || l === "de") return "German (Deutsch)";
+  if (l.includes("portuguese") || l === "pt") return "Portuguese (Português)";
+  if (l.includes("russian") || l === "ru") return "Russian (Русский)";
+  return userLang;
+}
+
 function stepNarrationText(stepNum: number, title: string, userLang: string, mode: "build" | "fix"): string {
   const l = userLang.toLowerCase();
   if (l.includes("chinese") || l === "zh") {
@@ -119,8 +132,11 @@ async function callEditor(
 ): Promise<EditorResult> {
   const langHint = langInstruction(session.userLang || "English");
   const fullPrompt = langHint ? `${prompt}\n\n${langHint}` : prompt;
+  const systemPrompt = langHint
+    ? `IMPORTANT: Write ALL explanatory preamble text in ${langNativeLabel(session.userLang || "English")}. Code identifiers, file paths, and code comments must remain in their original language.\n\n${EDITOR_AGENT_SYSTEM_PROMPT}`
+    : EDITOR_AGENT_SYSTEM_PROMPT;
   const messages: Array<{ role: "system" | "user"; content: string }> = [
-    { role: "system", content: EDITOR_AGENT_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
   ];
   if (files.length > 0) {
     messages.push({ role: "system", content: buildEditorContextMessage(files) });
@@ -219,8 +235,12 @@ async function callVerifier(
     const hint = langInstruction(userLang).replace("preamble", "friendly summary");
     if (hint) contextMessage += `\n\n${hint}`;
   }
+  const verifierLangHint = userLang ? langInstruction(userLang) : "";
+  const verifierSystemPrompt = verifierLangHint
+    ? `IMPORTANT: Write ALL explanatory text and friendly summaries in ${langNativeLabel(userLang || "English")}. Code identifiers and file paths remain in their original language.\n\n${VERIFIER_AGENT_SYSTEM_PROMPT}`
+    : VERIFIER_AGENT_SYSTEM_PROMPT;
   const messages: Array<{ role: "system" | "user"; content: string }> = [
-    { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
+    { role: "system", content: verifierSystemPrompt },
     { role: "user", content: contextMessage },
   ];
 

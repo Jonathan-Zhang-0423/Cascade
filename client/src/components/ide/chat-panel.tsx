@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
@@ -2218,10 +2217,47 @@ export function ChatPanel() {
     let commAccumulated = "";
     let commMsgIndex = -1;
     let editorAccumulated = "";
+    let narrationDirty = false;
+    let rafId: number | null = null;
+
+    const flushNarrationToStore = () => {
+      if (!narrationDirty) return;
+      narrationDirty = false;
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      const content = commAccumulated;
+      if (commMsgIndex === -1) {
+        addManagerMessage({ role: "assistant", content, source: "communicator" });
+        commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+      } else {
+        const msgs = useIDEStore.getState().managerMessages;
+        const target = msgs[commMsgIndex];
+        if (target?.role === "assistant") {
+          const updated = [...msgs];
+          updated[commMsgIndex] = { ...target, content };
+          useIDEStore.setState({ managerMessages: updated });
+        }
+      }
+    };
+
+    const narrationRafLoop = () => {
+      flushNarrationToStore();
+      rafId = requestAnimationFrame(narrationRafLoop);
+    };
+
+    const startNarrationRAF = () => {
+      if (rafId === null) rafId = requestAnimationFrame(narrationRafLoop);
+    };
+
+    const stopNarrationRAF = () => {
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      flushNarrationToStore();
+    };
 
     const resetNarration = () => {
       commAccumulated = "";
       commMsgIndex = -1;
+      narrationDirty = false;
     };
 
     const finalizeEditor = () => {
@@ -2277,7 +2313,7 @@ export function ChatPanel() {
 
           // Local bookkeeping — always runs regardless of which project is active
           if (type === "step_starting") { finalizeEditor(); resetNarration(); }
-          else if (type === "narration_token") { commAccumulated += ev.token || ""; }
+          else if (type === "narration_token") { commAccumulated += ev.token || ""; narrationDirty = true; }
           else if (type === "editor_token") { editorAccumulated += ev.token || ""; }
           else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") { finalizeEditor(); }
           else if (type === "reviewing") { resetNarration(); }
@@ -2294,22 +2330,7 @@ export function ChatPanel() {
             updateTaskStatus(String(ev.stepNumber), "running");
             setExecutingTaskIndex((ev.stepNumber as number) - 1);
           } else if (type === "narration_token") {
-            if (commMsgIndex === -1) {
-              flushSync(() => {
-                addManagerMessage({ role: "assistant", content: commAccumulated, source: "communicator" });
-              });
-              commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-            } else {
-              const msgs = useIDEStore.getState().managerMessages;
-              const target = msgs[commMsgIndex];
-              if (target?.role === "assistant") {
-                const updated = [...msgs];
-                updated[commMsgIndex] = { ...target, content: commAccumulated };
-                flushSync(() => {
-                  useIDEStore.setState({ managerMessages: updated });
-                });
-              }
-            }
+            startNarrationRAF();
           } else if (type === "code_applied") {
             await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
             refreshPreview();
@@ -2407,6 +2428,7 @@ export function ChatPanel() {
         addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
       }
     } finally {
+      stopNarrationRAF();
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
       if (useIDEStore.getState().projectId === projectId) {
