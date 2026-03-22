@@ -1757,9 +1757,8 @@ export function ChatPanel() {
       let commInserted = false;
       let commNarrationMsgIndex = -1;
 
-      let lastYieldMs = 0;
-
       while (true) {
+        if (useIDEStore.getState().projectId !== projectId) break;
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -1845,11 +1844,7 @@ export function ChatPanel() {
                     }
                   }
                 }
-                const nowRaw = Date.now();
-                if (nowRaw - lastYieldMs >= 16) {
-                  lastYieldMs = nowRaw;
-                  await new Promise<void>(r => setTimeout(r, 0));
-                }
+                await new Promise<void>(r => setTimeout(r, 0));
               }
             }
           } else if (evType === "manager_token") {
@@ -1879,11 +1874,7 @@ export function ChatPanel() {
                 }
               }
             }
-            const nowMgr = Date.now();
-            if (nowMgr - lastYieldMs >= 16) {
-              lastYieldMs = nowMgr;
-              await new Promise<void>(r => setTimeout(r, 0));
-            }
+            await new Promise<void>(r => setTimeout(r, 0));
           } else if (evType === "plan_ready") {
             removeTypingBubble();
             if (messageInserted && streamingMsgIndex >= 0) {
@@ -1949,11 +1940,7 @@ export function ChatPanel() {
                 }
               }
             }
-            const nowComm = Date.now();
-            if (nowComm - lastYieldMs >= 16) {
-              lastYieldMs = nowComm;
-              await new Promise<void>(r => setTimeout(r, 0));
-            }
+            await new Promise<void>(r => setTimeout(r, 0));
           } else if (evType === "manager_done") {
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
@@ -2108,6 +2095,7 @@ export function ChatPanel() {
           if (ev.content) {
             accumulated += ev.content;
             updateLastAssistantMessage(stripProjectNameMarker(accumulated));
+            await new Promise<void>(r => setTimeout(r, 0));
           }
         }
       }
@@ -2207,6 +2195,7 @@ export function ChatPanel() {
       let streamDone = false;
 
       while (!streamDone) {
+        if (useIDEStore.getState().projectId !== projectId) break;
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -2280,6 +2269,7 @@ export function ChatPanel() {
                 useIDEStore.setState({ managerMessages: updated });
               }
             }
+            await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "communicator_done") {
             finalizeComm();
           } else if (type === "reviewing") {
