@@ -1758,7 +1758,7 @@ export function ChatPanel() {
       let commNarrationMsgIndex = -1;
 
       while (true) {
-        if (useIDEStore.getState().projectId !== projectId) break;
+        if (useIDEStore.getState().projectId !== projectId) { controller.abort(); break; }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -2195,7 +2195,7 @@ export function ChatPanel() {
       let streamDone = false;
 
       while (!streamDone) {
-        if (useIDEStore.getState().projectId !== projectId) break;
+        if (useIDEStore.getState().projectId !== projectId) { reader.cancel(); break; }
         const { done, value } = await reader.read();
         if (done) break;
 
