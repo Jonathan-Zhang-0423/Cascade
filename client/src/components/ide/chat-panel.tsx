@@ -2334,6 +2334,7 @@ export function ChatPanel() {
             await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "communicator_error") {
             removeCommTypingBubble();
+            addManagerMessage({ role: "assistant", content: ev.message || "Communicator unavailable", source: "communicator" });
             finalizeComm();
           } else if (type === "communicator_done") {
             finalizeComm();
