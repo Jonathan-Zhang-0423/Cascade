@@ -583,6 +583,7 @@ export async function registerRoutes(
       }
 
       res.write("data: [DONE]\n\n");
+      (res as any).flush?.();
       res.end();
     } catch (error: any) {
       console.error("Vibe chat API error:", error?.message || error);
@@ -591,6 +592,7 @@ export async function registerRoutes(
       } else {
         try {
           res.write("data: [DONE]\n\n");
+          (res as any).flush?.();
           res.end();
         } catch {}
       }
@@ -780,6 +782,13 @@ export async function registerRoutes(
       res.flushHeaders();
       res.socket?.setNoDelay(true);
 
+      const emitComm = (data: Record<string, unknown>) => {
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+          (res as any).flush?.();
+        } catch {}
+      };
+
       const maxTokens = 16384;
 
       const stream = await doubaoClient.chat.completions.create({
@@ -792,8 +801,7 @@ export async function registerRoutes(
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content;
         if (content) {
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
-          (res as any).flush?.();
+          emitComm({ content });
         }
       }
 
@@ -809,9 +817,12 @@ export async function registerRoutes(
             error: error?.message || "Failed to get Communicator response",
           });
       } else {
-        res.write(
-          `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
-        );
+        try {
+          res.write(
+            `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
+          );
+          (res as any).flush?.();
+        } catch {}
         res.end();
       }
     }

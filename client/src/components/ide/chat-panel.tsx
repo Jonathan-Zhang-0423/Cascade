@@ -1776,7 +1776,20 @@ export function ChatPanel() {
           const evType = ev.type;
 
           if (evType === "raw_token") {
+            const isFirstToken = rawAccumulated.length === 0;
             rawAccumulated += ev.token;
+
+            if (isFirstToken && !messageInserted) {
+              const msgs = useIDEStore.getState().managerMessages;
+              const typingIdx = msgs.findIndex((m) => m.typing === true);
+              if (typingIdx !== -1) {
+                const updated = [...msgs];
+                updated[typingIdx] = { ...updated[typingIdx], typing: false, content: "", source: "communicator" as const };
+                useIDEStore.setState({ managerMessages: updated });
+                streamingMsgIndex = typingIdx;
+                messageInserted = true;
+              }
+            }
 
             if (rawContentStart === -1 && !rawContentDone) {
               const cm = rawAccumulated.match(/"content"\s*:\s*"/);
@@ -1927,6 +1940,31 @@ export function ChatPanel() {
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
+            }
+
+            if (messageInserted && rawAccumulated && streamingMsgIndex >= 0) {
+              try {
+                const contentMatch = rawAccumulated.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"[\s,}]/s);
+                if (contentMatch && contentMatch[1] !== undefined) {
+                  const canonical = stripProjectNameMarker(
+                    contentMatch[1]
+                      .replace(/\\n/g, "\n")
+                      .replace(/\\t/g, "\t")
+                      .replace(/\\r/g, "\r")
+                      .replace(/\\"/g, '"')
+                      .replace(/\\\\/g, "\\")
+                  );
+                  const msgs = useIDEStore.getState().managerMessages;
+                  if (streamingMsgIndex < msgs.length) {
+                    const target = msgs[streamingMsgIndex];
+                    if (target?.role === "assistant" && !target.plan && canonical) {
+                      const updated = [...msgs];
+                      updated[streamingMsgIndex] = { ...target, content: canonical };
+                      useIDEStore.setState({ managerMessages: updated });
+                    }
+                  }
+                }
+              } catch {}
             }
 
             const archKeywords = ["architect", "restructur", "refactor", "replac", "migrat", "rewrite", "framework", "library", "dependenc", "api", "backend", "frontend", "database", "stack"];
