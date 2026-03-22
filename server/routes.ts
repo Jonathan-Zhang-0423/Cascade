@@ -342,7 +342,10 @@ export async function registerRoutes(
       res.on("close", () => { session.aborted = true; });
 
       const emit = (data: Record<string, unknown>) => {
-        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+          (res as any).flush?.();
+        } catch {}
       };
 
       try {
@@ -411,7 +414,10 @@ export async function registerRoutes(
       res.socket?.setNoDelay(true);
 
       const emit = (data: Record<string, unknown>) => {
-        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+          (res as any).flush?.();
+        } catch {}
       };
 
       const stream = await doubaoClient.chat.completions.create({
@@ -422,79 +428,27 @@ export async function registerRoutes(
       });
 
       let accumulated = "";
-      let contentMode = false;
-      let contentStart = -1;
-      let lastEmitted = 0;
-      let contentDone = false;
 
-      for await (const chunk of stream) {
-        const token = chunk.choices[0]?.delta?.content;
-        if (!token) continue;
-        accumulated += token;
+      const heartbeat = setInterval(() => {
+        try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
+      }, 5000);
 
-        if (!contentMode && !contentDone) {
-          const isMessage = /"type"\s*:\s*"message"/.test(accumulated);
-          if (isMessage) {
-            const contentMatch = accumulated.match(/"content"\s*:\s*"/);
-            if (contentMatch && contentMatch.index !== undefined) {
-              contentStart = contentMatch.index + contentMatch[0].length;
-              contentMode = true;
-            }
-          }
+      try {
+        for await (const chunk of stream) {
+          const token = chunk.choices[0]?.delta?.content;
+          if (!token) continue;
+          accumulated += token;
+          emit({ type: "raw_token", token });
         }
-
-        if (contentMode && contentStart >= 0) {
-          const raw = accumulated.slice(contentStart);
-          let i = lastEmitted;
-          let newChars = "";
-
-          while (i < raw.length) {
-            const c = raw[i];
-            if (c === "\\") {
-              if (i + 1 < raw.length) {
-                const next = raw[i + 1];
-                if (next === "n") { newChars += "\n"; i += 2; }
-                else if (next === "t") { newChars += "\t"; i += 2; }
-                else if (next === "r") { newChars += "\r"; i += 2; }
-                else if (next === "u") {
-                  if (i + 5 < raw.length) {
-                    const hex = raw.slice(i + 2, i + 6);
-                    if (/^[0-9a-fA-F]{4}$/.test(hex)) {
-                      newChars += String.fromCharCode(parseInt(hex, 16));
-                      i += 6;
-                    } else {
-                      newChars += next;
-                      i += 2;
-                    }
-                  } else {
-                    break;
-                  }
-                }
-                else { newChars += next; i += 2; }
-              } else {
-                break;
-              }
-            } else if (c === '"') {
-              contentMode = false;
-              contentDone = true;
-              break;
-            } else {
-              newChars += c;
-              i++;
-            }
-          }
-
-          if (newChars) {
-            emit({ type: "manager_token", token: newChars });
-          }
-          lastEmitted = i;
-        }
+      } finally {
+        clearInterval(heartbeat);
       }
 
       const parsed = parseAIJson(accumulated);
       if (!parsed) {
         emit({ type: "manager_error" });
         res.write("data: [DONE]\n\n");
+        (res as any).flush?.();
         res.end();
         return;
       }
@@ -550,6 +504,7 @@ export async function registerRoutes(
       }
 
       res.write("data: [DONE]\n\n");
+      (res as any).flush?.();
       res.end();
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
@@ -606,7 +561,10 @@ export async function registerRoutes(
       res.socket?.setNoDelay(true);
 
       const emit = (data: Record<string, unknown>) => {
-        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+          (res as any).flush?.();
+        } catch {}
       };
 
       const stream = await doubaoClient.chat.completions.create({
@@ -835,10 +793,12 @@ export async function registerRoutes(
         const content = chunk.choices[0]?.delta?.content;
         if (content) {
           res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          (res as any).flush?.();
         }
       }
 
       res.write("data: [DONE]\n\n");
+      (res as any).flush?.();
       res.end();
     } catch (error: any) {
       console.error("Communicator chat API error:", error?.message || error);

@@ -1745,6 +1745,12 @@ export function ChatPanel() {
 
       let managerAccumulated = "";
       let messageInserted = false;
+      let streamingMsgIndex = -1;
+
+      let rawAccumulated = "";
+      let rawContentStart = -1;
+      let rawLastDisplayed = 0;
+      let rawContentDone = false;
 
       let commAccumulated = "";
       let commInserted = false;
@@ -1769,7 +1775,76 @@ export function ChatPanel() {
 
           const evType = ev.type;
 
-          if (evType === "manager_token") {
+          if (evType === "raw_token") {
+            rawAccumulated += ev.token;
+
+            if (rawContentStart === -1 && !rawContentDone) {
+              const cm = rawAccumulated.match(/"content"\s*:\s*"/);
+              if (cm && cm.index !== undefined) {
+                rawContentStart = cm.index + cm[0].length;
+              }
+            }
+
+            if (rawContentStart >= 0 && !rawContentDone) {
+              const rawSlice = rawAccumulated.slice(rawContentStart);
+              let i = rawLastDisplayed;
+              let newChars = "";
+
+              while (i < rawSlice.length) {
+                const c = rawSlice[i];
+                if (c === "\\") {
+                  if (i + 1 < rawSlice.length) {
+                    const next = rawSlice[i + 1];
+                    if (next === "n") { newChars += "\n"; i += 2; }
+                    else if (next === "t") { newChars += "\t"; i += 2; }
+                    else if (next === "r") { newChars += "\r"; i += 2; }
+                    else if (next === "u") {
+                      if (i + 5 < rawSlice.length) {
+                        const hex = rawSlice.slice(i + 2, i + 6);
+                        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                          newChars += String.fromCharCode(parseInt(hex, 16));
+                          i += 6;
+                        } else { newChars += next; i += 2; }
+                      } else break;
+                    } else { newChars += next; i += 2; }
+                  } else break;
+                } else if (c === '"') {
+                  rawContentDone = true;
+                  break;
+                } else { newChars += c; i++; }
+              }
+              rawLastDisplayed = i;
+
+              if (newChars) {
+                managerAccumulated += newChars;
+                const display = stripProjectNameMarker(managerAccumulated);
+                if (!messageInserted) {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  const typingIdx = msgs.findIndex((m) => m.typing === true);
+                  if (typingIdx !== -1) {
+                    const updated = [...msgs];
+                    updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
+                    useIDEStore.setState({ managerMessages: updated });
+                    streamingMsgIndex = typingIdx;
+                  } else {
+                    addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                    streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                  }
+                  messageInserted = true;
+                } else {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
+                    const target = msgs[streamingMsgIndex];
+                    if (target?.role === "assistant" && !target.plan) {
+                      const updated = [...msgs];
+                      updated[streamingMsgIndex] = { ...target, content: display };
+                      useIDEStore.setState({ managerMessages: updated });
+                    }
+                  }
+                }
+              }
+            }
+          } else if (evType === "manager_token") {
             managerAccumulated += ev.token;
             const display = stripProjectNameMarker(managerAccumulated);
             if (!messageInserted) {
@@ -1779,17 +1854,21 @@ export function ChatPanel() {
                 const updated = [...msgs];
                 updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
                 useIDEStore.setState({ managerMessages: updated });
+                streamingMsgIndex = typingIdx;
               } else {
                 addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
               }
               messageInserted = true;
             } else {
               const msgs = useIDEStore.getState().managerMessages;
-              const last = msgs[msgs.length - 1];
-              if (last?.role === "assistant") {
-                useIDEStore.setState({
-                  managerMessages: [...msgs.slice(0, -1), { ...last, content: display }],
-                });
+              if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
+                const target = msgs[streamingMsgIndex];
+                if (target?.role === "assistant" && !target.plan) {
+                  const updated = [...msgs];
+                  updated[streamingMsgIndex] = { ...target, content: display };
+                  useIDEStore.setState({ managerMessages: updated });
+                }
               }
             }
           } else if (evType === "plan_ready") {
