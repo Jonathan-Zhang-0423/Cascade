@@ -2075,14 +2075,18 @@ export function ChatPanel() {
         if (nameFromMarker) renameProject(projectId, nameFromMarker);
       }
     } catch (error: any) {
-      removeTypingBubble();
-      if (error?.name !== "AbortError") {
-        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+      if (useIDEStore.getState().projectId === projectId) {
+        removeTypingBubble();
+        if (error?.name !== "AbortError") {
+          addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorConnect"), source: "communicator" });
+        }
       }
     } finally {
-      removeTypingBubble();
       if (abortRef.current === controller) abortRef.current = null;
-      setManagerResponding(false);
+      if (useIDEStore.getState().projectId === projectId) {
+        removeTypingBubble();
+        setManagerResponding(false);
+      }
     }
   }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, projectId, renameProject, chatMode, clearManagerPlan]);
 
@@ -2399,15 +2403,17 @@ export function ChatPanel() {
         }
       }
     } catch (err: any) {
-      if (err?.name !== "AbortError") {
+      if (err?.name !== "AbortError" && useIDEStore.getState().projectId === projectId) {
         addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
       }
     } finally {
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
-      setExecutingTaskIndex(null);
-      setAiResponding(false);
-      setManagerResponding(false);
+      if (useIDEStore.getState().projectId === projectId) {
+        setExecutingTaskIndex(null);
+        setAiResponding(false);
+        setManagerResponding(false);
+      }
     }
   }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId]);
 
