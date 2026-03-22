@@ -29,6 +29,12 @@ test.setTimeout(90_000);
 test("plan mode: typing indicator ≤2s, content starts ≤10s, response progressive and complete ≤60s", async ({
   page,
 }) => {
+  let managerChatCalled = false;
+  await page.route("**/api/manager-chat", async (route) => {
+    managerChatCalled = true;
+    await route.continue();
+  });
+
   await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 
   const createBtn = page
@@ -117,4 +123,7 @@ test("plan mode: typing indicator ≤2s, content starts ≤10s, response progres
   const completionMs = Date.now() - sendStart;
   expect(completionMs, `Full response must complete within ${COMPLETION_MAX_MS}ms`).toBeLessThanOrEqual(COMPLETION_MAX_MS);
   console.log(`[OK] Response complete at ${completionMs}ms`);
+
+  expect(managerChatCalled, "Chat must use /api/manager-chat endpoint (not vibe/build chat)").toBe(true);
+  console.log("[OK] /api/manager-chat endpoint was called");
 });

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseAIJson } from "@/lib/parseAIJson";
 
 function detectLanguage(text: string): string {
   const chineseRe = /[\u4e00-\u9fff]/;
@@ -1944,16 +1945,9 @@ export function ChatPanel() {
 
             if (messageInserted && rawAccumulated && streamingMsgIndex >= 0) {
               try {
-                const contentMatch = rawAccumulated.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"[\s,}]/s);
-                if (contentMatch && contentMatch[1] !== undefined) {
-                  const canonical = stripProjectNameMarker(
-                    contentMatch[1]
-                      .replace(/\\n/g, "\n")
-                      .replace(/\\t/g, "\t")
-                      .replace(/\\r/g, "\r")
-                      .replace(/\\"/g, '"')
-                      .replace(/\\\\/g, "\\")
-                  );
+                const parsed = parseAIJson(rawAccumulated);
+                if (parsed && typeof parsed.content === "string" && parsed.content) {
+                  const canonical = stripProjectNameMarker(parsed.content);
                   const msgs = useIDEStore.getState().managerMessages;
                   if (streamingMsgIndex < msgs.length) {
                     const target = msgs[streamingMsgIndex];
