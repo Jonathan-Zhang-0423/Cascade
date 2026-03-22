@@ -1776,20 +1776,7 @@ export function ChatPanel() {
           const evType = ev.type;
 
           if (evType === "raw_token") {
-            const isFirstToken = rawAccumulated.length === 0;
             rawAccumulated += ev.token;
-
-            if (isFirstToken && !messageInserted) {
-              const msgs = useIDEStore.getState().managerMessages;
-              const typingIdx = msgs.findIndex((m) => m.typing === true);
-              if (typingIdx !== -1) {
-                const updated = [...msgs];
-                updated[typingIdx] = { ...updated[typingIdx], typing: false, content: "", source: "communicator" as const };
-                useIDEStore.setState({ managerMessages: updated });
-                streamingMsgIndex = typingIdx;
-                messageInserted = true;
-              }
-            }
 
             if (rawContentStart === -1 && !rawContentDone) {
               const cm = rawAccumulated.match(/"content"\s*:\s*"/);
