@@ -2327,14 +2327,14 @@ export function ChatPanel() {
 
           // UI / Zustand updates (only when on the correct project)
           if (type === "step_starting") {
+            startNarrationRAF();
             updateTaskStatus(String(ev.stepNumber), "running");
             setExecutingTaskIndex((ev.stepNumber as number) - 1);
-          } else if (type === "narration_token") {
-            startNarrationRAF();
           } else if (type === "code_applied") {
             await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
             refreshPreview();
           } else if (type === "step_completed") {
+            stopNarrationRAF();
             updateTaskStatus(String(ev.stepNumber), "done");
 
             const stepNum = ev.stepNumber as number;
@@ -2359,11 +2359,14 @@ export function ChatPanel() {
               }
             }
           } else if (type === "step_failed") {
+            stopNarrationRAF();
             updateTaskStatus(String(ev.stepNumber), "failed");
             if (ev.reason) setTaskFailureReason(String(ev.stepNumber), ev.reason);
           } else if (type === "step_cancelled") {
+            stopNarrationRAF();
             updateTaskStatus(String(ev.stepNumber), "pending");
           } else if (type === "reviewing") {
+            stopNarrationRAF();
             setReviewPhase("reviewing");
           } else if (type === "review_passed") {
             setReviewPhase("review_passed");
