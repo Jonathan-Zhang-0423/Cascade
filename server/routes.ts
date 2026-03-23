@@ -7,6 +7,7 @@ import { join } from "path";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
+import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
 import { insertProjectSchema } from "@shared/schema";
 import {
@@ -475,7 +476,8 @@ export async function registerRoutes(
         });
       }
 
-      const allMessages = [...systemMessages, ...messages];
+      const compressedMessages = await compressMessages(messages);
+      const allMessages = [...systemMessages, ...compressedMessages];
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");

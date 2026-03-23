@@ -462,7 +462,7 @@ function getPersistedState(projectId: string) {
 }
 
 const MAX_PERSISTED_CHAT_MESSAGES = 200;
-const MAX_PERSISTED_MANAGER_MESSAGES = 50;
+const MAX_PERSISTED_MANAGER_MESSAGES = 200;
 
 function persistState(state: IDEState) {
   if (!state.projectId) return;
