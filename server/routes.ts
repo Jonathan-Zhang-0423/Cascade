@@ -285,7 +285,25 @@ function normalizeStepsList(plan: any): Array<{ step: number; title: string }> {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Code-execution helpers
+//
+// Security model: /api/run-file is intended for the IDE's own trusted frontend.
+// Each invocation is isolated to a unique temporary directory that is deleted
+// after execution. Output is capped at MAX_OUTPUT_BYTES to prevent memory
+// exhaustion.  Execution is killed after the configured timeout to prevent
+// infinite loops or resource starvation.
+//
+// Timeout policy (two-phase for compiled languages):
+//   • Interpretation phase (Python, Node, Ruby, etc.): EXEC_TIMEOUT_MS (10 s)
+//   • Compilation phase (javac, gcc, go build, rustc, kotlinc, scalac):
+//     language-specific compile timeout — compilation cannot be bounded to 10 s
+//     because toolchains like Rust take 30–60 s for even a hello-world binary.
+//   • Execution phase after compilation: EXEC_TIMEOUT_MS (10 s) in all cases.
+//   The timedOut flag in the response reflects whether the execution phase was
+//   killed by the timeout (not the compilation phase).
 // ──────────────────────────────────────────────────────────────────────────────
+
+const EXEC_TIMEOUT_MS = 10_000;         // 10 s — applied to the run/execute phase
+const MAX_OUTPUT_BYTES = 512 * 1024;    // 512 KB combined output cap
 
 function spawnProcess(
   cmd: string,
@@ -297,21 +315,33 @@ function spawnProcess(
     const errChunks: Buffer[] = [];
     let settled = false;
     let timedOut = false;
+    let totalBytes = 0;
 
     const child = spawn(cmd, args, {
       cwd: opts.cwd ?? process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    child.stdout?.on("data", (d: Buffer) => outChunks.push(d));
-    child.stderr?.on("data", (d: Buffer) => errChunks.push(d));
+    const accumulate = (chunks: Buffer[], d: Buffer) => {
+      const remaining = MAX_OUTPUT_BYTES - totalBytes;
+      if (remaining <= 0) return;
+      const slice = remaining < d.length ? d.subarray(0, remaining) : d;
+      chunks.push(slice);
+      totalBytes += slice.length;
+      if (totalBytes >= MAX_OUTPUT_BYTES) {
+        try { child.kill("SIGKILL"); } catch {}
+      }
+    };
+
+    child.stdout?.on("data", (d: Buffer) => accumulate(outChunks, d));
+    child.stderr?.on("data", (d: Buffer) => accumulate(errChunks, d));
 
     const timer = setTimeout(() => {
       if (!settled) {
         timedOut = true;
         try { child.kill("SIGKILL"); } catch {}
       }
-    }, opts.timeout ?? 10_000);
+    }, opts.timeout ?? EXEC_TIMEOUT_MS);
 
     const finish = (code: number) => {
       if (settled) return;
@@ -1626,10 +1656,10 @@ Generate the codestart.md content for this project based on both the plan and th
         const [cmd, ...pre] = INTERPRET[ext];
         const srcFile = join(tmpBase, `main.${ext}`);
         await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess(cmd, [...pre, srcFile], { timeout: 10_000 });
+        result = await spawnProcess(cmd, [...pre, srcFile], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (ext === "go") {
-        // ── Go: build to binary (up to 30s), then run the binary (10s) ────────
+        // ── Go: build to binary (compile ≤30s), then run binary (≤EXEC_TIMEOUT_MS) ──
         const srcFile = join(tmpBase, "main.go");
         const binFile = join(tmpBase, "main");
         await writeFile(srcFile, content, "utf8");
@@ -1639,10 +1669,10 @@ Generate the codestart.md content for this project based on both the plan and th
         );
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess(binFile, [], { timeout: 10_000 });
+          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (ext === "java") {
-        // ── Java: compile (30s), then run the class (10s) ─────────────────────
+        // ── Java: compile (≤30s), then run class (≤EXEC_TIMEOUT_MS) ──────────
         const classMatch = content.match(/public\s+class\s+(\w+)/);
         const className = classMatch ? classMatch[1] : "Main";
         const srcFile = join(tmpBase, `${className}.java`);
@@ -1650,40 +1680,40 @@ Generate the codestart.md content for this project based on both the plan and th
         const compileRes = await spawnProcess("javac", [srcFile], { cwd: tmpBase, timeout: 30_000 });
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess("java", ["-cp", tmpBase, className], { timeout: 10_000 });
+          : await spawnProcess("java", ["-cp", tmpBase, className], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (ext === "c") {
-        // ── C: compile (20s), then run the binary (10s) ───────────────────────
+        // ── C: compile (≤20s), then run binary (≤EXEC_TIMEOUT_MS) ───────────
         const srcFile = join(tmpBase, "main.c");
         const binFile = join(tmpBase, "a.out");
         await writeFile(srcFile, content, "utf8");
         const compileRes = await spawnProcess("gcc", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess(binFile, [], { timeout: 10_000 });
+          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (["cpp", "cc", "cxx"].includes(ext)) {
-        // ── C++: compile (20s), then run the binary (10s) ─────────────────────
+        // ── C++: compile (≤20s), then run binary (≤EXEC_TIMEOUT_MS) ─────────
         const srcFile = join(tmpBase, `main.${ext}`);
         const binFile = join(tmpBase, "a.out");
         await writeFile(srcFile, content, "utf8");
         const compileRes = await spawnProcess("g++", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess(binFile, [], { timeout: 10_000 });
+          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (ext === "rs") {
-        // ── Rust: compile (60s), then run the binary (10s) ────────────────────
+        // ── Rust: compile (≤60s), then run binary (≤EXEC_TIMEOUT_MS) ─────────
         const srcFile = join(tmpBase, "main.rs");
         const binFile = join(tmpBase, "main");
         await writeFile(srcFile, content, "utf8");
         const compileRes = await spawnProcess("rustc", [srcFile, "-o", binFile], { timeout: 60_000 });
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess(binFile, [], { timeout: 10_000 });
+          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (["kt", "kts"].includes(ext)) {
-        // ── Kotlin: compile to jar (90s), then run jar (10s) ──────────────────
+        // ── Kotlin: compile to jar (≤90s), then run jar (≤EXEC_TIMEOUT_MS) ───
         const srcFile = join(tmpBase, `main.${ext}`);
         const jarFile = join(tmpBase, "main.jar");
         await writeFile(srcFile, content, "utf8");
@@ -1693,10 +1723,10 @@ Generate the codestart.md content for this project based on both the plan and th
         );
         result = compileRes.exitCode !== 0
           ? compileRes
-          : await spawnProcess("java", ["-jar", jarFile], { timeout: 10_000 });
+          : await spawnProcess("java", ["-jar", jarFile], { timeout: EXEC_TIMEOUT_MS });
 
       } else if (ext === "scala") {
-        // ── Scala: compile to classes (60s), then run (10s) ───────────────────
+        // ── Scala: compile to classes (≤60s), then run (≤EXEC_TIMEOUT_MS) ────
         const srcFile = join(tmpBase, "main.scala");
         await writeFile(srcFile, content, "utf8");
         const compileRes = await spawnProcess(
@@ -1709,12 +1739,12 @@ Generate the codestart.md content for this project based on both the plan and th
           const objMatch = content.match(/object\s+(\w+)/);
           const entryPoint = objMatch ? objMatch[1] : "Main";
           result = await spawnProcess(
-            "scala", ["-cp", tmpBase, entryPoint], { timeout: 10_000 }
+            "scala", ["-cp", tmpBase, entryPoint], { timeout: EXEC_TIMEOUT_MS }
           );
         }
 
       } else if (ext === "dart") {
-        // ── Dart: compile+run via dart (30s total for JIT warmup + execution) ──
+        // ── Dart: JIT compile+run via dart (≤30s total for warmup + execution) ──
         const srcFile = join(tmpBase, "main.dart");
         await writeFile(srcFile, content, "utf8");
         result = await spawnProcess("dart", ["run", srcFile], { timeout: 30_000 });
