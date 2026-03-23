@@ -1629,27 +1629,31 @@ Generate the codestart.md content for this project based on both the plan and th
         result = await spawnProcess(cmd, [...pre, srcFile], { timeout: 10_000 });
 
       } else if (ext === "go") {
-        // ── Go (go run handles compilation) ──────────────────────────────────
+        // ── Go: build to binary (up to 30s), then run the binary (10s) ────────
         const srcFile = join(tmpBase, "main.go");
+        const binFile = join(tmpBase, "main");
         await writeFile(srcFile, content, "utf8");
         await writeFile(join(tmpBase, "go.mod"), "module codestart_run\n\ngo 1.21\n", "utf8");
-        result = await spawnProcess("go", ["run", "."], { cwd: tmpBase, timeout: 30_000 });
+        const compileRes = await spawnProcess(
+          "go", ["build", "-o", binFile, "."], { cwd: tmpBase, timeout: 30_000 }
+        );
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess(binFile, [], { timeout: 10_000 });
 
       } else if (ext === "java") {
-        // ── Java (compile + run; extract public class name) ───────────────────
+        // ── Java: compile (30s), then run the class (10s) ─────────────────────
         const classMatch = content.match(/public\s+class\s+(\w+)/);
         const className = classMatch ? classMatch[1] : "Main";
         const srcFile = join(tmpBase, `${className}.java`);
         await writeFile(srcFile, content, "utf8");
         const compileRes = await spawnProcess("javac", [srcFile], { cwd: tmpBase, timeout: 30_000 });
-        if (compileRes.exitCode !== 0) {
-          result = compileRes;
-        } else {
-          result = await spawnProcess("java", ["-cp", tmpBase, className], { timeout: 10_000 });
-        }
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess("java", ["-cp", tmpBase, className], { timeout: 10_000 });
 
       } else if (ext === "c") {
-        // ── C (gcc) ──────────────────────────────────────────────────────────
+        // ── C: compile (20s), then run the binary (10s) ───────────────────────
         const srcFile = join(tmpBase, "main.c");
         const binFile = join(tmpBase, "a.out");
         await writeFile(srcFile, content, "utf8");
@@ -1659,7 +1663,7 @@ Generate the codestart.md content for this project based on both the plan and th
           : await spawnProcess(binFile, [], { timeout: 10_000 });
 
       } else if (["cpp", "cc", "cxx"].includes(ext)) {
-        // ── C++ (g++) ─────────────────────────────────────────────────────────
+        // ── C++: compile (20s), then run the binary (10s) ─────────────────────
         const srcFile = join(tmpBase, `main.${ext}`);
         const binFile = join(tmpBase, "a.out");
         await writeFile(srcFile, content, "utf8");
@@ -1669,7 +1673,7 @@ Generate the codestart.md content for this project based on both the plan and th
           : await spawnProcess(binFile, [], { timeout: 10_000 });
 
       } else if (ext === "rs") {
-        // ── Rust (rustc) ──────────────────────────────────────────────────────
+        // ── Rust: compile (60s), then run the binary (10s) ────────────────────
         const srcFile = join(tmpBase, "main.rs");
         const binFile = join(tmpBase, "main");
         await writeFile(srcFile, content, "utf8");
@@ -1679,7 +1683,7 @@ Generate the codestart.md content for this project based on both the plan and th
           : await spawnProcess(binFile, [], { timeout: 10_000 });
 
       } else if (["kt", "kts"].includes(ext)) {
-        // ── Kotlin (kotlinc + java -jar) ──────────────────────────────────────
+        // ── Kotlin: compile to jar (90s), then run jar (10s) ──────────────────
         const srcFile = join(tmpBase, `main.${ext}`);
         const jarFile = join(tmpBase, "main.jar");
         await writeFile(srcFile, content, "utf8");
@@ -1692,28 +1696,28 @@ Generate the codestart.md content for this project based on both the plan and th
           : await spawnProcess("java", ["-jar", jarFile], { timeout: 10_000 });
 
       } else if (ext === "scala") {
-        // ── Scala ─────────────────────────────────────────────────────────────
+        // ── Scala: compile to classes (60s), then run (10s) ───────────────────
         const srcFile = join(tmpBase, "main.scala");
         await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess("scala", [srcFile], { timeout: 60_000 });
+        const compileRes = await spawnProcess(
+          "scalac", [srcFile, "-d", tmpBase], { cwd: tmpBase, timeout: 60_000 }
+        );
+        if (compileRes.exitCode !== 0) {
+          result = compileRes;
+        } else {
+          // Detect top-level object name for entry point
+          const objMatch = content.match(/object\s+(\w+)/);
+          const entryPoint = objMatch ? objMatch[1] : "Main";
+          result = await spawnProcess(
+            "scala", ["-cp", tmpBase, entryPoint], { timeout: 10_000 }
+          );
+        }
 
       } else if (ext === "dart") {
-        // ── Dart ──────────────────────────────────────────────────────────────
+        // ── Dart: compile+run via dart (30s total for JIT warmup + execution) ──
         const srcFile = join(tmpBase, "main.dart");
         await writeFile(srcFile, content, "utf8");
         result = await spawnProcess("dart", ["run", srcFile], { timeout: 30_000 });
-
-      } else if (ext === "swift") {
-        // ── Swift ─────────────────────────────────────────────────────────────
-        const srcFile = join(tmpBase, "main.swift");
-        await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess("swift", [srcFile], { timeout: 30_000 });
-
-      } else if (ext === "cs") {
-        // ── C# (dotnet-script) ────────────────────────────────────────────────
-        const srcFile = join(tmpBase, "main.csx");
-        await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess("dotnet-script", [srcFile], { timeout: 30_000 });
 
       } else {
         res.json({ cannotRun: true });

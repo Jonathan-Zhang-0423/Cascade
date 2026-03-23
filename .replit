@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["ruby", "php", "lua5_4", "go", "jdk17", "elixir"]
+packages = ["ruby", "php", "lua5_4", "go", "jdk17", "elixir", "R", "rustc", "cargo", "dart", "kotlin", "scala_3"]
 
 [[ports]]
 localPort = 5000
