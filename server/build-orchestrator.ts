@@ -78,6 +78,78 @@ function filesMapToArray(files: Map<string, string>): BuildFile[] {
 
 type EditorResult = { success: true } | { success: false; reason: "no_code" | "editor_error" };
 
+interface PlanState {
+  completedIndices: Set<number>;
+  currentIndex: number;
+  totalSteps: number;
+  steps: BuildStep[];
+}
+
+function formatPlanStateBlock(planState: PlanState): string {
+  const lines: string[] = ["[Plan State]"];
+  for (let i = 0; i < planState.steps.length; i++) {
+    const step = planState.steps[i];
+    const isCompleted = planState.completedIndices.has(i);
+    const isCurrent = i === planState.currentIndex;
+    const prefix = isCompleted ? "✓" : isCurrent ? "→" : "○";
+    lines.push(`${prefix} Step ${step.step}: ${step.title}`);
+  }
+  return lines.join("\n");
+}
+
+interface IndexedStep {
+  index: number;
+  step: BuildStep;
+}
+
+function groupIntoWaves(indexedSteps: IndexedStep[]): IndexedStep[][] {
+  const waves: IndexedStep[][] = [];
+  const assigned = new Set<number>();
+
+  while (assigned.size < indexedSteps.length) {
+    const wave: IndexedStep[] = [];
+    const filesInWave = new Set<string>();
+
+    for (const item of indexedSteps) {
+      if (assigned.has(item.index)) continue;
+
+      const stepFiles = item.step.required_files || [];
+      let conflicts = false;
+
+      for (const f of stepFiles) {
+        if (filesInWave.has(f)) {
+          conflicts = true;
+          break;
+        }
+      }
+
+      if (!conflicts) {
+        wave.push(item);
+        for (const f of stepFiles) {
+          filesInWave.add(f);
+        }
+      }
+    }
+
+    if (wave.length > 0) {
+      for (const item of wave) {
+        assigned.add(item.index);
+      }
+      waves.push(wave);
+    } else {
+      const remaining = indexedSteps.filter(s => !assigned.has(s.index));
+      if (remaining.length > 0) {
+        assigned.add(remaining[0].index);
+        waves.push([remaining[0]]);
+      } else {
+        break;
+      }
+    }
+  }
+
+  return waves;
+}
+
 function langInstruction(userLang: string): string {
   const l = userLang.toLowerCase();
   if (l.includes("chinese") || l === "zh") return "Write your preamble in Chinese (中文).";
@@ -129,9 +201,12 @@ async function callEditor(
   files: BuildFile[],
   emit: SseEmit,
   session: BuildSessionState,
+  planState?: PlanState,
 ): Promise<EditorResult> {
   const langHint = langInstruction(session.userLang || "English");
-  const fullPrompt = langHint ? `${prompt}\n\n${langHint}` : prompt;
+  const planStateBlock = planState ? formatPlanStateBlock(planState) : null;
+  const promptWithState = planStateBlock ? `${planStateBlock}\n\n${prompt}` : prompt;
+  const fullPrompt = langHint ? `${promptWithState}\n\n${langHint}` : promptWithState;
   const systemPrompt = langHint
     ? `IMPORTANT: Write ALL explanatory preamble text in ${langNativeLabel(session.userLang || "English")}. Code identifiers, file paths, and code comments must remain in their original language.\n\n${EDITOR_AGENT_SYSTEM_PROMPT}`
     : EDITOR_AGENT_SYSTEM_PROMPT;
@@ -316,65 +391,94 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
-  for (let i = 0; i < normalizedSteps.length; i++) {
-    if (session.aborted) break;
+  const allIndexedSteps: IndexedStep[] = normalizedSteps.map((step, index) => ({ index, step }));
 
-    const task = normalizedSteps[i];
+  const pendingIndexedSteps = allIndexedSteps.filter(
+    ({ step }) => !(session.taskStatuses && session.taskStatuses[String(step.step)] === "done"),
+  );
 
-    if (session.taskStatuses && session.taskStatuses[String(task.step)] === "done") {
-      continue;
-    }
+  const completedIndices = new Set<number>(
+    allIndexedSteps
+      .filter(({ step }) => session.taskStatuses && session.taskStatuses[String(step.step)] === "done")
+      .map(({ index }) => index),
+  );
 
-    emit({ type: "step_starting", stepNumber: task.step, stepTitle: task.title, totalSteps });
+  const waves = groupIntoWaves(pendingIndexedSteps);
 
-    if (session.aborted) break;
+  let buildFailed = false;
 
-    const stepNarration = stepNarrationText(task.step, task.title, session.userLang || "English", "build");
-    emit({ type: "narration_token", token: stepNarration + " " });
-    await new Promise<void>(r => setTimeout(r, 0));
+  for (const wave of waves) {
+    if (session.aborted || buildFailed) break;
 
-    if (session.aborted) break;
+    await Promise.all(
+      wave.map(async ({ index, step: task }) => {
+        if (session.aborted || buildFailed) return;
 
-    const requiredFiles = task.required_files;
-    let fileContext: BuildFile[];
-    if (requiredFiles && requiredFiles.length > 0) {
-      const reqSet = new Set(requiredFiles);
-      fileContext = filesMapToArray(session.files).filter(f => reqSet.has(f.path));
-      const missing = requiredFiles.filter(p => !session.files.has(p));
-      missing.forEach(p => fileContext.push({ path: p, content: "" }));
-    } else {
-      fileContext = filesMapToArray(session.files);
-    }
+        const planState: PlanState = {
+          completedIndices: new Set(completedIndices),
+          currentIndex: index,
+          totalSteps,
+          steps: normalizedSteps,
+        };
 
-    const promptLines: string[] = [
-      `[Plan Mode] You are executing subtask ${task.sub_task_id || task.step}: ${task.title}`,
-      `Task description: ${task.description}`,
-    ];
-    if (task.acceptance_criteria) {
-      promptLines.push(`Acceptance criteria: ${task.acceptance_criteria}`);
-    }
-    promptLines.push("");
-    promptLines.push("IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.");
-    promptLines.push("");
-    promptLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
-    const prompt = promptLines.join("\n");
+        emit({ type: "step_starting", stepNumber: task.step, stepTitle: task.title, totalSteps });
 
-    const result = await callEditor(prompt, fileContext, emit, session);
+        if (session.aborted) return;
 
-    if (session.aborted) {
-      emit({ type: "step_cancelled", stepNumber: task.step });
-      break;
-    }
+        const stepNarration = stepNarrationText(task.step, task.title, session.userLang || "English", "build");
+        emit({ type: "narration_token", token: stepNarration + " " });
+        await new Promise<void>(r => setTimeout(r, 0));
 
-    if (result.success) {
-      emit({ type: "step_completed", stepNumber: task.step });
-    } else {
-      emit({ type: "step_failed", stepNumber: task.step, reason: result.reason });
-      break;
-    }
+        if (session.aborted) return;
+
+        const requiredFiles = task.required_files;
+        let fileContext: BuildFile[];
+        if (requiredFiles && requiredFiles.length > 0) {
+          const reqSet = new Set(requiredFiles);
+          fileContext = filesMapToArray(session.files).filter(f => reqSet.has(f.path));
+          const missing = requiredFiles.filter(p => !session.files.has(p));
+          missing.forEach(p => fileContext.push({ path: p, content: "" }));
+        } else {
+          fileContext = filesMapToArray(session.files);
+        }
+
+        const promptLines: string[] = [
+          `[Plan Mode] You are executing subtask ${task.sub_task_id || task.step}: ${task.title}`,
+          `Task description: ${task.description}`,
+        ];
+        if (task.acceptance_criteria) {
+          promptLines.push(`Acceptance criteria: ${task.acceptance_criteria}`);
+        }
+        promptLines.push("");
+        promptLines.push("IMPORTANT: You are modifying existing project files. You MUST preserve ALL existing content. Only add, modify, or remove what is specifically described in this task. When outputting a file, include the COMPLETE file with all its original content plus your changes — never omit or rewrite existing code that is not part of this task.");
+        promptLines.push("");
+        promptLines.push("Please implement the above subtask. Focus only on this specific task and ensure the acceptance criteria are met.");
+        const prompt = promptLines.join("\n");
+
+        const result = await callEditor(prompt, fileContext, emit, session, planState);
+
+        if (session.aborted) {
+          emit({ type: "step_cancelled", stepNumber: task.step });
+          return;
+        }
+
+        if (result.success) {
+          completedIndices.add(index);
+          emit({ type: "step_completed", stepNumber: task.step });
+        } else {
+          buildFailed = true;
+          emit({ type: "step_failed", stepNumber: task.step, reason: result.reason });
+        }
+      }),
+    );
   }
 
   if (session.aborted) {
+    emit({ type: "done" });
+    return;
+  }
+
+  if (buildFailed) {
     emit({ type: "done" });
     return;
   }
