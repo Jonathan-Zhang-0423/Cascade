@@ -40,6 +40,7 @@ import {
 } from "./mentor-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
+import { detectSkillFromText, loadSkill } from "./skill-loader";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -474,6 +475,18 @@ export async function registerRoutes(
           role: "system",
           content: "The project currently has no files.",
         });
+      }
+
+      const allConversationText = messages.map((m) => m.content).join(" ");
+      const detectedSkill = await detectSkillFromText(allConversationText);
+      if (detectedSkill) {
+        const skillContent = await loadSkill(detectedSkill);
+        if (skillContent) {
+          systemMessages.push({
+            role: "system",
+            content: `## Technology Skill: ${detectedSkill}\n\nThe following skill guidance applies to this project. Use it to inform your planning and step descriptions:\n\n${skillContent}`,
+          });
+        }
       }
 
       const compressedMessages = await compressMessages(messages);

@@ -2,6 +2,7 @@ import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { EDITOR_AGENT_SYSTEM_PROMPT, buildEditorContextMessage } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT, buildHolisticVerifierMessage } from "./verifier-prompt";
 import { MANAGER_FIX_MODE_SYSTEM_PROMPT, buildManagerFixPlanMessage } from "./manager-prompt";
+import { detectSkillFromText, loadSkill } from "./skill-loader";
 
 export interface BuildFile {
   path: string;
@@ -32,6 +33,7 @@ export interface BuildSessionState {
   userLang: string;
   taskStatuses?: Record<string, string>;
   userConfirmation?: string;
+  skillContent?: string;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -213,6 +215,12 @@ async function callEditor(
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: systemPrompt },
   ];
+  if (session.skillContent) {
+    messages.push({
+      role: "system",
+      content: `## Technology Skill Guidance\n\nFollow these conventions for the project type in use:\n\n${session.skillContent}`,
+    });
+  }
   if (files.length > 0) {
     messages.push({ role: "system", content: buildEditorContextMessage(files) });
   }
@@ -390,6 +398,21 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
+
+  if (!session.skillContent) {
+    const planText = [
+      userRequest,
+      plan.summary || "",
+      normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
+    ].join(" ");
+    const detectedSkill = await detectSkillFromText(planText);
+    if (detectedSkill) {
+      const skillContent = await loadSkill(detectedSkill);
+      if (skillContent) {
+        session.skillContent = skillContent;
+      }
+    }
+  }
 
   const allIndexedSteps: IndexedStep[] = normalizedSteps.map((step, index) => ({ index, step }));
 
