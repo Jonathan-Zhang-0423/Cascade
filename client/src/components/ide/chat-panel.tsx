@@ -2169,6 +2169,13 @@ export function ChatPanel() {
       const stripped = stripProjectNameMarker(accumulated);
       updateLastAssistantMessage(stripped);
 
+      const codeBlocks = extractCodeBlocks(stripped);
+      for (const block of codeBlocks) {
+        if (block.filePath) {
+          await applyCodeBlock(block);
+        }
+      }
+
       createCheckpoint("AI response");
     } catch (error: any) {
       if (error?.name === "AbortError") {
