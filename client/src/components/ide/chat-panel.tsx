@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseAIJson } from "@/lib/parseAIJson";
 
 function detectLanguage(text: string): string {
   const chineseRe = /[\u4e00-\u9fff]/;
@@ -1768,11 +1767,6 @@ export function ChatPanel() {
       let messageInserted = false;
       let streamingMsgIndex = -1;
 
-      let rawAccumulated = "";
-      let rawContentStart = -1;
-      let rawLastDisplayed = 0;
-      let rawContentDone = false;
-
       let commAccumulated = "";
       let commInserted = false;
       let commNarrationMsgIndex = -1;
@@ -1798,79 +1792,7 @@ export function ChatPanel() {
           const evType = ev.type;
           const isCurrentProject = useIDEStore.getState().projectId === projectId;
 
-          if (evType === "raw_token") {
-            rawAccumulated += ev.token;
-
-            if (rawContentStart === -1 && !rawContentDone) {
-              const cm = rawAccumulated.match(/"content"\s*:\s*"/);
-              if (cm && cm.index !== undefined) {
-                rawContentStart = cm.index + cm[0].length;
-              }
-            }
-
-            if (rawContentStart >= 0 && !rawContentDone) {
-              const rawSlice = rawAccumulated.slice(rawContentStart);
-              let i = rawLastDisplayed;
-              let newChars = "";
-
-              while (i < rawSlice.length) {
-                const c = rawSlice[i];
-                if (c === "\\") {
-                  if (i + 1 < rawSlice.length) {
-                    const next = rawSlice[i + 1];
-                    if (next === "n") { newChars += "\n"; i += 2; }
-                    else if (next === "t") { newChars += "\t"; i += 2; }
-                    else if (next === "r") { newChars += "\r"; i += 2; }
-                    else if (next === "u") {
-                      if (i + 5 < rawSlice.length) {
-                        const hex = rawSlice.slice(i + 2, i + 6);
-                        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
-                          newChars += String.fromCharCode(parseInt(hex, 16));
-                          i += 6;
-                        } else { newChars += next; i += 2; }
-                      } else break;
-                    } else { newChars += next; i += 2; }
-                  } else break;
-                } else if (c === '"') {
-                  rawContentDone = true;
-                  break;
-                } else { newChars += c; i++; }
-              }
-              rawLastDisplayed = i;
-
-              if (newChars) {
-                managerAccumulated += newChars;
-                if (isCurrentProject) {
-                  const display = stripProjectNameMarker(managerAccumulated);
-                  if (!messageInserted) {
-                    const msgs = useIDEStore.getState().managerMessages;
-                    const typingIdx = msgs.findIndex((m) => m.typing === true);
-                    if (typingIdx !== -1) {
-                      const updated = [...msgs];
-                      updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
-                      useIDEStore.setState({ managerMessages: updated });
-                      streamingMsgIndex = typingIdx;
-                    } else {
-                      addManagerMessage({ role: "assistant", content: display, source: "manager" });
-                      streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-                    }
-                    messageInserted = true;
-                  } else {
-                    const msgs = useIDEStore.getState().managerMessages;
-                    if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
-                      const target = msgs[streamingMsgIndex];
-                      if (target?.role === "assistant" && !target.plan) {
-                        const updated = [...msgs];
-                        updated[streamingMsgIndex] = { ...target, content: display };
-                        useIDEStore.setState({ managerMessages: updated });
-                      }
-                    }
-                  }
-                  await new Promise<void>(r => setTimeout(r, 0));
-                }
-              }
-            }
-          } else if (evType === "manager_token") {
+          if (evType === "raw_token" || evType === "manager_token") {
             managerAccumulated += ev.token;
             if (isCurrentProject) {
               const display = stripProjectNameMarker(managerAccumulated);
@@ -2003,22 +1925,19 @@ export function ChatPanel() {
               renameProject(projectId, nameFromDone);
             }
 
-            if (messageInserted && rawAccumulated && streamingMsgIndex >= 0) {
-              try {
-                const parsed = parseAIJson(rawAccumulated);
-                if (parsed && typeof parsed.content === "string" && parsed.content) {
-                  const canonical = stripProjectNameMarker(parsed.content);
-                  const msgs = useIDEStore.getState().managerMessages;
-                  if (streamingMsgIndex < msgs.length) {
-                    const target = msgs[streamingMsgIndex];
-                    if (target?.role === "assistant" && !target.plan && canonical) {
-                      const updated = [...msgs];
-                      updated[streamingMsgIndex] = { ...target, content: canonical };
-                      useIDEStore.setState({ managerMessages: updated });
-                    }
-                  }
+            if (!messageInserted && managerAccumulated) {
+              const canonical = stripProjectNameMarker(managerAccumulated);
+              if (canonical) {
+                const msgs = useIDEStore.getState().managerMessages;
+                const typingIdx = msgs.findIndex((m) => m.typing === true);
+                if (typingIdx !== -1) {
+                  const updated = [...msgs];
+                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: canonical, source: "manager" as const };
+                  useIDEStore.setState({ managerMessages: updated });
+                } else {
+                  addManagerMessage({ role: "assistant", content: canonical, source: "manager" });
                 }
-              } catch {}
+              }
             }
 
             const archKeywords = ["architect", "restructur", "refactor", "replac", "migrat", "rewrite", "framework", "library", "dependenc", "api", "backend", "frontend", "database", "stack"];
