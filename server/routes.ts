@@ -450,6 +450,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/manager-chat", async (req, res) => {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -481,7 +482,7 @@ export async function registerRoutes(
         } catch {}
       };
 
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
       }, 5000);
 
@@ -599,6 +600,7 @@ export async function registerRoutes(
         res.end();
       }
     } catch (error: any) {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
