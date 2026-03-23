@@ -41,6 +41,8 @@ import {
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
+import { runAgentLoop } from "./agent-loop";
+import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -462,35 +464,9 @@ export async function registerRoutes(
         return;
       }
 
-      const systemMessages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }> = [{ role: "system", content: MANAGER_AGENT_SYSTEM_PROMPT }];
-
-      if (files && files.length > 0) {
-        const contextMsg = buildManagerContextMessage(files);
-        systemMessages.push({ role: "system", content: contextMsg });
-      } else {
-        systemMessages.push({
-          role: "system",
-          content: "The project currently has no files.",
-        });
-      }
-
       const allConversationText = messages.map((m) => m.content).join(" ");
       const detectedSkill = await detectSkillFromText(allConversationText);
-      if (detectedSkill) {
-        const skillContent = await loadSkill(detectedSkill);
-        if (skillContent) {
-          systemMessages.push({
-            role: "system",
-            content: `## Technology Skill: ${detectedSkill}\n\nThe following skill guidance applies to this project. Use it to inform your planning and step descriptions:\n\n${skillContent}`,
-          });
-        }
-      }
 
-      const compressedMessages = await compressMessages(messages);
-      const allMessages = [...systemMessages, ...compressedMessages];
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -506,94 +482,114 @@ export async function registerRoutes(
         } catch {}
       };
 
-      const stream = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages: allMessages,
-        stream: true,
-        max_tokens: 16384,
-      });
-
-      let accumulated = "";
-
       const heartbeat = setInterval(() => {
         try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
       }, 5000);
 
-      try {
-        for await (const chunk of stream) {
-          const token = chunk.choices[0]?.delta?.content;
-          if (!token) continue;
-          accumulated += token;
-          emit({ type: "raw_token", token });
-        }
-      } finally {
-        clearInterval(heartbeat);
+      let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
+      if (files && files.length > 0) {
+        const contextMsg = buildManagerContextMessage(files);
+        systemPrompt = `${MANAGER_AGENT_SYSTEM_PROMPT}\n\n${contextMsg}`;
+      } else {
+        systemPrompt = `${MANAGER_AGENT_SYSTEM_PROMPT}\n\nThe project currently has no files.`;
       }
 
-      const parsed = parseAIJson(accumulated);
-      if (!parsed) {
+      if (detectedSkill) {
+        const skillContent = await loadSkill(detectedSkill);
+        if (skillContent) {
+          systemPrompt = `${systemPrompt}\n\n## Technology Skill: ${detectedSkill}\n\nThe following skill guidance applies to this project. Use it to inform your planning and step descriptions:\n\n${skillContent}`;
+        }
+      }
+
+      const projectFileMap = new Map<string, string>();
+      if (files && files.length > 0) {
+        for (const f of files) projectFileMap.set(f.path, f.content);
+      }
+
+      const managerState: ManagerSessionState = {};
+      const managerTools = buildManagerTools(managerState, projectFileMap);
+
+      const emitRawToken = (data: Record<string, unknown>) => {
+        if (data.type === "narration_token" && typeof data.token === "string") {
+          emit({ type: "raw_token", token: data.token });
+        }
+      };
+
+      try {
+        const result = await runAgentLoop(
+          systemPrompt,
+          messages,
+          managerTools.schemas,
+          managerTools.handlers,
+          emitRawToken,
+          { exitTools: ["submit_plan"], maxIterations: 10 },
+        );
+
+        clearInterval(heartbeat);
+
+        if (result.exitTool === "submit_plan" && managerState.plan) {
+          const plan = managerState.plan;
+          const projectName = typeof result.exitArgs?.project_name === "string"
+            ? result.exitArgs.project_name
+            : undefined;
+
+          const userLang = detectUserLanguage(messages);
+          const steps = normalizeStepsList(plan);
+          const commPrompt = buildCommunicatorMessage({
+            event: "plan_created",
+            userLanguage: userLang,
+            planSummary: typeof plan.summary === "string" ? plan.summary : "",
+            totalSteps: steps.length,
+            stepTitles: steps.map((s) => s.title),
+            whatAndWhy: typeof plan.what_and_why === "string" ? plan.what_and_why : "",
+            doneLooksLike: typeof plan.done_looks_like === "string" ? plan.done_looks_like : "",
+            outOfScope: typeof plan.out_of_scope === "string" ? plan.out_of_scope : "",
+            relevantFiles: Array.isArray(plan.relevant_files) ? plan.relevant_files as string[] : [],
+          } as CommunicatorEvent);
+
+          emit({ type: "communicator_narration_starting" });
+          try {
+            const commStream = await doubaoClient.chat.completions.create({
+              model: DOUBAO_MODEL,
+              messages: [
+                { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+                { role: "user", content: commPrompt },
+              ],
+              stream: true,
+              max_tokens: 16384,
+            });
+
+            for await (const chunk of commStream) {
+              const token = chunk.choices[0]?.delta?.content;
+              if (token) {
+                emit({ type: "communicator_token", token });
+                await new Promise<void>(r => setTimeout(r, 0));
+              }
+            }
+          } catch (commErr: unknown) {
+            const commMsg = commErr instanceof Error ? commErr.message : String(commErr);
+            console.error("Communicator stream error:", commMsg);
+            emit({ type: "communicator_error", message: "Communicator narration unavailable" });
+          }
+
+          emit({ type: "plan_ready", plan, project_name: projectName });
+          emit({ type: "manager_done" });
+        } else {
+          emit({ type: "manager_done" });
+        }
+
+        res.write("data: [DONE]\n\n");
+        (res as any).flush?.();
+        res.end();
+      } catch (err: unknown) {
+        clearInterval(heartbeat);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("Manager agent loop error:", errMsg);
         emit({ type: "manager_error" });
         res.write("data: [DONE]\n\n");
         (res as any).flush?.();
         res.end();
-        return;
       }
-
-      const projectName: string | undefined = parsed.project_name || undefined;
-      const isPlan = parsed.type === "plan" || (parsed.steps && parsed.type !== "message");
-
-      if (isPlan) {
-        const plan = { ...parsed };
-        delete plan.type;
-        delete plan.project_name;
-
-        const userLang = detectUserLanguage(messages);
-        const steps = normalizeStepsList(plan);
-        const commPrompt = buildCommunicatorMessage({
-          event: "plan_created",
-          userLanguage: userLang,
-          planSummary: plan.summary || "",
-          totalSteps: steps.length,
-          stepTitles: steps.map((s) => s.title),
-          whatAndWhy: plan.what_and_why || "",
-          doneLooksLike: plan.done_looks_like || "",
-          outOfScope: plan.out_of_scope || "",
-          relevantFiles: plan.relevant_files || [],
-        } as CommunicatorEvent);
-
-        emit({ type: "communicator_narration_starting" });
-        try {
-          const commStream = await doubaoClient.chat.completions.create({
-            model: DOUBAO_MODEL,
-            messages: [
-              { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-              { role: "user", content: commPrompt },
-            ],
-            stream: true,
-            max_tokens: 16384,
-          });
-
-          for await (const chunk of commStream) {
-            const token = chunk.choices[0]?.delta?.content;
-            if (token) {
-              emit({ type: "communicator_token", token });
-              await new Promise<void>(r => setTimeout(r, 0));
-            }
-          }
-        } catch (commErr: any) {
-          console.error("Communicator stream error:", commErr?.message || commErr);
-          emit({ type: "communicator_error", message: "Communicator narration unavailable" });
-        }
-
-        emit({ type: "plan_ready", plan, project_name: projectName });
-        emit({ type: "manager_done" });
-      } else {
-        emit({ type: "manager_done", project_name: projectName });
-      }
-
-      res.write("data: [DONE]\n\n");
-      (res as any).flush?.();
-      res.end();
     } catch (error: any) {
       console.error("Manager chat API error:", error?.message || error);
       if (!res.headersSent) {
