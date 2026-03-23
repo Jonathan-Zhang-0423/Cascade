@@ -7,6 +7,7 @@ import { join } from "path";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
+import { withRetry } from "./retry";
 import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
 import { insertProjectSchema } from "@shared/schema";
@@ -549,15 +550,22 @@ export async function registerRoutes(
 
           emit({ type: "communicator_narration_starting" });
           try {
-            const commStream = await doubaoClient.chat.completions.create({
-              model: DOUBAO_MODEL,
-              messages: [
-                { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-                { role: "user", content: commPrompt },
-              ],
-              stream: true,
-              max_tokens: 16384,
-            });
+            const commStream = await withRetry(
+              "communicator narration stream",
+              () =>
+                doubaoClient.chat.completions.create(
+                  {
+                    model: DOUBAO_MODEL,
+                    messages: [
+                      { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+                      { role: "user", content: commPrompt },
+                    ],
+                    stream: true,
+                    max_tokens: 16384,
+                  },
+                  { timeout: 30_000 },
+                ),
+            );
 
             for await (const chunk of commStream) {
               const token = chunk.choices[0]?.delta?.content;

@@ -1,4 +1,5 @@
 import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
+import { withRetry } from "./retry";
 import type { SseEmit } from "./build-orchestrator";
 import type OpenAI from "openai";
 
@@ -53,14 +54,21 @@ export async function runAgentLoop(
   let exitArgs: Record<string, unknown> | undefined;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const response = await doubaoClient.chat.completions.create({
-      model: DOUBAO_MODEL,
-      messages,
-      tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
-      tool_choice: tools.length > 0 ? "auto" : undefined,
-      stream: true,
-      max_tokens: 16384,
-    });
+    const response = await withRetry(
+      `runAgentLoop iteration ${iteration + 1}`,
+      () =>
+        doubaoClient.chat.completions.create(
+          {
+            model: DOUBAO_MODEL,
+            messages,
+            tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
+            tool_choice: tools.length > 0 ? "auto" : undefined,
+            stream: true,
+            max_tokens: 16384,
+          },
+          { timeout: 30_000 },
+        ),
+    );
 
     let assistantText = "";
     const toolCallsMap: Record<string, PendingToolCall> = {};
