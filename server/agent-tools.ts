@@ -122,14 +122,16 @@ export function buildBuilderTools(
       if (!path || typeof content !== "string") {
         return "Error: path and content are required";
       }
+      emit({ type: "narration_token", token: `\nWriting: ${path}` });
       session.files.set(path, content);
       emit({ type: "code_applied", filePath: path, code: content });
       return `File written successfully: ${path} (${content.length} chars)`;
     },
 
-    read_file: async (args) => {
+    read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
+      emit({ type: "narration_token", token: `\nReading: ${path}` });
       const content = session.files.get(path);
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
@@ -141,6 +143,9 @@ export function buildBuilderTools(
       const stepId = args.step_id as string;
       const summary = args.summary as string;
       const stepNum = parseInt(stepId, 10);
+      if (summary) {
+        emit({ type: "narration_token", token: `\nStep ${stepId} complete: ${summary}` });
+      }
       emit({ type: "step_completed", stepNumber: isNaN(stepNum) ? stepId : stepNum });
 
       if (!isNaN(stepNum) && totalSteps > 0) {
