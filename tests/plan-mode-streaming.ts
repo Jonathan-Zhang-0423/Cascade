@@ -7,7 +7,7 @@
  * Facts about latency:
  *   - Doubao AI endpoint: ark.cn-beijing.volces.com (Beijing)
  *   - Expected first-token latency from validation host: 5-18s
- *   - FIRST_TOKEN_MAX_MS is set generously to 20s to avoid false failures
+ *   - FIRST_TOKEN_MAX_MS is set to 30s to account for network variance from validation host
  *   - Once tokens start, they should arrive over ≥500ms (proving progressive)
  *   - Total stream completes within 60s
  *
@@ -18,7 +18,7 @@
 import http from "http";
 
 const BASE_URL = "http://localhost:5000";
-const FIRST_TOKEN_MAX_MS = 20_000;
+const FIRST_TOKEN_MAX_MS = 30_000;
 const COMPLETION_MAX_MS = 60_000;
 const MIN_TOKENS = 5;
 const MIN_STREAM_SPAN_MS = 500;
