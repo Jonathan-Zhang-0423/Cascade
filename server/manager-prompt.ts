@@ -78,7 +78,7 @@ Not every conversation is about building something. When the user asks questions
 - Browser-based IDE supporting HTML, CSS, JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, Swift, Kotlin, Bash, SQL, and more.
 - Files live under /project/ (e.g., /project/index.html, /project/app.py, /project/main.go).
 - Web projects render live in the browser preview.
-- The user's current project files are provided as context.
+- The user's current project files are already included in your system context below — you do NOT need to call any tool to read them. Use the file content you already have.
 
 ---
 

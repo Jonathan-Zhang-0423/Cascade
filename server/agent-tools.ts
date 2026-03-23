@@ -307,24 +307,11 @@ export function buildVerifierTools(
 
 export function buildManagerTools(
   managerState: ManagerSessionState,
-  projectFiles: Map<string, string>,
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
 } {
   const schemas: ToolSchema[] = [
-    {
-      type: "function",
-      function: {
-        name: "read_project_files",
-        description: "Return all current project file paths and their contents. Call this to understand the existing codebase before planning.",
-        parameters: {
-          type: "object",
-          properties: {},
-          required: [],
-        },
-      },
-    },
     {
       type: "function",
       function: {
@@ -391,14 +378,6 @@ export function buildManagerTools(
   ];
 
   const handlers: Record<string, ToolHandler> = {
-    read_project_files: async () => {
-      if (projectFiles.size === 0) return "The project currently has no files.";
-      const fileList = Array.from(projectFiles.entries())
-        .map(([path, content]) => `--- ${path} ---\n${content}`)
-        .join("\n\n");
-      return `Project files:\n\n${fileList}`;
-    },
-
     submit_plan: async (args) => {
       const plan: Record<string, unknown> = {
         overview: args.overview as string,

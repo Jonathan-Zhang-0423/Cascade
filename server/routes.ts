@@ -465,10 +465,8 @@ export async function registerRoutes(
         return;
       }
 
-      const allConversationText = messages.map((m) => m.content).join(" ");
-      const detectedSkill = await detectSkillFromText(allConversationText);
-
-
+      // Open the SSE stream immediately — before any async work so the browser
+      // gets a connection right away rather than waiting for skill detection.
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
@@ -487,6 +485,10 @@ export async function registerRoutes(
         try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
       }, 5000);
 
+      // Build system prompt (async work runs after stream is open)
+      const allConversationText = messages.map((m) => m.content).join(" ");
+      const detectedSkill = await detectSkillFromText(allConversationText);
+
       let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
@@ -502,13 +504,11 @@ export async function registerRoutes(
         }
       }
 
-      const projectFileMap = new Map<string, string>();
-      if (files && files.length > 0) {
-        for (const f of files) projectFileMap.set(f.path, f.content);
-      }
+      // Compress long conversation history before sending to the LLM
+      const processedMessages = await compressMessages(messages);
 
       const managerState: ManagerSessionState = {};
-      const managerTools = buildManagerTools(managerState, projectFileMap);
+      const managerTools = buildManagerTools(managerState);
 
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
@@ -519,7 +519,7 @@ export async function registerRoutes(
       try {
         const result = await runAgentLoop(
           systemPrompt,
-          messages,
+          processedMessages,
           managerTools.schemas,
           managerTools.handlers,
           emitRawToken,
