@@ -151,7 +151,7 @@ export interface ManagerMessage {
   content: string;
   plan?: ManagerPlan;
   timestamp: number;
-  source?: "communicator" | "manager_raw";
+  source?: "communicator" | "manager_raw" | "manager";
   typing?: boolean;
   hidden?: boolean;
 }

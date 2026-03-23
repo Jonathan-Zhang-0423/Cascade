@@ -1436,7 +1436,7 @@ function ManagerMessageBubble({
   holisticReview,
   fixCycle,
 }: {
-  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw"; typing?: boolean };
+  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" | "manager"; typing?: boolean };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
@@ -1847,11 +1847,11 @@ export function ChatPanel() {
                     const typingIdx = msgs.findIndex((m) => m.typing === true);
                     if (typingIdx !== -1) {
                       const updated = [...msgs];
-                      updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
+                      updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
                       useIDEStore.setState({ managerMessages: updated });
                       streamingMsgIndex = typingIdx;
                     } else {
-                      addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                      addManagerMessage({ role: "assistant", content: display, source: "manager" });
                       streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
                     }
                     messageInserted = true;
@@ -1879,11 +1879,11 @@ export function ChatPanel() {
                 const typingIdx = msgs.findIndex((m) => m.typing === true);
                 if (typingIdx !== -1) {
                   const updated = [...msgs];
-                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "communicator" as const };
+                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
                   useIDEStore.setState({ managerMessages: updated });
                   streamingMsgIndex = typingIdx;
                 } else {
-                  addManagerMessage({ role: "assistant", content: display, source: "communicator" });
+                  addManagerMessage({ role: "assistant", content: display, source: "manager" });
                   streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
                 }
                 messageInserted = true;
