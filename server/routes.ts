@@ -1,5 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { spawn } from "child_process";
+import { writeFile, mkdir, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { storage } from "./storage";
@@ -276,6 +281,58 @@ function normalizeStepsList(plan: any): Array<{ step: number; title: string }> {
     step: t.step ?? i + 1,
     title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
   }));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Code-execution helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+function spawnProcess(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; timeout?: number } = {},
+): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    const outChunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    let settled = false;
+    let timedOut = false;
+
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd ?? process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout?.on("data", (d: Buffer) => outChunks.push(d));
+    child.stderr?.on("data", (d: Buffer) => errChunks.push(d));
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        timedOut = true;
+        try { child.kill("SIGKILL"); } catch {}
+      }
+    }, opts.timeout ?? 10_000);
+
+    const finish = (code: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        stdout: Buffer.concat(outChunks).toString("utf8"),
+        stderr: Buffer.concat(errChunks).toString("utf8"),
+        exitCode: code,
+        timedOut,
+      });
+    };
+
+    child.on("close", (code) => finish(code ?? 1));
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ stdout: "", stderr: err.message, exitCode: 127, timedOut: false });
+    });
+  });
 }
 
 const buildSessions = new Map<string, BuildSessionState>();
@@ -1505,6 +1562,175 @@ Generate the codestart.md content for this project based on both the plan and th
     } catch (error: any) {
       console.error("Delete project file error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to delete file" });
+    }
+  });
+
+  // ── Multi-language code execution ──────────────────────────────────────────
+  app.post("/api/run-file", async (req, res) => {
+    const { content, extension: extRaw } = req.body as {
+      content?: string;
+      extension?: string;
+    };
+
+    if (typeof content !== "string" || typeof extRaw !== "string") {
+      res.status(400).json({ error: "content and extension are required" });
+      return;
+    }
+
+    const ext = extRaw.toLowerCase().replace(/^\./, "");
+
+    // File types that cannot meaningfully be "run"
+    const NON_RUNNABLE = new Set([
+      "html", "css", "scss", "sass", "less", "svg",
+      "json", "yaml", "yml", "toml", "ini", "cfg",
+      "xml", "md", "markdown", "sql", "graphql", "proto",
+      "dockerfile", "vue", "svelte",
+      "h", "hpp", "hxx",
+    ]);
+    if (NON_RUNNABLE.has(ext)) {
+      res.json({ cannotRun: true });
+      return;
+    }
+
+    // Interpreted languages: [command, ...prependArgs]
+    const INTERPRET: Record<string, [string, ...string[]]> = {
+      py:   ["python3"],
+      pyw:  ["python3"],
+      js:   ["node"],
+      mjs:  ["node"],
+      cjs:  ["node"],
+      ts:   ["./node_modules/.bin/tsx"],
+      tsx:  ["./node_modules/.bin/tsx"],
+      rb:   ["ruby"],
+      php:  ["php"],
+      pl:   ["perl"],
+      pm:   ["perl"],
+      lua:  ["lua"],
+      r:    ["Rscript"],
+      sh:   ["bash"],
+      bash: ["bash"],
+      zsh:  ["bash"],
+      ex:   ["elixir"],
+      exs:  ["elixir"],
+    };
+
+    const tmpId = randomBytes(8).toString("hex");
+    const tmpBase = join(tmpdir(), `codestart_${tmpId}`);
+    await mkdir(tmpBase, { recursive: true });
+
+    try {
+      let result: { stdout: string; stderr: string; exitCode: number; timedOut: boolean };
+
+      if (INTERPRET[ext]) {
+        // ── Interpreted ──────────────────────────────────────────────────────
+        const [cmd, ...pre] = INTERPRET[ext];
+        const srcFile = join(tmpBase, `main.${ext}`);
+        await writeFile(srcFile, content, "utf8");
+        result = await spawnProcess(cmd, [...pre, srcFile], { timeout: 10_000 });
+
+      } else if (ext === "go") {
+        // ── Go (go run handles compilation) ──────────────────────────────────
+        const srcFile = join(tmpBase, "main.go");
+        await writeFile(srcFile, content, "utf8");
+        await writeFile(join(tmpBase, "go.mod"), "module codestart_run\n\ngo 1.21\n", "utf8");
+        result = await spawnProcess("go", ["run", "."], { cwd: tmpBase, timeout: 30_000 });
+
+      } else if (ext === "java") {
+        // ── Java (compile + run; extract public class name) ───────────────────
+        const classMatch = content.match(/public\s+class\s+(\w+)/);
+        const className = classMatch ? classMatch[1] : "Main";
+        const srcFile = join(tmpBase, `${className}.java`);
+        await writeFile(srcFile, content, "utf8");
+        const compileRes = await spawnProcess("javac", [srcFile], { cwd: tmpBase, timeout: 30_000 });
+        if (compileRes.exitCode !== 0) {
+          result = compileRes;
+        } else {
+          result = await spawnProcess("java", ["-cp", tmpBase, className], { timeout: 10_000 });
+        }
+
+      } else if (ext === "c") {
+        // ── C (gcc) ──────────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.c");
+        const binFile = join(tmpBase, "a.out");
+        await writeFile(srcFile, content, "utf8");
+        const compileRes = await spawnProcess("gcc", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess(binFile, [], { timeout: 10_000 });
+
+      } else if (["cpp", "cc", "cxx"].includes(ext)) {
+        // ── C++ (g++) ─────────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, `main.${ext}`);
+        const binFile = join(tmpBase, "a.out");
+        await writeFile(srcFile, content, "utf8");
+        const compileRes = await spawnProcess("g++", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess(binFile, [], { timeout: 10_000 });
+
+      } else if (ext === "rs") {
+        // ── Rust (rustc) ──────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.rs");
+        const binFile = join(tmpBase, "main");
+        await writeFile(srcFile, content, "utf8");
+        const compileRes = await spawnProcess("rustc", [srcFile, "-o", binFile], { timeout: 60_000 });
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess(binFile, [], { timeout: 10_000 });
+
+      } else if (["kt", "kts"].includes(ext)) {
+        // ── Kotlin (kotlinc + java -jar) ──────────────────────────────────────
+        const srcFile = join(tmpBase, `main.${ext}`);
+        const jarFile = join(tmpBase, "main.jar");
+        await writeFile(srcFile, content, "utf8");
+        const compileRes = await spawnProcess(
+          "kotlinc", [srcFile, "-include-runtime", "-d", jarFile],
+          { timeout: 90_000 }
+        );
+        result = compileRes.exitCode !== 0
+          ? compileRes
+          : await spawnProcess("java", ["-jar", jarFile], { timeout: 10_000 });
+
+      } else if (ext === "scala") {
+        // ── Scala ─────────────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.scala");
+        await writeFile(srcFile, content, "utf8");
+        result = await spawnProcess("scala", [srcFile], { timeout: 60_000 });
+
+      } else if (ext === "dart") {
+        // ── Dart ──────────────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.dart");
+        await writeFile(srcFile, content, "utf8");
+        result = await spawnProcess("dart", ["run", srcFile], { timeout: 30_000 });
+
+      } else if (ext === "swift") {
+        // ── Swift ─────────────────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.swift");
+        await writeFile(srcFile, content, "utf8");
+        result = await spawnProcess("swift", [srcFile], { timeout: 30_000 });
+
+      } else if (ext === "cs") {
+        // ── C# (dotnet-script) ────────────────────────────────────────────────
+        const srcFile = join(tmpBase, "main.csx");
+        await writeFile(srcFile, content, "utf8");
+        result = await spawnProcess("dotnet-script", [srcFile], { timeout: 30_000 });
+
+      } else {
+        res.json({ cannotRun: true });
+        return;
+      }
+
+      res.json({
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        timedOut: result.timedOut,
+      });
+    } catch (error: any) {
+      console.error("run-file error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Execution failed" });
+    } finally {
+      try { await rm(tmpBase, { recursive: true, force: true }); } catch {}
     }
   });
 

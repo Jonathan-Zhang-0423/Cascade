@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useIDEStore, computeFilesHash } from "@/stores/ide-store";
+import { useState, useMemo } from "react";
+import { useIDEStore, computeFilesHash, type FileNode } from "@/stores/ide-store";
 import type { ActiveSpace } from "@/stores/ide-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, ChevronLeft, BookOpen, Wrench } from "lucide-react";
+import { Play, ChevronLeft, BookOpen, Wrench, Loader2 } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { LangToggle } from "@/components/lang-toggle";
@@ -21,20 +21,43 @@ interface NavbarProps {
   projectName: string;
 }
 
+function findFileContent(nodes: FileNode[], targetPath: string): string | undefined {
+  for (const node of nodes) {
+    if (node.path === targetPath) return node.content ?? "";
+    if (node.children) {
+      const found = findFileContent(node.children, targetPath);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+const NON_RUNNABLE_EXTENSIONS = new Set([
+  "html", "css", "scss", "sass", "less", "svg",
+  "json", "yaml", "yml", "toml", "ini", "cfg",
+  "xml", "md", "markdown", "sql", "graphql", "proto",
+  "dockerfile", "vue", "svelte",
+  "h", "hpp", "hxx",
+]);
+
 export function Navbar({ projectName }: NavbarProps) {
   const {
     activeFile,
     setPreviewFile,
-    refreshPreview,
+    files,
+    notebookContent,
     saveProject,
     activeSpace,
     setActiveSpace,
-    files,
-    notebookContent,
+    addConsoleEntry,
+    clearConsole,
+    isConsoleOpen,
+    toggleConsole,
   } = useIDEStore();
   const { themeId, setThemeId } = useTheme();
   const [, navigate] = useLocation();
   const t = useT();
+  const [isRunning, setIsRunning] = useState(false);
 
   const currentHash = useMemo(() => computeFilesHash(files), [files]);
   const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
@@ -46,6 +69,90 @@ export function Navbar({ projectName }: NavbarProps) {
   const handleBack = () => {
     saveProject();
     navigate("/");
+  };
+
+  const handleRun = async () => {
+    if (isRunning) return;
+
+    if (!activeFile) return;
+
+    const ext = activeFile.split(".").pop()?.toLowerCase() ?? "";
+
+    // HTML → open in preview as before
+    if (ext === "html") {
+      setPreviewFile(activeFile);
+      return;
+    }
+
+    // Non-runnable file types → show message
+    if (NON_RUNNABLE_EXTENSIONS.has(ext)) {
+      if (!isConsoleOpen) toggleConsole();
+      clearConsole();
+      const hint =
+        ["css", "scss", "sass", "less"].includes(ext)
+          ? "Stylesheet files are used by HTML pages — open the HTML file to see the result."
+          : ["json", "yaml", "yml", "toml", "ini", "cfg"].includes(ext)
+          ? "This is a data or configuration file and cannot be run directly."
+          : "This file type cannot be executed.";
+      addConsoleEntry({ level: "warn", message: `Cannot run .${ext} files. ${hint}` });
+      return;
+    }
+
+    // Get file content from the tree
+    const content = findFileContent(files, activeFile);
+    if (content === undefined) return;
+
+    setIsRunning(true);
+    if (!isConsoleOpen) toggleConsole();
+    clearConsole();
+    addConsoleEntry({ level: "info", message: `Running ${activeFile}…` });
+
+    try {
+      const resp = await fetch("/api/run-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, extension: ext }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        addConsoleEntry({ level: "error", message: `Server error ${resp.status}: ${err.error ?? "Unknown error"}` });
+        return;
+      }
+
+      const data = await resp.json();
+
+      if (data.cannotRun) {
+        addConsoleEntry({ level: "warn", message: `.${ext} files cannot be run directly.` });
+        return;
+      }
+
+      // Stdout lines
+      const stdoutLines = (data.stdout ?? "").split("\n");
+      for (const line of stdoutLines) {
+        if (line !== "") addConsoleEntry({ level: "log", message: line });
+      }
+
+      // Stderr lines
+      const stderrLines = (data.stderr ?? "").split("\n");
+      for (const line of stderrLines) {
+        if (line !== "") addConsoleEntry({ level: "error", message: line });
+      }
+
+      // Final status
+      if (data.timedOut) {
+        addConsoleEntry({ level: "warn", message: "Process timed out after the allowed limit and was stopped." });
+      } else {
+        addConsoleEntry({
+          level: data.exitCode === 0 ? "info" : "warn",
+          message: `Exited with code ${data.exitCode}`,
+        });
+      }
+    } catch (err: any) {
+      addConsoleEntry({ level: "error", message: `Failed to run: ${err.message}` });
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   return (
@@ -121,17 +228,15 @@ export function Navbar({ projectName }: NavbarProps) {
         <LangToggle />
         <Button
           size="sm"
-          className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white"
+          className="gap-1.5 h-7 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60"
           data-testid="button-run"
-          onClick={() => {
-            if (activeFile && activeFile.endsWith(".html")) {
-              setPreviewFile(activeFile);
-            } else {
-              refreshPreview();
-            }
-          }}
+          disabled={isRunning}
+          onClick={handleRun}
         >
-          <Play className="w-3 h-3 fill-current" />
+          {isRunning
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : <Play className="w-3 h-3 fill-current" />
+          }
           {t("navbar.run")}
         </Button>
       </div>
