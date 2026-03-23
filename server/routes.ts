@@ -283,27 +283,11 @@ function normalizeStepsList(plan: any): Array<{ step: number; title: string }> {
   }));
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Code-execution helpers
-//
-// Security model: /api/run-file is intended for the IDE's own trusted frontend.
-// Each invocation is isolated to a unique temporary directory that is deleted
-// after execution. Output is capped at MAX_OUTPUT_BYTES to prevent memory
-// exhaustion.  Execution is killed after the configured timeout to prevent
-// infinite loops or resource starvation.
-//
-// Timeout policy (two-phase for compiled languages):
-//   • Interpretation phase (Python, Node, Ruby, etc.): EXEC_TIMEOUT_MS (10 s)
-//   • Compilation phase (javac, gcc, go build, rustc, kotlinc, scalac):
-//     language-specific compile timeout — compilation cannot be bounded to 10 s
-//     because toolchains like Rust take 30–60 s for even a hello-world binary.
-//   • Execution phase after compilation: EXEC_TIMEOUT_MS (10 s) in all cases.
-//   The timedOut flag in the response reflects whether the execution phase was
-//   killed by the timeout (not the compilation phase).
-// ──────────────────────────────────────────────────────────────────────────────
-
-const EXEC_TIMEOUT_MS = 10_000;         // 10 s — applied to the run/execute phase
-const MAX_OUTPUT_BYTES = 512 * 1024;    // 512 KB combined output cap
+// Run execution timeout (10 s) applied to every script/binary execution phase.
+// Compiled languages use an additional compile-phase timeout before this.
+// Output is capped at MAX_OUTPUT_BYTES; processes exceeding either limit are killed.
+const EXEC_TIMEOUT_MS = 10_000;
+const MAX_OUTPUT_BYTES = 512 * 1024;
 
 function spawnProcess(
   cmd: string,
@@ -1604,6 +1588,11 @@ Generate the codestart.md content for this project based on both the plan and th
 
     if (typeof content !== "string" || typeof extRaw !== "string") {
       res.status(400).json({ error: "content and extension are required" });
+      return;
+    }
+
+    if (content.length > 200_000) {
+      res.status(413).json({ error: "File too large to execute (max 200 KB)" });
       return;
     }
 
