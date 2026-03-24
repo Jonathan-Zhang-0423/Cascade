@@ -1435,7 +1435,7 @@ function ManagerMessageBubble({
   holisticReview,
   fixCycle,
 }: {
-  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" | "manager"; typing?: boolean };
+  message: { role: string; content: string; plan?: ManagerPlan; source?: "communicator" | "manager_raw" | "manager"; typing?: boolean; thinking?: string };
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
@@ -1498,8 +1498,35 @@ function ManagerMessageBubble({
     return null;
   }
 
+  return <NarrationBubble message={message} />;
+}
+
+function NarrationBubble({
+  message,
+}: {
+  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string };
+}) {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+
   return (
     <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
+      {message.thinking && (
+        <div className="mb-1.5">
+          <button
+            className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+            onClick={() => setThinkingOpen(o => !o)}
+            data-testid="button-toggle-thinking"
+          >
+            {thinkingOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <span className="italic">(thinking…)</span>
+          </button>
+          {thinkingOpen && (
+            <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
+              {message.thinking}
+            </p>
+          )}
+        </div>
+      )}
       <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
     </div>
   );
@@ -2154,7 +2181,7 @@ export function ChatPanel() {
     let commAccumulated = "";
     let commMsgIndex = -1;
     let editorAccumulated = "";
-    let thinkingCharCount = 0;
+    let thinkingAccumulated = "";
 
     const flushNarrationToStore = () => {
       if (!commAccumulated) return;
@@ -2175,10 +2202,23 @@ export function ChatPanel() {
       }
     };
 
+    const flushThinkingToStore = () => {
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      if (commMsgIndex === -1) return;
+      const msgs = useIDEStore.getState().managerMessages;
+      const target = msgs[commMsgIndex];
+      if (target?.role === "assistant") {
+        const updated = [...msgs];
+        updated[commMsgIndex] = { ...target, thinking: thinkingAccumulated };
+        useIDEStore.setState({ managerMessages: updated });
+      }
+    };
+
     const resetNarration = () => {
       commAccumulated = "";
       commMsgIndex = -1;
-      thinkingCharCount = 0;
+      thinkingAccumulated = "";
     };
 
     const finalizeEditor = () => {
@@ -2252,18 +2292,12 @@ export function ChatPanel() {
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             }
           } else if (type === "thinking_token") {
-            // Stream Kimi's reasoning_content into the step message (capped at 300 chars)
+            // Stream Kimi's reasoning_content into the thinking field of the step message.
+            // Kept separate from commAccumulated so it renders with distinct styling.
             const token = (ev.token as string) || "";
-            if (token && thinkingCharCount < 300) {
-              const remaining = 300 - thinkingCharCount;
-              const slice = token.slice(0, remaining);
-              // Add a separator before the first thinking chunk (only if there's already header content)
-              if (thinkingCharCount === 0 && commAccumulated.length > 0) {
-                commAccumulated += "\n\n";
-              }
-              thinkingCharCount += slice.length;
-              commAccumulated += slice;
-              flushNarrationToStore();
+            if (token) {
+              thinkingAccumulated += token;
+              flushThinkingToStore();
               await new Promise<void>(r => setTimeout(r, 0));
             }
             setBuildPhase("thinking");

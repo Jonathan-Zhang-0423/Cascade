@@ -156,6 +156,7 @@ export interface ManagerMessage {
   typing?: boolean;
   hidden?: boolean;
   checkpointId?: string;
+  thinking?: string;
 }
 
 interface FlatFile {
