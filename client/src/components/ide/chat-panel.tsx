@@ -2279,12 +2279,16 @@ export function ChatPanel() {
       const msgs = useIDEStore.getState().managerMessages;
       let idx = commMsgIndex;
       if (idx === -1 || !msgs[idx] || msgs[idx].role !== "assistant") {
-        // Fallback: find the last typing assistant message in case commMsgIndex drifted
         const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
         idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
       }
       if (idx === -1) return;
-      useIDEStore.getState().updateManagerMessageThinking(idx, thinkingAccumulated);
+      const target = msgs[idx];
+      if (target?.role === "assistant") {
+        const updated = [...msgs];
+        updated[idx] = { ...target, thinking: thinkingAccumulated };
+        useIDEStore.setState({ managerMessages: updated });
+      }
     };
 
     const resetNarration = () => {
@@ -2377,8 +2381,6 @@ export function ChatPanel() {
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             }
           } else if (type === "thinking_token") {
-            // Stream Kimi's reasoning_content into the thinking field of the step message.
-            // Kept separate from commAccumulated so it renders with distinct styling.
             const token = (ev.token as string) || "";
             if (token) {
               thinkingAccumulated += token;
