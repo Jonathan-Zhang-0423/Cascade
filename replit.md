@@ -64,10 +64,14 @@ The CodeStart IDE features a modern web architecture:
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 
 ## External Dependencies
-- **AI Provider**: Doubao (ByteDance/Volcengine) via an OpenAI-compatible SDK.
+- **AI Providers**: Two selectable providers via chat toolbar toggle (visible when Kimi key is configured):
+  - **Doubao** (ByteDance/Volcengine): `server/doubao-client.ts`, base URL `https://ark.cn-beijing.volces.com/api/v3`, env key `DOUBAO_API_KEY`.
+  - **Kimi K2.5** (Moonshot AI): `server/kimi-client.ts`, base URL `https://api.moonshot.ai/v1`, env key `KIMI_API_KEY`, OpenAI-compatible.
+  - Toggle stored as `selectedProvider: "doubao" | "kimi"` in `ide-store.ts`. Passed to `/api/manager-chat` and `/api/build-session` as `provider` field. Backend endpoint `GET /api/providers` returns `{ kimi: boolean }`.
 - **AI Models**:
-  - `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) — Editor, Manager, Verifier, Communicator agents.
+  - `doubao-seed-2-0-code-preview-260215` (Doubao Seed 2.0 Code) — Editor, Manager, Verifier, Communicator agents (default).
   - `doubao-seed-2-0-lite-260215` (Doubao Seed 2.0 Lite) — Mentor Agent. Override via `DOUBAO_LITE_MODEL` env var.
+  - `kimi-k2.5` (Kimi K2.5) — All agents when Kimi provider is selected.
 - **Code Editor**: `@monaco-editor/react`.
 - **State Management**: Zustand.
 - **UI Components**: Shadcn UI.

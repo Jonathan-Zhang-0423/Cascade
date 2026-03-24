@@ -2,6 +2,7 @@ import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
+import type { AIProvider } from "./kimi-client";
 import {
   buildBuilderTools,
   buildVerifierTools,
@@ -39,6 +40,7 @@ export interface BuildSessionState {
   taskStatuses?: Record<string, string>;
   userConfirmation?: string;
   skillContent?: string;
+  provider?: AIProvider;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -195,7 +197,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       builderTools.schemas,
       builderTools.handlers,
       emit,
-      { exitTools: ["request_review"], maxIterations: 50 },
+      { exitTools: ["request_review"], maxIterations: 50, provider: session.provider },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -236,7 +238,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         verifierTools.schemas,
         verifierTools.handlers,
         emit,
-        { exitTools: ["submit_verdict"], maxIterations: 30 },
+        { exitTools: ["submit_verdict"], maxIterations: 30, provider: session.provider },
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -300,7 +302,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
           fixerTools.schemas,
           fixerTools.handlers,
           emit,
-          { exitTools: ["request_review"], maxIterations: 50 },
+          { exitTools: ["request_review"], maxIterations: 50, provider: session.provider },
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

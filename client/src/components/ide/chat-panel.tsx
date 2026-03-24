@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, flattenFiles } from "@/stores/ide-store";
+import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, type AIProvider, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { useT, tr } from "@/lib/i18n";
@@ -1547,6 +1547,8 @@ export function ChatPanel() {
     setHolisticReview,
     fixCycle,
     setFixCycle,
+    selectedProvider,
+    setSelectedProvider,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
   const tGlobal = useT();
@@ -1565,6 +1567,14 @@ export function ChatPanel() {
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const inputBoxRef = useRef<HTMLDivElement>(null);
+  const [kimiAvailable, setKimiAvailable] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/providers")
+      .then(r => r.json())
+      .then((data: { kimi: boolean }) => { if (data.kimi) setKimiAvailable(true); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -1749,7 +1759,7 @@ export function ChatPanel() {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext, provider: useIDEStore.getState().selectedProvider }),
         signal: controller.signal,
       });
 
@@ -2184,6 +2194,7 @@ export function ChatPanel() {
           files: filesForServer,
           taskStatuses,
           userConfirmation: userConfirmation || undefined,
+          provider: useIDEStore.getState().selectedProvider,
         }),
       });
 
@@ -2637,6 +2648,23 @@ export function ChatPanel() {
               </div>
               <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">{tGlobal("chat.planMode")}</span>
             </button>
+            {kimiAvailable && (
+              <button
+                className="flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                onClick={() => setSelectedProvider(selectedProvider === "doubao" ? "kimi" : "doubao")}
+                data-testid="toggle-model-provider"
+                title={selectedProvider === "doubao" ? "Switch to Kimi K2.5" : "Switch to Doubao"}
+              >
+                <span className={cn(
+                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
+                  selectedProvider === "kimi"
+                    ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
+                    : "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
+                )}>
+                  {selectedProvider === "kimi" ? "Kimi K2.5" : "Doubao"}
+                </span>
+              </button>
+            )}
             <div className="flex-1" />
             <Button
               size="icon"

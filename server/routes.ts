@@ -44,6 +44,7 @@ import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
+import { getAIClient, type AIProvider } from "./kimi-client";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -370,6 +371,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  app.get("/api/providers", (_req, res) => {
+    res.json({ kimi: !!process.env.KIMI_API_KEY });
+  });
+
   app.post("/api/build-session", async (req, res) => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
@@ -377,7 +382,7 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation } = req.body as {
+      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider } = req.body as {
         sessionId: string;
         plan: any;
         userRequest: string;
@@ -385,6 +390,7 @@ export async function registerRoutes(
         files: Array<{ path: string; content: string }>;
         taskStatuses?: Record<string, string>;
         userConfirmation?: string;
+        provider?: AIProvider;
       };
       if (!sessionId || !plan || !userRequest) {
         res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
@@ -405,6 +411,7 @@ export async function registerRoutes(
         userLang: userLang || "English",
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
+        provider: provider || "doubao",
         _startedAt: Date.now(),
       };
       buildSessions.set(sessionId, session);
@@ -463,10 +470,13 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files } = req.body as {
+      const { messages, files, provider } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
+        provider?: AIProvider;
       };
+      const activeProvider: AIProvider = provider || "doubao";
+      const { client: activeAIClient, model: activeAIModel } = getAIClient(activeProvider);
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -531,7 +541,7 @@ export async function registerRoutes(
           managerTools.schemas,
           managerTools.handlers,
           emitRawToken,
-          { exitTools: ["submit_plan"], maxIterations: 10 },
+          { exitTools: ["submit_plan"], maxIterations: 10, provider: activeProvider },
         );
 
         clearInterval(heartbeat);
@@ -561,9 +571,9 @@ export async function registerRoutes(
             const commStream = await withRetry(
               "communicator narration stream",
               () =>
-                doubaoClient.chat.completions.create(
+                activeAIClient.chat.completions.create(
                   {
-                    model: DOUBAO_MODEL,
+                    model: activeAIModel,
                     messages: [
                       { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
                       { role: "user", content: commPrompt },

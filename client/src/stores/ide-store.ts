@@ -26,6 +26,7 @@ export interface ConsoleEntry {
 
 export type ToolPanel = "files" | "chat" | null;
 export type ChatMode = "build" | "manager";
+export type AIProvider = "doubao" | "kimi";
 
 export interface ManagerSubTask {
   step: number;
@@ -320,6 +321,9 @@ interface IDEState {
   isNotebookOptimizing: boolean;
   notebookError: string | null;
 
+  selectedProvider: AIProvider;
+  setSelectedProvider: (provider: AIProvider) => void;
+
   loadProject: (id: string) => void;
   saveProject: () => void;
   clearPendingPrompt: () => void;
@@ -613,6 +617,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isNotebookLoading: false,
   isNotebookOptimizing: false,
   notebookError: null,
+
+  selectedProvider: "doubao",
+  setSelectedProvider: (provider) => set({ selectedProvider: provider }),
 
   loadProject: (id) => {
     const current = get();
