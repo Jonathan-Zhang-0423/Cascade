@@ -1478,18 +1478,6 @@ function ManagerMessageBubble({
     );
   }
 
-  if (message.typing) {
-    return (
-      <div className="px-3 flex items-center gap-1.5" data-testid="manager-typing-bubble">
-        <div className="flex items-center gap-1 bg-muted/60 rounded-xl px-3 py-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-        </div>
-      </div>
-    );
-  }
-
   if (message.source === "manager_raw") {
     return null;
   }
@@ -1500,30 +1488,55 @@ function ManagerMessageBubble({
 function NarrationBubble({
   message,
 }: {
-  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string };
+  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string; typing?: boolean };
 }) {
-  const [thinkingOpen, setThinkingOpen] = useState(true);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const isActivelyThinking = message.typing === true;
 
   return (
     <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
-      {message.thinking && (
-        <div className="mb-1.5">
-          <button
-            className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
-            onClick={() => setThinkingOpen(o => !o)}
-            data-testid="button-toggle-thinking"
-          >
-            {thinkingOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            <span className="italic font-medium">Thinking:</span>
-          </button>
-          {thinkingOpen && (
-            <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
-              {message.thinking}
-            </p>
+      {isActivelyThinking ? (
+        <>
+          {message.thinking ? (
+            <div className="mb-2" data-testid="thinking-live-block">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
+                <span className="text-[12px] italic text-muted-foreground/80 font-medium">Thinking…</span>
+              </div>
+              <p className="text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted/60 pl-2" data-testid="text-thinking-content">
+                {message.thinking}
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mb-1" data-testid="thinking-live-block">
+              <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
+              <span className="text-[12px] italic text-muted-foreground/80 font-medium">Thinking…</span>
+            </div>
           )}
-        </div>
+          <p className="text-foreground/90 whitespace-pre-wrap opacity-60">{message.content}</p>
+        </>
+      ) : (
+        <>
+          {message.thinking && (
+            <div className="mb-1.5">
+              <button
+                className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+                onClick={() => setThinkingOpen(o => !o)}
+                data-testid="button-toggle-thinking"
+              >
+                {thinkingOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                <span className="italic font-medium">(Thinking)</span>
+              </button>
+              {thinkingOpen && (
+                <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
+                  {message.thinking}
+                </p>
+              )}
+            </div>
+          )}
+          <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
+        </>
       )}
-      <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
     </div>
   );
 }
@@ -2279,6 +2292,19 @@ export function ChatPanel() {
       thinkingAccumulated = "";
     };
 
+    const clearTypingOnCurrentMsg = () => {
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      if (commMsgIndex === -1) return;
+      const msgs = useIDEStore.getState().managerMessages;
+      const target = msgs[commMsgIndex];
+      if (target?.role === "assistant" && target.typing) {
+        const updated = [...msgs];
+        updated[commMsgIndex] = { ...target, typing: false };
+        useIDEStore.setState({ managerMessages: updated });
+      }
+    };
+
     const finalizeEditor = () => {
       editorAccumulated = "";
     };
@@ -2346,7 +2372,7 @@ export function ChatPanel() {
                 ? `Step ${stepNum}/${totalSteps}: ${stepTitle}`
                 : stepTitle;
               commAccumulated = header;
-              addManagerMessage({ role: "assistant", content: header, source: "communicator" });
+              addManagerMessage({ role: "assistant", content: header, source: "communicator", typing: true });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             }
           } else if (type === "thinking_token") {
@@ -2360,6 +2386,7 @@ export function ChatPanel() {
             }
             setBuildPhase("thinking");
           } else if (type === "narration_token") {
+            clearTypingOnCurrentMsg();
             commAccumulated += ev.token || "";
             flushNarrationToStore();
             setBuildPhase("working");
@@ -2370,7 +2397,7 @@ export function ChatPanel() {
           } else if (type === "code_applied") {
             setBuildPhase("working");
           } else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") {
-            finalizeEditor(); flushNarrationToStore();
+            clearTypingOnCurrentMsg(); finalizeEditor(); flushNarrationToStore();
           } else if (type === "reviewing") {
             flushNarrationToStore(); resetNarration();
             setBuildPhase("verifying");
