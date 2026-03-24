@@ -369,6 +369,7 @@ interface IDEState {
   setNotebookLoading: (v: boolean) => void;
   setNotebookOptimizing: (v: boolean) => void;
   setNotebookError: (error: string | null) => void;
+  updateManagerMessageThinking: (index: number, thinking: string) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -1133,6 +1134,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setNotebookError: (error) =>
     set({ notebookError: error, isNotebookLoading: false, isNotebookOptimizing: false }),
+
+  updateManagerMessageThinking: (index, thinking) =>
+    set((state) => {
+      const msgs = [...state.managerMessages];
+      const target = msgs[index];
+      if (!target || target.role !== "assistant") return state;
+      msgs[index] = { ...target, thinking };
+      return { ...state, managerMessages: msgs };
+    }),
 }));
 
 function updateFileInTree(

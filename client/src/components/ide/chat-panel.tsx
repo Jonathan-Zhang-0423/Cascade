@@ -2275,15 +2275,24 @@ export function ChatPanel() {
 
     const flushThinkingToStore = () => {
       const isCurrentProject = useIDEStore.getState().projectId === projectId;
-      if (!isCurrentProject) return;
-      if (commMsgIndex === -1) return;
-      const msgs = useIDEStore.getState().managerMessages;
-      const target = msgs[commMsgIndex];
-      if (target?.role === "assistant") {
-        const updated = [...msgs];
-        updated[commMsgIndex] = { ...target, thinking: thinkingAccumulated };
-        useIDEStore.setState({ managerMessages: updated });
+      if (!isCurrentProject) {
+        console.log('[flushThinking] skip: not current project');
+        return;
       }
+      const msgs = useIDEStore.getState().managerMessages;
+      let idx = commMsgIndex;
+      if (idx === -1 || !msgs[idx] || msgs[idx].role !== "assistant") {
+        // Fallback: find the last typing assistant message
+        const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
+        idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
+        console.log('[flushThinking] commMsgIndex stale or -1, fallback idx:', idx, 'msgs.length:', msgs.length);
+      }
+      if (idx === -1) {
+        console.log('[flushThinking] no valid target index, commMsgIndex:', commMsgIndex);
+        return;
+      }
+      console.log('[flushThinking] updating idx:', idx, 'thinking len:', thinkingAccumulated.length);
+      useIDEStore.getState().updateManagerMessageThinking(idx, thinkingAccumulated);
     };
 
     const resetNarration = () => {
@@ -2364,6 +2373,7 @@ export function ChatPanel() {
             // Immediately inject a step-progress message so the user sees feedback
             // even when the AI provider emits no delta.content (e.g. Kimi thinking mode).
             const isCurrentProjectNow = useIDEStore.getState().projectId === projectId;
+            console.log('[step_starting] isCurrentProjectNow:', isCurrentProjectNow, 'storeId:', useIDEStore.getState().projectId, 'closureId:', projectId);
             if (isCurrentProjectNow) {
               const stepNum = (ev.stepNumber as number) ?? 1;
               const stepTitle = (ev.stepTitle as string) || "";
@@ -2374,12 +2384,16 @@ export function ChatPanel() {
               commAccumulated = header;
               addManagerMessage({ role: "assistant", content: header, source: "communicator", typing: true });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+              console.log('[step_starting] added message, commMsgIndex:', commMsgIndex);
             }
           } else if (type === "thinking_token") {
             // Stream Kimi's reasoning_content into the thinking field of the step message.
             // Kept separate from commAccumulated so it renders with distinct styling.
             const token = (ev.token as string) || "";
             if (token) {
+              if (thinkingAccumulated.length === 0) {
+                console.log('[thinking_token] FIRST token. commMsgIndex:', commMsgIndex, 'msgs.length:', useIDEStore.getState().managerMessages.length);
+              }
               thinkingAccumulated += token;
               flushThinkingToStore();
               await new Promise<void>(r => setTimeout(r, 0));
