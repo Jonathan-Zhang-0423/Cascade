@@ -74,13 +74,18 @@ export async function runAgentLoop(
     );
 
     let assistantText = "";
+    let reasoningContent = "";
     const toolCallsMap: Record<string, PendingToolCall> = {};
 
     for await (const chunk of response) {
       const choice = chunk.choices[0];
       if (!choice) continue;
 
-      const delta = choice.delta;
+      const delta = choice.delta as typeof choice.delta & { reasoning_content?: string };
+
+      if (delta.reasoning_content) {
+        reasoningContent += delta.reasoning_content;
+      }
 
       if (delta.content) {
         assistantText += delta.content;
@@ -111,16 +116,17 @@ export async function runAgentLoop(
       break;
     }
 
-    const assistantMsg: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
-      role: "assistant",
+    const assistantMsg = {
+      role: "assistant" as const,
       content: assistantText || null,
+      ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: "function" as const,
         function: { name: tc.name, arguments: tc.argsRaw },
       })),
     };
-    messages.push(assistantMsg);
+    messages.push(assistantMsg as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam);
 
     let shouldExit = false;
 
