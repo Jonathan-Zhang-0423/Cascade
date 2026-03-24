@@ -2232,6 +2232,10 @@ export function ChatPanel() {
             finalizeEditor(); flushNarrationToStore();
           } else if (type === "reviewing") {
             flushNarrationToStore(); resetNarration();
+          } else if (type === "all_complete") {
+            if (useIDEStore.getState().projectId === projectId) {
+              createCheckpoint("Build complete", { includeManagerThread: true });
+            }
           } else if (type === "done") {
             finalizeEditor(); flushNarrationToStore(); streamDone = true; break;
           }
@@ -2352,7 +2356,7 @@ export function ChatPanel() {
         setManagerResponding(false);
       }
     }
-  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId, createCheckpoint]);
 
   handleExecutePlanRef.current = handleExecutePlan;
 
@@ -2528,10 +2532,16 @@ export function ChatPanel() {
             ...managerMessages.map((msg, idx) => ({ kind: "manager" as const, msg, order: idx })),
           ].sort((a, b) => a.msg.timestamp - b.msg.timestamp || a.order - b.order);
 
+          const seenCheckpointIds = new Set<string>();
+
           return merged.map((item) => {
             if (item.kind === "chat") {
               const { msg, idx } = item;
               if (msg.hidden) return null;
+              if (msg.role === "checkpoint" && msg.checkpointId) {
+                if (seenCheckpointIds.has(msg.checkpointId)) return null;
+                seenCheckpointIds.add(msg.checkpointId);
+              }
               const isLastAssistant = msg.role === "assistant" && idx === lastChatIdx;
               return msg.role === "checkpoint" ? (
                 <CheckpointMarker key={`c-${msg.id}`} message={msg} />
@@ -2545,6 +2555,16 @@ export function ChatPanel() {
               );
             } else {
               const { msg } = item;
+              if (msg.role === "checkpoint" && msg.checkpointId) {
+                if (seenCheckpointIds.has(msg.checkpointId)) return null;
+                seenCheckpointIds.add(msg.checkpointId);
+                return (
+                  <CheckpointMarker
+                    key={`m-${msg.id}`}
+                    message={{ id: msg.id, role: "checkpoint", content: msg.content, timestamp: msg.timestamp, checkpointId: msg.checkpointId }}
+                  />
+                );
+              }
               const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
               return (
                 <ManagerMessageBubble

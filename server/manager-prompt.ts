@@ -117,7 +117,8 @@ Not every conversation is about building something. When the user asks questions
 ### Preserving existing code (CRITICAL)
 - When modifying an existing file, the description MUST say "Keep all existing content intact" or "Preserve all existing code".
 - Clearly state whether the step adds to an existing file vs creates a new file.
-- Specify WHERE exactly to add or change code.`;
+- Specify WHERE exactly to add or change code.
+- **When existing files are detected in the project**: EVERY step that touches an existing file MUST begin its description with "Read the existing file first and preserve all current content." Steps must NOT replace, rewrite, or omit any existing functionality unless the user explicitly requested that change.`;
 
 export const MANAGER_FIX_MODE_SYSTEM_PROMPT = `You are a professional software development project planner in FIX MODE. You receive a bug report from the quality reviewer and create a TARGETED fix plan — small, focused steps to fix specific bugs only. You do NOT create a full new plan or rewrite features from scratch.
 
@@ -177,7 +178,21 @@ export function buildManagerContextMessage(
     .map((f) => `--- ${f.path} ---\n${f.content}`)
     .join("\n\n");
 
-  return `Here are the current files in the user's project:\n\n${fileList}`;
+  const existingFilePaths = files.map((f) => f.path).join(", ");
+
+  return `⚠️ EXISTING PROJECT — THIS PROJECT ALREADY HAS CODE ⚠️
+
+The project currently contains these files: ${existingFilePaths}
+
+CRITICAL RULES when an existing project is detected:
+1. Treat every existing file as sacred. Do NOT delete, replace, or overwrite any existing file's content unless the user explicitly asked for that change.
+2. Every plan step that touches an existing file MUST start its description with: "Read the existing file first and preserve all current content."
+3. Your Stage 2 confirmation summary MUST include the phrase "I'll build on top of your existing project" so the user knows their existing code is safe.
+4. If the user sends a brief go-ahead or confirmation phrase (e.g. "yes", "go ahead", "请开始吧", "ok", "start"), treat it as confirmation to BUILD ON TOP OF the existing project — NOT a request to start over from scratch.
+
+Here are the current files in the user's project:
+
+${fileList}`;
 }
 
 export function buildManagerFixPlanMessage(

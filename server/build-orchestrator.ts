@@ -101,11 +101,15 @@ function buildBuilderInitialMessage(
     ? `\n\nExisting project files:\n${allFiles.map(f => `- ${f.path}`).join("\n")}`
     : "\n\nThe project currently has no files.";
 
+  const existingFilesWarning = allFiles.length > 0
+    ? `\n\n⚠️ WARNING — EXISTING PROJECT FILES DETECTED ⚠️\nThe following files already contain working code that must be preserved:\n${allFiles.map(f => `  - ${f.path}`).join("\n")}\nDO NOT delete, clear, or replace the content of these files unless a plan step explicitly says to. Always call read_file on each existing file BEFORE writing to it, so you preserve all current content.\n`
+    : "";
+
   const modePrefix = mode === "fix"
     ? `You are in FIX MODE. The quality reviewer found issues that need to be addressed.\n\n${previousIssues ? `Issues to fix:\n${previousIssues}\n\n` : ""}`
     : "";
 
-  return `${modePrefix}Here is the build plan you need to implement:
+  return `${modePrefix}${existingFilesWarning}Here is the build plan you need to implement:
 
 ## Original Request
 ${session.userRequest}

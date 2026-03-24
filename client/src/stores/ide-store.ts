@@ -147,13 +147,14 @@ export interface NotebookContent {
 
 export interface ManagerMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "checkpoint";
   content: string;
   plan?: ManagerPlan;
   timestamp: number;
   source?: "communicator" | "manager_raw" | "manager";
   typing?: boolean;
   hidden?: boolean;
+  checkpointId?: string;
 }
 
 interface FlatFile {
@@ -340,7 +341,7 @@ interface IDEState {
   deleteFile: (path: string) => void;
   setPreviewFile: (path: string) => void;
   refreshPreview: () => void;
-  createCheckpoint: (label: string) => void;
+  createCheckpoint: (label: string, options?: { includeManagerThread?: boolean }) => void;
   restoreCheckpoint: (id: string) => void;
 
   setChatMode: (mode: ChatMode) => void;
@@ -736,16 +737,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     debouncedPersist(state);
   },
 
-  createCheckpoint: (label) => {
+  createCheckpoint: (label, options) => {
     const state = get();
     if (!state.projectId) return;
 
     const currentFlat = flattenToFlatFiles(state.files);
     const checkpointId = crypto.randomUUID();
+    const now = Date.now();
     const newCheckpoint: Checkpoint = {
       id: checkpointId,
       label,
-      timestamp: Date.now(),
+      timestamp: now,
       snapshot: currentFlat,
     };
 
@@ -769,14 +771,25 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       id: crypto.randomUUID(),
       role: "checkpoint",
       content: label,
-      timestamp: Date.now(),
+      timestamp: now,
       checkpointId,
     };
+
+    const nextManagerMessages = options?.includeManagerThread
+      ? [...state.managerMessages, {
+          id: crypto.randomUUID(),
+          role: "checkpoint" as const,
+          content: label,
+          timestamp: now,
+          checkpointId,
+        } satisfies ManagerMessage]
+      : state.managerMessages;
 
     const next = {
       ...state,
       checkpoints: updatedCheckpoints,
       chatMessages: [...state.chatMessages, checkpointMessage],
+      managerMessages: nextManagerMessages,
     };
 
     set(next);
