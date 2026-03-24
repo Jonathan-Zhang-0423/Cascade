@@ -2143,14 +2143,11 @@ export function ChatPanel() {
     let commAccumulated = "";
     let commMsgIndex = -1;
     let editorAccumulated = "";
-    let narrationDirty = false;
-    let rafId: number | null = null;
 
     const flushNarrationToStore = () => {
-      if (!narrationDirty) return;
+      if (!commAccumulated) return;
       const isCurrentProject = useIDEStore.getState().projectId === projectId;
-      if (!isCurrentProject) return; // keep flag set; RAF will flush when user switches back
-      narrationDirty = false;
+      if (!isCurrentProject) return;
       const content = commAccumulated;
       if (commMsgIndex === -1) {
         addManagerMessage({ role: "assistant", content, source: "communicator" });
@@ -2166,24 +2163,9 @@ export function ChatPanel() {
       }
     };
 
-    const narrationRafLoop = () => {
-      flushNarrationToStore();
-      rafId = requestAnimationFrame(narrationRafLoop);
-    };
-
-    const startNarrationRAF = () => {
-      if (rafId === null) rafId = requestAnimationFrame(narrationRafLoop);
-    };
-
-    const stopNarrationRAF = () => {
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-      flushNarrationToStore();
-    };
-
     const resetNarration = () => {
       commAccumulated = "";
       commMsgIndex = -1;
-      narrationDirty = false;
     };
 
     const finalizeEditor = () => {
@@ -2238,20 +2220,20 @@ export function ChatPanel() {
           const type = ev.type;
 
           // Local bookkeeping — always runs regardless of which project is active.
-          // RAF start/stop also live here so the loop runs even when user has switched
-          // to a different project, letting narration flush immediately on switch-back.
           if (type === "step_starting") {
-            finalizeEditor(); resetNarration(); startNarrationRAF();
+            finalizeEditor(); resetNarration();
           } else if (type === "narration_token") {
-            commAccumulated += ev.token || ""; narrationDirty = true;
+            commAccumulated += ev.token || "";
+            flushNarrationToStore();
+            await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "editor_token") {
             editorAccumulated += ev.token || "";
           } else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") {
-            finalizeEditor(); stopNarrationRAF();
+            finalizeEditor(); flushNarrationToStore();
           } else if (type === "reviewing") {
-            resetNarration(); stopNarrationRAF();
+            flushNarrationToStore(); resetNarration();
           } else if (type === "done") {
-            finalizeEditor(); streamDone = true; break;
+            finalizeEditor(); flushNarrationToStore(); streamDone = true; break;
           }
 
           // Skip all Zustand state mutations when the user is viewing a different project.
@@ -2361,7 +2343,7 @@ export function ChatPanel() {
         addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
       }
     } finally {
-      stopNarrationRAF();
+      flushNarrationToStore();
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
       if (useIDEStore.getState().projectId === projectId) {

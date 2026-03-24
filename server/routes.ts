@@ -371,6 +371,7 @@ export async function registerRoutes(
   app: Express,
 ): Promise<Server> {
   app.post("/api/build-session", async (req, res) => {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -424,16 +425,22 @@ export async function registerRoutes(
         } catch {}
       };
 
+      heartbeat = setInterval(() => {
+        try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
+      }, 2000);
+
       try {
         await runBuildSession(session, emit);
       } catch (err: any) {
         emit({ type: "build_error", message: err?.message || "Unknown error" });
         emit({ type: "done" });
       } finally {
+        if (heartbeat !== undefined) clearInterval(heartbeat);
         buildSessions.delete(sessionId);
         res.end();
       }
     } catch (error: any) {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Build session error:", error?.message || error);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Build session failed" });

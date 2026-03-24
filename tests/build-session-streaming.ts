@@ -9,7 +9,7 @@
  *   - Doubao AI endpoint: ark.cn-beijing.volces.com (Beijing)
  *   - Expected first narration_token latency: 5–25s (editor starts narrating
  *     immediately at the beginning of each step)
- *   - FIRST_TOKEN_MAX_MS is set generously to 25s to avoid false failures
+ *   - FIRST_TOKEN_MAX_MS is set generously to 40s to avoid false failures
  *   - At least 3 narration_token events expected per step narration
  *   - Total stream completes within 120s (single-step plan)
  *
@@ -20,7 +20,7 @@
 import http from "http";
 
 const BASE_URL = "http://localhost:5000";
-const FIRST_TOKEN_MAX_MS = 25_000;
+const FIRST_TOKEN_MAX_MS = 40_000;
 const COMPLETION_MAX_MS = 120_000;
 const MIN_NARRATION_TOKENS = 3;
 
