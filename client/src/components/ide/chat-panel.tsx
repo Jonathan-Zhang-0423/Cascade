@@ -1566,6 +1566,7 @@ export function ChatPanel() {
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [buildPhase, setBuildPhase] = useState<"thinking" | "working" | "verifying" | "fixing" | null>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
   const [kimiAvailable, setKimiAvailable] = useState(false);
 
@@ -2233,16 +2234,26 @@ export function ChatPanel() {
           // Local bookkeeping — always runs regardless of which project is active.
           if (type === "step_starting") {
             finalizeEditor(); resetNarration();
+            setBuildPhase("thinking");
           } else if (type === "narration_token") {
             commAccumulated += ev.token || "";
             flushNarrationToStore();
+            setBuildPhase("working");
             await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "editor_token") {
             editorAccumulated += ev.token || "";
+            setBuildPhase("working");
+          } else if (type === "code_applied") {
+            setBuildPhase("working");
           } else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") {
             finalizeEditor(); flushNarrationToStore();
           } else if (type === "reviewing") {
             flushNarrationToStore(); resetNarration();
+            setBuildPhase("verifying");
+          } else if (type === "bugs_found") {
+            setBuildPhase("fixing");
+          } else if (type === "fixing") {
+            setBuildPhase("fixing");
           } else if (type === "all_complete") {
             if (useIDEStore.getState().projectId === projectId) {
               createCheckpoint("Build complete", { includeManagerThread: true });
@@ -2361,13 +2372,14 @@ export function ChatPanel() {
       flushNarrationToStore();
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
+      setBuildPhase(null);
       if (useIDEStore.getState().projectId === projectId) {
         setExecutingTaskIndex(null);
         setAiResponding(false);
         setManagerResponding(false);
       }
     }
-  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId, createCheckpoint]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId, createCheckpoint, setBuildPhase]);
 
   handleExecutePlanRef.current = handleExecutePlan;
 
@@ -2383,7 +2395,8 @@ export function ChatPanel() {
     setAiResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
-  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase]);
+    setBuildPhase(null);
+  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
 
   const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
@@ -2607,6 +2620,20 @@ export function ChatPanel() {
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
+        {isExecuting && buildPhase && (
+          <div className="flex items-center gap-1.5 px-1 pb-1.5">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {buildPhase === "thinking" && "Agent is thinking..."}
+              {buildPhase === "working" && "Agent is working..."}
+              {buildPhase === "verifying" && "Agent is verifying..."}
+              {buildPhase === "fixing" && "Agent is fixing..."}
+            </span>
+          </div>
+        )}
         <div
           ref={inputBoxRef}
           onFocus={() => setInputFocused(true)}
