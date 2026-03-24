@@ -159,6 +159,7 @@ export function buildBuilderTools(
     },
 
     request_review: async (_args, emit) => {
+      emit({ type: "narration_token", token: "\nReviewing completed work…" });
       emit({ type: "reviewing" });
       return "Review requested. Proceeding to quality review phase.";
     },

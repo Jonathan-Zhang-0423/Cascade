@@ -1507,7 +1507,7 @@ function NarrationBubble({
 }: {
   message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string };
 }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const [thinkingOpen, setThinkingOpen] = useState(true);
 
   return (
     <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
@@ -1519,7 +1519,7 @@ function NarrationBubble({
             data-testid="button-toggle-thinking"
           >
             {thinkingOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            <span className="italic">(thinking…)</span>
+            <span className="italic font-medium">Thinking:</span>
           </button>
           {thinkingOpen && (
             <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
@@ -2217,6 +2217,8 @@ export function ChatPanel() {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
 
+    setManagerResponding(true);
+    setBuildPhase("thinking");
     setChatMode("build");
     setReviewPhase("building");
     setFixCycle(0);
@@ -2520,10 +2522,11 @@ export function ChatPanel() {
       buildReaderRef.current = null;
     }
     setAiResponding(false);
+    setManagerResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
     setBuildPhase(null);
-  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
+  }, [setAiResponding, setManagerResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
 
   const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
@@ -2756,7 +2759,7 @@ export function ChatPanel() {
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
-        {isExecuting && buildPhase && (
+        {(isBusy || isExecuting) && buildPhase && (
           <div className="flex items-center gap-1.5 px-1 pb-1.5">
             <span className="relative flex h-2 w-2 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
