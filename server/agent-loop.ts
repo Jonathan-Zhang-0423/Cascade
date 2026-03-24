@@ -2,7 +2,6 @@ import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { withRetry } from "./retry";
 import type { SseEmit } from "./build-orchestrator";
 import type OpenAI from "openai";
-import type { AIProvider } from "./kimi-client";
 
 export type ToolHandler = (args: Record<string, unknown>, emit: SseEmit) => Promise<string>;
 export type ToolHandlers = Record<string, ToolHandler>;
@@ -40,19 +39,13 @@ export async function runAgentLoop(
   tools: ToolSchema[],
   handlers: ToolHandlers,
   emit: SseEmit,
-  opts: { maxIterations?: number; exitTools?: string[]; provider?: AIProvider } = {},
+  opts: { maxIterations?: number; exitTools?: string[]; client?: OpenAI; model?: string } = {},
 ): Promise<AgentLoopResult> {
   const maxIterations = opts.maxIterations ?? 30;
   const exitTools = new Set(opts.exitTools ?? []);
 
-  let activeClient = doubaoClient;
-  let activeModel = DOUBAO_MODEL;
-  if (opts.provider === "kimi") {
-    const { getAIClient } = await import("./kimi-client");
-    const kimi = getAIClient("kimi");
-    activeClient = kimi.client;
-    activeModel = kimi.model;
-  }
+  const activeClient = opts.client ?? doubaoClient;
+  const activeModel = opts.model ?? DOUBAO_MODEL;
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },

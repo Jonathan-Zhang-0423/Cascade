@@ -2,7 +2,7 @@ import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
-import type { AIProvider } from "./kimi-client";
+import { getAIClient, type AIProvider } from "./kimi-client";
 import {
   buildBuilderTools,
   buildVerifierTools,
@@ -169,6 +169,8 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
+  const { client: aiClient, model: aiModel } = getAIClient(session.provider ?? "doubao");
+
   if (!session.skillContent) {
     const planText = [
       userRequest,
@@ -197,7 +199,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       builderTools.schemas,
       builderTools.handlers,
       emit,
-      { exitTools: ["request_review"], maxIterations: 50, provider: session.provider },
+      { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -238,7 +240,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         verifierTools.schemas,
         verifierTools.handlers,
         emit,
-        { exitTools: ["submit_verdict"], maxIterations: 30, provider: session.provider },
+        { exitTools: ["submit_verdict"], maxIterations: 30, client: aiClient, model: aiModel },
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -302,7 +304,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
           fixerTools.schemas,
           fixerTools.handlers,
           emit,
-          { exitTools: ["request_review"], maxIterations: 50, provider: session.provider },
+          { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel },
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

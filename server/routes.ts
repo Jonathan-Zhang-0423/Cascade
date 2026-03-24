@@ -541,7 +541,7 @@ export async function registerRoutes(
           managerTools.schemas,
           managerTools.handlers,
           emitRawToken,
-          { exitTools: ["submit_plan"], maxIterations: 10, provider: activeProvider },
+          { exitTools: ["submit_plan"], maxIterations: 10, client: activeAIClient, model: activeAIModel },
         );
 
         clearInterval(heartbeat);
