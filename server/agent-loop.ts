@@ -56,6 +56,12 @@ export async function runAgentLoop(
   let exitTool: string | undefined;
   let exitArgs: Record<string, unknown> | undefined;
 
+  const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
+  const thinkingParam = isDoubaoModel
+    ? { thinking: { type: "enabled", budget_tokens: 8192 } }
+    : {};
+  const timeoutMs = isDoubaoModel ? 90_000 : 30_000;
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const response = await withRetry(
       `runAgentLoop iteration ${iteration + 1}`,
@@ -64,12 +70,13 @@ export async function runAgentLoop(
           {
             model: activeModel,
             messages,
+            ...thinkingParam,
             tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
             tool_choice: tools.length > 0 ? "auto" : undefined,
             stream: true,
             max_tokens: 16384,
-          },
-          { timeout: 30_000 },
+          } as any,
+          { timeout: timeoutMs },
         ),
     );
 
