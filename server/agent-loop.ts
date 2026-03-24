@@ -57,10 +57,13 @@ export async function runAgentLoop(
   let exitArgs: Record<string, unknown> | undefined;
 
   const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
+  const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const thinkingParam = isDoubaoModel
     ? { thinking: { type: "enabled", budget_tokens: 8192 } }
-    : {};
-  const timeoutMs = isDoubaoModel ? 90_000 : 30_000;
+    : isKimiModel
+      ? { thinking: { type: "enabled" } }
+      : {};
+  const timeoutMs = (isDoubaoModel || isKimiModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const response = await withRetry(
@@ -91,6 +94,9 @@ export async function runAgentLoop(
       const delta = choice.delta as typeof choice.delta & { reasoning_content?: string };
 
       if (delta.reasoning_content) {
+        if (!reasoningContent) {
+          console.log(`[agent-loop] first thinking_token from ${activeModel}, iteration=${iteration + 1}`);
+        }
         reasoningContent += delta.reasoning_content;
         emit({ type: "thinking_token", token: delta.reasoning_content });
       }
