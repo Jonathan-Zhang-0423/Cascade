@@ -12,6 +12,10 @@ export type AIProvider = "doubao" | "kimi";
 
 export function getAIClient(provider: AIProvider): { client: OpenAI; model: string } {
   if (provider === "kimi") {
+    if (!process.env.KIMI_API_KEY) {
+      console.warn("[getAIClient] KIMI_API_KEY not set, falling back to Doubao");
+      return { client: doubaoClient, model: DOUBAO_MODEL };
+    }
     return { client: kimiClient, model: KIMI_MODEL };
   }
   return { client: doubaoClient, model: DOUBAO_MODEL };

@@ -2648,33 +2648,36 @@ export function ChatPanel() {
               </div>
               <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">{tGlobal("chat.planMode")}</span>
             </button>
-            <button
-              className={cn(
-                "flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors text-[11px] font-medium",
-                kimiAvailable
-                  ? "hover:bg-muted/50 text-muted-foreground hover:text-foreground cursor-pointer"
-                  : "text-muted-foreground/40 cursor-not-allowed"
-              )}
-              onClick={kimiAvailable ? () => setSelectedProvider(selectedProvider === "doubao" ? "kimi" : "doubao") : undefined}
-              data-testid="toggle-model-provider"
+            <span
               title={
                 kimiAvailable
                   ? (selectedProvider === "doubao" ? "Switch to Kimi K2.5" : "Switch to Doubao")
                   : "KIMI_API_KEY not configured"
               }
-              disabled={!kimiAvailable}
             >
-              <span className={cn(
-                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
-                kimiAvailable && selectedProvider === "kimi"
-                  ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
-                  : kimiAvailable
-                    ? "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
-                    : "bg-muted/30 border-muted-foreground/10 text-muted-foreground/40"
-              )}>
-                {kimiAvailable && selectedProvider === "kimi" ? "Kimi K2.5" : "Doubao"}
-              </span>
-            </button>
+              <button
+                className={cn(
+                  "flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors text-[11px] font-medium",
+                  kimiAvailable
+                    ? "hover:bg-muted/50 text-muted-foreground hover:text-foreground cursor-pointer"
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                )}
+                onClick={kimiAvailable ? () => setSelectedProvider(selectedProvider === "doubao" ? "kimi" : "doubao") : undefined}
+                data-testid="toggle-model-provider"
+                disabled={!kimiAvailable}
+              >
+                <span className={cn(
+                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
+                  kimiAvailable && selectedProvider === "kimi"
+                    ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
+                    : kimiAvailable
+                      ? "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
+                      : "bg-muted/30 border-muted-foreground/10 text-muted-foreground/40"
+                )}>
+                  {kimiAvailable && selectedProvider === "kimi" ? "Kimi K2.5" : "Doubao"}
+                </span>
+              </button>
+            </span>
             <div className="flex-1" />
             <Button
               size="icon"
