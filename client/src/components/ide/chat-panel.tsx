@@ -896,16 +896,11 @@ function ReviewStatusBadge({ phase, fixCycle, review, lang }: {
   review: HolisticReviewResult | null;
   lang: PlanCardLang;
 }) {
-  if (phase === "idle") return null;
+  if (phase === "idle" || phase === "building") return null;
 
   const issueCount = review ? (review.bugs?.length || 0) + (review.missing_features?.length || 0) + (review.regressions?.length || 0) : 0;
 
   const configs: Record<string, { icon: JSX.Element; text: string; color: string }> = {
-    building: {
-      icon: <Loader2 className="w-3 h-3 animate-spin" />,
-      text: t(lang, "building"),
-      color: "text-blue-400",
-    },
     reviewing: {
       icon: <Search className="w-3 h-3 animate-pulse" />,
       text: t(lang, "reviewing"),
