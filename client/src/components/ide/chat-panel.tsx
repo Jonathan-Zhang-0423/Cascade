@@ -1835,27 +1835,33 @@ export function ChatPanel() {
             managerAccumulated += ev.token;
             if (isCurrentProject) {
               const display = stripProjectNameMarker(managerAccumulated);
-              if (!messageInserted) {
-                const msgs = useIDEStore.getState().managerMessages;
-                const typingIdx = msgs.findIndex((m) => m.typing === true);
-                if (typingIdx !== -1) {
-                  const updated = [...msgs];
-                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
-                  useIDEStore.setState({ managerMessages: updated });
-                  streamingMsgIndex = typingIdx;
-                } else {
-                  addManagerMessage({ role: "assistant", content: display, source: "manager" });
-                  streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-                }
-                messageInserted = true;
-              } else {
-                const msgs = useIDEStore.getState().managerMessages;
-                if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
-                  const target = msgs[streamingMsgIndex];
-                  if (target?.role === "assistant" && !target.plan) {
+              // Suppress raw JSON tokens — if the accumulated content looks like a
+              // JSON plan object (starts with '{'), don't stream it character-by-character
+              // to the user; we'll handle it properly in manager_done.
+              const looksLikePlanJson = display.trimStart().startsWith("{");
+              if (!looksLikePlanJson) {
+                if (!messageInserted) {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  const typingIdx = msgs.findIndex((m) => m.typing === true);
+                  if (typingIdx !== -1) {
                     const updated = [...msgs];
-                    updated[streamingMsgIndex] = { ...target, content: display };
+                    updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
                     useIDEStore.setState({ managerMessages: updated });
+                    streamingMsgIndex = typingIdx;
+                  } else {
+                    addManagerMessage({ role: "assistant", content: display, source: "manager" });
+                    streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+                  }
+                  messageInserted = true;
+                } else {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
+                    const target = msgs[streamingMsgIndex];
+                    if (target?.role === "assistant" && !target.plan) {
+                      const updated = [...msgs];
+                      updated[streamingMsgIndex] = { ...target, content: display };
+                      useIDEStore.setState({ managerMessages: updated });
+                    }
                   }
                 }
               }
@@ -1964,17 +1970,71 @@ export function ChatPanel() {
               renameProject(projectId, nameFromDone);
             }
 
-            if (!messageInserted && managerAccumulated) {
+            if (managerAccumulated) {
               const canonical = stripProjectNameMarker(managerAccumulated);
               if (canonical) {
-                const msgs = useIDEStore.getState().managerMessages;
-                const typingIdx = msgs.findIndex((m) => m.typing === true);
-                if (typingIdx !== -1) {
-                  const updated = [...msgs];
-                  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: canonical, source: "manager" as const };
-                  useIDEStore.setState({ managerMessages: updated });
-                } else {
-                  addManagerMessage({ role: "assistant", content: canonical, source: "manager" });
+                // Detect if the accumulated content is a JSON plan object
+                let parsedPlan: any = null;
+                try {
+                  const trimmed = canonical.trim();
+                  if (trimmed.startsWith("{")) {
+                    const parsed = JSON.parse(trimmed);
+                    if (parsed && typeof parsed === "object" && (parsed.overview || parsed.whatAndWhy || parsed.steps)) {
+                      parsedPlan = parsed;
+                    }
+                  }
+                } catch {
+                  // not JSON, treat as plain text
+                }
+
+                if (parsedPlan) {
+                  // Remove any streaming or typing bubble that was accumulating the raw JSON
+                  if (messageInserted && streamingMsgIndex >= 0) {
+                    const msgs = useIDEStore.getState().managerMessages;
+                    if (streamingMsgIndex < msgs.length) {
+                      const stale = msgs[streamingMsgIndex];
+                      if (stale?.role === "assistant" && !stale.plan) {
+                        const cleaned = [...msgs];
+                        cleaned.splice(streamingMsgIndex, 1);
+                        useIDEStore.setState({ managerMessages: cleaned });
+                      }
+                    }
+                    messageInserted = false;
+                    streamingMsgIndex = -1;
+                  }
+                  removeTypingBubble();
+                  const steps = normalizeSteps(parsedPlan);
+                  if (steps.length > 0) {
+                    // Full plan card rendering
+                    clearManagerPlan();
+                    for (const step of steps) {
+                      updateTaskStatus(String(step.step), "pending");
+                    }
+                    setManagerPlan(parsedPlan);
+                    addManagerMessage({ role: "assistant", content: "", plan: parsedPlan });
+                  } else {
+                    // Fallback: plan object has no steps — extract readable prose fields
+                    const fallbackText = parsedPlan.overview || parsedPlan.whatAndWhy || parsedPlan.title || JSON.stringify(parsedPlan);
+                    const msgs = useIDEStore.getState().managerMessages;
+                    const typingIdx = msgs.findIndex((m) => m.typing === true);
+                    if (typingIdx !== -1) {
+                      const updated = [...msgs];
+                      updated[typingIdx] = { ...updated[typingIdx], typing: false, content: fallbackText, source: "manager" as const };
+                      useIDEStore.setState({ managerMessages: updated });
+                    } else {
+                      addManagerMessage({ role: "assistant", content: fallbackText, source: "manager" });
+                    }
+                  }
+                } else if (!messageInserted) {
+                  const msgs = useIDEStore.getState().managerMessages;
+                  const typingIdx = msgs.findIndex((m) => m.typing === true);
+                  if (typingIdx !== -1) {
+                    const updated = [...msgs];
+                    updated[typingIdx] = { ...updated[typingIdx], typing: false, content: canonical, source: "manager" as const };
+                    useIDEStore.setState({ managerMessages: updated });
+                  } else {
+                    addManagerMessage({ role: "assistant", content: canonical, source: "manager" });
+                  }
                 }
               }
             }
