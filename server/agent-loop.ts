@@ -85,6 +85,7 @@ export async function runAgentLoop(
 
       if (delta.reasoning_content) {
         reasoningContent += delta.reasoning_content;
+        emit({ type: "thinking_token", token: delta.reasoning_content });
       }
 
       if (delta.content) {

@@ -2154,6 +2154,7 @@ export function ChatPanel() {
     let commAccumulated = "";
     let commMsgIndex = -1;
     let editorAccumulated = "";
+    let thinkingCharCount = 0;
 
     const flushNarrationToStore = () => {
       if (!commAccumulated) return;
@@ -2177,6 +2178,7 @@ export function ChatPanel() {
     const resetNarration = () => {
       commAccumulated = "";
       commMsgIndex = -1;
+      thinkingCharCount = 0;
     };
 
     const finalizeEditor = () => {
@@ -2234,6 +2236,36 @@ export function ChatPanel() {
           // Local bookkeeping — always runs regardless of which project is active.
           if (type === "step_starting") {
             finalizeEditor(); resetNarration();
+            setBuildPhase("thinking");
+            // Immediately inject a step-progress message so the user sees feedback
+            // even when the AI provider emits no delta.content (e.g. Kimi thinking mode).
+            const isCurrentProjectNow = useIDEStore.getState().projectId === projectId;
+            if (isCurrentProjectNow) {
+              const stepNum = (ev.stepNumber as number) ?? 1;
+              const stepTitle = (ev.stepTitle as string) || "";
+              const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
+              const header = totalSteps > 1
+                ? `Step ${stepNum}/${totalSteps}: ${stepTitle}`
+                : stepTitle;
+              commAccumulated = header;
+              addManagerMessage({ role: "assistant", content: header, source: "communicator" });
+              commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+            }
+          } else if (type === "thinking_token") {
+            // Stream Kimi's reasoning_content into the step message (capped at 300 chars)
+            const token = (ev.token as string) || "";
+            if (token && thinkingCharCount < 300) {
+              const remaining = 300 - thinkingCharCount;
+              const slice = token.slice(0, remaining);
+              // Add a separator before the first thinking chunk (only if there's already header content)
+              if (thinkingCharCount === 0 && commAccumulated.length > 0) {
+                commAccumulated += "\n\n";
+              }
+              thinkingCharCount += slice.length;
+              commAccumulated += slice;
+              flushNarrationToStore();
+              await new Promise<void>(r => setTimeout(r, 0));
+            }
             setBuildPhase("thinking");
           } else if (type === "narration_token") {
             commAccumulated += ev.token || "";
