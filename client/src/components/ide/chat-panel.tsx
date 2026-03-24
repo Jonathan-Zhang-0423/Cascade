@@ -3,6 +3,7 @@ import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, t
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { useT, tr } from "@/lib/i18n";
+import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -2564,25 +2565,34 @@ export function ChatPanel() {
   };
 
   const handleSmartResponse = useCallback(async () => {
-    const msgs = chatMode === "manager"
-      ? managerMessages.filter(m => !m.hidden).map(m => ({ role: m.role, content: m.content }))
-      : chatMessages.filter(m => m.role !== "checkpoint" && !m.hidden).map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const validRoles = new Set(["user", "assistant"]);
+    const msgs = (chatMode === "manager" ? managerMessages : chatMessages)
+      .filter(m => !m.hidden && !m.typing && validRoles.has(m.role) && m.content?.trim())
+      .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     if (msgs.length === 0) return;
+
+    const hasChinese = msgs.some(m => /[\u4e00-\u9fff]/.test(m.content));
+    const language = hasChinese ? "Chinese" : "English";
 
     setSmartResponseLoading(true);
     try {
       const res = await fetch("/api/smart-response", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: msgs, mode: chatMode }),
+        body: JSON.stringify({ messages: msgs, mode: chatMode, language }),
       });
       const data = await res.json();
       if (data.suggestion) {
         setInput(data.suggestion);
         setTimeout(() => textareaRef.current?.focus(), 50);
+      } else if (data.error) {
+        console.error("Smart response error:", data.error);
+        toast({ title: "Smart response failed", description: data.error, variant: "destructive" });
       }
-    } catch {
+    } catch (err) {
+      console.error("Smart response fetch error:", err);
+      toast({ title: "Smart response failed", description: "Network error", variant: "destructive" });
     } finally {
       setSmartResponseLoading(false);
     }

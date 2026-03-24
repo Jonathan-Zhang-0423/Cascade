@@ -1161,21 +1161,23 @@ export async function registerRoutes(
         return;
       }
 
-      const { messages, mode } = req.body;
+      const { messages, mode, language = "English" } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages are required" });
         return;
       }
 
-      const systemPrompt = `You are a smart response generator for a beginner-friendly coding assistant app.
+      const systemPrompt = `You MUST respond only in ${language}.
+
+You are a smart response generator for a beginner-friendly coding assistant app.
 
 Given a conversation between a user and an AI coding assistant, your job is to generate the most helpful and natural response that the USER would likely want to send next.
 
 Rules:
 - Output ONLY the user's response text — no explanations, no quotes, no meta-commentary
 - Keep it concise and direct (1–4 sentences)
-- Match the language of the conversation (write in Chinese if the conversation is in Chinese, English if English)
+- You MUST write your response in ${language} only
 - Address exactly what the AI assistant just asked, proposed, or explained
 - Write in first person as the user (e.g. "I want...", "Yes, please...", "Let's go with...")
 - For choices or yes/no questions, pick the most sensible option and briefly explain why
@@ -1192,12 +1194,13 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
           })),
           {
             role: "user",
-            content:
-              "[Generate a suggested response for me to send to the assistant. Output only the response text itself.]",
+            content: language === "Chinese"
+              ? "[请为我生成一条发送给助手的建议回复。只输出回复文本本身。]"
+              : "[Generate a suggested response for me to send to the assistant. Output only the response text itself.]",
           },
         ],
         stream: false,
-        max_tokens: 16384,
+        max_tokens: 400,
       });
 
       const suggestion = completion.choices[0]?.message?.content?.trim() || "";
