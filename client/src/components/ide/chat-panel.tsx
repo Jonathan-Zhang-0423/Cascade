@@ -1813,6 +1813,7 @@ export function ChatPanel() {
       let managerAccumulated = "";
       let messageInserted = false;
       let streamingMsgIndex = -1;
+      let managerThinkingAccumulated = "";
 
       let commAccumulated = "";
       let commInserted = false;
@@ -1839,7 +1840,27 @@ export function ChatPanel() {
           const evType = ev.type;
           const isCurrentProject = useIDEStore.getState().projectId === projectId;
 
-          if (evType === "raw_token" || evType === "manager_token") {
+          if (evType === "thinking_token") {
+            const token = (ev.token as string) || "";
+            if (token && isCurrentProject) {
+              managerThinkingAccumulated += token;
+              const msgs = useIDEStore.getState().managerMessages;
+              let idx = streamingMsgIndex;
+              if (idx === -1 || !msgs[idx] || msgs[idx].role !== "assistant") {
+                const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
+                idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
+              }
+              if (idx !== -1) {
+                const target = msgs[idx];
+                if (target?.role === "assistant") {
+                  const updated = [...msgs];
+                  updated[idx] = { ...target, thinking: managerThinkingAccumulated };
+                  useIDEStore.setState({ managerMessages: updated });
+                }
+              }
+              await new Promise<void>(r => setTimeout(r, 0));
+            }
+          } else if (evType === "raw_token" || evType === "manager_token") {
             managerAccumulated += ev.token;
             if (isCurrentProject) {
               const display = stripProjectNameMarker(managerAccumulated);

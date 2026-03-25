@@ -531,6 +531,8 @@ export async function registerRoutes(
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
           emit({ type: "raw_token", token: data.token });
+        } else if (data.type === "thinking_token" && typeof data.token === "string") {
+          emit({ type: "thinking_token", token: data.token });
         }
       };
 
