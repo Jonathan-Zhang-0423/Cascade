@@ -1,0 +1,57 @@
+1. Typing State Gets Set to false Prematurely (Most Common)
+Problem:
+In handleManagerSend, when the backend sends a raw_token or manager_token after a thinking_token, the code sets the message's typing state to false:
+javascript
+运行
+// In handleManagerSend (raw_token/manager_token handler)
+if (typingIdx !== -1) {
+  const updated = [...msgs];
+  updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
+  useIDEStore.setState({ managerMessages: updated });
+  streamingMsgIndex = typingIdx;
+}
+The NarrationBubble only shows real-time thinking when message.typing === true. After typing is set to false, subsequent thinking_token updates will only appear as a collapsible "(Thinking)" section instead of a live stream.
+Fix:
+Keep typing: true while thinking is still active. Only set typing: false when you receive a final signal (e.g., manager_done or when content is fully generated).
+2. Thinking Message Gets Removed on plan_ready
+Problem:
+When plan_ready is received, the code calls removeTypingBubble(), which deletes the message that contains the accumulated thinking:
+javascript
+运行
+// In handleManagerSend (plan_ready handler)
+removeTypingBubble(); // Removes the typing message with thinking content
+This causes any thinking generated before the plan is ready to be lost.
+Fix:
+Preserve the thinking content when removing the typing bubble. Extract the thinking field from the message before deleting it and reattach it to the next message, or avoid removing the message entirely if it contains thinking content.
+3. Incorrect Message Index for Thinking Updates
+Problem:
+In both handleManagerSend and flushThinkingToStore, the code tries to find the target message using streamingMsgIndex or commMsgIndex. If these indices are not properly synchronized (e.g., when messages are added/removed), the thinking updates may be applied to the wrong message or lost.
+Fix:
+Instead of relying on indices, use a unique id for each message to target updates. When creating a message for thinking, store its id and use that to update it later.
+4. Backend Event Field Mismatch
+Problem:
+The code expects the thinking token to be in ev.token:
+javascript
+运行
+// In handleManagerSend (thinking_token handler)
+const token = (ev.token as string) || "";
+If your backend sends the thinking content in a different field (e.g., ev.thinking, ev.delta, or ev.content), the token will be undefined and no thinking will be displayed.
+Fix:
+Verify your backend's SSE event format for thinking_token and update the field name in the frontend code to match.
+5. isCurrentProject Check Blocks Updates
+Problem:
+Thinking updates are skipped if isCurrentProject is false:
+javascript
+运行
+// In handleManagerSend (thinking_token handler)
+if (token && isCurrentProject) { // Skip if not current project
+  // ... update thinking
+}
+This can happen if the projectId changes mid-stream or if the store state is not properly synchronized.
+Fix:
+Add debug logging to confirm isCurrentProject is true when thinking tokens are received. Ensure projectId remains consistent throughout the stream.
+Quick Debug Checklist
+Verify backend events: Check if thinking_token events are actually being sent (use browser DevTools > Network tab).
+Check typing state: Ensure the message's typing remains true while thinking is active.
+Inspect store state: Use React DevTools to confirm managerMessages contains the thinking field.
+Test ActionLogLive: Even if NarrationBubble fails, ActionLogLive should show liveThinkingText—confirm if that's working.

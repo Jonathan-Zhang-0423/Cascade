@@ -2802,6 +2802,7 @@ export function ChatPanel() {
             setLiveNarrationText("");
             appendActionLog({ type: actionType, label, detail, timestamp: Date.now(), filePath });
           } else if (type === "narration_token") {
+            setLiveThinkingText("");
             commAccumulated += ev.token || "";
             setLiveNarrationText(commAccumulated);
             setBuildPhase("working");
