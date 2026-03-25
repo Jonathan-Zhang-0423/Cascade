@@ -1,5 +1,11 @@
-const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_ATTEMPTS = 4;
 const BASE_DELAY_MS = 100;
+const RATE_LIMIT_BASE_DELAY_MS = 3000;
+
+function isRateLimitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("429") || msg.includes("rate") || msg.includes("速率限制");
+}
 
 export async function withRetry<T>(
   label: string,
@@ -20,9 +26,11 @@ export async function withRetry<T>(
       const errMsg = err instanceof Error ? err.message : String(err);
 
       if (attempt < maxAttempts) {
-        const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        const isRateLimit = isRateLimitError(err);
+        const baseDelay = isRateLimit ? RATE_LIMIT_BASE_DELAY_MS : BASE_DELAY_MS;
+        const delayMs = baseDelay * Math.pow(2, attempt - 1);
         console.warn(
-          `[retry] ${label} — attempt ${attempt}/${maxAttempts} failed: ${errMsg}. Retrying in ${delayMs}ms…`,
+          `[retry] ${label} — attempt ${attempt}/${maxAttempts} failed: ${errMsg}. ${isRateLimit ? "Rate limited — " : ""}Retrying in ${delayMs}ms…`,
         );
         await new Promise<void>(resolve => setTimeout(resolve, delayMs));
       } else {
