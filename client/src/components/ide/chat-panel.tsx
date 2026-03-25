@@ -1966,7 +1966,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages]);
+  }, [chatMessages, managerMessages, liveActionLog]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2760,8 +2760,11 @@ export function ChatPanel() {
               commAccumulated = "";
               addManagerMessage({ role: "assistant", content: stepLabel, source: "communicator", typing: true });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+              // Set isExecuting=true before the yield so ActionLogLive renders in the same
+              // render cycle as the step-header message (not one async tick later).
+              setExecutingTaskIndex(stepNum - 1);
             }
-            // Yield so React commits the step-header message before thinking tokens arrive.
+            // Yield so React commits the step-header + ActionLogLive before thinking tokens arrive.
             await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
@@ -2884,7 +2887,8 @@ export function ChatPanel() {
           // UI / Zustand updates (only when on the correct project)
           if (type === "step_starting") {
             updateTaskStatus(String(ev.stepNumber), "running");
-            setExecutingTaskIndex((ev.stepNumber as number) - 1);
+            // setExecutingTaskIndex is called in the local block above (before the yield)
+            // so ActionLogLive renders immediately with the step entry.
           } else if (type === "code_applied") {
             await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
             refreshPreview();
@@ -3244,10 +3248,10 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {isManagerResponding && (
+        {isManagerResponding && chatMode !== "build" && (
           <TypingIndicator text={t(getPlanCardLang(), "planning")} />
         )}
-        {isExecuting && liveActionLog.length > 0 && (
+        {isExecuting && (liveActionLog.length > 0 || !!liveThinkingText) && (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
             <ActionLogLive entries={liveActionLog} thinkingText={liveThinkingText || undefined} />
           </div>
