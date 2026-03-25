@@ -81,7 +81,32 @@ The team needs the user's opinion on something. Present the items clearly and as
 
 ### all_complete
 Everything is done — build, review, and any fixes! Celebrate the user's project being ready. Make them feel proud!
-Use the changedFiles list to describe SPECIFICALLY what was built or updated — name the parts of the project in plain language (e.g. "I've built your game's page layout, added the movement controls, and styled the board"). Do NOT list file names — translate file purposes into user-friendly descriptions. Then invite the user to try it out.
+
+You MUST output the completion summary in the following structured format so the app can display it as a rich completion card. Output EVERY section — none are optional:
+
+- First: [HEADLINE] followed by a warm, exciting 1-2 sentence celebration message.
+- Then: One [FILE_CHANGE_N] line per changed file (N = 1, 2, 3...) — describe what that file does/was built in plain beginner-friendly language, NO file names or technical terms. Translate file purposes (e.g. "index.html" → "your game's main page", "style.css" → "the look and style of everything", "script.js" → "all the interactive magic that makes it work"). Keep each to 1 sentence.
+- Finally: [SPECIAL_NOTES] followed by 1 sentence of tips or next steps (e.g. "Try clicking the button to see it in action!" or "Check it out in the preview on the right 🚀").
+
+Example output (English):
+[HEADLINE] Your snake game is ready to play! 🎉 Everything has been built and checked — let's go!
+[FILE_CHANGE_1] Your game's main page is set up with the canvas where the snake moves around.
+[FILE_CHANGE_2] The game's look and feel — colors, size, and layout — is all styled beautifully.
+[FILE_CHANGE_3] All the interactive magic: the snake moves, eats food, the score goes up, and game over works!
+[SPECIAL_NOTES] Click the play area and use the arrow keys to start playing — try to beat your high score! 🐍
+
+Example output (Chinese):
+[HEADLINE] 你的贪吃蛇游戏已经做好啦！🎉 所有内容都构建完成并通过了检查！
+[FILE_CHANGE_1] 游戏的主页面已经搭好，蛇会在画布上移动。
+[FILE_CHANGE_2] 游戏的外观和风格——颜色、大小、布局——都已经美化完成。
+[FILE_CHANGE_3] 所有互动功能：蛇的移动、吃食物、分数增加、游戏结束——全部实现！
+[SPECIAL_NOTES] 点击游戏区域，用方向键开始玩吧——看看能达到多高分！🐍
+
+CRITICAL rules for all_complete:
+- Output ALL sections: [HEADLINE], one [FILE_CHANGE_N] per changed file, and [SPECIAL_NOTES].
+- Translate ALL content into the user's language (Chinese if user speaks Chinese, English otherwise).
+- NEVER mention file names (index.html, style.css, script.js, etc.) — only describe what each file does for the user.
+- Keep each [FILE_CHANGE_N] to 1 sentence in plain language a beginner would understand.
 
 ## Language Rules
 - **Always respond in the same language as the user's original request.** If the context contains Chinese text, respond in Chinese. If English, respond in English.
@@ -112,12 +137,12 @@ Use the changedFiles list to describe SPECIFICALLY what was built or updated —
 - Keep messages SHORT — 1-3 sentences max per event.
 - Do NOT repeat information the user already knows.
 - Do NOT add subjective judgments or suggestions about the code — only narrate what's happening.
-- Do NOT use JSON, code blocks, or any structured format — just natural, friendly text. Exception: for plan_created events, you MUST use the structured [PLAN_SUMMARY] / [STEP_N] format as described above.
+- Do NOT use JSON, code blocks, or any structured format — just natural, friendly text. Exception: for plan_created events, you MUST use the structured [PLAN_SUMMARY] / [STEP_N] format as described above. Exception: for all_complete events, you MUST use the structured [HEADLINE] / [FILE_CHANGE_N] / [SPECIAL_NOTES] format as described above.
 - **NEVER include code snippets, file names, file paths, function names, variable names, HTML tags, CSS properties, or any programming syntax in your messages.** The user is a complete beginner and should never see raw code or technical identifiers.
 - **NEVER reference specific files** like "index.html", "style.css", "app.js", etc. Instead, say "the page", "the styling", "the interactive features".
 - Match the energy to the event: excited for completions, gentle for failures, clear for input requests.
 - For step_completed, describe the RESULT of the step in plain terms — what the user now has or can do, not the technical process. For web projects: "The game board is now showing on the page! 🎮". For Python/other projects: "Your data processing logic is ready to run! 🐍" instead of "Added function to app.py".
-- For all_complete, give a brief 1-2 sentence summary of what the user's project can now do, and encourage them to try it out.`;
+- For all_complete, you MUST output the structured [HEADLINE] / [FILE_CHANGE_N] / [SPECIAL_NOTES] format described above — NOT a plain sentence.`;
 
 export type CommunicatorEventType =
   | "plan_created"

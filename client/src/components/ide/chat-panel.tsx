@@ -8,8 +8,333 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine, Brain, Terminal, FilePlus, FileSearch, Wrench, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+export interface ActionLogEntry {
+  type: "thinking" | "tool_call" | "file_read" | "file_write" | "step" | "narration";
+  label: string;
+  detail: string;
+  timestamp: number;
+  filePath?: string;
+}
+
+function getActionLogIcon(type: ActionLogEntry["type"]) {
+  switch (type) {
+    case "thinking": return <Brain className="w-3 h-3 shrink-0" />;
+    case "file_write": return <FilePlus className="w-3 h-3 shrink-0" />;
+    case "file_read": return <FileSearch className="w-3 h-3 shrink-0" />;
+    case "tool_call": return <Terminal className="w-3 h-3 shrink-0" />;
+    case "step": return <ListChecks className="w-3 h-3 shrink-0" />;
+    case "narration": return <Wrench className="w-3 h-3 shrink-0" />;
+    default: return <Wrench className="w-3 h-3 shrink-0" />;
+  }
+}
+
+function getActionLogColor(type: ActionLogEntry["type"]): string {
+  switch (type) {
+    case "thinking": return "text-blue-400";
+    case "file_write": return "text-green-400";
+    case "file_read": return "text-amber-400";
+    case "tool_call": return "text-purple-400";
+    case "step": return "text-primary";
+    case "narration": return "text-muted-foreground";
+    default: return "text-muted-foreground";
+  }
+}
+
+function ActionLogLiveRow({ entry, showCodePreview }: { entry: ActionLogEntry; showCodePreview?: boolean }) {
+  const color = getActionLogColor(entry.type);
+  const icon = getActionLogIcon(entry.type);
+  const label = entry.label.length > 50 ? entry.label.slice(0, 50) + "…" : entry.label;
+  const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
+
+  return (
+    <div className="space-y-0">
+      <div className={cn("flex items-center gap-1.5 py-0.5 text-[11px]", color)}>
+        {icon}
+        <span className="truncate leading-tight font-medium">{label}</span>
+        {isFileEntry && entry.filePath && (
+          <span className="ml-auto shrink-0 text-muted-foreground/40 text-[10px] font-mono">{entry.filePath}</span>
+        )}
+      </div>
+      {showCodePreview && isFileEntry && entry.detail && entry.detail.trim().length > 0 && (
+        <div
+          className="rounded overflow-hidden text-[10px] font-mono leading-relaxed max-h-[120px] overflow-y-hidden relative"
+          style={{ backgroundColor: "#1E1E1E", color: "#D4D4D4" }}
+        >
+          <div className="absolute inset-x-0 bottom-0 h-8 pointer-events-none" style={{ background: "linear-gradient(transparent, #1E1E1E)" }} />
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
+            <tbody>
+              {entry.detail.split("\n").slice(0, 20).map((line, li) => (
+                <tr key={li} style={{ height: "17px" }}>
+                  <td
+                    className="select-none text-right sticky left-0"
+                    style={{ padding: "0 5px", color: "#858585", width: "32px", minWidth: "32px", borderRight: "1px solid #333", backgroundColor: "#1E1E1E" }}
+                  >
+                    {li + 1}
+                  </td>
+                  <td style={{ padding: "0 8px", whiteSpace: "pre" }}>
+                    <code>{line}</code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionLogLive({ entries, thinkingText }: { entries: ActionLogEntry[]; thinkingText?: string }) {
+  const last5 = entries.slice(-5);
+  const lastFileIdx = [...last5].map((e, i) => ({ e, i })).filter(({ e }) => e.type === "file_write" || e.type === "file_read").pop()?.i ?? -1;
+
+  return (
+    <div className="px-3 py-2 space-y-1" data-testid="action-log-live">
+      {thinkingText && (
+        <div className="flex items-center gap-1.5 py-0.5 text-[11px] text-blue-400">
+          <Brain className="w-3 h-3 shrink-0 animate-pulse" />
+          <span className="truncate leading-tight italic text-muted-foreground/70">
+            {thinkingText.split("\n").filter(Boolean).pop()?.slice(0, 80) || "Thinking…"}
+          </span>
+        </div>
+      )}
+      {last5.map((entry, i) => (
+        <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === lastFileIdx} />
+      ))}
+    </div>
+  );
+}
+
+function ActionLogChip({ entry, index }: { entry: ActionLogEntry; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const color = getActionLogColor(entry.type);
+  const icon = getActionLogIcon(entry.type);
+  const label = entry.label.length > 45 ? entry.label.slice(0, 45) + "…" : entry.label;
+  const hasDetail = entry.detail && entry.detail.trim().length > 0;
+
+  const isCodeEntry = entry.type === "file_write" || entry.type === "file_read";
+
+  return (
+    <div
+      className="border border-border/30 rounded-md overflow-hidden"
+      data-testid={`action-chip-${index}`}
+    >
+      <button
+        className={cn(
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          color
+        )}
+        onClick={() => hasDetail && setExpanded(e => !e)}
+        disabled={!hasDetail}
+        data-testid={`button-action-chip-${index}`}
+      >
+        {icon}
+        <span className="flex-1 truncate leading-tight">{label}</span>
+        {hasDetail && (
+          <span className="shrink-0 text-muted-foreground/40">
+            {expanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
+          </span>
+        )}
+      </button>
+      {expanded && hasDetail && (
+        <div className="border-t border-border/20">
+          {isCodeEntry ? (
+            <div
+              className="overflow-x-auto max-h-[200px] overflow-y-auto text-[10px] font-mono leading-relaxed"
+              style={{ backgroundColor: "#1E1E1E", color: "#D4D4D4" }}
+            >
+              <table className="w-full" style={{ borderCollapse: "collapse" }}>
+                <tbody>
+                  {entry.detail.split("\n").map((line, li) => (
+                    <tr key={li} style={{ height: "18px" }}>
+                      <td
+                        className="select-none text-right sticky left-0"
+                        style={{ padding: "0 6px", color: "#858585", width: "36px", minWidth: "36px", borderRight: "1px solid #333333", backgroundColor: "#1E1E1E" }}
+                      >
+                        {li + 1}
+                      </td>
+                      <td style={{ padding: "0 10px", whiteSpace: "pre" }}>
+                        <code>{line}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-2 py-1.5 text-[11px] text-muted-foreground/80 whitespace-pre-wrap leading-relaxed max-h-[120px] overflow-y-auto">
+              {entry.detail}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const displayEntries = showAll ? entries : entries.slice(0, 6);
+  const hasMore = entries.length > 6;
+
+  return (
+    <div className="px-3 py-2 space-y-1" data-testid="action-log-collapsed">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <ListChecks className="w-3 h-3 text-muted-foreground/60" />
+        <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide">
+          Actions ({entries.length})
+        </span>
+      </div>
+      {displayEntries.map((entry, i) => (
+        <ActionLogChip key={i} entry={entry} index={i} />
+      ))}
+      {hasMore && !showAll && (
+        <button
+          className="text-[10px] text-primary/70 hover:text-primary transition-colors flex items-center gap-1 mt-1"
+          onClick={() => setShowAll(true)}
+          data-testid="button-show-all-actions"
+        >
+          <ChevronDown className="w-3 h-3" />
+          Show {entries.length - 6} more actions
+        </button>
+      )}
+      {showAll && hasMore && (
+        <button
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 mt-1"
+          onClick={() => setShowAll(false)}
+          data-testid="button-collapse-actions"
+        >
+          <ChevronUp className="w-3 h-3" />
+          Collapse
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface ParsedCompletion {
+  headline: string;
+  fileChanges: string[];
+  specialNotes: string;
+}
+
+function parseCompletionSummary(raw: string): ParsedCompletion | null {
+  // Extract content between markers without using dotAll flag (s) for compat
+  function extractMarker(text: string, marker: string): string | null {
+    const idx = text.indexOf(`[${marker}]`);
+    if (idx === -1) return null;
+    const start = idx + marker.length + 2;
+    const nextBracket = text.indexOf("[", start);
+    const end = nextBracket !== -1 ? nextBracket : text.length;
+    return text.slice(start, end).trim();
+  }
+
+  const headline = extractMarker(raw, "HEADLINE");
+  const fileChanges: string[] = [];
+  let n = 1;
+  while (true) {
+    const change = extractMarker(raw, `FILE_CHANGE_${n}`);
+    if (!change) break;
+    fileChanges.push(change);
+    n++;
+  }
+  const specialNotes = extractMarker(raw, "SPECIAL_NOTES");
+
+  if (!headline && fileChanges.length === 0 && !specialNotes) return null;
+  return {
+    headline: headline || "",
+    fileChanges,
+    specialNotes: specialNotes || "",
+  };
+}
+
+function BuildCompletionCard({ changedFiles, summary, userLang }: { changedFiles: string[]; summary?: string; userLang?: string }) {
+  const lang = userLang?.toLowerCase().includes("chinese") || userLang === "zh" ? "zh" : "en";
+  const isZh = lang === "zh";
+  const [showFiles, setShowFiles] = useState(false);
+
+  const defaultHeadline = isZh ? "✅ 构建完成！" : "✅ Build complete!";
+  const filesLabel = isZh ? "查看变更文件" : "View changed files";
+  const hideFilesLabel = isZh ? "隐藏文件" : "Hide files";
+  const generatingLabel = isZh ? "正在生成摘要…" : "Generating summary…";
+  const whatBuiltLabel = isZh ? "构建内容" : "What was built";
+  const nextStepsLabel = isZh ? "下一步" : "Next steps";
+
+  const parsed = summary ? parseCompletionSummary(summary) : null;
+  const headline = parsed?.headline || defaultHeadline;
+
+  return (
+    <div
+      className="mx-3 mt-2 mb-1 rounded-lg border border-green-500/25 bg-green-500/[0.04] overflow-hidden"
+      data-testid="build-completion-card"
+    >
+      <div className="px-3 py-2 border-b border-green-500/15 flex items-start gap-2">
+        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
+        <span className="text-[12.5px] font-semibold text-green-500 leading-snug" data-testid="completion-headline">
+          {headline}
+        </span>
+      </div>
+
+      {!summary && (
+        <div className="px-3 py-2">
+          <p className="text-[11px] text-muted-foreground italic">{generatingLabel}</p>
+        </div>
+      )}
+
+      {parsed && parsed.fileChanges.length > 0 && (
+        <div className="px-3 py-2.5 space-y-2">
+          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">{whatBuiltLabel}</p>
+          <ol className="space-y-1.5 list-none">
+            {parsed.fileChanges.map((change, i) => (
+              <li key={i} className="flex items-start gap-2 text-[11.5px] text-foreground/75" data-testid={`file-change-${i}`}>
+                <span className="shrink-0 w-4 h-4 rounded-full bg-green-500/15 text-green-500 text-[9px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                <span className="leading-relaxed">{change}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {parsed && !parsed.fileChanges.length && summary && (
+        <div className="px-3 py-2">
+          <p className="text-[11.5px] text-foreground/75 leading-relaxed whitespace-pre-wrap">{summary}</p>
+        </div>
+      )}
+
+      {parsed?.specialNotes && (
+        <div className="px-3 py-2 border-t border-green-500/10">
+          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">{nextStepsLabel}</p>
+          <p className="text-[11.5px] text-foreground/70 leading-relaxed" data-testid="completion-special-notes">{parsed.specialNotes}</p>
+        </div>
+      )}
+
+      {changedFiles.length > 0 && (
+        <div className="border-t border-green-500/10">
+          <button
+            className="w-full px-3 py-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors"
+            onClick={() => setShowFiles(v => !v)}
+            data-testid="toggle-changed-files"
+          >
+            <FileCode className="w-3 h-3 shrink-0" />
+            <span>{showFiles ? hideFilesLabel : filesLabel} ({changedFiles.length})</span>
+          </button>
+          {showFiles && (
+            <div className="px-3 pb-2 space-y-1">
+              {changedFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono" data-testid={`changed-file-${i}`}>
+                  <span className="truncate">{f}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function detectLanguage(text: string): string {
   const chineseRe = /[\u4e00-\u9fff]/;
@@ -1608,6 +1933,11 @@ export function ChatPanel() {
   const [buildPhase, setBuildPhase] = useState<"thinking" | "working" | "verifying" | "fixing" | null>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
   const [providers, setProviders] = useState<{ doubao: boolean; kimi: boolean; minimax: boolean; glm: boolean }>({ doubao: true, kimi: false, minimax: false, glm: false });
+  const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
+  const [liveThinkingText, setLiveThinkingText] = useState<string>("");
+  const [completedActionLog, setCompletedActionLog] = useState<ActionLogEntry[] | null>(null);
+  const [buildCompletionData, setBuildCompletionData] = useState<{ changedFiles: string[]; userLang?: string; summary?: string } | null>(null);
+  const actionLogRef = useRef<ActionLogEntry[]>([]);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2286,6 +2616,17 @@ export function ChatPanel() {
     let editorAccumulated = "";
     let thinkingAccumulated = "";
 
+    actionLogRef.current = [];
+    setLiveActionLog([]);
+    setLiveThinkingText("");
+    setCompletedActionLog(null);
+    setBuildCompletionData(null);
+
+    const appendActionLog = (entry: ActionLogEntry) => {
+      actionLogRef.current = [...actionLogRef.current, entry];
+      setLiveActionLog([...actionLogRef.current]);
+    };
+
     const flushNarrationToStore = () => {
       if (!commAccumulated) return;
       const isCurrentProject = useIDEStore.getState().projectId === projectId;
@@ -2404,20 +2745,20 @@ export function ChatPanel() {
           if (type === "step_starting") {
             finalizeEditor(); resetNarration();
             setBuildPhase("thinking");
+            setLiveThinkingText("");
+            const stepNum = (ev.stepNumber as number) ?? 1;
+            const stepTitle = (ev.stepTitle as string) || "";
+            const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
+            const stepLabel = totalSteps > 1 ? `Step ${stepNum}/${totalSteps}: ${stepTitle}` : stepTitle;
+            appendActionLog({ type: "step", label: stepLabel, detail: "", timestamp: Date.now() });
             // Immediately inject a step-progress message so the user sees feedback
             // even when the AI provider emits no delta.content (e.g. Kimi thinking mode).
             const isCurrentProjectNow = useIDEStore.getState().projectId === projectId;
             if (isCurrentProjectNow) {
-              const stepNum = (ev.stepNumber as number) ?? 1;
-              const stepTitle = (ev.stepTitle as string) || "";
-              const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
-              const header = totalSteps > 1
-                ? `Step ${stepNum}/${totalSteps}: ${stepTitle}`
-                : stepTitle;
               // commAccumulated stays "" so narration tokens stream as fresh content
               // (header is the message's initial content, not part of narration stream).
               commAccumulated = "";
-              addManagerMessage({ role: "assistant", content: header, source: "communicator", typing: true });
+              addManagerMessage({ role: "assistant", content: stepLabel, source: "communicator", typing: true });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             }
             // Yield so React commits the step-header message before thinking tokens arrive.
@@ -2427,9 +2768,25 @@ export function ChatPanel() {
             if (token) {
               thinkingAccumulated += token;
               flushThinkingToStore();
+              setLiveThinkingText(thinkingAccumulated);
               await new Promise<void>(r => setTimeout(r, 0));
             }
             setBuildPhase("thinking");
+          } else if (type === "action_log") {
+            const actionType = (ev.actionType as ActionLogEntry["type"]) || "tool_call";
+            const label = (ev.label as string) || "";
+            const detail = (ev.detail as string) || "";
+            const filePath = (ev.filePath as string) || undefined;
+            if (thinkingAccumulated) {
+              const existing = actionLogRef.current;
+              const lastIsThinking = existing.length > 0 && existing[existing.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                appendActionLog({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
+              }
+              thinkingAccumulated = "";
+              setLiveThinkingText("");
+            }
+            appendActionLog({ type: actionType, label, detail, timestamp: Date.now(), filePath });
           } else if (type === "narration_token") {
             clearTypingOnCurrentMsg();
             commAccumulated += ev.token || "";
@@ -2454,8 +2811,68 @@ export function ChatPanel() {
             if (useIDEStore.getState().projectId === projectId) {
               createCheckpoint("Build complete", { includeManagerThread: true });
             }
+            const changedFiles = (ev.changedFiles as string[]) || [];
+            const planSummary = (ev.summary as string) || "";
+            setBuildCompletionData({ changedFiles, userLang });
+            // Call communicator to generate a user-friendly completion summary for the card
+            // Run async without blocking the SSE loop
+            ;(async () => {
+              try {
+                const response = await fetch("/api/communicator-chat", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    event: {
+                      event: "all_complete",
+                      userLanguage: userLang,
+                      changedFiles,
+                      planSummary,
+                    },
+                  }),
+                });
+                if (!response.ok) return;
+                const reader = response.body?.getReader();
+                if (!reader) return;
+                const decoder = new TextDecoder();
+                let accumulated = "";
+                let buffer = "";
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop() || "";
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith("data: ")) continue;
+                    const data = trimmed.slice(6).trim();
+                    if (data === "[DONE]") break;
+                    try {
+                      const parsed = JSON.parse(data);
+                      if (parsed.content) {
+                        accumulated += parsed.content;
+                        setBuildCompletionData(prev => prev ? { ...prev, summary: accumulated } : null);
+                      }
+                    } catch {}
+                  }
+                }
+              } catch {}
+            })();
           } else if (type === "done") {
-            finalizeEditor(); flushNarrationToStore(); streamDone = true; break;
+            finalizeEditor(); flushNarrationToStore();
+            const finalLog = [...actionLogRef.current];
+            if (thinkingAccumulated && finalLog.length > 0) {
+              const lastIsThinking = finalLog[finalLog.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                finalLog.push({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
+              }
+            }
+            if (finalLog.length > 0) {
+              setCompletedActionLog(finalLog);
+            }
+            setLiveActionLog([]);
+            setLiveThinkingText("");
+            streamDone = true; break;
           }
 
           // Skip all Zustand state mutations when the user is viewing a different project.
@@ -2569,6 +2986,12 @@ export function ChatPanel() {
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
       setBuildPhase(null);
+      setLiveThinkingText("");
+      const finalLog = [...actionLogRef.current];
+      if (finalLog.length > 0) {
+        setCompletedActionLog(finalLog);
+      }
+      setLiveActionLog([]);
       if (useIDEStore.getState().projectId === projectId) {
         setExecutingTaskIndex(null);
         setAiResponding(false);
@@ -2823,6 +3246,23 @@ export function ChatPanel() {
         )}
         {isManagerResponding && (
           <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+        )}
+        {isExecuting && liveActionLog.length > 0 && (
+          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+            <ActionLogLive entries={liveActionLog} thinkingText={liveThinkingText || undefined} />
+          </div>
+        )}
+        {!isExecuting && completedActionLog && completedActionLog.length > 0 && (
+          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+            <ActionLogCollapsed entries={completedActionLog} />
+          </div>
+        )}
+        {!isExecuting && buildCompletionData && (
+          <BuildCompletionCard
+            changedFiles={buildCompletionData.changedFiles}
+            userLang={buildCompletionData.userLang}
+            summary={buildCompletionData.summary}
+          />
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">

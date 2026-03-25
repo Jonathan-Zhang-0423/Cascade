@@ -122,7 +122,8 @@ export function buildBuilderTools(
       if (!path || typeof content !== "string") {
         return "Error: path and content are required";
       }
-      emit({ type: "narration_token", token: `\nWriting: ${path}` });
+      const fileName = path.split("/").pop() || path;
+      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path });
       session.files.set(path, content);
       emit({ type: "code_applied", filePath: path, code: content });
       return `File written successfully: ${path} (${content.length} chars)`;
@@ -131,8 +132,9 @@ export function buildBuilderTools(
     read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
-      emit({ type: "narration_token", token: `\nReading: ${path}` });
+      const fileName = path.split("/").pop() || path;
       const content = session.files.get(path);
+      emit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }
@@ -143,9 +145,6 @@ export function buildBuilderTools(
       const stepId = args.step_id as string;
       const summary = args.summary as string;
       const stepNum = parseInt(stepId, 10);
-      if (summary) {
-        emit({ type: "narration_token", token: `\nStep ${stepId} complete: ${summary}` });
-      }
       emit({ type: "step_completed", stepNumber: isNaN(stepNum) ? stepId : stepNum });
 
       if (!isNaN(stepNum) && totalSteps > 0) {
@@ -159,7 +158,6 @@ export function buildBuilderTools(
     },
 
     request_review: async (_args, emit) => {
-      emit({ type: "narration_token", token: "\nReviewing completed work…" });
       emit({ type: "reviewing" });
       return "Review requested. Proceeding to quality review phase.";
     },
@@ -248,10 +246,12 @@ export function buildVerifierTools(
   ];
 
   const handlers: Record<string, ToolHandler> = {
-    read_file: async (args) => {
+    read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
       const content = session.files.get(path);
+      const fileName = path.split("/").pop() || path;
+      emit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }

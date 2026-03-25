@@ -180,6 +180,12 @@ export async function runAgentLoop(
         args = {};
       }
 
+      const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "request_review", "report_issue", "submit_verdict"]);
+      if (!toolsWithOwnLogs.has(tc.name)) {
+        const argsPreview = JSON.stringify(args).slice(0, 120);
+        emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
+      }
+
       let result = "";
       const handler = handlers[tc.name];
 
