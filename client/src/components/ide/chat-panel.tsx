@@ -2537,7 +2537,9 @@ export function ChatPanel() {
       if (abortRef.current === controller) abortRef.current = null;
       if (useIDEStore.getState().projectId === projectId) {
         removeTypingBubble();
-        setManagerResponding(false);
+        if (!buildSessionIdRef.current) {
+          setManagerResponding(false);
+        }
       }
     }
   }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, projectId, renameProject, chatMode, clearManagerPlan]);
@@ -2651,8 +2653,10 @@ export function ChatPanel() {
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
+    if (buildSessionIdRef.current) return;
 
-    setManagerResponding(true);
+    setExecutingTaskIndex(0);
+    setManagerResponding(false);
     setBuildPhase("thinking");
     setChatMode("build");
     setReviewPhase("building");
@@ -3069,10 +3073,9 @@ export function ChatPanel() {
       if (useIDEStore.getState().projectId === projectId) {
         setExecutingTaskIndex(null);
         setAiResponding(false);
-        setManagerResponding(false);
       }
     }
-  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, setManagerResponding, projectId, createCheckpoint, setBuildPhase]);
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setManagerResponding, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, projectId, createCheckpoint, setBuildPhase]);
 
   handleExecutePlanRef.current = handleExecutePlan;
 
@@ -3086,11 +3089,10 @@ export function ChatPanel() {
       buildReaderRef.current = null;
     }
     setAiResponding(false);
-    setManagerResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
     setBuildPhase(null);
-  }, [setAiResponding, setManagerResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
+  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
 
   const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
