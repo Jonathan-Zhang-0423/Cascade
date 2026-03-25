@@ -2841,7 +2841,7 @@ export function ChatPanel() {
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
             if (token) {
-              if (!thinkingAccumulated) {
+              if (!thinkingAccumulated && import.meta.env.DEV) {
                 console.log("[build-session] first thinking_token received for current step");
               }
               if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
