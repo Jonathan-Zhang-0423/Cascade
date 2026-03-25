@@ -127,6 +127,9 @@ export async function runAgentLoop(
       }
 
       if (delta.content) {
+        if (!assistantText) {
+          console.log(`[agent-loop] first narration_token from ${activeModel}, iteration=${iteration + 1}`);
+        }
         assistantText += delta.content;
         emit({ type: "narration_token", token: delta.content });
       }

@@ -1502,19 +1502,21 @@ function NarrationBubble({
             <div className="mb-2" data-testid="thinking-live-block">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
-                <span className="text-[12px] italic text-muted-foreground/80 font-medium">Thinking…</span>
+                <span className="text-[13px] text-muted-foreground/90 font-medium">Reasoning…</span>
               </div>
-              <p className="text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted/60 pl-2" data-testid="text-thinking-content">
+              <p className="text-muted-foreground/80 whitespace-pre-wrap text-[13px] border-l-2 border-blue-400/40 pl-2 leading-relaxed" data-testid="text-thinking-content">
                 {message.thinking}
               </p>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 mb-1" data-testid="thinking-live-block">
               <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
-              <span className="text-[12px] italic text-muted-foreground/80 font-medium">Thinking…</span>
+              <span className="text-[13px] text-muted-foreground/90 font-medium">Reasoning…</span>
             </div>
           )}
-          <p className="text-foreground/90 whitespace-pre-wrap opacity-60">{message.content}</p>
+          {message.content && (
+            <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
+          )}
         </>
       ) : (
         <>
@@ -2312,10 +2314,16 @@ export function ChatPanel() {
         const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
         idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
       }
-      if (idx === -1) return;
-      const target = msgs[idx];
+      if (idx === -1) {
+        // No step-header message exists yet — create one on the fly so thinking
+        // tokens are never silently dropped (e.g. if step_starting hasn't fired yet).
+        addManagerMessage({ role: "assistant", content: "", source: "communicator", typing: true });
+        commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+        idx = commMsgIndex;
+      }
+      const target = useIDEStore.getState().managerMessages[idx];
       if (target?.role === "assistant") {
-        const updated = [...msgs];
+        const updated = [...useIDEStore.getState().managerMessages];
         updated[idx] = { ...target, thinking: thinkingAccumulated };
         useIDEStore.setState({ managerMessages: updated });
       }
@@ -2406,10 +2414,14 @@ export function ChatPanel() {
               const header = totalSteps > 1
                 ? `Step ${stepNum}/${totalSteps}: ${stepTitle}`
                 : stepTitle;
-              commAccumulated = header;
+              // commAccumulated stays "" so narration tokens stream as fresh content
+              // (header is the message's initial content, not part of narration stream).
+              commAccumulated = "";
               addManagerMessage({ role: "assistant", content: header, source: "communicator", typing: true });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
             }
+            // Yield so React commits the step-header message before thinking tokens arrive.
+            await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
             if (token) {
