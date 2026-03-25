@@ -87,20 +87,72 @@ function ActionLogLiveRow({ entry, showCodePreview }: { entry: ActionLogEntry; s
   );
 }
 
+function ThinkingStream({ text }: { text: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [text]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="max-h-[180px] overflow-y-auto rounded-md bg-muted/20 border border-blue-400/15 px-3 py-2"
+      data-testid="thinking-stream"
+    >
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Brain className="w-3 h-3 shrink-0 text-blue-400 animate-pulse" />
+        <span className="text-[10px] font-semibold text-blue-400/80 uppercase tracking-wide">Thinking</span>
+      </div>
+      <p className="text-[12px] leading-relaxed italic text-muted-foreground/80 whitespace-pre-wrap break-words">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function CollapsedThinking({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-md border border-blue-400/15 overflow-hidden" data-testid="collapsed-thinking">
+      <button
+        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-blue-400/70 hover:bg-muted/30 transition-colors text-left"
+        onClick={() => setExpanded(e => !e)}
+        data-testid="button-expand-thinking"
+      >
+        <Brain className="w-3 h-3 shrink-0" />
+        <span className="flex-1 truncate leading-tight font-medium">Thinking</span>
+        <span className="shrink-0 text-muted-foreground/40">
+          {expanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-blue-400/10 px-3 py-2 max-h-[200px] overflow-y-auto">
+          <p className="text-[11px] leading-relaxed italic text-muted-foreground/70 whitespace-pre-wrap break-words">
+            {text}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionLogLive({ entries, thinkingText, narrationText }: { entries: ActionLogEntry[]; thinkingText?: string; narrationText?: string }) {
   const last5 = entries.slice(-5);
   const lastFileIdx = [...last5].map((e, i) => ({ e, i })).filter(({ e }) => e.type === "file_write" || e.type === "file_read").pop()?.i ?? -1;
 
+  const thinkingEntries = entries.filter(e => e.type === "thinking");
+  const nonThinkingEntries = last5.filter(e => e.type !== "thinking");
+
   return (
-    <div className="px-3 py-2 space-y-1" data-testid="action-log-live">
+    <div className="px-3 py-2 space-y-1.5" data-testid="action-log-live">
       {thinkingText && (
-        <div className="flex items-center gap-1.5 py-0.5 text-[11px] text-blue-400">
-          <Brain className="w-3 h-3 shrink-0 animate-pulse" />
-          <span className="truncate leading-tight italic text-muted-foreground/70">
-            {thinkingText.split("\n").filter(Boolean).pop()?.slice(0, 80) || "Thinking…"}
-          </span>
-        </div>
+        <ThinkingStream text={thinkingText} />
       )}
+      {!thinkingText && thinkingEntries.map((entry, i) => (
+        <CollapsedThinking key={`t-${i}`} text={entry.detail} />
+      ))}
       {narrationText && !thinkingText && (
         <div className="flex items-start gap-1.5 py-0.5 text-[11px]" data-testid="narration-live-text">
           <MessageSquare className="w-3 h-3 shrink-0 mt-0.5 text-muted-foreground/50" />
@@ -109,8 +161,8 @@ function ActionLogLive({ entries, thinkingText, narrationText }: { entries: Acti
           </span>
         </div>
       )}
-      {last5.map((entry, i) => (
-        <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === lastFileIdx} />
+      {nonThinkingEntries.map((entry, i) => (
+        <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === (nonThinkingEntries.length - 1) && (entry.type === "file_write" || entry.type === "file_read")} />
       ))}
     </div>
   );
@@ -197,7 +249,11 @@ function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
         </span>
       </div>
       {displayEntries.map((entry, i) => (
-        <ActionLogChip key={i} entry={entry} index={i} />
+        entry.type === "thinking" ? (
+          <CollapsedThinking key={i} text={entry.detail} />
+        ) : (
+          <ActionLogChip key={i} entry={entry} index={i} />
+        )
       ))}
       {hasMore && !showAll && (
         <button
@@ -1975,7 +2031,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText]);
+  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText, liveThinkingText]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
