@@ -1605,13 +1605,18 @@ export function ChatPanel() {
   const [inputFocused, setInputFocused] = useState(false);
   const [buildPhase, setBuildPhase] = useState<"thinking" | "working" | "verifying" | "fixing" | null>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
-  const [providers, setProviders] = useState<{ kimi: boolean; minimax: boolean }>({ kimi: false, minimax: false });
+  const [providers, setProviders] = useState<{ doubao: boolean; kimi: boolean; minimax: boolean }>({ doubao: true, kimi: false, minimax: false });
 
   useEffect(() => {
     fetch("/api/providers")
       .then(r => r.json())
-      .then((data: { kimi?: boolean; minimax?: boolean }) => {
-        setProviders({ kimi: !!data.kimi, minimax: !!data.minimax });
+      .then((data: { doubao?: boolean; kimi?: boolean; minimax?: boolean }) => {
+        const loaded = { doubao: !!data.doubao, kimi: !!data.kimi, minimax: !!data.minimax };
+        setProviders(loaded);
+        // If the persisted provider is unavailable, fall back to doubao
+        const current = useIDEStore.getState().selectedProvider;
+        if (current === "kimi" && !loaded.kimi) setSelectedProvider("doubao");
+        if (current === "minimax" && !loaded.minimax) setSelectedProvider("doubao");
       })
       .catch(() => {});
   }, []);

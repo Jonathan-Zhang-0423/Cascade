@@ -373,6 +373,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.get("/api/providers", (_req, res) => {
     res.json({
+      doubao: !!process.env.DOUBAO_API_KEY,
       kimi: !!process.env.KIMI_API_KEY,
       minimax: !!process.env.MINIMAX_API_KEY,
     });
