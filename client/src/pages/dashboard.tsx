@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, CheckSquare, Square, CheckCheck } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import logoSrc from "@assets/CodeStart_Logo_EN_v1_1773815402242.png";
 import { useTheme } from "@/components/theme-provider";
@@ -52,6 +52,12 @@ export default function DashboardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+
+  // Bulk select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
   const t = useT();
 
   const handleCreate = () => {
@@ -79,7 +85,54 @@ export default function DashboardPage() {
     setRenameName("");
   };
 
-  const sortedProjects = [...projects].sort((a, b) => b.createdAt - a.createdAt);
+  const sorted = [...projects].sort((a, b) => b.createdAt - a.createdAt);
+
+  const enterSelectMode = () => {
+    setSelectMode(true);
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const allSelected = sorted.length > 0 && selectedIds.size === sorted.length;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sorted.map((p) => p.id)));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    for (const id of selectedIds) {
+      deleteProject(id);
+    }
+    setShowBulkDeleteDialog(false);
+    exitSelectMode();
+  };
+
+  // Auto-exit select mode when no projects remain
+  useEffect(() => {
+    if (selectMode && sorted.length === 0) {
+      exitSelectMode();
+    }
+  }, [selectMode, sorted.length]);
 
   return (
     <div className="min-h-screen bg-background" data-testid="dashboard-page">
@@ -120,15 +173,29 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold text-foreground mb-1" data-testid="text-dashboard-title">
-          {t("dashboard.myProjects")}
-        </h1>
+      <main className="max-w-5xl mx-auto px-6 py-8 pb-28">
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-2xl font-bold text-foreground" data-testid="text-dashboard-title">
+            {t("dashboard.myProjects")}
+          </h1>
+          {sorted.length > 0 && !selectMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              onClick={enterSelectMode}
+              data-testid="button-enter-select"
+            >
+              <CheckSquare className="w-4 h-4" />
+              {t("dashboard.select")}
+            </Button>
+          )}
+        </div>
         <p className="text-muted-foreground mb-6">
           {t("dashboard.subtitle")}
         </p>
 
-        {sortedProjects.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center" data-testid="empty-state">
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
               <FolderOpen className="w-8 h-8 text-muted-foreground" />
@@ -148,57 +215,141 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="project-grid">
-            {sortedProjects.map((project) => (
-              <div
-                key={project.id}
-                className="group relative bg-card border border-card-border rounded-xl p-5 hover:border-primary/40 hover:shadow-md transition-all cursor-pointer"
-                onClick={() => navigate(`/project/${project.id}`)}
-                data-testid={`card-project-${project.id}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-2xl leading-none select-none" data-testid={`emoji-project-${project.id}`}>
-                    {project.emoji ?? getProjectEmoji(project.name)}
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
+            {sorted.map((project) => {
+              const isSelected = selectedIds.has(project.id);
+              return (
+                <div
+                  key={project.id}
+                  className={`group relative bg-card border rounded-xl p-5 transition-all cursor-pointer
+                    ${selectMode
+                      ? isSelected
+                        ? "border-primary shadow-md ring-2 ring-primary/30 bg-primary/5"
+                        : "border-card-border hover:border-primary/40 hover:shadow-md"
+                      : "border-card-border hover:border-primary/40 hover:shadow-md"
+                    }`}
+                  onClick={() => {
+                    if (selectMode) {
+                      toggleSelect(project.id);
+                    } else {
+                      navigate(`/project/${project.id}`);
+                    }
+                  }}
+                  data-testid={`card-project-${project.id}`}
+                >
+                  {/* Checkbox overlay in select mode */}
+                  {selectMode && (
+                    <div
+                      className="absolute top-3 left-3 z-10"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setRenameId(project.id);
-                        setRenameName(project.name);
+                        toggleSelect(project.id);
                       }}
-                      data-testid={`button-rename-${project.id}`}
+                      data-testid={`checkbox-project-${project.id}`}
                     >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteId(project.id);
-                      }}
-                      data-testid={`button-delete-${project.id}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                      {isSelected ? (
+                        <CheckCheck className="w-5 h-5 text-primary" />
+                      ) : (
+                        <Square className="w-5 h-5 text-muted-foreground" />
+                      )}
+                    </div>
+                  )}
+
+                  <div className={`flex items-start justify-between mb-3 ${selectMode ? "pl-7" : ""}`}>
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-2xl leading-none select-none" data-testid={`emoji-project-${project.id}`}>
+                      {project.emoji ?? getProjectEmoji(project.name)}
+                    </div>
+                    {!selectMode && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenameId(project.id);
+                            setRenameName(project.name);
+                          }}
+                          data-testid={`button-rename-${project.id}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteId(project.id);
+                          }}
+                          data-testid={`button-delete-${project.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <h3 className={`font-semibold text-foreground mb-1 truncate ${selectMode ? "pl-7" : ""}`} data-testid={`text-project-name-${project.id}`}>
+                    {project.name}
+                  </h3>
+                  <div className={`flex items-center gap-1.5 text-xs text-muted-foreground ${selectMode ? "pl-7" : ""}`}>
+                    <Calendar className="w-3 h-3" />
+                    <span>{new Date(project.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <h3 className="font-semibold text-foreground mb-1 truncate" data-testid={`text-project-name-${project.id}`}>
-                  {project.name}
-                </h3>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
-                  <span>{new Date(project.createdAt).toLocaleDateString()}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
+
+      {/* Bulk select action bar */}
+      {selectMode && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-sidebar/95 backdrop-blur-sm"
+          data-testid="bulk-action-bar"
+        >
+          <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={toggleSelectAll}
+                data-testid="button-select-all"
+              >
+                {allSelected ? (
+                  <CheckCheck className="w-4 h-4 text-primary" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                {allSelected ? t("dashboard.deselectAll") : t("dashboard.selectAll")}
+              </button>
+              <span className="text-sm text-muted-foreground" data-testid="text-selected-count">
+                {t("dashboard.selectedCount", { n: String(selectedIds.size) })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exitSelectMode}
+                data-testid="button-cancel-select"
+              >
+                {t("dashboard.cancelSelect")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                disabled={selectedIds.size === 0}
+                onClick={() => setShowBulkDeleteDialog(true)}
+                data-testid="button-delete-selected"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {t("dashboard.deleteSelected")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-new-project">
@@ -269,6 +420,35 @@ export default function DashboardPage() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
+            >
+              {t("dashboard.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk delete confirmation */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={(open) => !open && setShowBulkDeleteDialog(false)}>
+        <AlertDialogContent data-testid="dialog-bulk-delete">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("dashboard.bulkDeleteTitle", { n: String(selectedIds.size) })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("dashboard.bulkDeleteDesc", { n: String(selectedIds.size) })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setShowBulkDeleteDialog(false)}
+              data-testid="button-cancel-bulk-delete"
+            >
+              {t("dashboard.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-bulk-delete"
             >
               {t("dashboard.delete")}
             </AlertDialogAction>
