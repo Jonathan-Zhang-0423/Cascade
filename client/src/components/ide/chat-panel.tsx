@@ -2003,6 +2003,7 @@ export function ChatPanel() {
   const [completedActionLog, setCompletedActionLog] = useState<ActionLogEntry[] | null>(null);
   const [buildCompletionData, setBuildCompletionData] = useState<{ changedFiles: string[]; userLang?: string; summary?: string } | null>(null);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
+  const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2813,6 +2814,7 @@ export function ChatPanel() {
           // Local bookkeeping — always runs regardless of which project is active.
           if (type === "step_starting") {
             finalizeEditor(); resetNarration();
+            if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
             setBuildPhase("thinking");
             setLiveThinkingText("");
             setLiveNarrationText("");
@@ -2839,6 +2841,10 @@ export function ChatPanel() {
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
             if (token) {
+              if (!thinkingAccumulated) {
+                console.log("[build-session] first thinking_token received for current step");
+              }
+              if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
               thinkingAccumulated += token;
               flushThinkingToStore();
               setLiveThinkingText(thinkingAccumulated);
@@ -2857,12 +2863,28 @@ export function ChatPanel() {
                 appendActionLog({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
               }
               thinkingAccumulated = "";
-              setLiveThinkingText("");
+              if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+              thinkingFadeTimerRef.current = setTimeout(() => {
+                setLiveThinkingText("");
+                thinkingFadeTimerRef.current = null;
+              }, 400);
             }
             setLiveNarrationText("");
             appendActionLog({ type: actionType, label, detail, timestamp: Date.now(), filePath });
           } else if (type === "narration_token") {
-            setLiveThinkingText("");
+            if (thinkingAccumulated) {
+              const existing = actionLogRef.current;
+              const lastIsThinking = existing.length > 0 && existing[existing.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                appendActionLog({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
+              }
+              thinkingAccumulated = "";
+            }
+            if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+            thinkingFadeTimerRef.current = setTimeout(() => {
+              setLiveThinkingText("");
+              thinkingFadeTimerRef.current = null;
+            }, 400);
             commAccumulated += ev.token || "";
             setLiveNarrationText(commAccumulated);
             setBuildPhase("working");
@@ -3063,6 +3085,7 @@ export function ChatPanel() {
       flushNarrationToStore();
       buildSessionIdRef.current = null;
       buildReaderRef.current = null;
+      if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
       setBuildPhase(null);
       setLiveThinkingText("");
       const finalLog = [...actionLogRef.current];
@@ -3088,6 +3111,7 @@ export function ChatPanel() {
       buildReaderRef.current.cancel().catch(() => {});
       buildReaderRef.current = null;
     }
+    if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
     setAiResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
