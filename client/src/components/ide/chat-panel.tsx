@@ -140,10 +140,10 @@ function CollapsedThinking({ text }: { text: string }) {
 
 function ActionLogLive({ entries, thinkingText, narrationText }: { entries: ActionLogEntry[]; thinkingText?: string; narrationText?: string }) {
   const last5 = entries.slice(-5);
-  const lastFileIdx = [...last5].map((e, i) => ({ e, i })).filter(({ e }) => e.type === "file_write" || e.type === "file_read").pop()?.i ?? -1;
 
   const thinkingEntries = entries.filter(e => e.type === "thinking");
   const nonThinkingEntries = last5.filter(e => e.type !== "thinking");
+  const lastFileIdx = [...nonThinkingEntries].map((e, i) => ({ e, i })).filter(({ e }) => e.type === "file_write" || e.type === "file_read").pop()?.i ?? -1;
 
   return (
     <div className="px-3 py-2 space-y-1.5" data-testid="action-log-live">
@@ -162,7 +162,7 @@ function ActionLogLive({ entries, thinkingText, narrationText }: { entries: Acti
         </div>
       )}
       {nonThinkingEntries.map((entry, i) => (
-        <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === (nonThinkingEntries.length - 1) && (entry.type === "file_write" || entry.type === "file_read")} />
+        <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === lastFileIdx} />
       ))}
     </div>
   );
