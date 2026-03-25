@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine, Brain, Terminal, FilePlus, FileSearch, Wrench, ListChecks } from "lucide-react";
+import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine, Brain, Terminal, FilePlus, FileSearch, Wrench, ListChecks, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ActionLogEntry {
@@ -87,7 +87,7 @@ function ActionLogLiveRow({ entry, showCodePreview }: { entry: ActionLogEntry; s
   );
 }
 
-function ActionLogLive({ entries, thinkingText }: { entries: ActionLogEntry[]; thinkingText?: string }) {
+function ActionLogLive({ entries, thinkingText, narrationText }: { entries: ActionLogEntry[]; thinkingText?: string; narrationText?: string }) {
   const last5 = entries.slice(-5);
   const lastFileIdx = [...last5].map((e, i) => ({ e, i })).filter(({ e }) => e.type === "file_write" || e.type === "file_read").pop()?.i ?? -1;
 
@@ -98,6 +98,14 @@ function ActionLogLive({ entries, thinkingText }: { entries: ActionLogEntry[]; t
           <Brain className="w-3 h-3 shrink-0 animate-pulse" />
           <span className="truncate leading-tight italic text-muted-foreground/70">
             {thinkingText.split("\n").filter(Boolean).pop()?.slice(0, 80) || "Thinking…"}
+          </span>
+        </div>
+      )}
+      {narrationText && !thinkingText && (
+        <div className="flex items-start gap-1.5 py-0.5 text-[11px]" data-testid="narration-live-text">
+          <MessageSquare className="w-3 h-3 shrink-0 mt-0.5 text-muted-foreground/50" />
+          <span className="leading-relaxed text-foreground/70 line-clamp-3">
+            {narrationText}
           </span>
         </div>
       )}
@@ -1935,6 +1943,7 @@ export function ChatPanel() {
   const [providers, setProviders] = useState<{ doubao: boolean; kimi: boolean; minimax: boolean; glm: boolean }>({ doubao: true, kimi: false, minimax: false, glm: false });
   const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [liveThinkingText, setLiveThinkingText] = useState<string>("");
+  const [liveNarrationText, setLiveNarrationText] = useState<string>("");
   const [completedActionLog, setCompletedActionLog] = useState<ActionLogEntry[] | null>(null);
   const [buildCompletionData, setBuildCompletionData] = useState<{ changedFiles: string[]; userLang?: string; summary?: string } | null>(null);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
@@ -1966,7 +1975,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages, liveActionLog]);
+  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2746,6 +2755,7 @@ export function ChatPanel() {
             finalizeEditor(); resetNarration();
             setBuildPhase("thinking");
             setLiveThinkingText("");
+            setLiveNarrationText("");
             const stepNum = (ev.stepNumber as number) ?? 1;
             const stepTitle = (ev.stepTitle as string) || "";
             const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
@@ -2789,11 +2799,11 @@ export function ChatPanel() {
               thinkingAccumulated = "";
               setLiveThinkingText("");
             }
+            setLiveNarrationText("");
             appendActionLog({ type: actionType, label, detail, timestamp: Date.now(), filePath });
           } else if (type === "narration_token") {
-            clearTypingOnCurrentMsg();
             commAccumulated += ev.token || "";
-            flushNarrationToStore();
+            setLiveNarrationText(commAccumulated);
             setBuildPhase("working");
             await new Promise<void>(r => setTimeout(r, 0));
           } else if (type === "editor_token") {
@@ -2803,8 +2813,10 @@ export function ChatPanel() {
             setBuildPhase("working");
           } else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") {
             clearTypingOnCurrentMsg(); finalizeEditor(); flushNarrationToStore();
+            setLiveNarrationText("");
           } else if (type === "reviewing") {
             flushNarrationToStore(); resetNarration();
+            setLiveNarrationText("");
             setBuildPhase("verifying");
           } else if (type === "bugs_found") {
             setBuildPhase("fixing");
@@ -2863,6 +2875,7 @@ export function ChatPanel() {
             })();
           } else if (type === "done") {
             finalizeEditor(); flushNarrationToStore();
+            setLiveNarrationText("");
             const finalLog = [...actionLogRef.current];
             if (thinkingAccumulated && finalLog.length > 0) {
               const lastIsThinking = finalLog[finalLog.length - 1].type === "thinking";
@@ -3251,9 +3264,9 @@ export function ChatPanel() {
         {isManagerResponding && chatMode !== "build" && (
           <TypingIndicator text={t(getPlanCardLang(), "planning")} />
         )}
-        {isExecuting && (liveActionLog.length > 0 || !!liveThinkingText) && (
+        {isExecuting && (liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-            <ActionLogLive entries={liveActionLog} thinkingText={liveThinkingText || undefined} />
+            <ActionLogLive entries={liveActionLog} thinkingText={liveThinkingText || undefined} narrationText={liveNarrationText || undefined} />
           </div>
         )}
         {!isExecuting && completedActionLog && completedActionLog.length > 0 && (
