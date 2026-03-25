@@ -26,7 +26,7 @@ export interface ConsoleEntry {
 
 export type ToolPanel = "files" | "chat" | null;
 export type ChatMode = "build" | "manager";
-export type AIProvider = "doubao" | "kimi";
+export type AIProvider = "doubao" | "kimi" | "minimax";
 
 export interface ManagerSubTask {
   step: number;
@@ -620,8 +620,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isNotebookOptimizing: false,
   notebookError: null,
 
-  selectedProvider: "doubao",
-  setSelectedProvider: (provider) => set({ selectedProvider: provider }),
+  selectedProvider: (() => {
+    try {
+      const saved = localStorage.getItem("codestart-selected-provider") as AIProvider | null;
+      if (saved === "doubao" || saved === "kimi" || saved === "minimax") return saved;
+    } catch {}
+    return "doubao";
+  })(),
+  setSelectedProvider: (provider) => {
+    try { localStorage.setItem("codestart-selected-provider", provider); } catch {}
+    set({ selectedProvider: provider });
+  },
 
   loadProject: (id) => {
     const current = get();

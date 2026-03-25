@@ -58,12 +58,14 @@ export async function runAgentLoop(
 
   const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
+  const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
   const thinkingParam = isDoubaoModel
     ? { thinking: { type: "enabled", budget_tokens: 8192 } }
     : isKimiModel
       ? { thinking: { type: "enabled" } }
       : {};
-  const timeoutMs = (isDoubaoModel || isKimiModel) ? 90_000 : 30_000;
+  const extraBody = isMinimaxModel ? { reasoning_split: true } : undefined;
+  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const response = await withRetry(
@@ -74,6 +76,7 @@ export async function runAgentLoop(
             model: activeModel,
             messages,
             ...thinkingParam,
+            ...(extraBody ? { extra_body: extraBody } : {}),
             tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
             tool_choice: tools.length > 0 ? "auto" : undefined,
             stream: true,
@@ -91,14 +94,31 @@ export async function runAgentLoop(
       const choice = chunk.choices[0];
       if (!choice) continue;
 
-      const delta = choice.delta as typeof choice.delta & { reasoning_content?: string };
+      const delta = choice.delta as typeof choice.delta & {
+        reasoning_content?: string;
+        reasoning_details?: Array<{ type?: string; text?: string }>;
+      };
 
+      // Doubao / Kimi: reasoning_content field
       if (delta.reasoning_content) {
         if (!reasoningContent) {
           console.log(`[agent-loop] first thinking_token from ${activeModel}, iteration=${iteration + 1}`);
         }
         reasoningContent += delta.reasoning_content;
         emit({ type: "thinking_token", token: delta.reasoning_content });
+      }
+
+      // MiniMax: reasoning_details array (when reasoning_split=true)
+      if (delta.reasoning_details && delta.reasoning_details.length > 0) {
+        for (const rd of delta.reasoning_details) {
+          if (rd.text) {
+            if (!reasoningContent) {
+              console.log(`[agent-loop] first thinking_token (minimax) from ${activeModel}, iteration=${iteration + 1}`);
+            }
+            reasoningContent += rd.text;
+            emit({ type: "thinking_token", token: rd.text });
+          }
+        }
       }
 
       if (delta.content) {

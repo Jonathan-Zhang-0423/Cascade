@@ -372,7 +372,10 @@ export async function registerRoutes(
   app: Express,
 ): Promise<Server> {
   app.get("/api/providers", (_req, res) => {
-    res.json({ kimi: !!process.env.KIMI_API_KEY });
+    res.json({
+      kimi: !!process.env.KIMI_API_KEY,
+      minimax: !!process.env.MINIMAX_API_KEY,
+    });
   });
 
   app.post("/api/build-session", async (req, res) => {

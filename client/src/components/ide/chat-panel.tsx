@@ -7,6 +7,7 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowUp, Send, Sparkles, Lightbulb, X, Check, FileCode, Loader2, Square, ChevronRight, ChevronDown, ChevronUp, History, RotateCcw, ExternalLink, ClipboardList, Zap, Play, CircleDot, CheckCircle2, XCircle, Circle, AlertTriangle, StopCircle, Search, HelpCircle, ShieldCheck, FileText, Hammer, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -1604,12 +1605,14 @@ export function ChatPanel() {
   const [inputFocused, setInputFocused] = useState(false);
   const [buildPhase, setBuildPhase] = useState<"thinking" | "working" | "verifying" | "fixing" | null>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
-  const [kimiAvailable, setKimiAvailable] = useState(false);
+  const [providers, setProviders] = useState<{ kimi: boolean; minimax: boolean }>({ kimi: false, minimax: false });
 
   useEffect(() => {
     fetch("/api/providers")
       .then(r => r.json())
-      .then((data: { kimi: boolean }) => { if (data.kimi) setKimiAvailable(true); })
+      .then((data: { kimi?: boolean; minimax?: boolean }) => {
+        setProviders({ kimi: !!data.kimi, minimax: !!data.minimax });
+      })
       .catch(() => {});
   }, []);
 
@@ -2860,36 +2863,34 @@ export function ChatPanel() {
               </div>
               <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">{tGlobal("chat.planMode")}</span>
             </button>
-            <span
-              title={
-                kimiAvailable
-                  ? (selectedProvider === "doubao" ? "Switch to Kimi K2.5" : "Switch to Doubao")
-                  : "KIMI_API_KEY not configured"
-              }
+            <Select
+              value={selectedProvider}
+              onValueChange={(v) => setSelectedProvider(v as AIProvider)}
+              data-testid="select-model-provider"
             >
-              <button
-                className={cn(
-                  "flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors text-[11px] font-medium",
-                  kimiAvailable
-                    ? "hover:bg-muted/50 text-muted-foreground hover:text-foreground cursor-pointer"
-                    : "text-muted-foreground/40 cursor-not-allowed"
-                )}
-                onClick={kimiAvailable ? () => setSelectedProvider(selectedProvider === "doubao" ? "kimi" : "doubao") : undefined}
-                data-testid="toggle-model-provider"
-                disabled={!kimiAvailable}
+              <SelectTrigger
+                className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[10px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
+                data-testid="select-model-provider"
               >
-                <span className={cn(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
-                  kimiAvailable && selectedProvider === "kimi"
-                    ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
-                    : kimiAvailable
-                      ? "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
-                      : "bg-muted/30 border-muted-foreground/10 text-muted-foreground/40"
-                )}>
-                  {kimiAvailable && selectedProvider === "kimi" ? "Kimi K2.5" : "Doubao"}
-                </span>
-              </button>
-            </span>
+                <SelectValue>
+                  <span className={cn(
+                    "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
+                    selectedProvider === "kimi"
+                      ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
+                      : selectedProvider === "minimax"
+                        ? "bg-emerald-100 dark:bg-emerald-900/40 border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300"
+                        : "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
+                  )}>
+                    {selectedProvider === "kimi" ? "Kimi K2.5" : selectedProvider === "minimax" ? "MiniMax M2.7" : "Doubao"}
+                  </span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end" className="min-w-[140px]">
+                <SelectItem value="doubao" className="text-xs">Doubao</SelectItem>
+                {providers.kimi && <SelectItem value="kimi" className="text-xs">Kimi K2.5</SelectItem>}
+                {providers.minimax && <SelectItem value="minimax" className="text-xs">MiniMax M2.7</SelectItem>}
+              </SelectContent>
+            </Select>
             <div className="flex-1" />
             <Button
               size="icon"
