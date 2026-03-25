@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { minimaxClient, MINIMAX_MODEL } from "./minimax-client";
+import { glmClient, GLM_MODEL } from "./glm-client";
 
 export const kimiClient = new OpenAI({
   baseURL: "https://api.moonshot.ai/v1",
@@ -9,7 +10,7 @@ export const kimiClient = new OpenAI({
 
 export const KIMI_MODEL = "kimi-k2.5";
 
-export type AIProvider = "doubao" | "kimi" | "minimax";
+export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
 
 export function getAIClient(provider: AIProvider): { client: OpenAI; model: string } {
   if (provider === "kimi") {
@@ -25,6 +26,13 @@ export function getAIClient(provider: AIProvider): { client: OpenAI; model: stri
       return { client: doubaoClient, model: DOUBAO_MODEL };
     }
     return { client: minimaxClient, model: MINIMAX_MODEL };
+  }
+  if (provider === "glm") {
+    if (!process.env.GLM_API_KEY) {
+      console.warn("[getAIClient] GLM_API_KEY not set, falling back to Doubao");
+      return { client: doubaoClient, model: DOUBAO_MODEL };
+    }
+    return { client: glmClient, model: GLM_MODEL };
   }
   return { client: doubaoClient, model: DOUBAO_MODEL };
 }

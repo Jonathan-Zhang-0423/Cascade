@@ -376,6 +376,7 @@ export async function registerRoutes(
       doubao: !!process.env.DOUBAO_API_KEY,
       kimi: !!process.env.KIMI_API_KEY,
       minimax: !!process.env.MINIMAX_API_KEY,
+      glm: !!process.env.GLM_API_KEY,
     });
   });
 

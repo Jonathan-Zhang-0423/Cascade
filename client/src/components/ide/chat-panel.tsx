@@ -1605,18 +1605,19 @@ export function ChatPanel() {
   const [inputFocused, setInputFocused] = useState(false);
   const [buildPhase, setBuildPhase] = useState<"thinking" | "working" | "verifying" | "fixing" | null>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
-  const [providers, setProviders] = useState<{ doubao: boolean; kimi: boolean; minimax: boolean }>({ doubao: true, kimi: false, minimax: false });
+  const [providers, setProviders] = useState<{ doubao: boolean; kimi: boolean; minimax: boolean; glm: boolean }>({ doubao: true, kimi: false, minimax: false, glm: false });
 
   useEffect(() => {
     fetch("/api/providers")
       .then(r => r.json())
-      .then((data: { doubao?: boolean; kimi?: boolean; minimax?: boolean }) => {
-        const loaded = { doubao: !!data.doubao, kimi: !!data.kimi, minimax: !!data.minimax };
+      .then((data: { doubao?: boolean; kimi?: boolean; minimax?: boolean; glm?: boolean }) => {
+        const loaded = { doubao: !!data.doubao, kimi: !!data.kimi, minimax: !!data.minimax, glm: !!data.glm };
         setProviders(loaded);
         // If the persisted provider is unavailable, fall back to doubao
         const current = useIDEStore.getState().selectedProvider;
         if (current === "kimi" && !loaded.kimi) setSelectedProvider("doubao");
         if (current === "minimax" && !loaded.minimax) setSelectedProvider("doubao");
+        if (current === "glm" && !loaded.glm) setSelectedProvider("doubao");
       })
       .catch(() => {});
   }, []);
@@ -2884,9 +2885,11 @@ export function ChatPanel() {
                       ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
                       : selectedProvider === "minimax"
                         ? "bg-emerald-100 dark:bg-emerald-900/40 border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                        : "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
+                        : selectedProvider === "glm"
+                          ? "bg-sky-100 dark:bg-sky-900/40 border-sky-400 dark:border-sky-500 text-sky-700 dark:text-sky-300"
+                          : "bg-muted/60 border-muted-foreground/20 text-muted-foreground"
                   )}>
-                    {selectedProvider === "kimi" ? "Kimi K2.5" : selectedProvider === "minimax" ? "MiniMax M2.7" : "Doubao"}
+                    {selectedProvider === "kimi" ? "Kimi K2.5" : selectedProvider === "minimax" ? "MiniMax M2.7" : selectedProvider === "glm" ? "GLM-5" : "Doubao"}
                   </span>
                 </SelectValue>
               </SelectTrigger>
@@ -2894,6 +2897,7 @@ export function ChatPanel() {
                 <SelectItem value="doubao" className="text-xs">Doubao</SelectItem>
                 {providers.kimi && <SelectItem value="kimi" className="text-xs">Kimi K2.5</SelectItem>}
                 {providers.minimax && <SelectItem value="minimax" className="text-xs">MiniMax M2.7</SelectItem>}
+                {providers.glm && <SelectItem value="glm" className="text-xs">GLM-5</SelectItem>}
               </SelectContent>
             </Select>
             <div className="flex-1" />

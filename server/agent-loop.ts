@@ -59,13 +59,18 @@ export async function runAgentLoop(
   const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
+  const isGLMModel = activeModel.toLowerCase().startsWith("glm");
   const thinkingParam = isDoubaoModel
     ? { thinking: { type: "enabled", budget_tokens: 8192 } }
     : isKimiModel
       ? { thinking: { type: "enabled" } }
       : {};
-  const extraBody = isMinimaxModel ? { reasoning_split: true } : undefined;
-  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel) ? 90_000 : 30_000;
+  const extraBody = isMinimaxModel
+    ? { reasoning_split: true }
+    : isGLMModel
+      ? { thinking: { type: "enabled" } }
+      : undefined;
+  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const response = await withRetry(

@@ -26,7 +26,7 @@ export interface ConsoleEntry {
 
 export type ToolPanel = "files" | "chat" | null;
 export type ChatMode = "build" | "manager";
-export type AIProvider = "doubao" | "kimi" | "minimax";
+export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
 
 export interface ManagerSubTask {
   step: number;
