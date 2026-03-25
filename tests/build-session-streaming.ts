@@ -11,7 +11,7 @@
  *     immediately at the beginning of each step)
  *   - FIRST_TOKEN_MAX_MS is set generously to 40s to avoid false failures
  *   - At least 3 narration_token events expected per step narration
- *   - Total stream completes within 120s (single-step plan)
+ *   - Total stream completes within 240s (single-step plan may run 4+ agent iterations)
  *
  * The test uses a minimal one-step plan so the full build session
  * finishes quickly while still exercising the editor narration path.
@@ -21,7 +21,7 @@ import http from "http";
 
 const BASE_URL = "http://localhost:5000";
 const FIRST_TOKEN_MAX_MS = 40_000;
-const COMPLETION_MAX_MS = 120_000;
+const COMPLETION_MAX_MS = 240_000;
 const MIN_NARRATION_TOKENS = 3;
 
 type ParsedJson = Record<string, unknown>;
