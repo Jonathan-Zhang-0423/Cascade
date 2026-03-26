@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, type AIProvider, flattenFiles } from "@/stores/ide-store";
+import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, type AIProvider, type BuildResultData, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { useT, tr } from "@/lib/i18n";
@@ -2000,10 +2000,9 @@ export function ChatPanel() {
   const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [liveThinkingText, setLiveThinkingText] = useState<string>("");
   const [liveNarrationText, setLiveNarrationText] = useState<string>("");
-  const [completedActionLog, setCompletedActionLog] = useState<ActionLogEntry[] | null>(null);
-  const [buildCompletionData, setBuildCompletionData] = useState<{ changedFiles: string[]; userLang?: string; summary?: string } | null>(null);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buildResultMsgIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2689,8 +2688,7 @@ export function ChatPanel() {
     actionLogRef.current = [];
     setLiveActionLog([]);
     setLiveThinkingText("");
-    setCompletedActionLog(null);
-    setBuildCompletionData(null);
+    buildResultMsgIdRef.current = null;
 
     const appendActionLog = (entry: ActionLogEntry) => {
       actionLogRef.current = [...actionLogRef.current, entry];
@@ -2911,9 +2909,16 @@ export function ChatPanel() {
             }
             const changedFiles = (ev.changedFiles as string[]) || [];
             const planSummary = (ev.summary as string) || "";
-            setBuildCompletionData({ changedFiles, userLang });
-            // Call communicator to generate a user-friendly completion summary for the card
-            // Run async without blocking the SSE loop
+            const finalLog = [...actionLogRef.current];
+            if (useIDEStore.getState().projectId === projectId) {
+              const buildResult: BuildResultData = {
+                actionLog: finalLog,
+                completionData: { changedFiles, userLang },
+              };
+              addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+              const msgs = useIDEStore.getState().managerMessages;
+              buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
+            }
             ;(async () => {
               try {
                 const response = await fetch("/api/communicator-chat", {
@@ -2949,7 +2954,14 @@ export function ChatPanel() {
                       const parsed = JSON.parse(data);
                       if (parsed.content) {
                         accumulated += parsed.content;
-                        setBuildCompletionData(prev => prev ? { ...prev, summary: accumulated } : null);
+                        const msgId = buildResultMsgIdRef.current;
+                        if (msgId) {
+                          const curMsgs = useIDEStore.getState().managerMessages;
+                          const updated = curMsgs.map(m => m.id === msgId && m.buildResult
+                            ? { ...m, buildResult: { ...m.buildResult, completionData: { ...m.buildResult.completionData, summary: accumulated } } }
+                            : m);
+                          useIDEStore.setState({ managerMessages: updated });
+                        }
                       }
                     } catch {}
                   }
@@ -2967,7 +2979,22 @@ export function ChatPanel() {
               }
             }
             if (finalLog.length > 0) {
-              setCompletedActionLog(finalLog);
+              const msgId = buildResultMsgIdRef.current;
+              if (msgId) {
+                const curMsgs = useIDEStore.getState().managerMessages;
+                const updated = curMsgs.map(m => m.id === msgId && m.buildResult
+                  ? { ...m, buildResult: { ...m.buildResult, actionLog: finalLog } }
+                  : m);
+                useIDEStore.setState({ managerMessages: updated });
+              } else if (useIDEStore.getState().projectId === projectId) {
+                const buildResult: BuildResultData = {
+                  actionLog: finalLog,
+                  completionData: { changedFiles: [], userLang },
+                };
+                addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+                const msgs2 = useIDEStore.getState().managerMessages;
+                buildResultMsgIdRef.current = msgs2[msgs2.length - 1]?.id || null;
+              }
             }
             setLiveActionLog([]);
             setLiveThinkingText("");
@@ -3090,7 +3117,20 @@ export function ChatPanel() {
       setLiveThinkingText("");
       const finalLog = [...actionLogRef.current];
       if (finalLog.length > 0) {
-        setCompletedActionLog(finalLog);
+        const msgId = buildResultMsgIdRef.current;
+        if (msgId) {
+          const curMsgs = useIDEStore.getState().managerMessages;
+          const updated = curMsgs.map(m => m.id === msgId && m.buildResult
+            ? { ...m, buildResult: { ...m.buildResult, actionLog: finalLog } }
+            : m);
+          useIDEStore.setState({ managerMessages: updated });
+        } else if (useIDEStore.getState().projectId === projectId) {
+          const buildResult: BuildResultData = {
+            actionLog: finalLog,
+            completionData: { changedFiles: [], userLang },
+          };
+          addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+        }
       }
       setLiveActionLog([]);
       if (useIDEStore.getState().projectId === projectId) {
@@ -3318,6 +3358,25 @@ export function ChatPanel() {
                   />
                 );
               }
+              if (msg.buildResult) {
+                const hasCompletion = msg.buildResult.completionData.changedFiles.length > 0 || !!msg.buildResult.completionData.summary;
+                return (
+                  <div key={`m-${msg.id}`} className="space-y-2">
+                    {msg.buildResult.actionLog.length > 0 && (
+                      <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+                        <ActionLogCollapsed entries={msg.buildResult.actionLog as ActionLogEntry[]} />
+                      </div>
+                    )}
+                    {hasCompletion && (
+                      <BuildCompletionCard
+                        changedFiles={msg.buildResult.completionData.changedFiles}
+                        userLang={msg.buildResult.completionData.userLang}
+                        summary={msg.buildResult.completionData.summary}
+                      />
+                    )}
+                  </div>
+                );
+              }
               const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
               return (
                 <ManagerMessageBubble
@@ -3351,18 +3410,6 @@ export function ChatPanel() {
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
             <ActionLogLive entries={liveActionLog} thinkingText={liveThinkingText || undefined} narrationText={liveNarrationText || undefined} />
           </div>
-        )}
-        {!isExecuting && completedActionLog && completedActionLog.length > 0 && (
-          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-            <ActionLogCollapsed entries={completedActionLog} />
-          </div>
-        )}
-        {!isExecuting && buildCompletionData && (
-          <BuildCompletionCard
-            changedFiles={buildCompletionData.changedFiles}
-            userLang={buildCompletionData.userLang}
-            summary={buildCompletionData.summary}
-          />
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">

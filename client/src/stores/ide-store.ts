@@ -146,6 +146,11 @@ export interface NotebookContent {
   sourceFiles?: { path: string; content: string }[];
 }
 
+export interface BuildResultData {
+  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+  completionData: { changedFiles: string[]; userLang?: string; summary?: string };
+}
+
 export interface ManagerMessage {
   id: string;
   role: "user" | "assistant" | "checkpoint";
@@ -157,6 +162,7 @@ export interface ManagerMessage {
   hidden?: boolean;
   checkpointId?: string;
   thinking?: string;
+  buildResult?: BuildResultData;
 }
 
 interface FlatFile {
