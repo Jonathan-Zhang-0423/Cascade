@@ -1,6 +1,700 @@
-====================================
-CODESTART IDE - DEVELOPMENT PROGRESS
-====================================
+============================================================
+CODESTART — MOBILE-FIRST DEVELOPMENT PLATFORM
+============================================================
+
+Project Pivot: From browser-based web IDE to mobile-first
+all-in-one development platform for building production-ready
+iOS & Android apps using AI coding agents.
+
+Supported Frameworks:
+  - React Native (Expo) — primary, most beginner-friendly
+  - Flutter (Dart)
+  - SwiftUI (iOS-only)
+  - Kotlin / Jetpack Compose (Android-only)
+
+Supported Languages:
+  - TypeScript / JavaScript (React Native)
+  - Dart (Flutter)
+  - Swift (SwiftUI)
+  - Kotlin (Jetpack Compose)
+
+AI Providers (unchanged):
+  - Doubao (ByteDance) — default
+  - Kimi K2.5 (Moonshot AI)
+  - MiniMax-M2.7
+  - GLM-5 (Zhipu AI)
+
+============================================================
+MP-1: MOBILE DEVICE SIMULATOR PREVIEW
+============================================================
+Status: NOT STARTED
+Priority: HIGH (foundational — everything depends on this)
+Depends on: nothing
+
+Replace the current iframe-based HTML preview with a mobile
+device simulator that renders apps inside realistic phone and
+tablet device frames.
+
+  [ ] Device frame component (DeviceSimulator)
+      - Realistic bezels and notch/Dynamic Island for iPhones
+      - Pill-style navigation bar for Android devices
+      - Status bar mockup (time, battery, signal)
+      - Home indicator / navigation buttons
+  [ ] Device selector dropdown
+      - iPhone SE (375×667)
+      - iPhone 15 (390×844)
+      - iPhone 15 Pro Max (430×932)
+      - iPad (810×1080)
+      - Pixel 7 (412×915)
+      - Pixel Fold (884×1104)
+      - Samsung Galaxy S24 (360×780)
+      - Custom dimensions input
+  [ ] Orientation toggle (portrait / landscape)
+  [ ] Platform toggle (iOS / Android)
+      - Adjusts device frame chrome accordingly
+      - Swaps status bar style (iOS vs Android)
+  [ ] Dark/light device frame option
+  [ ] Responsive scaling — frame scales to fit panel
+  [ ] Content area renders preview
+      - Phase 1: Web content via iframe (existing behavior inside device frame)
+      - Phase 2: Expo Web preview for React Native projects
+      - Phase 3: Framework-specific preview URLs
+  [ ] Touch interaction hints (cursor → finger icon inside simulator)
+  [ ] Replace or extend preview-panel.tsx
+  [ ] Update ide.tsx layout to accommodate device simulator
+  [ ] Add device state to ide-store.ts (selectedDevice, orientation, platform)
+
+Acceptance:
+  - Users see their app inside a phone frame, not a raw iframe
+  - Device can be switched without reloading the project
+  - Orientation toggle works and re-renders correctly
+
+============================================================
+MP-2: MULTI-FRAMEWORK PROJECT SCAFFOLDING
+============================================================
+Status: NOT STARTED
+Priority: HIGH (enables framework-specific development)
+Depends on: nothing
+
+Create a project scaffolding system that supports multiple
+mobile frameworks with proper templates, configs, and directory
+structures. Preserve existing web project templates.
+
+  [ ] Framework selection in project creation dialog
+      - React Native (Expo)
+      - Flutter
+      - SwiftUI (iOS-only)
+      - Kotlin / Jetpack Compose (Android-only)
+      - Web (HTML/CSS/JS) — preserved for backwards compatibility
+  [ ] React Native / Expo template
+      - App.tsx with functional component
+      - app.json with Expo configuration
+      - package.json with expo, react-native, react-navigation deps
+      - babel.config.js
+      - tsconfig.json
+      - assets/ directory (icon.png, splash.png, adaptive-icon.png)
+      - Navigation scaffold (React Navigation with stack/tab)
+      - Example screen with SafeAreaView, View, Text, StyleSheet
+  [ ] Flutter template
+      - lib/main.dart with MaterialApp scaffold
+      - lib/screens/ with home_screen.dart
+      - pubspec.yaml with dependencies
+      - analysis_options.yaml
+      - assets/ directory
+      - Platform-specific: android/, ios/ directory stubs
+  [ ] SwiftUI template (iOS-only)
+      - ContentView.swift
+      - [ProjectName]App.swift
+      - Info.plist
+      - Assets.xcassets structure
+      - Example view with NavigationStack
+  [ ] Kotlin / Jetpack Compose template (Android-only)
+      - MainActivity.kt with ComponentActivity
+      - Theme.kt (Material Design 3)
+      - build.gradle.kts (app and project level)
+      - AndroidManifest.xml
+      - Example composable with Scaffold, TopAppBar
+  [ ] Update shared/schema.ts
+      - Add framework field to projects table
+      - Add language field
+      - Add targetPlatform field (ios, android, both)
+  [ ] Update server/routes.ts
+      - Project creation accepts framework parameter
+      - Returns scaffolded files based on framework
+  [ ] Update skill-loader.ts
+      - Detect framework from project files
+      - Map to correct skill files
+  [ ] Update dashboard project creation UI
+      - Framework selector with icons
+      - Platform badge on project cards
+      - Language indicator
+  [ ] Template gallery with preview screenshots
+
+Acceptance:
+  - Creating a new project offers all supported frameworks
+  - Each template compiles/renders correctly in the simulator
+  - Existing web projects still work unchanged
+  - Framework is persisted with the project metadata
+
+============================================================
+MP-3: MOBILE DEVELOPMENT AGENT PROMPTS & SKILLS
+============================================================
+Status: NOT STARTED
+Priority: HIGH (AI must understand mobile development)
+Depends on: MP-2
+
+Rewrite agent prompts for mobile-aware development while
+preserving existing web prompts. Create a mobile skills
+library covering each supported framework.
+
+  [ ] Dynamic prompt selection based on project framework
+      - Detect framework from project metadata and files
+      - Load web or mobile prompt variant accordingly
+  [ ] Mobile Manager prompt (server/manager-mobile-prompt.ts)
+      - Understands screens vs pages, navigation stacks
+      - Knows native API patterns (camera, GPS, push notifications)
+      - Plans mobile-specific architecture (navigation, state, platform handling)
+      - Handles platform differences (iOS vs Android)
+  [ ] Mobile Editor prompt (server/editor-mobile-prompt.ts)
+      - React Native: View, Text, FlatList, TouchableOpacity, Platform.OS
+      - Flutter: Widget tree, StatelessWidget, StatefulWidget, MaterialApp
+      - SwiftUI: @State, @Binding, NavigationStack, List
+      - Kotlin/Compose: @Composable, remember, LaunchedEffect, Scaffold
+      - Navigation patterns for each framework
+      - Platform-specific code patterns
+  [ ] Mobile Verifier prompt (server/verifier-mobile-prompt.ts)
+      - Safe area / notch handling
+      - Accessibility labels (accessibilityLabel, semanticsLabel, etc.)
+      - Touch target sizes (minimum 44pt iOS / 48dp Android)
+      - Keyboard avoidance patterns
+      - Platform.OS handling where needed
+      - Permission declarations
+      - App lifecycle awareness
+  [ ] Mobile Mentor prompt (server/mentor-mobile-prompt.ts)
+      - Teaches mobile concepts (screens, gestures, app lifecycle)
+      - Explains navigation patterns
+      - Covers permissions model
+      - Responsive mobile design principles
+  [ ] Communicator Agent evaluation
+      - Assess whether to keep, refactor, or deprecate
+      - Update vocabulary: "screens" not "pages," "tap" not "click"
+      - If kept: update for mobile terminology
+  [ ] Mobile skills library (server/skills/)
+      - react-native-expo/SKILL.md
+      - flutter/SKILL.md
+      - swiftui/SKILL.md
+      - kotlin-compose/SKILL.md
+      - mobile-common/SKILL.md (push notifications, deep links,
+        local storage, camera, location, permissions)
+      - mobile-ui-patterns/SKILL.md (tab bars, drawers, modals,
+        pull-to-refresh, infinite scroll, gestures)
+  [ ] Preserve existing web prompts
+      - server/manager-prompt.ts (unchanged, used for web projects)
+      - server/editor-prompt.ts (unchanged)
+      - server/verifier-prompt.ts (unchanged)
+      - server/mentor-prompt.ts (unchanged)
+
+Acceptance:
+  - AI generates correct code for each framework
+  - Mobile-specific issues caught by Verifier
+  - Skill loader detects framework and injects correct skills
+  - Web projects continue using web prompts unchanged
+
+============================================================
+MP-4: CLOUD BUILD PIPELINE
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM (needed for device testing)
+Depends on: MP-2
+
+Integrate cloud build services so users can compile their
+mobile apps into installable binaries (.ipa, .apk, .aab)
+without local toolchains.
+
+  [ ] React Native / Expo builds
+      - EAS Build integration (Expo Application Services)
+      - Generate eas.json configuration
+      - Development builds (debug APK / simulator IPA)
+      - Production builds (release AAB / IPA)
+      - OTA updates via EAS Update
+  [ ] Flutter builds
+      - Cloud build service integration
+      - flutter build apk / flutter build ios
+      - Flavor configuration (dev, staging, prod)
+  [ ] SwiftUI builds
+      - Xcode Cloud or alternative CI/CD
+      - Requires Apple Developer account
+  [ ] Kotlin / Compose builds
+      - Gradle-based cloud build
+      - Generate signed APK / AAB
+  [ ] Build status UI
+      - Build progress indicator in IDE
+      - Build log viewer
+      - Download built artifacts
+      - QR code for installing on device (Expo Go or direct download)
+  [ ] Build configuration panel
+      - App version and build number
+      - Bundle identifier / package name
+      - Minimum OS version
+      - Build variant (debug / release)
+  [ ] Build history
+      - List of previous builds with status
+      - Re-download artifacts
+      - Build comparison
+
+Acceptance:
+  - User can trigger a build from the IDE
+  - Build progress is visible in real time
+  - Built artifacts are downloadable
+  - QR code works for device installation
+
+============================================================
+MP-5: APP SIGNING & PROVISIONING
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM (required for production builds)
+Depends on: MP-4
+
+Manage code signing credentials for iOS and Android so users
+can produce store-ready binaries.
+
+  [ ] iOS signing
+      - Apple Developer account connection wizard
+      - Certificate and provisioning profile management
+      - Push notification certificate setup
+      - Entitlements configuration
+      - Keychain integration via EAS credentials
+  [ ] Android signing
+      - Keystore generation wizard
+      - Upload existing keystore
+      - Play App Signing enrollment guidance
+      - SHA-256 fingerprint display
+  [ ] Secure credential storage
+      - Encrypted storage for signing keys
+      - Environment secrets integration
+      - Never display raw key material
+  [ ] Guided setup flow
+      - Step-by-step wizard for first-time setup
+      - Platform-specific instructions (Apple Developer, Play Console)
+      - Validation checks before build
+
+Acceptance:
+  - Users can sign builds for both iOS and Android
+  - Credentials are stored securely
+  - Setup wizard guides beginners through the process
+  - Signed builds pass store validation
+
+============================================================
+MP-6: APP STORE SUBMISSION PIPELINE
+============================================================
+Status: NOT STARTED
+Priority: LOW (polish, after builds work)
+Depends on: MP-5
+
+Guide users through submitting their apps to the Apple App
+Store and Google Play Store.
+
+  [ ] App metadata editor
+      - App name, subtitle, description
+      - Keywords / tags
+      - Category selection
+      - Content rating questionnaire
+      - Privacy policy URL
+      - Support URL
+  [ ] Screenshot management
+      - Automated screenshot capture from simulator
+      - Multiple device size templates (iPhone 6.7", 6.1", iPad, etc.)
+      - Screenshot editor (add captions, backgrounds)
+      - Google Play screenshot requirements
+  [ ] App icon generation
+      - AI-assisted icon generation
+      - Auto-resize for all required sizes
+      - iOS: 1024×1024 App Store icon + all @2x/@3x variants
+      - Android: Adaptive icon (foreground + background layers)
+      - Preview icon on device frame
+  [ ] AI-assisted store listing
+      - Generate app description from project context
+      - Keyword optimization suggestions
+      - Localization support (multiple languages)
+      - What's New text generation for updates
+  [ ] Submission checklist
+      - Pre-submission validation (missing fields, icon issues, etc.)
+      - Apple App Store Review Guidelines compliance check
+      - Google Play policy compliance check
+      - Common rejection reasons with preventive guidance
+  [ ] Submission tracking
+      - Status updates (submitted, in review, approved, rejected)
+      - Rejection feedback display and fix guidance
+
+Acceptance:
+  - Users can prepare all store assets from within the IDE
+  - AI generates high-quality store listings
+  - Checklist catches common rejection causes before submission
+  - Both App Store and Play Store workflows are supported
+
+============================================================
+MP-7: ASSET MANAGEMENT SYSTEM
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM
+Depends on: MP-2
+
+Manage mobile app assets (icons, splash screens, images, fonts)
+with proper resolution variants and platform conventions.
+
+  [ ] App icon editor
+      - Upload or AI-generate icon
+      - Auto-generate all required sizes
+      - iOS: 20pt through 1024pt icons
+      - Android: mdpi through xxxhdpi + adaptive icon layers
+      - Preview on device frame
+  [ ] Splash screen editor
+      - Visual editor for splash/launch screen
+      - iOS: LaunchScreen.storyboard equivalent
+      - Android: Splash screen API configuration
+      - Animated splash support
+  [ ] Image asset management
+      - Import images with auto-resolution variants
+      - @1x, @2x, @3x for iOS
+      - mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi for Android
+      - WebP optimization
+      - Asset catalog browser
+  [ ] Font management
+      - Custom font import
+      - Font preview
+      - Platform-specific font loading setup
+      - Google Fonts integration
+  [ ] Color palette / theme editor
+      - Visual color picker
+      - Light / dark mode color pairs
+      - Export to framework-specific format
+      - iOS: Asset catalog colors
+      - Android: colors.xml / Material Theme
+
+Acceptance:
+  - Users can manage all app assets visually
+  - Resolution variants are auto-generated
+  - Assets are correctly placed in framework-specific locations
+
+============================================================
+MP-8: NAVIGATION FLOW VISUALIZER
+============================================================
+Status: NOT STARTED
+Priority: LOW (nice-to-have)
+Depends on: MP-2, MP-3
+
+Visual screen flow diagram showing app navigation structure.
+Extends or replaces the existing Mind Map for mobile projects.
+
+  [ ] Screen flow diagram
+      - Visual nodes for each screen/page
+      - Arrows showing navigation paths
+      - Tab bar / bottom navigation visualization
+      - Stack navigator grouping
+      - Drawer navigation
+      - Modal presentations
+  [ ] Interactive editing
+      - Drag to rearrange screens
+      - Click to navigate to screen code
+      - Add new screen from diagram
+      - Delete screen from diagram
+  [ ] Auto-detection
+      - Parse navigation config from code
+      - React Navigation: createStackNavigator, createBottomTabNavigator
+      - Flutter: Navigator, GoRouter
+      - SwiftUI: NavigationStack, TabView
+      - Compose: NavHost, composable routes
+  [ ] Click-through prototype mode
+      - Navigate between screens as if using the app
+      - Basic transition animations
+      - Share prototype link
+
+Acceptance:
+  - Navigation structure is automatically detected from code
+  - Users can visualize and edit the screen flow
+  - Clicking a screen opens the relevant code file
+
+============================================================
+MP-9: MOBILE TESTING TOOLS
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM
+Depends on: MP-1, MP-2
+
+Testing and quality tools specific to mobile app development.
+
+  [ ] Multi-device testing
+      - Test on multiple device sizes simultaneously
+      - Side-by-side comparison view
+      - Responsive layout validation
+  [ ] Accessibility checker
+      - Color contrast analysis (WCAG AA/AAA)
+      - Touch target size validation (44pt iOS / 48dp Android)
+      - Screen reader label coverage
+      - Dynamic type / font scaling test
+      - Reduce motion support check
+  [ ] Performance basics
+      - Component render count
+      - Bundle size tracker
+      - Image optimization suggestions
+      - Memory usage indicators
+  [ ] Network simulation
+      - Offline mode testing
+      - Slow network (3G, Edge) simulation
+      - API response latency injection
+  [ ] Platform-specific testing
+      - iOS-only feature validation
+      - Android-only feature validation
+      - Platform.OS conditional code coverage
+
+Acceptance:
+  - Users can test across multiple device sizes
+  - Accessibility issues are automatically flagged
+  - Performance metrics are visible during development
+
+============================================================
+MP-10: UPDATED LEARNER SPACE FOR MOBILE
+============================================================
+Status: NOT STARTED
+Priority: LOW
+Depends on: MP-3
+
+Update the Coding Notebook / Learner Space to teach mobile
+development concepts instead of (or in addition to) web concepts.
+
+  [ ] Mobile-specific concept explanations
+      - Components vs Screens
+      - Navigation patterns (stack, tab, drawer)
+      - State management in mobile apps
+      - Native API access (camera, GPS, contacts, etc.)
+      - App lifecycle (foreground, background, suspended)
+      - Permissions model
+      - Responsive mobile design
+      - Gestures (swipe, pinch, long press)
+  [ ] Framework-specific learning paths
+      - React Native learning track
+      - Flutter learning track
+      - SwiftUI learning track
+      - Kotlin/Compose learning track
+  [ ] Updated Mind Map for mobile
+      - Screen-centric visualization
+      - Navigation flow integration
+      - Native module connections
+  [ ] Mobile-specific learning tips
+      - Testing on real devices
+      - Debugging mobile apps
+      - Performance optimization
+      - App store guidelines awareness
+
+Acceptance:
+  - Learner Space explains mobile concepts correctly
+  - Learning content adapts to the project's framework
+  - Mind Map reflects mobile app architecture
+
+============================================================
+MP-11: DASHBOARD & UI UPDATES
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM
+Depends on: MP-2
+
+Update the dashboard, branding, and overall terminology
+for the mobile-first pivot.
+
+  [ ] Dashboard updates
+      - Framework icon on project cards
+      - Platform badge (iOS / Android / Both)
+      - Language indicator
+      - "New Mobile App" prominent creation flow
+      - Template gallery with categorized mobile app templates
+        (social, e-commerce, productivity, game, utility)
+      - Preview thumbnails for templates
+  [ ] Terminology updates (i18n)
+      - "Preview" → "Device Preview" / "Simulator"
+      - "Page" → "Screen"
+      - "Click" → "Tap"
+      - "Website" → "App"
+      - "Browser" → "Device"
+      - Update all English strings
+      - Update all Chinese strings
+  [ ] Branding refresh
+      - Logo update to reflect mobile focus
+      - Landing page messaging
+      - Onboarding copy
+  [ ] Quick-launch features
+      - "Open in Expo Go" QR code
+      - "Test on Device" button
+      - Device connection status indicator
+
+Acceptance:
+  - Dashboard clearly communicates mobile-first platform
+  - All terminology is consistent throughout the app
+  - Users understand they're building mobile apps, not websites
+
+============================================================
+MP-12: PWA & RESPONSIVE MOBILE IDE
+============================================================
+Status: NOT STARTED
+Priority: LOW (enables coding on phone)
+Depends on: MP-1
+
+Make the CodeStart IDE itself usable on mobile devices
+as a Progressive Web App, so users can code on their phones.
+
+  [ ] Responsive layout
+      - Mobile-first CSS for all IDE components
+      - Collapsible panels on small screens
+      - Bottom tab bar for tool switching (replacing side dock)
+      - Full-screen editor mode
+      - Swipe gestures for panel navigation
+  [ ] PWA setup
+      - manifest.json with app metadata
+      - Service worker for offline support
+      - App icon and splash screen
+      - "Add to Home Screen" prompt
+      - iOS home screen app support
+  [ ] Mobile code editing
+      - Touch-friendly Monaco editor settings
+      - Larger touch targets for buttons
+      - On-screen keyboard handling
+      - Code autocomplete optimized for touch
+      - Pinch-to-zoom in editor
+  [ ] Mobile chat experience
+      - Full-screen chat mode
+      - Voice input for AI chat (speech-to-text)
+      - Quick actions toolbar (above keyboard)
+  [ ] Tablet optimization
+      - iPad split-view support
+      - Landscape layout with side-by-side panels
+      - Apple Pencil support for annotations
+
+Acceptance:
+  - IDE is fully usable on iPhone and Android phones
+  - PWA can be installed from home screen
+  - Code editing is comfortable on touch devices
+  - Chat with AI works well on mobile
+
+============================================================
+MP-13: COMMUNICATOR AGENT EVALUATION
+============================================================
+Status: NOT STARTED
+Priority: MEDIUM
+Depends on: MP-3
+
+Evaluate whether the Communicator Agent should be kept,
+refactored, or deprecated in the mobile pivot.
+
+Current role: Translates internal agent events into
+friendly beginner-facing narration. Lives in
+server/communicator-prompt.ts and /api/communicator-chat.
+
+  [ ] Audit current usage
+      - Map all callsites in chat-panel.tsx and routes.ts
+      - Identify which events are still relevant for mobile builds
+      - Measure latency impact on build pipeline
+  [ ] Decision: keep / refactor / deprecate
+      - If KEEP: Update vocabulary for mobile terminology
+      - If REFACTOR: Merge into Manager/Communicator hybrid
+      - If DEPRECATE: Remove all callsites and clean up
+  [ ] If keeping, update for mobile
+      - "Screen" instead of "page"
+      - "Component" instead of "element"
+      - "Tap" instead of "click"
+      - Mobile-specific event types (build_for_ios, build_for_android,
+        signing, submission)
+  [ ] Document decision and rationale
+
+Acceptance:
+  - Clear decision made and documented
+  - All code paths updated accordingly
+  - No broken references to removed/changed endpoints
+
+============================================================
+DEPENDENCY CHAIN
+============================================================
+
+MP-1 (Simulator)
+  └── MP-9 (Testing Tools)
+  └── MP-12 (PWA/Responsive)
+
+MP-2 (Scaffolding)
+  ├── MP-3 (Agent Prompts)
+  │   ├── MP-8 (Navigation Visualizer)
+  │   ├── MP-10 (Learner Space)
+  │   └── MP-13 (Communicator Eval)
+  ├── MP-4 (Cloud Build)
+  │   └── MP-5 (Signing)
+  │       └── MP-6 (Store Submission)
+  ├── MP-7 (Asset Management)
+  └── MP-11 (Dashboard/UI)
+
+Independent (can run in parallel):
+  - MP-1 and MP-2 have no dependencies on each other
+  - MP-7, MP-9, MP-11 can run in parallel after MP-2
+  - MP-12 can run any time after MP-1
+
+============================================================
+ARCHITECTURE DECISIONS
+============================================================
+
+1. React Native with Expo as primary framework
+   - Most accessible for beginners (JavaScript/TypeScript)
+   - Expo handles native complexity (no Xcode/Android Studio needed)
+   - Expo Web enables browser-based preview before device testing
+   - EAS Build provides cloud compilation
+
+2. Multi-framework via template system
+   - Each framework is a project template with its own file set
+   - Skill loader detects framework and injects correct AI skills
+   - Agent prompts dynamically switch based on framework
+   - Preview adapts to framework (Expo Web, Flutter Web, etc.)
+
+3. Device simulator is a UI chrome layer
+   - The simulator is a visual frame around the preview content
+   - Content rendering depends on framework:
+     - React Native → Expo Web (iframe)
+     - Flutter → Flutter Web (iframe)
+     - SwiftUI/Kotlin → Static mockup or cloud-rendered screenshot
+   - This approach works on Replit without native emulators
+
+4. Cloud builds, not local builds
+   - Replit doesn't have Xcode, Android SDK, or Flutter SDK
+   - All compilation happens via cloud services (EAS Build, etc.)
+   - The IDE sends project files to the build service
+   - Built artifacts are downloaded or shared via QR code
+
+5. Preserve existing web development capability
+   - Web projects (HTML/CSS/JS) remain fully supported
+   - All existing prompts, skills, and features are preserved
+   - Framework field in project metadata determines behavior
+   - Default new project type changes from "web" to "mobile"
+
+6. PWA over native IDE app
+   - Making the IDE itself a PWA is practical on Replit
+   - A native mobile wrapper for the IDE can come later if needed
+   - PWA gives installable, offline-capable mobile experience
+   - Avoids the complexity of building two apps at once
+
+============================================================
+FRAMEWORK COMPARISON
+============================================================
+
+| Aspect              | React Native/Expo | Flutter      | SwiftUI      | Kotlin/Compose |
+|---------------------|-------------------|-------------|-------------|----------------|
+| Language            | TypeScript/JS     | Dart        | Swift       | Kotlin         |
+| Platform            | iOS + Android     | iOS+Android | iOS only    | Android only   |
+| Beginner-friendly   | ★★★★★             | ★★★★        | ★★★         | ★★★            |
+| Browser preview     | Yes (Expo Web)    | Yes (Web)   | No          | No             |
+| Cloud build         | EAS Build         | Codemagic   | Xcode Cloud | Gradle cloud   |
+| Hot reload          | Yes               | Yes         | Preview     | Preview        |
+| Ecosystem           | npm (huge)        | pub.dev     | Apple only  | JetPack        |
+| Recommended for     | Beginners, cross  | Cross-plat  | iOS devs    | Android devs   |
+
+============================================================
+============================================================
+ORIGINAL WEB IDE PROGRESS (HISTORICAL RECORD)
+============================================================
+============================================================
 
 Project: Browser-Based IDE with Vibe Coding Agent
 Started: Phase 1

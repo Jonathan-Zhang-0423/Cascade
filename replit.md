@@ -1,7 +1,10 @@
-# CodeStart IDE
+# CodeStart — Mobile-First AI Development Platform
 
 ## Overview
-CodeStart IDE is a browser-based integrated development environment inspired by Replit. Its primary purpose is to empower complete beginners to build web applications through natural language conversations with a built-in "Vibe Coding Agent." The platform supports multiple isolated projects, each with its own files, chat history, and live preview. It aims to simplify web development for new users by providing an intuitive, conversational, and guided coding experience.
+CodeStart is a mobile-first development platform that empowers complete beginners to build production-ready iOS and Android apps using AI coding agents. The platform supports multiple mobile frameworks (React Native/Expo, Flutter, SwiftUI, Kotlin/Jetpack Compose) and multiple languages (TypeScript, Dart, Swift, Kotlin). Users develop apps through natural language conversations with a built-in "Vibe Coding Agent" and preview them in a device simulator. The platform supports multiple isolated projects, each with its own files, chat history, and device preview.
+
+## Mobile Pivot Status
+The platform is pivoting from a browser-based web IDE to a mobile-first development platform. See `Progress.txt` for the comprehensive roadmap (phases MP-1 through MP-13). Existing web project support (HTML/CSS/JS) is preserved for backwards compatibility.
 
 ## User Preferences
 The user wants an AI assistant that:
