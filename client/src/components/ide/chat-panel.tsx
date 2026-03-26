@@ -2919,7 +2919,9 @@ export function ChatPanel() {
               const msgs = useIDEStore.getState().managerMessages;
               buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
             }
+            const targetMsgId = buildResultMsgIdRef.current;
             ;(async () => {
+              if (!targetMsgId) return;
               try {
                 const response = await fetch("/api/communicator-chat", {
                   method: "POST",
@@ -2954,14 +2956,12 @@ export function ChatPanel() {
                       const parsed = JSON.parse(data);
                       if (parsed.content) {
                         accumulated += parsed.content;
-                        const msgId = buildResultMsgIdRef.current;
-                        if (msgId) {
-                          const curMsgs = useIDEStore.getState().managerMessages;
-                          const updated = curMsgs.map(m => m.id === msgId && m.buildResult
-                            ? { ...m, buildResult: { ...m.buildResult, completionData: { ...m.buildResult.completionData, summary: accumulated } } }
-                            : m);
-                          useIDEStore.setState({ managerMessages: updated });
-                        }
+                        const curMsgs = useIDEStore.getState().managerMessages;
+                        if (!curMsgs.some(m => m.id === targetMsgId)) break;
+                        const updated = curMsgs.map(m => m.id === targetMsgId && m.buildResult
+                          ? { ...m, buildResult: { ...m.buildResult, completionData: { ...m.buildResult.completionData, summary: accumulated } } }
+                          : m);
+                        useIDEStore.setState({ managerMessages: updated });
                       }
                     } catch {}
                   }
