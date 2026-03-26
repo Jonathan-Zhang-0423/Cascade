@@ -1,8 +1,17 @@
 import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Globe, RefreshCw, Lock } from "lucide-react";
+import { Globe, RefreshCw, Lock, Smartphone, Rotate3D, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DeviceSimulator } from "./device-simulator";
+import { DEVICE_LIST, getDeviceSpec } from "@/lib/device-specs";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -67,10 +76,23 @@ function inlineExternalFiles(html: string, files: FileNode[], entryPath = "/proj
 }
 
 export function PreviewPanel() {
-  const { files, addConsoleEntry, clearConsole, previewFile, previewRefreshKey } = useIDEStore();
+  const {
+    files,
+    addConsoleEntry,
+    clearConsole,
+    previewFile,
+    previewRefreshKey,
+    selectedDevice,
+    setSelectedDevice,
+    deviceOrientation,
+    setDeviceOrientation,
+    deviceFrameStyle,
+    setDeviceFrameStyle,
+  } = useIDEStore();
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const t = useT();
+  const deviceSpec = getDeviceSpec(selectedDevice);
 
   const effectiveRefresh = refreshKey + previewRefreshKey;
 
@@ -149,11 +171,59 @@ export function PreviewPanel() {
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
       <div className="flex items-center gap-2 px-3 h-9 border-b border-border/50 shrink-0">
-        <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <div className="flex-1 flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-muted/40 border border-border/30 text-[11px] text-muted-foreground truncate">
-          <Lock className="w-2.5 h-2.5 shrink-0" />
-          <span className="truncate">localhost:3000/{previewFile.replace("/project/", "")}</span>
-        </div>
+        <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        
+        {/* Device selector */}
+        <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+          <SelectTrigger className="w-32 h-6 text-xs rounded-md" data-testid="select-device">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="start">
+            {DEVICE_LIST.map((device) => (
+              <SelectItem key={device.id} value={device.id} className="text-xs">
+                {device.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Orientation toggle */}
+        <Button
+          size="icon"
+          variant={deviceOrientation === "portrait" ? "default" : "ghost"}
+          className="h-6 w-6 shrink-0"
+          onClick={() =>
+            setDeviceOrientation(
+              deviceOrientation === "portrait" ? "landscape" : "portrait"
+            )
+          }
+          aria-label="Toggle orientation"
+          data-testid="button-toggle-orientation"
+        >
+          <Rotate3D className="w-3 h-3" />
+        </Button>
+
+        {/* Frame style toggle */}
+        <Button
+          size="icon"
+          variant={deviceFrameStyle === "dark" ? "default" : "ghost"}
+          className="h-6 w-6 shrink-0"
+          onClick={() =>
+            setDeviceFrameStyle(deviceFrameStyle === "dark" ? "light" : "dark")
+          }
+          aria-label="Toggle frame style"
+          data-testid="button-toggle-frame-style"
+        >
+          {deviceFrameStyle === "dark" ? (
+            <Moon className="w-3 h-3" />
+          ) : (
+            <Sun className="w-3 h-3" />
+          )}
+        </Button>
+
+        <div className="flex-1" />
+
+        {/* Refresh button */}
         <Button
           size="icon"
           variant="ghost"
@@ -165,16 +235,23 @@ export function PreviewPanel() {
           <RefreshCw className="w-3 h-3" />
         </Button>
       </div>
-      <div className="flex-1 min-h-0 bg-white">
-        <iframe
-          ref={iframeRef}
-          key={effectiveRefresh}
-          srcDoc={injectedHtml}
-          className="w-full h-full border-0"
-          title={t("preview.title")}
-          sandbox="allow-scripts allow-modals allow-same-origin"
-          data-testid="preview-iframe"
-        />
+
+      <div className="flex-1 min-h-0 bg-gradient-to-b from-slate-900 to-slate-950 overflow-auto">
+        <DeviceSimulator
+          deviceSpec={deviceSpec}
+          orientation={deviceOrientation}
+          frameStyle={deviceFrameStyle}
+        >
+          <iframe
+            ref={iframeRef}
+            key={effectiveRefresh}
+            srcDoc={injectedHtml}
+            className="w-full h-full border-0"
+            title={t("preview.title")}
+            sandbox="allow-scripts allow-modals allow-same-origin"
+            data-testid="preview-iframe"
+          />
+        </DeviceSimulator>
       </div>
     </div>
   );

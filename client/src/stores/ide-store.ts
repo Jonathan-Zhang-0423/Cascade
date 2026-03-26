@@ -331,6 +331,15 @@ interface IDEState {
   selectedProvider: AIProvider;
   setSelectedProvider: (provider: AIProvider) => void;
 
+  selectedDevice: string;
+  deviceOrientation: "portrait" | "landscape";
+  devicePlatform: "ios" | "android";
+  deviceFrameStyle: "light" | "dark";
+  setSelectedDevice: (device: string) => void;
+  setDeviceOrientation: (orientation: "portrait" | "landscape") => void;
+  setDevicePlatform: (platform: "ios" | "android") => void;
+  setDeviceFrameStyle: (style: "light" | "dark") => void;
+
   loadProject: (id: string) => void;
   saveProject: () => void;
   clearPendingPrompt: () => void;
@@ -626,6 +635,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isNotebookOptimizing: false,
   notebookError: null,
 
+  selectedDevice: "iphone-15",
+  deviceOrientation: "portrait" as const,
+  devicePlatform: "ios" as const,
+  deviceFrameStyle: "dark" as const,
+
   selectedProvider: (() => {
     try {
       const saved = localStorage.getItem("codestart-selected-provider") as AIProvider | null;
@@ -636,6 +650,22 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setSelectedProvider: (provider) => {
     try { localStorage.setItem("codestart-selected-provider", provider); } catch {}
     set({ selectedProvider: provider });
+  },
+
+  setSelectedDevice: (device) => {
+    set({ selectedDevice: device });
+  },
+
+  setDeviceOrientation: (orientation) => {
+    set({ deviceOrientation: orientation });
+  },
+
+  setDevicePlatform: (platform) => {
+    set({ devicePlatform: platform });
+  },
+
+  setDeviceFrameStyle: (style) => {
+    set({ deviceFrameStyle: style });
   },
 
   loadProject: (id) => {
