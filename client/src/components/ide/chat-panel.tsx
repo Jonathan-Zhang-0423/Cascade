@@ -3359,7 +3359,6 @@ export function ChatPanel() {
                 );
               }
               if (msg.buildResult) {
-                const hasCompletion = msg.buildResult.completionData.changedFiles.length > 0 || !!msg.buildResult.completionData.summary;
                 return (
                   <div key={`m-${msg.id}`} className="space-y-2">
                     {msg.buildResult.actionLog.length > 0 && (
@@ -3367,13 +3366,11 @@ export function ChatPanel() {
                         <ActionLogCollapsed entries={msg.buildResult.actionLog as ActionLogEntry[]} />
                       </div>
                     )}
-                    {hasCompletion && (
-                      <BuildCompletionCard
-                        changedFiles={msg.buildResult.completionData.changedFiles}
-                        userLang={msg.buildResult.completionData.userLang}
-                        summary={msg.buildResult.completionData.summary}
-                      />
-                    )}
+                    <BuildCompletionCard
+                      changedFiles={msg.buildResult.completionData.changedFiles}
+                      userLang={msg.buildResult.completionData.userLang}
+                      summary={msg.buildResult.completionData.summary}
+                    />
                   </div>
                 );
               }
