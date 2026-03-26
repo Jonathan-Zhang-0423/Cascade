@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "swiftui" | "kotlin">("web");
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -64,8 +65,9 @@ export default function DashboardPage() {
     const idea = ideaText.trim();
     if (!idea) return;
     const emoji = getProjectEmoji(idea);
-    const id = createProject(t("dashboard.newProject"), idea, emoji);
+    const id = createProject(t("dashboard.newProject"), idea, emoji, selectedFramework);
     setIdeaText("");
+    setSelectedFramework("web");
     setShowNewDialog(false);
     navigate(`/project/${id}`);
   };
@@ -370,6 +372,23 @@ export default function DashboardPage() {
             className="min-h-[80px] resize-none"
             data-testid="input-project-idea"
           />
+          
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Framework</label>
+            <Select value={selectedFramework} onValueChange={(v: any) => setSelectedFramework(v)}>
+              <SelectTrigger data-testid="select-framework">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="web">Web (HTML/CSS/JS)</SelectItem>
+                <SelectItem value="rn-expo">React Native (Expo)</SelectItem>
+                <SelectItem value="flutter">Flutter</SelectItem>
+                <SelectItem value="swiftui">SwiftUI (iOS)</SelectItem>
+                <SelectItem value="kotlin">Kotlin Compose (Android)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewDialog(false)} data-testid="button-cancel-new">
               {t("dashboard.cancel")}

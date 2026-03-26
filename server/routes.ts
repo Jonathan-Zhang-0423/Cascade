@@ -11,6 +11,8 @@ import { withRetry } from "./retry";
 import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
 import { insertProjectSchema } from "@shared/schema";
+import { getTemplateFiles } from "./templates";
+import { getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "./framework-detector";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   buildEditorContextMessage,
@@ -1538,8 +1540,29 @@ Generate the codestart.md content for this project based on both the plan and th
         res.status(400).json({ error: parsed.error.flatten() });
         return;
       }
-      const { id, name, emoji } = parsed.data;
-      const project = await storage.createProject({ id, name, emoji: emoji ?? null });
+      const { id, name, emoji, framework: rawFramework } = parsed.data;
+      const framework = (rawFramework || "web") as Framework;
+      const language = getLanguageForFramework(framework);
+      const targetPlatform = getTargetPlatformForFramework(framework);
+
+      const project = await storage.createProject({
+        id,
+        name,
+        emoji: emoji ?? null,
+        framework,
+        language,
+        targetPlatform,
+      });
+
+      // Initialize files from template
+      const templateFiles = getTemplateFiles(framework);
+      if (templateFiles.length > 0) {
+        await storage.upsertProjectFiles(
+          id,
+          templateFiles.map((f) => ({ path: f.path, content: f.content }))
+        );
+      }
+
       res.json({ project });
     } catch (error: any) {
       console.error("Create project error:", error?.message || error);

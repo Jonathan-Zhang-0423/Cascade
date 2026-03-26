@@ -19,7 +19,7 @@ export interface ProjectEntry {
 interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
-  createProject: (name: string, initialPrompt?: string, emoji?: string) => string;
+  createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => string;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
   syncFromServer: () => Promise<void>;
@@ -173,12 +173,12 @@ export function migrateOldState() {
   }
 }
 
-async function syncProjectToServer(id: string, name: string, emoji?: string) {
+async function syncProjectToServer(id: string, name: string, emoji?: string, framework?: string) {
   try {
     await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name, emoji }),
+      body: JSON.stringify({ id, name, emoji, framework }),
     });
   } catch {}
 }
@@ -207,7 +207,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       projects: [],
       serverSynced: false,
 
-      createProject: (name: string, initialPrompt?: string, emoji?: string) => {
+      createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
         const id = generateId();
         const state = getDefaultProjectState(initialPrompt);
         localStorage.setItem(
@@ -222,7 +222,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           ],
         }));
 
-        syncProjectToServer(id, name, emoji).then(() => {
+        syncProjectToServer(id, name, emoji, framework).then(() => {
           const flatFiles: { path: string; content: string }[] = [];
           function flattenNode(nodes: typeof BLANK_FILES) {
             for (const n of nodes) {
