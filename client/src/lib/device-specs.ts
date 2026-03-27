@@ -4,7 +4,6 @@ export interface DeviceSpec {
   width: number;
   height: number;
   platform: "ios" | "android";
-  hasNotch?: boolean;
   hasDynamicIsland?: boolean;
   safeAreaInsets?: {
     top: number;
@@ -21,7 +20,6 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 375,
     height: 667,
     platform: "ios",
-    hasNotch: false,
     hasDynamicIsland: false,
     safeAreaInsets: { top: 20, bottom: 0, left: 0, right: 0 },
   },
@@ -31,7 +29,6 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 390,
     height: 844,
     platform: "ios",
-    hasNotch: false,
     hasDynamicIsland: true,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
@@ -41,7 +38,6 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 430,
     height: 932,
     platform: "ios",
-    hasNotch: false,
     hasDynamicIsland: true,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
@@ -51,7 +47,6 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 810,
     height: 1080,
     platform: "ios",
-    hasNotch: false,
     hasDynamicIsland: false,
     safeAreaInsets: { top: 24, bottom: 24, left: 24, right: 24 },
   },
@@ -114,7 +109,6 @@ export function makeCustomSpec(width: number, height: number, platform: "ios" | 
     width,
     height,
     platform,
-    hasNotch: false,
     hasDynamicIsland: false,
   };
 }
