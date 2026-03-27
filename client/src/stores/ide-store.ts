@@ -665,22 +665,27 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setSelectedDevice: (device) => {
     set({ selectedDevice: device });
+    debouncedPersist(get());
   },
 
   setDeviceOrientation: (orientation) => {
     set({ deviceOrientation: orientation });
+    debouncedPersist(get());
   },
 
   setDevicePlatform: (platform) => {
     set({ devicePlatform: platform });
+    debouncedPersist(get());
   },
 
   setDeviceFrameStyle: (style) => {
     set({ deviceFrameStyle: style });
+    debouncedPersist(get());
   },
 
   setCustomDeviceDimensions: (width, height) => {
     set({ customDeviceWidth: width, customDeviceHeight: height });
+    debouncedPersist(get());
   },
 
   loadProject: (id) => {
