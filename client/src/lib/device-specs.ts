@@ -4,6 +4,8 @@ export interface DeviceSpec {
   width: number;
   height: number;
   platform: "ios" | "android";
+  hasNotch?: boolean;
+  hasDynamicIsland?: boolean;
   safeAreaInsets?: {
     top: number;
     bottom: number;
@@ -19,6 +21,8 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 375,
     height: 667,
     platform: "ios",
+    hasNotch: false,
+    hasDynamicIsland: false,
     safeAreaInsets: { top: 20, bottom: 0, left: 0, right: 0 },
   },
   "iphone-15": {
@@ -27,6 +31,8 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 390,
     height: 844,
     platform: "ios",
+    hasNotch: false,
+    hasDynamicIsland: true,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
   "iphone-15-pro-max": {
@@ -35,6 +41,8 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 430,
     height: 932,
     platform: "ios",
+    hasNotch: false,
+    hasDynamicIsland: true,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
   ipad: {
@@ -43,6 +51,8 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 810,
     height: 1080,
     platform: "ios",
+    hasNotch: false,
+    hasDynamicIsland: false,
     safeAreaInsets: { top: 24, bottom: 24, left: 24, right: 24 },
   },
   "pixel-7": {
@@ -82,7 +92,7 @@ export function getDeviceName(deviceId: string): string {
 }
 
 export const ORIENTATION_PRESETS = ["portrait", "landscape"] as const;
-export type Orientation = typeof ORIENTATION_PRESETS[number];
+export type Orientation = (typeof ORIENTATION_PRESETS)[number];
 
 export function getDeviceDimensions(
   deviceId: string,
@@ -95,4 +105,16 @@ export function getDeviceDimensions(
   }
 
   return { width: spec.width, height: spec.height };
+}
+
+export function makeCustomSpec(width: number, height: number, platform: "ios" | "android"): DeviceSpec {
+  return {
+    id: "custom",
+    name: "Custom",
+    width,
+    height,
+    platform,
+    hasNotch: false,
+    hasDynamicIsland: false,
+  };
 }

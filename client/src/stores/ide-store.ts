@@ -335,10 +335,13 @@ interface IDEState {
   deviceOrientation: "portrait" | "landscape";
   devicePlatform: "ios" | "android";
   deviceFrameStyle: "light" | "dark";
+  customDeviceWidth: number;
+  customDeviceHeight: number;
   setSelectedDevice: (device: string) => void;
   setDeviceOrientation: (orientation: "portrait" | "landscape") => void;
   setDevicePlatform: (platform: "ios" | "android") => void;
   setDeviceFrameStyle: (style: "light" | "dark") => void;
+  setCustomDeviceDimensions: (width: number, height: number) => void;
 
   loadProject: (id: string) => void;
   saveProject: () => void;
@@ -504,6 +507,12 @@ function persistState(state: IDEState) {
       : state.managerMessages,
     activeSpace: state.activeSpace,
     notebookContent: state.notebookContent,
+    selectedDevice: state.selectedDevice,
+    deviceOrientation: state.deviceOrientation,
+    devicePlatform: state.devicePlatform,
+    deviceFrameStyle: state.deviceFrameStyle,
+    customDeviceWidth: state.customDeviceWidth,
+    customDeviceHeight: state.customDeviceHeight,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
@@ -639,6 +648,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   deviceOrientation: "portrait" as const,
   devicePlatform: "ios" as const,
   deviceFrameStyle: "dark" as const,
+  customDeviceWidth: 390,
+  customDeviceHeight: 844,
 
   selectedProvider: (() => {
     try {
@@ -666,6 +677,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setDeviceFrameStyle: (style) => {
     set({ deviceFrameStyle: style });
+  },
+
+  setCustomDeviceDimensions: (width, height) => {
+    set({ customDeviceWidth: width, customDeviceHeight: height });
   },
 
   loadProject: (id) => {
@@ -719,6 +734,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isNotebookLoading: false,
       isNotebookOptimizing: false,
       notebookError: null,
+      selectedDevice: saved.selectedDevice || "iphone-15",
+      deviceOrientation: (saved.deviceOrientation || "portrait") as "portrait" | "landscape",
+      devicePlatform: (saved.devicePlatform || "ios") as "ios" | "android",
+      deviceFrameStyle: (saved.deviceFrameStyle || "dark") as "light" | "dark",
+      customDeviceWidth: saved.customDeviceWidth || 390,
+      customDeviceHeight: saved.customDeviceHeight || 844,
     } : {
       projectId: id,
       files: defaultFiles,
@@ -752,6 +773,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isNotebookLoading: false,
       isNotebookOptimizing: false,
       notebookError: null,
+      selectedDevice: "iphone-15",
+      deviceOrientation: "portrait" as "portrait" | "landscape",
+      devicePlatform: "ios" as "ios" | "android",
+      deviceFrameStyle: "dark" as "light" | "dark",
+      customDeviceWidth: 390,
+      customDeviceHeight: 844,
     };
 
     set(baseState);
