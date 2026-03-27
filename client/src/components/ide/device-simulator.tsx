@@ -82,6 +82,59 @@ function DynamicIsland({ isDark }: { isDark: boolean }) {
   );
 }
 
+function ClassicNotch({ isDark, width }: { isDark: boolean; width: number }) {
+  const notchW = Math.min(width * 0.45, 180);
+  return (
+    <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: notchW, height: 26 }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${notchW} 26`} preserveAspectRatio="none">
+        <path
+          d={`M0,0 L${notchW * 0.1},0 Q${notchW * 0.15},0 ${notchW * 0.15},6 L${notchW * 0.15},16 Q${notchW * 0.15},26 ${notchW * 0.25},26 L${notchW * 0.75},26 Q${notchW * 0.85},26 ${notchW * 0.85},16 L${notchW * 0.85},6 Q${notchW * 0.85},0 ${notchW * 0.9},0 L${notchW},0`}
+          fill={isDark ? "#1c1c1e" : "#e8e8ed"}
+        />
+      </svg>
+      <div
+        className="absolute rounded-full"
+        style={{
+          top: 8,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 10,
+          height: 10,
+          backgroundColor: isDark ? "#2c2c2e" : "#bbb",
+          border: `1px solid ${isDark ? "#3a3a3c" : "#aaa"}`,
+        }}
+      />
+      <div
+        className="absolute rounded-full"
+        style={{
+          top: 10,
+          left: "50%",
+          transform: "translateX(10px)",
+          width: 6,
+          height: 6,
+          backgroundColor: isDark ? "#1a1a2e" : "#ccc",
+        }}
+      />
+    </div>
+  );
+}
+
+function ClassicHomeButton({ isDark }: { isDark: boolean }) {
+  return (
+    <div className="flex items-center justify-center" style={{ height: 44 }}>
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          border: `2px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
+          backgroundColor: "transparent",
+        }}
+      />
+    </div>
+  );
+}
+
 function IOSHomeIndicator({ isDark }: { isDark: boolean }) {
   return (
     <div className="flex items-center justify-center" style={{ height: 28 }}>
@@ -114,6 +167,15 @@ function AndroidNavBar({ isDark }: { isDark: boolean }) {
   );
 }
 
+type DeviceVariant = "dynamic-island" | "classic-notch" | "flat";
+
+function getDeviceVariant(spec: DeviceSpec, isIOS: boolean): DeviceVariant {
+  if (!isIOS) return "flat";
+  if (spec.hasDynamicIsland) return "dynamic-island";
+  if (spec.id === "ipad") return "flat";
+  return "classic-notch";
+}
+
 export function DeviceSimulator({
   deviceSpec,
   orientation,
@@ -129,15 +191,17 @@ export function DeviceSimulator({
   const isIOS = platform === "ios";
   const isDark = frameStyle === "dark";
 
-  const hasDI = isIOS && (deviceSpec.hasDynamicIsland ?? false);
+  const variant = getDeviceVariant(deviceSpec, isIOS);
   const isIPad = deviceSpec.id === "ipad";
+  const isClassicNotch = variant === "classic-notch";
+  const hasDI = variant === "dynamic-island";
 
-  const bezelRadius = isIPad ? 18 : 40;
+  const bezelRadius = isIPad ? 18 : isClassicNotch ? 36 : 40;
   const sideBezel = isIPad ? 16 : 10;
 
   const statusBarH = 24;
-  const topChromeH = isIOS ? (hasDI ? 54 : statusBarH) : statusBarH;
-  const bottomChromeH = isIOS ? 28 : 36;
+  const topChromeH = hasDI ? 54 : isClassicNotch ? 30 : statusBarH;
+  const bottomChromeH = isIOS ? (isClassicNotch ? 48 : 28) : 36;
 
   const totalW = deviceW + sideBezel * 2;
   const totalH = deviceH + topChromeH + bottomChromeH + sideBezel * 2;
@@ -179,6 +243,7 @@ export function DeviceSimulator({
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "center center",
+          transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
           width: totalW,
           height: totalH,
           flexShrink: 0,
@@ -195,6 +260,7 @@ export function DeviceSimulator({
             boxShadow: isDark
               ? "0 25px 80px rgba(0,0,0,0.9), 0 4px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)"
               : "0 25px 80px rgba(0,0,0,0.18), 0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)",
+            transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.4s ease",
           }}
           data-testid="device-frame"
         >
@@ -209,9 +275,12 @@ export function DeviceSimulator({
               borderRadius: `${Math.max(bezelRadius - sideBezel, 8)}px ${Math.max(bezelRadius - sideBezel, 8)}px 0 0`,
               zIndex: 10,
               paddingBottom: 2,
+              overflow: "hidden",
+              position: "absolute",
             }}
           >
             {hasDI && <DynamicIsland isDark={isDark} />}
+            {isClassicNotch && <ClassicNotch isDark={isDark} width={deviceW} />}
             {isIOS ? <IOSStatusBar isDark={isDark} /> : <AndroidStatusBar isDark={isDark} />}
           </div>
 
@@ -242,7 +311,11 @@ export function DeviceSimulator({
               zIndex: 10,
             }}
           >
-            {isIOS ? <IOSHomeIndicator isDark={isDark} /> : <AndroidNavBar isDark={isDark} />}
+            {isIOS ? (
+              isClassicNotch ? <ClassicHomeButton isDark={isDark} /> : <IOSHomeIndicator isDark={isDark} />
+            ) : (
+              <AndroidNavBar isDark={isDark} />
+            )}
           </div>
         </div>
       </div>
