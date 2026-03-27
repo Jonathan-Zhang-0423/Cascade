@@ -9,6 +9,8 @@ import {
   buildFixerTools,
   type VerifierSessionState,
 } from "./agent-tools";
+import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
+import { detectFramework, type Framework } from "./framework-detector";
 
 export interface BuildFile {
   path: string;
@@ -41,6 +43,7 @@ export interface BuildSessionState {
   userConfirmation?: string;
   skillContent?: string;
   provider?: AIProvider;
+  framework?: Framework;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -76,7 +79,13 @@ function buildBuilderSystemPrompt(session: BuildSessionState): string {
   const skillSection = session.skillContent
     ? `\n\n## Technology Skill Guidance\n\nFollow these conventions for the project type in use:\n\n${session.skillContent}`
     : "";
-  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}`;
+  const sessionFiles = Array.from(session.files.entries()).map(([path, content]) => ({ path, content }));
+  const resolvedFramework = session.framework || detectFramework(sessionFiles);
+  const mobileSupplement = resolvedFramework !== "web"
+    ? getMobilePromptSupplement("editor", resolvedFramework)
+    : null;
+  const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
+  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}`;
 }
 
 function buildVerifierSystemPrompt(session: BuildSessionState): string {
@@ -85,7 +94,13 @@ function buildVerifierSystemPrompt(session: BuildSessionState): string {
   const langPrefix = isEnglish
     ? ""
     : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers and file paths remain in their original language.\n\n`;
-  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}`;
+  const verifierFiles = Array.from(session.files.entries()).map(([path, content]) => ({ path, content }));
+  const resolvedFramework = session.framework || detectFramework(verifierFiles);
+  const mobileSupplement = resolvedFramework !== "web"
+    ? getMobilePromptSupplement("verifier", resolvedFramework)
+    : null;
+  const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
+  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}`;
 }
 
 function buildBuilderInitialMessage(

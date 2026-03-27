@@ -12,7 +12,8 @@ import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
 import { insertProjectSchema } from "@shared/schema";
 import { getTemplateFiles } from "./templates";
-import { getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "./framework-detector";
+import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "./framework-detector";
+import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   buildEditorContextMessage,
@@ -389,7 +390,7 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider } = req.body as {
+      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework } = req.body as {
         sessionId: string;
         plan: any;
         userRequest: string;
@@ -398,6 +399,7 @@ export async function registerRoutes(
         taskStatuses?: Record<string, string>;
         userConfirmation?: string;
         provider?: AIProvider;
+        framework?: Framework;
       };
       if (!sessionId || !plan || !userRequest) {
         res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
@@ -419,6 +421,7 @@ export async function registerRoutes(
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
         provider: provider || "doubao",
+        framework: buildFramework,
         _startedAt: Date.now(),
       };
       buildSessions.set(sessionId, session);
@@ -477,10 +480,11 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files, provider } = req.body as {
+      const { messages, files, provider, framework: reqFramework } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
+        framework?: Framework;
       };
       const activeProvider: AIProvider = provider || "doubao";
       const { client: activeAIClient, model: activeAIModel } = getAIClient(activeProvider);
@@ -526,6 +530,14 @@ export async function registerRoutes(
         const skillContent = await loadSkill(detectedSkill);
         if (skillContent) {
           systemPrompt = `${systemPrompt}\n\n## Technology Skill: ${detectedSkill}\n\nThe following skill guidance applies to this project. Use it to inform your planning and step descriptions:\n\n${skillContent}`;
+        }
+      }
+
+      const resolvedManagerFramework = reqFramework || (files && files.length > 0 ? detectFramework(files) : "web");
+      if (resolvedManagerFramework && resolvedManagerFramework !== "web") {
+        const mobileSupplement = getMobilePromptSupplement("manager", resolvedManagerFramework);
+        if (mobileSupplement) {
+          systemPrompt = `${systemPrompt}\n${mobileSupplement}`;
         }
       }
 
@@ -584,7 +596,7 @@ export async function registerRoutes(
                   {
                     model: activeAIModel,
                     messages: [
-                      { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+                      { role: "system", content: (() => { const fw = resolvedManagerFramework; if (fw && fw !== "web") { const s = getMobilePromptSupplement("communicator", fw); if (s) return `${COMMUNICATOR_AGENT_SYSTEM_PROMPT}\n${s}`; } return COMMUNICATOR_AGENT_SYSTEM_PROMPT; })() },
                       { role: "user", content: commPrompt },
                     ],
                     stream: true,
@@ -734,6 +746,7 @@ export async function registerRoutes(
         files_before,
         files_after,
         user_feedback,
+        framework: verifierFramework,
       } = req.body as {
         user_request: string;
         plan_steps: Array<{
@@ -745,6 +758,7 @@ export async function registerRoutes(
         files_before: Array<{ path: string; content: string }>;
         files_after: Array<{ path: string; content: string }>;
         user_feedback?: string;
+        framework?: Framework;
       };
 
       if (!user_request || !plan_steps || !files_after) {
@@ -767,8 +781,17 @@ export async function registerRoutes(
         contextMessage += `\n\n--- USER FEEDBACK ---\nThe user provided the following feedback on a previous review:\n${user_feedback}\nPlease take this into account in your review.`;
       }
 
+      const resolvedVerifierFramework = verifierFramework || (files_after && files_after.length > 0 ? detectFramework(files_after) : "web");
+      let verifierSystemPrompt = VERIFIER_AGENT_SYSTEM_PROMPT;
+      if (resolvedVerifierFramework && resolvedVerifierFramework !== "web") {
+        const mobileSupplement = getMobilePromptSupplement("verifier", resolvedVerifierFramework);
+        if (mobileSupplement) {
+          verifierSystemPrompt = `${verifierSystemPrompt}\n${mobileSupplement}`;
+        }
+      }
+
       const messages: Array<{ role: "system" | "user"; content: string }> = [
-        { role: "system", content: VERIFIER_AGENT_SYSTEM_PROMPT },
+        { role: "system", content: verifierSystemPrompt },
         { role: "user", content: contextMessage },
       ];
 
@@ -881,7 +904,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { event } = req.body as { event: CommunicatorEvent };
+      const { event, framework: commFramework } = req.body as { event: CommunicatorEvent; framework?: Framework };
 
       if (!event || !event.event) {
         res
@@ -892,8 +915,16 @@ export async function registerRoutes(
 
       const contextMessage = buildCommunicatorMessage(event);
 
+      let commSystemPrompt = COMMUNICATOR_AGENT_SYSTEM_PROMPT;
+      if (commFramework) {
+        const mobileSupplement = getMobilePromptSupplement("communicator", commFramework);
+        if (mobileSupplement) {
+          commSystemPrompt = `${commSystemPrompt}\n${mobileSupplement}`;
+        }
+      }
+
       const messages: Array<{ role: "system" | "user"; content: string }> = [
-        { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+        { role: "system", content: commSystemPrompt },
         { role: "user", content: contextMessage },
       ];
 
@@ -957,7 +988,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { files, lang } = req.body;
+      const { files, lang, framework: mentorFramework } = req.body;
 
       if (!files || !Array.isArray(files) || files.length === 0) {
         res.status(400).json({ error: "No files provided" });
@@ -978,8 +1009,17 @@ export async function registerRoutes(
           ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
           : "";
 
+      const resolvedMentorFramework: Framework = mentorFramework || (files && files.length > 0 ? detectFramework(files) : "web");
+      let mentorSystemPrompt = MENTOR_SYSTEM_PROMPT;
+      if (resolvedMentorFramework && resolvedMentorFramework !== "web") {
+        const mobileSupplement = getMobilePromptSupplement("mentor", resolvedMentorFramework);
+        if (mobileSupplement) {
+          mentorSystemPrompt = `${mentorSystemPrompt}\n${mobileSupplement}`;
+        }
+      }
+
       const messages = [
-        { role: "system" as const, content: MENTOR_SYSTEM_PROMPT },
+        { role: "system" as const, content: mentorSystemPrompt },
         {
           role: "user" as const,
           content: `${langDirective}Please analyze the following project files and generate the Coding Notebook:\n\n${fileContext}`,
@@ -1024,7 +1064,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { changedFiles, notebookOutline, affectedSections, lang } = req.body;
+      const { changedFiles, notebookOutline, affectedSections, lang, framework: patchFramework } = req.body;
 
       if (
         !changedFiles ||
@@ -1054,8 +1094,17 @@ export async function registerRoutes(
           ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
           : "";
 
+      const resolvedPatchFramework: Framework = patchFramework || (changedFiles && changedFiles.length > 0 ? detectFramework(changedFiles) : "web");
+      let patchMentorPrompt = MENTOR_PATCH_PROMPT;
+      if (resolvedPatchFramework && resolvedPatchFramework !== "web") {
+        const mobileSupplement = getMobilePromptSupplement("mentor", resolvedPatchFramework);
+        if (mobileSupplement) {
+          patchMentorPrompt = `${patchMentorPrompt}\n${mobileSupplement}`;
+        }
+      }
+
       const messages = [
-        { role: "system" as const, content: MENTOR_PATCH_PROMPT },
+        { role: "system" as const, content: patchMentorPrompt },
         {
           role: "user" as const,
           content: `${patchLangDirective}## Existing Notebook Outline\n${outlineText}${sectionsText}\n\n## Changed Files\n${fileContext}`,
@@ -1102,7 +1151,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { notebook, files, lang } = req.body;
+      const { notebook, files, lang, framework: optimizeFramework } = req.body;
 
       if (!notebook || !files || !Array.isArray(files) || files.length === 0) {
         res.status(400).json({ error: "Notebook and files are required" });
@@ -1124,7 +1173,14 @@ export async function registerRoutes(
           : "";
 
       const messages = [
-        { role: "system" as const, content: MENTOR_OPTIMIZE_PROMPT },
+        { role: "system" as const, content: (() => {
+          const resolvedOptFramework: Framework = optimizeFramework || (files && files.length > 0 ? detectFramework(files) : "web");
+          if (resolvedOptFramework && resolvedOptFramework !== "web") {
+            const mobileSupplement = getMobilePromptSupplement("mentor", resolvedOptFramework);
+            if (mobileSupplement) return `${MENTOR_OPTIMIZE_PROMPT}\n${mobileSupplement}`;
+          }
+          return MENTOR_OPTIMIZE_PROMPT;
+        })() },
         {
           role: "user" as const,
           content: `${optimizeLangDirective}## Existing Notebook\n${JSON.stringify(notebook, null, 2)}\n\n## All Current Project Files\n${fileContext}`,

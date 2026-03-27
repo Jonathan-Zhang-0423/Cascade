@@ -1,10 +1,8 @@
-import type { ProjectFile } from "@shared/schema";
-
 export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin";
 export type Language = "html" | "typescript" | "dart" | "swift" | "kotlin";
 export type TargetPlatform = "ios" | "android" | "both";
 
-export function detectFramework(files: ProjectFile[]): Framework {
+export function detectFramework(files: { path: string }[]): Framework {
   const filePaths = new Set(files.map((f) => f.path.toLowerCase()));
 
   // Check for React Native / Expo

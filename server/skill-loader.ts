@@ -15,6 +15,11 @@ const BUILTIN_KEYWORDS: Record<string, string[]> = {
   "python-flask": ["flask", "python flask", "flask app", "flask api", "blueprint", "jinja", "sqlalchemy", "python web", "python backend", "django"],
   "vanilla-js": ["html", "css", "vanilla javascript", "vanilla js", "plain javascript", "no framework", "dom manipulation", "webpage", "landing page", "html5 game", "snake game", "quiz app", "calculator", "html css javascript", "html and javascript"],
   "python-cli": ["python cli", "command line tool", "command-line", "python script", "argparse", "click library", "cli tool", "terminal script", "python automation"],
+  "react-native-expo": ["react native", "expo", "react native app", "mobile app react", "expo app", "rn-expo", "expo router", "react navigation", "react native component", "expo sdk"],
+  "flutter": ["flutter", "dart", "flutter app", "flutter widget", "material flutter", "cupertino", "pubspec", "stateful widget", "stateless widget", "flutter build"],
+  "swiftui": ["swiftui", "swift ui", "swift app", "ios app", "swiftui view", "xcode", "ios development", "apple app", "uikit", "swift mobile"],
+  "kotlin-compose": ["jetpack compose", "kotlin compose", "compose ui", "android app", "kotlin app", "composable", "material design android", "android development", "kotlin mobile", "android compose"],
+  "mobile-common": ["mobile app", "push notification", "deep link", "mobile development", "app permissions", "mobile ux", "touch gesture", "app lifecycle", "mobile storage", "mobile camera"],
 };
 
 function wordBoundaryMatch(text: string, keyword: string): boolean {
