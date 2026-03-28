@@ -11,6 +11,7 @@ import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
 import { CommandPalette } from "@/components/ide/command-palette";
 import { NotebookPanel } from "@/components/ide/notebook-panel";
+import { LLMMonitor } from "@/components/ide/llm-monitor";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -155,6 +156,7 @@ export default function IDEPage() {
           </ResizablePanelGroup>
         </div>
       </div>
+      <LLMMonitor />
     </div>
   );
 }

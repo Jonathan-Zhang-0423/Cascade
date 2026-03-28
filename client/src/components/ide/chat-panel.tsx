@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, type AIProvider, type BuildResultData, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { useT, tr } from "@/lib/i18n";
 import { toast } from "@/hooks/use-toast";
@@ -2244,6 +2245,19 @@ export function ChatPanel() {
           try { ev = JSON.parse(raw); } catch { continue; }
 
           const evType = ev.type;
+          {
+            const mgrMonitorContent = ev.token || (ev.plan ? "[plan object]" : (ev.message || ev.label || evType));
+            const mgrSourceMap: Record<string, "manager" | "communicator"> = {
+              communicator_token: "communicator",
+              communicator_narration_starting: "communicator",
+              communicator_error: "communicator",
+            };
+            useLLMMonitorStore.getState().addEvent(
+              mgrSourceMap[evType] || "manager",
+              evType as any,
+              typeof mgrMonitorContent === "string" ? mgrMonitorContent : String(mgrMonitorContent),
+            );
+          }
           const isCurrentProject = useIDEStore.getState().projectId === projectId;
 
           if (evType === "thinking_token") {
@@ -2610,6 +2624,7 @@ export function ChatPanel() {
 
           if (ev.content) {
             accumulated += ev.content;
+            useLLMMonitorStore.getState().addEvent("vibe-chat", "vibe_token", ev.content);
             updateLastAssistantMessage(stripProjectNameMarker(accumulated));
             await new Promise<void>(r => setTimeout(r, 0));
           }
@@ -2808,6 +2823,35 @@ export function ChatPanel() {
           try { ev = JSON.parse(raw); } catch { continue; }
 
           const type = ev.type;
+          {
+            const buildMonitorContent = ev.token || ev.label || ev.message || ev.filePath || type;
+            const buildSourceMap: Record<string, string> = {
+              narration_token: "communicator",
+              communicator_token: "communicator",
+              editor_token: "editor",
+              code_applied: "editor",
+              reviewing: "verifier",
+              review_passed: "verifier",
+              bugs_found: "verifier",
+              thinking_token: "editor",
+              action_log: "editor",
+              step_starting: "manager",
+              step_completed: "manager",
+              step_failed: "manager",
+              step_cancelled: "manager",
+              fixing: "editor",
+              all_complete: "manager",
+              build_error: "editor",
+              done: "manager",
+              needs_input: "verifier",
+            };
+            const src = (buildSourceMap[type] || "editor") as "manager" | "editor" | "verifier" | "communicator" | "vibe-chat";
+            useLLMMonitorStore.getState().addEvent(
+              src,
+              type as any,
+              typeof buildMonitorContent === "string" ? buildMonitorContent : String(buildMonitorContent),
+            );
+          }
 
           // Local bookkeeping — always runs regardless of which project is active.
           if (type === "step_starting") {
@@ -2956,6 +3000,7 @@ export function ChatPanel() {
                       const parsed = JSON.parse(data);
                       if (parsed.content) {
                         accumulated += parsed.content;
+                        useLLMMonitorStore.getState().addEvent("communicator", "communicator_summary", parsed.content);
                         const curMsgs = useIDEStore.getState().managerMessages;
                         if (!curMsgs.some(m => m.id === targetMsgId)) break;
                         const updated = curMsgs.map(m => m.id === targetMsgId && m.buildResult

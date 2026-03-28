@@ -1,5 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
-import { FolderClosed, Sparkles, Terminal } from "lucide-react";
+import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
+import { FolderClosed, Sparkles, Terminal, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -38,6 +39,9 @@ function DockButton({
 
 export function ToolsDock() {
   const { activeTool, setActiveTool, isConsoleOpen, toggleConsole } = useIDEStore();
+  const isMonitorOpen = useLLMMonitorStore((s) => s.isOpen);
+  const toggleMonitor = useLLMMonitorStore((s) => s.toggleOpen);
+  const monitorEventCount = useLLMMonitorStore((s) => s.eventCount);
   const t = useT();
 
   return (
@@ -70,6 +74,27 @@ export function ToolsDock() {
       </div>
 
       <div className="flex flex-col items-center gap-1">
+        <button
+          className={cn(
+            "relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors",
+            isMonitorOpen
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          )}
+          onClick={toggleMonitor}
+          aria-label="LLM Monitor"
+          data-testid="dock-llm-monitor"
+        >
+          {isMonitorOpen && (
+            <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary" />
+          )}
+          <Radio className="w-[18px] h-[18px]" />
+          {monitorEventCount > 0 && !isMonitorOpen && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-emerald-500 text-[9px] font-bold text-white flex items-center justify-center px-0.5" data-testid="llm-monitor-badge">
+              {monitorEventCount > 99 ? "99+" : monitorEventCount}
+            </span>
+          )}
+        </button>
       </div>
     </div>
   );

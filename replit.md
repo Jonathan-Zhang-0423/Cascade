@@ -63,6 +63,11 @@ The CodeStart IDE features a modern web architecture:
       - **Tier 2 — Optimize** (`/api/mentor-optimize`): "优化笔记" button sends full existing notebook + all current files → Mentor does targeted refinement with full cross-file context. Uses `MENTOR_OPTIMIZE_PROMPT`. Premium, user-initiated.
       - **Diffing**: `NotebookContent.sourceFiles` stores a snapshot of files at generation time. `computeChangedFiles()` diffs old snapshot vs current files to find added/modified/deleted files.
       - **Patch merge**: `applyPatchToNotebook()` merges `updated_breakdowns`, `new_breakdowns`, `removed_files`, and `updated_mind_map` branches into the existing notebook.
+- **LLM Output Monitor** (Task #108):
+    - **LLM Monitor Store** (`client/src/stores/llm-monitor-store.ts`): Lightweight pub/sub event bus with batched ingestion (80ms flush interval). Stores up to 2000 events with auto-trimming. Each event has id, timestamp, source, type, and content.
+    - **Monitor Component** (`client/src/components/ide/llm-monitor.tsx`): Non-modal floating panel at bottom-right. Shows timestamped, color-coded, source-labeled event rows. Auto-scrolls unless user scrolls up. Clear button and entry count in header.
+    - **Instrumented SSE Streams**: All four SSE stream readers in `chat-panel.tsx` (manager-chat, build-session, vibe-chat, communicator-summary) publish events to the monitor store with correct source classification.
+    - **Toggle Button**: Radio icon in tools dock bottom section with event count badge when closed.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 
