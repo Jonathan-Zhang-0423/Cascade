@@ -43,6 +43,14 @@ const SOURCE_COLORS: Record<string, string> = {
   "vibe-chat": "text-pink-500",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  manager: "MGR",
+  editor: "EDIT",
+  verifier: "VER",
+  communicator: "COMM",
+  "vibe-chat": "VIBE",
+};
+
 function formatTime(ts: number) {
   const d = new Date(ts);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}.${d.getMilliseconds().toString().padStart(3, "0")}`;
@@ -60,7 +68,7 @@ function EventRow({ event }: { event: LLMEvent }) {
   return (
     <div className="flex gap-1.5 px-2 py-0.5 text-[11px] leading-[16px] font-mono hover:bg-white/5 min-w-0" data-testid={`llm-event-${event.id}`}>
       <span className="text-zinc-600 shrink-0 w-[72px]">{formatTime(event.timestamp)}</span>
-      <span className={cn("shrink-0 w-[48px] uppercase text-[10px]", sourceColor)}>{event.source.slice(0, 6)}</span>
+      <span className={cn("shrink-0 w-[48px] uppercase text-[10px]", sourceColor)}>{SOURCE_LABELS[event.source] || event.source}</span>
       <span className={cn("shrink-0 w-[52px] uppercase text-[10px]", style.color)}>{style.label}</span>
       <span className={cn("break-all min-w-0", style.color)}>{content}</span>
     </div>
