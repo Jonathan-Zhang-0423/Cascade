@@ -2975,9 +2975,17 @@ export function ChatPanel() {
                 actionLog: finalLog,
                 completionData: { changedFiles, userLang },
               };
-              addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
-              const msgs = useIDEStore.getState().managerMessages;
-              buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
+              const curMsgs = useIDEStore.getState().managerMessages;
+              const planMsg = [...curMsgs].reverse().find(m => m.plan);
+              if (planMsg) {
+                const updated = curMsgs.map(m => m.id === planMsg.id ? { ...m, buildResult } : m);
+                useIDEStore.setState({ managerMessages: updated });
+                buildResultMsgIdRef.current = planMsg.id;
+              } else {
+                addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+                const msgs = useIDEStore.getState().managerMessages;
+                buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
+              }
             }
             const targetMsgId = buildResultMsgIdRef.current;
             ;(async () => {
@@ -3052,9 +3060,17 @@ export function ChatPanel() {
                   actionLog: finalLog,
                   completionData: { changedFiles: [], userLang },
                 };
-                addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
-                const msgs2 = useIDEStore.getState().managerMessages;
-                buildResultMsgIdRef.current = msgs2[msgs2.length - 1]?.id || null;
+                const doneMsgs = useIDEStore.getState().managerMessages;
+                const donePlanMsg = [...doneMsgs].reverse().find(m => m.plan);
+                if (donePlanMsg) {
+                  const updated = doneMsgs.map(m => m.id === donePlanMsg.id ? { ...m, buildResult } : m);
+                  useIDEStore.setState({ managerMessages: updated });
+                  buildResultMsgIdRef.current = donePlanMsg.id;
+                } else {
+                  addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+                  const msgs2 = useIDEStore.getState().managerMessages;
+                  buildResultMsgIdRef.current = msgs2[msgs2.length - 1]?.id || null;
+                }
               }
             }
             setLiveActionLog([]);
@@ -3176,6 +3192,7 @@ export function ChatPanel() {
       if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
       setBuildPhase(null);
       setLiveThinkingText("");
+      setLiveNarrationText("");
       const finalLog = [...actionLogRef.current];
       if (finalLog.length > 0) {
         const msgId = buildResultMsgIdRef.current;
@@ -3190,11 +3207,23 @@ export function ChatPanel() {
             actionLog: finalLog,
             completionData: { changedFiles: [], userLang },
           };
-          addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+          const finallyMsgs = useIDEStore.getState().managerMessages;
+          const finallyPlanMsg = [...finallyMsgs].reverse().find(m => m.plan);
+          if (finallyPlanMsg) {
+            const updated = finallyMsgs.map(m => m.id === finallyPlanMsg.id ? { ...m, buildResult } : m);
+            useIDEStore.setState({ managerMessages: updated });
+          } else {
+            addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+          }
         }
       }
       setLiveActionLog([]);
       if (useIDEStore.getState().projectId === projectId) {
+        normalizedSteps.forEach(step => {
+          const key = String(step.step);
+          const s = useIDEStore.getState().taskStatuses[key];
+          if (s === "pending" || s === "running") updateTaskStatus(key, "done");
+        });
         setExecutingTaskIndex(null);
         setAiResponding(false);
       }
@@ -3217,6 +3246,9 @@ export function ChatPanel() {
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
     setBuildPhase(null);
+    setLiveThinkingText("");
+    setLiveNarrationText("");
+    setLiveActionLog([]);
   }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
 
   const handleContinueExecution = useCallback((userInput?: string) => {
@@ -3419,7 +3451,7 @@ export function ChatPanel() {
                   />
                 );
               }
-              if (msg.buildResult) {
+              if (msg.buildResult && !msg.plan) {
                 return (
                   <div key={`m-${msg.id}`} className="space-y-2">
                     {msg.buildResult.actionLog.length > 0 && (
@@ -3437,23 +3469,38 @@ export function ChatPanel() {
               }
               const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
               return (
-                <ManagerMessageBubble
-                  key={`m-${msg.id}`}
-                  message={msg}
-                  taskStatuses={isLastPlan ? taskStatuses : {}}
-                  taskFailureReasons={isLastPlan ? taskFailureReasons : undefined}
-                  onExecute={isLastPlan ? handleExecutePlan : undefined}
-                  onRevise={isLastPlan ? handleRevisePlan : undefined}
-                  isExecuting={isLastPlan ? isExecuting : undefined}
-                  onStop={isLastPlan ? handleStopExecution : undefined}
-                  onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
-                  pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
-                  confirmationInput={isLastPlan ? userConfirmationInput : undefined}
-                  onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
-                  reviewPhase={isLastPlan ? reviewPhase : undefined}
-                  holisticReview={isLastPlan ? holisticReview : undefined}
-                  fixCycle={isLastPlan ? fixCycle : undefined}
-                />
+                <div key={`m-${msg.id}`} className="space-y-2">
+                  <ManagerMessageBubble
+                    message={msg}
+                    taskStatuses={isLastPlan ? taskStatuses : {}}
+                    taskFailureReasons={isLastPlan ? taskFailureReasons : undefined}
+                    onExecute={isLastPlan ? handleExecutePlan : undefined}
+                    onRevise={isLastPlan ? handleRevisePlan : undefined}
+                    isExecuting={isLastPlan ? isExecuting : undefined}
+                    onStop={isLastPlan ? handleStopExecution : undefined}
+                    onContinueWithInput={isLastPlan ? handleContinueExecution : undefined}
+                    pendingConfirmation={isLastPlan ? pendingConfirmation : undefined}
+                    confirmationInput={isLastPlan ? userConfirmationInput : undefined}
+                    onConfirmationInputChange={isLastPlan ? setUserConfirmationInput : undefined}
+                    reviewPhase={isLastPlan ? reviewPhase : undefined}
+                    holisticReview={isLastPlan ? holisticReview : undefined}
+                    fixCycle={isLastPlan ? fixCycle : undefined}
+                  />
+                  {msg.buildResult && (
+                    <>
+                      {msg.buildResult.actionLog.length > 0 && (
+                        <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+                          <ActionLogCollapsed entries={msg.buildResult.actionLog as ActionLogEntry[]} />
+                        </div>
+                      )}
+                      <BuildCompletionCard
+                        changedFiles={msg.buildResult.completionData.changedFiles}
+                        userLang={msg.buildResult.completionData.userLang}
+                        summary={msg.buildResult.completionData.summary}
+                      />
+                    </>
+                  )}
+                </div>
               );
             }
           });
