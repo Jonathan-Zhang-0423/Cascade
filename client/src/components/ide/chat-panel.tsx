@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore, type ChatMessage, type ManagerPlan, type ManagerSubTask, type VerificationResult, type HolisticReviewResult, type ReviewPhase, type ChatMode, type AIProvider, type BuildResultData, flattenFiles } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
-import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
+import { useLLMMonitorStore, type LLMEventType, type LLMEventSource } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { useT, tr } from "@/lib/i18n";
 import { toast } from "@/hooks/use-toast";
@@ -2246,17 +2246,24 @@ export function ChatPanel() {
 
           const evType = ev.type;
           {
+            const KNOWN_MGR_TYPES: Set<string> = new Set([
+              "thinking_token", "raw_token", "manager_token", "communicator_token",
+              "communicator_narration_starting", "communicator_error",
+              "plan_ready", "manager_done", "manager_error",
+            ]);
             const mgrMonitorContent = ev.token || (ev.plan ? "[plan object]" : (ev.message || ev.label || evType));
-            const mgrSourceMap: Record<string, "manager" | "communicator"> = {
+            const mgrSourceMap: Record<string, LLMEventSource> = {
               communicator_token: "communicator",
               communicator_narration_starting: "communicator",
               communicator_error: "communicator",
             };
-            useLLMMonitorStore.getState().addEvent(
-              mgrSourceMap[evType] || "manager",
-              evType as any,
-              typeof mgrMonitorContent === "string" ? mgrMonitorContent : String(mgrMonitorContent),
-            );
+            if (KNOWN_MGR_TYPES.has(evType)) {
+              useLLMMonitorStore.getState().addEvent(
+                mgrSourceMap[evType] || "manager",
+                evType as LLMEventType,
+                typeof mgrMonitorContent === "string" ? mgrMonitorContent : String(mgrMonitorContent),
+              );
+            }
           }
           const isCurrentProject = useIDEStore.getState().projectId === projectId;
 
@@ -2824,33 +2831,41 @@ export function ChatPanel() {
 
           const type = ev.type;
           {
-            const buildMonitorContent = ev.token || ev.label || ev.message || ev.filePath || type;
-            const buildSourceMap: Record<string, string> = {
-              narration_token: "communicator",
-              communicator_token: "communicator",
-              editor_token: "editor",
-              code_applied: "editor",
-              reviewing: "verifier",
-              review_passed: "verifier",
-              bugs_found: "verifier",
-              thinking_token: "editor",
-              action_log: "editor",
-              step_starting: "manager",
-              step_completed: "manager",
-              step_failed: "manager",
-              step_cancelled: "manager",
-              fixing: "editor",
-              all_complete: "manager",
-              build_error: "editor",
-              done: "manager",
-              needs_input: "verifier",
-            };
-            const src = (buildSourceMap[type] || "editor") as "manager" | "editor" | "verifier" | "communicator" | "vibe-chat";
-            useLLMMonitorStore.getState().addEvent(
-              src,
-              type as any,
-              typeof buildMonitorContent === "string" ? buildMonitorContent : String(buildMonitorContent),
-            );
+            const KNOWN_BUILD_TYPES: Set<string> = new Set([
+              "thinking_token", "narration_token", "communicator_token",
+              "action_log", "step_starting", "step_completed", "step_failed", "step_cancelled",
+              "editor_token", "code_applied",
+              "reviewing", "review_passed", "bugs_found", "fixing", "needs_input",
+              "all_complete", "build_error", "done",
+            ]);
+            if (KNOWN_BUILD_TYPES.has(type)) {
+              const buildMonitorContent = ev.token || ev.label || ev.message || ev.filePath || type;
+              const buildSourceMap: Record<string, LLMEventSource> = {
+                narration_token: "communicator",
+                communicator_token: "communicator",
+                editor_token: "editor",
+                code_applied: "editor",
+                reviewing: "verifier",
+                review_passed: "verifier",
+                bugs_found: "verifier",
+                thinking_token: "editor",
+                action_log: "editor",
+                step_starting: "manager",
+                step_completed: "manager",
+                step_failed: "manager",
+                step_cancelled: "manager",
+                fixing: "editor",
+                all_complete: "manager",
+                build_error: "editor",
+                done: "manager",
+                needs_input: "verifier",
+              };
+              useLLMMonitorStore.getState().addEvent(
+                buildSourceMap[type] || "editor",
+                type as LLMEventType,
+                typeof buildMonitorContent === "string" ? buildMonitorContent : String(buildMonitorContent),
+              );
+            }
           }
 
           // Local bookkeeping — always runs regardless of which project is active.

@@ -322,6 +322,10 @@ interface IDEState {
   holisticReview: HolisticReviewResult | null;
   fixCycle: number;
 
+  isLLMMonitorOpen: boolean;
+  setLLMMonitorOpen: (v: boolean) => void;
+  toggleLLMMonitor: () => void;
+
   activeSpace: ActiveSpace;
   notebookContent: NotebookContent | null;
   isNotebookLoading: boolean;
@@ -637,6 +641,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   reviewPhase: "idle",
   holisticReview: null,
   fixCycle: 0,
+
+  isLLMMonitorOpen: false,
+  setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
+  toggleLLMMonitor: () => set((s) => ({ isLLMMonitorOpen: !s.isLLMMonitorOpen })),
 
   activeSpace: "workspace",
   notebookContent: null,

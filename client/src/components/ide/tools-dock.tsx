@@ -39,8 +39,8 @@ function DockButton({
 
 export function ToolsDock() {
   const { activeTool, setActiveTool, isConsoleOpen, toggleConsole } = useIDEStore();
-  const isMonitorOpen = useLLMMonitorStore((s) => s.isOpen);
-  const toggleMonitor = useLLMMonitorStore((s) => s.toggleOpen);
+  const isMonitorOpen = useIDEStore((s) => s.isLLMMonitorOpen);
+  const toggleMonitor = useIDEStore((s) => s.toggleLLMMonitor);
   const monitorEventCount = useLLMMonitorStore((s) => s.eventCount);
   const t = useT();
 

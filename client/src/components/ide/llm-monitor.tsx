@@ -1,5 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
+import { useIDEStore } from "@/stores/ide-store";
 import { useLLMMonitorStore, type LLMEvent, type LLMEventType } from "@/stores/llm-monitor-store";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { X, Trash2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +12,8 @@ const TYPE_STYLES: Record<string, { color: string; label: string }> = {
   manager_token: { color: "text-zinc-300", label: "MGR" },
   communicator_token: { color: "text-cyan-400", label: "COMM" },
   communicator_summary: { color: "text-cyan-400", label: "COMM" },
+  communicator_narration_starting: { color: "text-cyan-500", label: "COMM" },
+  communicator_error: { color: "text-red-400", label: "COMM" },
   action_log: { color: "text-amber-400", label: "ACTION" },
   step_starting: { color: "text-emerald-400 font-semibold", label: "STEP" },
   manager_done: { color: "text-emerald-500", label: "DONE" },
@@ -22,10 +26,12 @@ const TYPE_STYLES: Record<string, { color: string; label: string }> = {
   code_applied: { color: "text-orange-400", label: "CODE" },
   step_completed: { color: "text-emerald-400", label: "STEP✓" },
   step_failed: { color: "text-red-400", label: "STEP✗" },
+  step_cancelled: { color: "text-zinc-500", label: "STEP○" },
   reviewing: { color: "text-violet-400", label: "REVIEW" },
   bugs_found: { color: "text-red-400", label: "BUGS" },
   fixing: { color: "text-amber-400", label: "FIX" },
   review_passed: { color: "text-emerald-400", label: "PASS" },
+  needs_input: { color: "text-amber-400", label: "INPUT" },
   vibe_token: { color: "text-pink-400", label: "VIBE" },
 };
 
@@ -62,13 +68,21 @@ function EventRow({ event }: { event: LLMEvent }) {
 }
 
 export function LLMMonitor() {
-  const isOpen = useLLMMonitorStore((s) => s.isOpen);
+  const isOpen = useIDEStore((s) => s.isLLMMonitorOpen);
+  const setOpen = useIDEStore((s) => s.setLLMMonitorOpen);
   const events = useLLMMonitorStore((s) => s.events);
-  const setOpen = useLLMMonitorStore((s) => s.setOpen);
+  const eventCount = useLLMMonitorStore((s) => s.eventCount);
   const clearEvents = useLLMMonitorStore((s) => s.clearEvents);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const userScrolledRef = useRef(false);
+
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 20,
+    overscan: 30,
+  });
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -109,7 +123,7 @@ export function LLMMonitor() {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-semibold text-zinc-300">LLM Monitor</span>
-          <span className="text-[10px] text-zinc-600 tabular-nums" data-testid="llm-event-count">{events.length}</span>
+          <span className="text-[10px] text-zinc-600 tabular-nums" data-testid="llm-event-count">{eventCount}</span>
         </div>
         <div className="flex items-center gap-1">
           {!autoScroll && (
@@ -152,7 +166,25 @@ export function LLMMonitor() {
             No events yet — start an AI session to see output here
           </div>
         ) : (
-          events.map((ev) => <EventRow key={ev.id} event={ev} />)
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const event = events[virtualRow.index];
+              return (
+                <div
+                  key={virtualRow.key}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <EventRow event={event} />
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

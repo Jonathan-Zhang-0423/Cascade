@@ -7,8 +7,14 @@ export type LLMEventType =
   | "raw_token"
   | "manager_token"
   | "communicator_token"
+  | "communicator_narration_starting"
+  | "communicator_error"
+  | "communicator_summary"
   | "action_log"
   | "step_starting"
+  | "step_completed"
+  | "step_failed"
+  | "step_cancelled"
   | "manager_done"
   | "manager_error"
   | "build_error"
@@ -17,14 +23,12 @@ export type LLMEventType =
   | "plan_ready"
   | "editor_token"
   | "code_applied"
-  | "step_completed"
-  | "step_failed"
   | "reviewing"
+  | "review_passed"
   | "bugs_found"
   | "fixing"
-  | "review_passed"
-  | "vibe_token"
-  | "communicator_summary";
+  | "needs_input"
+  | "vibe_token";
 
 export interface LLMEvent {
   id: string;
@@ -39,11 +43,8 @@ let eventCounter = 0;
 interface LLMMonitorState {
   events: LLMEvent[];
   eventCount: number;
-  isOpen: boolean;
   addEvent: (source: LLMEventSource, type: LLMEventType, content: string) => void;
   clearEvents: () => void;
-  toggleOpen: () => void;
-  setOpen: (v: boolean) => void;
 }
 
 const MAX_EVENTS = 2000;
@@ -67,7 +68,6 @@ function flushPending() {
 export const useLLMMonitorStore = create<LLMMonitorState>((set) => ({
   events: [],
   eventCount: 0,
-  isOpen: false,
   addEvent: (source, type, content) => {
     const id = `llm-${++eventCounter}`;
     pendingEvents.push({ id, timestamp: Date.now(), source, type, content });
@@ -79,6 +79,4 @@ export const useLLMMonitorStore = create<LLMMonitorState>((set) => ({
     pendingEvents = [];
     set({ events: [], eventCount: 0 });
   },
-  toggleOpen: () => set((s) => ({ isOpen: !s.isOpen })),
-  setOpen: (v) => set({ isOpen: v }),
 }));
