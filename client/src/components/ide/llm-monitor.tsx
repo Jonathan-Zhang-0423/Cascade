@@ -70,7 +70,7 @@ function EventRow({ event }: { event: LLMEvent }) {
       <span className="text-zinc-600 shrink-0 w-[72px]">{formatTime(event.timestamp)}</span>
       <span className={cn("shrink-0 w-[48px] uppercase text-[10px]", sourceColor)}>{SOURCE_LABELS[event.source] || event.source}</span>
       <span className={cn("shrink-0 w-[52px] uppercase text-[10px]", style.color)}>{style.label}</span>
-      <span className={cn("break-all min-w-0", style.color)}>{content}</span>
+      <span className={cn("truncate min-w-0", style.color)}>{content}</span>
     </div>
   );
 }

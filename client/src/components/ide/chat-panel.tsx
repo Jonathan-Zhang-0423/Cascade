@@ -2167,6 +2167,7 @@ export function ChatPanel() {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 accumulated += parsed.content;
+                useLLMMonitorStore.getState().addEvent("communicator", "communicator_token", parsed.content);
                 if (!messageInserted) {
                   addManagerMessage({ role: "assistant", content: accumulated, source: "communicator" });
                   messageInserted = true;
