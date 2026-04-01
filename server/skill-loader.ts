@@ -90,6 +90,18 @@ export async function loadSkill(name: string): Promise<string | null> {
   }
 }
 
+const FRAMEWORK_TO_SKILL: Record<string, string> = {
+  "rn-expo": "react-native-expo",
+  "flutter": "flutter",
+  "swiftui": "swiftui",
+  "kotlin": "kotlin-compose",
+  "web": "vanilla-js",
+};
+
+export function getSkillForFramework(framework: string): string | null {
+  return FRAMEWORK_TO_SKILL[framework] ?? null;
+}
+
 export async function detectSkillFromText(text: string): Promise<string | null> {
   const skills = await listSkills();
 

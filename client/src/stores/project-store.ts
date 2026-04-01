@@ -14,6 +14,7 @@ export interface ProjectEntry {
   name: string;
   createdAt: number;
   emoji?: string;
+  framework?: string;
 }
 
 interface ProjectStoreState {
@@ -218,7 +219,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         set((s) => ({
           projects: [
             ...s.projects,
-            { id, name, createdAt: Date.now(), ...(emoji ? { emoji } : {}) },
+            { id, name, createdAt: Date.now(), ...(emoji ? { emoji } : {}), ...(framework ? { framework } : {}) },
           ],
         }));
 
@@ -267,13 +268,14 @@ export const useProjectStore = create<ProjectStoreState>()(
           const resp = await fetch("/api/projects");
           if (!resp.ok) return;
           const data = await resp.json();
-          const serverProjects: Array<{ id: string; name: string; emoji?: string | null; createdAt: string }> = data.projects || [];
+          const serverProjects: Array<{ id: string; name: string; emoji?: string | null; framework?: string | null; createdAt: string }> = data.projects || [];
 
           const converted: ProjectEntry[] = serverProjects.map((p) => ({
             id: p.id,
             name: p.name,
             createdAt: new Date(p.createdAt).getTime(),
             ...(p.emoji ? { emoji: p.emoji } : {}),
+            ...(p.framework ? { framework: p.framework } : {}),
           }));
 
           const currentState = get();

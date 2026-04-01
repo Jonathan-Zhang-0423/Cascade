@@ -2951,6 +2951,7 @@ export function ChatPanel() {
             messages: messagesForApi,
             files: fileContext,
             provider: useIDEStore.getState().selectedProvider,
+            framework: useProjectStore.getState().projects.find((p) => p.id === projectId)?.framework || undefined,
           }),
           signal: controller.signal,
         });
@@ -3773,6 +3774,7 @@ export function ChatPanel() {
           userConfirmation: userConfirmation || undefined,
           provider: useIDEStore.getState().selectedProvider,
           projectId: projectId || undefined,
+          framework: useProjectStore.getState().projects.find((p) => p.id === projectId)?.framework || undefined,
         }),
       });
 

@@ -1,6 +1,6 @@
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
-import { detectSkillFromText, loadSkill } from "./skill-loader";
+import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { getAIClient, type AIProvider } from "./kimi-client";
 import {
@@ -198,12 +198,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const { client: aiClient, model: aiModel } = getAIClient(session.provider ?? "doubao");
 
   if (!session.skillContent) {
-    const planText = [
-      userRequest,
-      plan.summary || "",
-      normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
-    ].join(" ");
-    const detectedSkill = await detectSkillFromText(planText);
+    const frameworkSkill = session.framework ? getSkillForFramework(session.framework) : null;
+    let detectedSkill = frameworkSkill;
+    if (!detectedSkill) {
+      const planText = [
+        userRequest,
+        plan.summary || "",
+        normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
+      ].join(" ");
+      detectedSkill = await detectSkillFromText(planText);
+    }
     if (detectedSkill) {
       const skillContent = await loadSkill(detectedSkill);
       if (skillContent) {

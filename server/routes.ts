@@ -37,7 +37,7 @@ import {
 import type { CommunicatorEvent } from "./communicator-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./build-orchestrator";
-import { detectSkillFromText, loadSkill } from "./skill-loader";
+import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 import { getAIClient, type AIProvider } from "./kimi-client";
@@ -480,6 +480,16 @@ export async function registerRoutes(
           fileMap.set(f.path, f.content);
         }
       }
+      let resolvedFramework: Framework | undefined = buildFramework;
+      if (!resolvedFramework && reqProjectId) {
+        try {
+          const projectRecord = await storage.getProject(reqProjectId);
+          if (projectRecord?.framework) {
+            resolvedFramework = projectRecord.framework as Framework;
+          }
+        } catch {}
+      }
+
       const session: BuildSessionState & { _startedAt: number } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
@@ -491,7 +501,7 @@ export async function registerRoutes(
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
         provider: provider || "doubao",
-        framework: buildFramework,
+        framework: resolvedFramework,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,
@@ -614,7 +624,8 @@ export async function registerRoutes(
 
       // Build system prompt (async work runs after stream is open)
       const allConversationText = messages.map((m) => m.content).join(" ");
-      const detectedSkill = await detectSkillFromText(allConversationText);
+      const frameworkSkill = reqFramework ? getSkillForFramework(reqFramework) : null;
+      const detectedSkill = frameworkSkill || (await detectSkillFromText(allConversationText));
 
       let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
       if (files && files.length > 0) {
