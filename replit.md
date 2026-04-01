@@ -69,6 +69,11 @@ The CodeStart IDE features a modern web architecture:
     - **Instrumented SSE Streams**: All four SSE stream readers in `chat-panel.tsx` (manager-chat, build-session, vibe-chat, communicator-summary) publish events to the monitor store with correct source classification.
     - **Toggle Button**: Radio icon in tools dock bottom section with event count badge when closed.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
+- **QR Code Phone Preview** (Task #113):
+    - **Preview Server** (`server/preview-server.ts`): Integrated into the main Express app on port 5000. Serves project files at `/preview-serve/{token}/` with token-scoped sessions. Inlines CSS/JS referenced in HTML. WebSocket live reload via `/preview-ws?token={token}` on the same HTTP server.
+    - **Session Security**: Each preview session gets a unique 32-char hex token. Files, WebSocket connections, and API endpoints are scoped per-token. Sessions auto-expire after 4 hours. Stop endpoint cleans up on component unmount.
+    - **QR Code UI**: QR button in preview panel toolbar opens a popover with QRCodeSVG from `qrcode.react`. Shows preview URL, copy button, open-in-new-tab button, and live reload status.
+    - **Auto-Sync**: Files are automatically pushed to the preview server when content changes (1s debounce). Full content hashing ensures all changes trigger updates.
 - **Command Palette**: Provides quick access to actions via `Ctrl+Shift+P`.
 
 ## External Dependencies

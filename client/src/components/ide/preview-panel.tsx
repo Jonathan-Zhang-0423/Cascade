@@ -1,6 +1,6 @@
-import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store";
-import { useMemo, useState, useEffect, useRef } from "react";
-import { RefreshCw, Smartphone, Rotate3D, Moon, Sun } from "lucide-react";
+import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink } from "lucide-react";
 import appleLogoPath from "@assets/logo-apple-3_1775015525544.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { QRCodeSVG } from "qrcode.react";
 import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
 
@@ -201,6 +207,94 @@ export function PreviewPanel() {
     setRefreshKey((k) => k + 1);
   };
 
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const lastPushedHashRef = useRef<string>("");
+
+  const computeFilesHash = useCallback((payload: { path: string; content: string }[]): string => {
+    let hash = "";
+    for (const f of payload) {
+      hash += f.path + "|" + f.content + "\n";
+    }
+    return hash;
+  }, []);
+
+  const pushFilesToPreviewServer = useCallback(async () => {
+    const flat = flattenFiles(files).filter((f) => f.content !== undefined);
+    const payload = flat.map((f) => ({ path: f.path, content: f.content || "" }));
+
+    const hashStr = computeFilesHash(payload);
+    if (hashStr === lastPushedHashRef.current && previewUrl && previewToken) {
+      return previewUrl;
+    }
+
+    lastPushedHashRef.current = hashStr;
+
+    if (!previewToken) {
+      const res = await fetch("/api/preview-server/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: payload }),
+      });
+      const data = await res.json();
+      if (data.url && data.token) {
+        const url = data.url.replace(/^http:\/\//, "https://");
+        setPreviewUrl(url);
+        setPreviewToken(data.token);
+        return url;
+      }
+      return null;
+    }
+
+    await fetch("/api/preview-server/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files: payload, token: previewToken }),
+    });
+    return previewUrl;
+  }, [files, previewUrl, previewToken, computeFilesHash]);
+
+  const handleQrOpen = useCallback(async () => {
+    setQrLoading(true);
+    try {
+      await pushFilesToPreviewServer();
+    } finally {
+      setQrLoading(false);
+    }
+  }, [pushFilesToPreviewServer]);
+
+  useEffect(() => {
+    if (!previewUrl || !previewToken) return;
+    const timer = setTimeout(() => {
+      pushFilesToPreviewServer();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [files, previewUrl, previewToken]);
+
+  useEffect(() => {
+    const token = previewToken;
+    return () => {
+      if (token) {
+        fetch("/api/preview-server/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+      }
+    };
+  }, [previewToken]);
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!previewUrl) return;
+    try {
+      await navigator.clipboard.writeText(previewUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }, [previewUrl]);
+
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
       <div className="flex items-center gap-1.5 px-2 h-9 border-b border-border/50 shrink-0 flex-wrap">
@@ -317,6 +411,84 @@ export function PreviewPanel() {
         </Button>
 
         <div className="flex-1" />
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 shrink-0"
+              onClick={handleQrOpen}
+              aria-label="QR Preview"
+              data-testid="button-qr-preview"
+            >
+              <QrCode className="w-3 h-3" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-64 p-4"
+            align="end"
+            data-testid="popover-qr-preview"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-xs font-medium text-foreground">Scan to preview on phone</p>
+              {qrLoading ? (
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-muted/30 rounded-md">
+                  <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : previewUrl ? (
+                <div className="bg-white p-3 rounded-lg" data-testid="qr-code-container">
+                  <QRCodeSVG
+                    value={previewUrl}
+                    size={156}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+              ) : (
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-muted/30 rounded-md">
+                  <p className="text-xs text-muted-foreground text-center px-4">
+                    Click to generate preview URL
+                  </p>
+                </div>
+              )}
+              {previewUrl && (
+                <div className="w-full flex flex-col gap-2">
+                  <div className="flex items-center gap-1 w-full">
+                    <div className="flex-1 text-[10px] font-mono text-muted-foreground truncate bg-muted/30 rounded px-2 py-1" data-testid="text-preview-url">
+                      {previewUrl}
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0"
+                      onClick={handleCopyUrl}
+                      data-testid="button-copy-preview-url"
+                    >
+                      {copied ? (
+                        <Check className="w-3 h-3 text-green-500" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => window.open(previewUrl, "_blank")}
+                      data-testid="button-open-preview-url"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    Live reload enabled — changes sync automatically
+                  </p>
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <Button
           size="icon"

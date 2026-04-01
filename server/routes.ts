@@ -41,6 +41,7 @@ import { detectSkillFromText, loadSkill } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 import { getAIClient, type AIProvider } from "./kimi-client";
+import { setupPreviewServer } from "./preview-server";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -1692,6 +1693,8 @@ Generate the codestart.md content for this project based on both the plan and th
       try { await rm(tmpBase, { recursive: true, force: true }); } catch {}
     }
   });
+
+  setupPreviewServer(httpServer, app);
 
   return httpServer;
 }
