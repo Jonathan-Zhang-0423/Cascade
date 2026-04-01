@@ -1,6 +1,8 @@
 import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, Apple, Cpu } from "lucide-react";
+import { RefreshCw, Smartphone, Rotate3D, Moon, Sun } from "lucide-react";
+import androidLogoPath from "@assets/android-logo-android-icon-free-free-vector_1775015520620.jpg";
+import appleLogoPath from "@assets/logo-apple-3_1775015525544.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
@@ -243,7 +245,7 @@ export function PreviewPanel() {
             onClick={() => setDevicePlatform("ios")}
             data-testid="button-platform-ios"
           >
-            <Apple className="w-3 h-3" />
+            <img src={appleLogoPath} alt="iOS" className="w-3 h-3" />
           </button>
           <div className="w-px h-4 bg-border" />
           <button
@@ -255,7 +257,7 @@ export function PreviewPanel() {
             onClick={() => setDevicePlatform("android")}
             data-testid="button-platform-android"
           >
-            <Cpu className="w-3 h-3" />
+            <img src={androidLogoPath} alt="Android" className="w-3 h-3" />
           </button>
         </div>
 
