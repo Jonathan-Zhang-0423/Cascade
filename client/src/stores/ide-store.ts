@@ -246,6 +246,7 @@ interface IDEState {
   isSidebarOpen: boolean;
   isChatOpen: boolean;
   isAiResponding: boolean;
+  theme: string;
   previewFile: string;
   previewRefreshKey: number;
   pendingPrompt: string | null;
