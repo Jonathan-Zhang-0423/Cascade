@@ -16,6 +16,7 @@ const KNOWN_MGR_EVENT_TYPES: Set<string> = new Set([
   "thinking_token", "raw_token", "manager_token", "communicator_token",
   "communicator_narration_starting", "communicator_error",
   "plan_preparing", "plan_ready", "manager_done", "manager_error",
+  "action_log",
 ]);
 
 const MGR_SOURCE_MAP: Record<string, LLMEventSource> = {
@@ -1949,52 +1950,15 @@ function ThinkingToggle({ thinking }: { thinking: string }) {
 function NarrationBubble({
   message,
 }: {
-  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string; typing?: boolean; preparingPlan?: boolean };
+  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string; typing?: boolean };
 }) {
-  const isActivelyThinking = message.typing === true;
-  const isPreparing = message.preparingPlan === true;
-
   return (
     <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
-      {isActivelyThinking ? (
-        <>
-          {isPreparing ? (
-            <div className="mb-2" data-testid="thinking-live-block">
-              {message.thinking && (
-                <ThinkingToggle thinking={message.thinking} />
-              )}
-              <div className="flex items-center gap-1.5">
-                <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
-                <span className="text-[13px] text-muted-foreground/90 font-medium">Preparing plan…</span>
-              </div>
-            </div>
-          ) : message.thinking ? (
-            <div className="mb-2" data-testid="thinking-live-block">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
-                <span className="text-[13px] text-muted-foreground/90 font-medium">Reasoning…</span>
-              </div>
-              <p className="text-muted-foreground/80 whitespace-pre-wrap text-[13px] border-l-2 border-blue-400/40 pl-2 leading-relaxed" data-testid="text-thinking-content">
-                {message.thinking}
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 mb-1" data-testid="thinking-live-block">
-              <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
-              <span className="text-[13px] text-muted-foreground/90 font-medium">Reasoning…</span>
-            </div>
-          )}
-          {message.content && (
-            <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
-          )}
-        </>
-      ) : (
-        <>
-          {message.thinking && (
-            <ThinkingToggle thinking={message.thinking} />
-          )}
-          <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
-        </>
+      {message.thinking && (
+        <ThinkingToggle thinking={message.thinking} />
+      )}
+      {message.content && (
+        <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
       )}
     </div>
   );
@@ -2067,6 +2031,10 @@ export function ChatPanel() {
   const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [liveThinkingText, setLiveThinkingText] = useState<string>("");
   const [liveNarrationText, setLiveNarrationText] = useState<string>("");
+  const [mgrLiveThinkingText, setMgrLiveThinkingText] = useState<string>("");
+  const [mgrLiveNarrationText, setMgrLiveNarrationText] = useState<string>("");
+  const [mgrLiveActionLog, setMgrLiveActionLog] = useState<ActionLogEntry[]>([]);
+  const [mgrLivePreparingPlan, setMgrLivePreparingPlan] = useState(false);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
@@ -2098,7 +2066,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText, liveThinkingText]);
+  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText, liveThinkingText, mgrLiveThinkingText, mgrLiveNarrationText, mgrLiveActionLog]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2285,8 +2253,6 @@ export function ChatPanel() {
       let bufferStr = "";
 
       let managerAccumulated = "";
-      let messageInserted = false;
-      let streamingMsgIndex = -1;
       let managerThinkingAccumulated = "";
 
       let commAccumulated = "";
@@ -2326,85 +2292,38 @@ export function ChatPanel() {
             const token = (ev.token as string) || "";
             if (token && isCurrentProject) {
               managerThinkingAccumulated += token;
-              const msgs = useIDEStore.getState().managerMessages;
-              let idx = streamingMsgIndex;
-              if (idx === -1 || !msgs[idx] || msgs[idx].role !== "assistant") {
-                const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
-                idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
-              }
-              if (idx !== -1) {
-                const target = msgs[idx];
-                if (target?.role === "assistant") {
-                  const updated = [...msgs];
-                  updated[idx] = { ...target, thinking: managerThinkingAccumulated };
-                  useIDEStore.setState({ managerMessages: updated });
-                }
-              }
+              setMgrLiveThinkingText(managerThinkingAccumulated);
               await new Promise<void>(r => setTimeout(r, 0));
             }
           } else if (evType === "raw_token" || evType === "manager_token") {
             managerAccumulated += ev.token;
             if (isCurrentProject) {
               const display = stripProjectNameMarker(managerAccumulated);
-              // Suppress raw JSON tokens — if the accumulated content looks like a
-              // JSON plan object (starts with '{'), don't stream it character-by-character
-              // to the user; we'll handle it properly in manager_done.
-              const looksLikePlanJson = display.trimStart().startsWith("{");
-              if (!looksLikePlanJson) {
-                if (!messageInserted) {
-                  const msgs = useIDEStore.getState().managerMessages;
-                  const typingIdx = msgs.findIndex((m) => m.typing === true);
-                  if (typingIdx !== -1) {
-                    const updated = [...msgs];
-                    updated[typingIdx] = { ...updated[typingIdx], typing: false, content: display, source: "manager" as const };
-                    useIDEStore.setState({ managerMessages: updated });
-                    streamingMsgIndex = typingIdx;
-                  } else {
-                    addManagerMessage({ role: "assistant", content: display, source: "manager" });
-                    streamingMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-                  }
-                  messageInserted = true;
-                } else {
-                  const msgs = useIDEStore.getState().managerMessages;
-                  if (streamingMsgIndex >= 0 && streamingMsgIndex < msgs.length) {
-                    const target = msgs[streamingMsgIndex];
-                    if (target?.role === "assistant" && !target.plan) {
-                      const updated = [...msgs];
-                      updated[streamingMsgIndex] = { ...target, content: display };
-                      useIDEStore.setState({ managerMessages: updated });
-                    }
-                  }
-                }
-              }
+              setMgrLiveNarrationText(display);
               await new Promise<void>(r => setTimeout(r, 0));
+            }
+          } else if (evType === "action_log") {
+            if (isCurrentProject) {
+              const entry: ActionLogEntry = {
+                type: (ev.actionType as ActionLogEntry["type"]) || "tool_call",
+                label: (ev.label as string) || "",
+                detail: (ev.detail as string) || "",
+                timestamp: Date.now(),
+              };
+              setMgrLiveActionLog(prev => [...prev, entry]);
             }
           } else if (evType === "plan_preparing") {
             if (!isCurrentProject) continue;
-            const msgs = useIDEStore.getState().managerMessages;
-            const typingIdx = msgs.findIndex((m) => m.typing === true);
-            if (typingIdx !== -1) {
-              const updated = [...msgs];
-              updated[typingIdx] = { ...updated[typingIdx], thinking: managerThinkingAccumulated || undefined, preparingPlan: true };
-              useIDEStore.setState({ managerMessages: updated });
-            } else {
-              addManagerMessage({ role: "assistant", content: "", typing: true, preparingPlan: true, thinking: managerThinkingAccumulated || undefined });
-            }
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLivePreparingPlan(true);
           } else if (evType === "plan_ready") {
             if (!isCurrentProject) continue;
             removeTypingBubble();
-            if (messageInserted && streamingMsgIndex >= 0) {
-              const msgs = useIDEStore.getState().managerMessages;
-              if (streamingMsgIndex < msgs.length) {
-                const stale = msgs[streamingMsgIndex];
-                if (stale?.role === "assistant" && !stale.plan) {
-                  const cleaned = [...msgs];
-                  cleaned.splice(streamingMsgIndex, 1);
-                  useIDEStore.setState({ managerMessages: cleaned });
-                }
-              }
-              messageInserted = false;
-              streamingMsgIndex = -1;
-            }
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
+            setMgrLivePreparingPlan(false);
             const plan = ev.plan;
             const resolvedProjectName = ((ev.project_name as string | undefined) || "").trim() || undefined;
             if (projectId && resolvedProjectName) {
@@ -2487,6 +2406,10 @@ export function ChatPanel() {
             }
           } else if (evType === "manager_done") {
             if (!isCurrentProject) continue;
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
+            setMgrLivePreparingPlan(false);
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
@@ -2495,7 +2418,6 @@ export function ChatPanel() {
             if (managerAccumulated) {
               const canonical = stripProjectNameMarker(managerAccumulated);
               if (canonical) {
-                // Detect if the accumulated content is a JSON plan object
                 let parsedPlan: any = null;
                 try {
                   const trimmed = canonical.trim();
@@ -2506,28 +2428,12 @@ export function ChatPanel() {
                     }
                   }
                 } catch {
-                  // not JSON, treat as plain text
                 }
 
                 if (parsedPlan) {
-                  // Remove any streaming or typing bubble that was accumulating the raw JSON
-                  if (messageInserted && streamingMsgIndex >= 0) {
-                    const msgs = useIDEStore.getState().managerMessages;
-                    if (streamingMsgIndex < msgs.length) {
-                      const stale = msgs[streamingMsgIndex];
-                      if (stale?.role === "assistant" && !stale.plan) {
-                        const cleaned = [...msgs];
-                        cleaned.splice(streamingMsgIndex, 1);
-                        useIDEStore.setState({ managerMessages: cleaned });
-                      }
-                    }
-                    messageInserted = false;
-                    streamingMsgIndex = -1;
-                  }
                   removeTypingBubble();
                   const steps = normalizeSteps(parsedPlan);
                   if (steps.length > 0) {
-                    // Full plan card rendering
                     clearManagerPlan();
                     for (const step of steps) {
                       updateTaskStatus(String(step.step), "pending");
@@ -2535,7 +2441,6 @@ export function ChatPanel() {
                     setManagerPlan(parsedPlan);
                     addManagerMessage({ role: "assistant", content: "", plan: parsedPlan, thinking: managerThinkingAccumulated || undefined });
                   } else {
-                    // Fallback: plan object has no steps — extract readable prose fields
                     const fallbackText = parsedPlan.overview || parsedPlan.whatAndWhy || parsedPlan.title || JSON.stringify(parsedPlan);
                     const msgs = useIDEStore.getState().managerMessages;
                     const typingIdx = msgs.findIndex((m) => m.typing === true);
@@ -2547,7 +2452,7 @@ export function ChatPanel() {
                       addManagerMessage({ role: "assistant", content: fallbackText, source: "manager" });
                     }
                   }
-                } else if (!messageInserted) {
+                } else {
                   const msgs = useIDEStore.getState().managerMessages;
                   const typingIdx = msgs.findIndex((m) => m.typing === true);
                   if (typingIdx !== -1) {
@@ -2624,6 +2529,10 @@ export function ChatPanel() {
       if (abortRef.current === controller) abortRef.current = null;
       if (useIDEStore.getState().projectId === projectId) {
         removeTypingBubble();
+        setMgrLiveThinkingText("");
+        setMgrLiveNarrationText("");
+        setMgrLiveActionLog([]);
+        setMgrLivePreparingPlan(false);
         if (!buildSessionIdRef.current) {
           setManagerResponding(false);
         }
@@ -3346,6 +3255,10 @@ export function ChatPanel() {
     }
     setAiResponding(false);
     setManagerResponding(false);
+    setMgrLiveThinkingText("");
+    setMgrLiveNarrationText("");
+    setMgrLiveActionLog([]);
+    setMgrLivePreparingPlan(false);
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution]);
 
   const handleToggleMode = useCallback(() => {
@@ -3544,7 +3457,22 @@ export function ChatPanel() {
           <TypingIndicator />
         )}
         {isManagerResponding && chatMode !== "build" && (
-          <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+          <>
+            {(mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 || mgrLivePreparingPlan) ? (
+              <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+                {mgrLivePreparingPlan ? (
+                  <div className="px-3 py-2 flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+                    <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
+                  </div>
+                ) : (
+                  <ActionLogLive entries={mgrLiveActionLog} thinkingText={mgrLiveThinkingText || undefined} narrationText={mgrLiveNarrationText || undefined} />
+                )}
+              </div>
+            ) : (
+              <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+            )}
+          </>
         )}
         {isExecuting && (liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
