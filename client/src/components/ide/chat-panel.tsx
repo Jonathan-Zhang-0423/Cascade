@@ -3629,6 +3629,19 @@ export function ChatPanel() {
     createCheckpoint,
   ]);
 
+  const finalizeSessionCleanup = useCallback(() => {
+    isReconnectingRef.current = false;
+    setIsReconnecting(false);
+    buildSessionIdRef.current = null;
+    buildReaderRef.current = null;
+    if (projectId) {
+      try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+    }
+    setBuildPhase(null);
+    setExecutingTaskIndex(null);
+    setAiResponding(false);
+  }, [projectId]);
+
   const handleExecutePlan = useCallback(async () => {
     const plan = useIDEStore.getState().managerPlan;
     if (!plan) return;
@@ -4369,23 +4382,12 @@ export function ChatPanel() {
             try {
               const statusRes = await fetch(`/api/build-session/${retrySessionId}/status`);
               if (!statusRes.ok) {
-                isReconnectingRef.current = false;
-                setIsReconnecting(false);
-                buildSessionIdRef.current = null;
-                buildReaderRef.current = null;
-                if (projectId) {
-                  try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
-                }
-                setBuildPhase(null);
-                setExecutingTaskIndex(null);
-                setAiResponding(false);
+                finalizeSessionCleanup();
                 return;
               }
               const statusData = await statusRes.json();
-              if (statusData.done) {
-                connectToBuildStreamRef
-                  .current?.(retrySessionId, retryLastEventId)
-                  .catch(() => {});
+              if (statusData.done || statusData.active === false) {
+                finalizeSessionCleanup();
                 return;
               }
             } catch {}
@@ -5152,23 +5154,12 @@ export function ChatPanel() {
               try {
                 const statusRes = await fetch(`/api/build-session/${retrySessionId}/status`);
                 if (!statusRes.ok) {
-                  isReconnectingRef.current = false;
-                  setIsReconnecting(false);
-                  buildSessionIdRef.current = null;
-                  buildReaderRef.current = null;
-                  if (projectId) {
-                    try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
-                  }
-                  setBuildPhase(null);
-                  setExecutingTaskIndex(null);
-                  setAiResponding(false);
+                  finalizeSessionCleanup();
                   return;
                 }
                 const statusData = await statusRes.json();
-                if (statusData.done) {
-                  connectToBuildStreamRef
-                    .current?.(retrySessionId, retryLastEventId)
-                    .catch(() => {});
+                if (statusData.done || statusData.active === false) {
+                  finalizeSessionCleanup();
                   return;
                 }
               } catch {}
