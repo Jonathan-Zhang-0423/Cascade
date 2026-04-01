@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 const KNOWN_MGR_EVENT_TYPES: Set<string> = new Set([
   "thinking_token", "raw_token", "manager_token", "communicator_token",
   "communicator_narration_starting", "communicator_error",
-  "plan_ready", "manager_done", "manager_error",
+  "plan_preparing", "plan_ready", "manager_done", "manager_error",
 ]);
 
 const MGR_SOURCE_MAP: Record<string, LLMEventSource> = {
@@ -1381,6 +1381,7 @@ function TaskPlanCard({
   reviewPhase,
   holisticReview,
   fixCycle,
+  thinking,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -1396,6 +1397,7 @@ function TaskPlanCard({
   reviewPhase?: ReviewPhase;
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
+  thinking?: string;
 }) {
   const lang = usePlanCardLang();
   const tCard = useT();
@@ -1430,6 +1432,11 @@ function TaskPlanCard({
 
   return (
     <>
+      {thinking && (
+        <div className="px-3 mb-0.5">
+          <ThinkingToggle thinking={thinking} />
+        </div>
+      )}
       <div className={cn("mx-3 my-1 rounded-lg border overflow-hidden", isFullyComplete ? "border-green-500/30 bg-card/30" : "border-border/40 bg-card/50")} data-testid="task-plan-card">
 
         {hasRichSections ? (
@@ -1906,6 +1913,7 @@ function ManagerMessageBubble({
         reviewPhase={reviewPhase}
         holisticReview={holisticReview}
         fixCycle={fixCycle}
+        thinking={message.thinking}
       />
     );
   }
@@ -1917,19 +1925,50 @@ function ManagerMessageBubble({
   return <NarrationBubble message={message} />;
 }
 
+function ThinkingToggle({ thinking }: { thinking: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-1.5">
+      <button
+        className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-thinking"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <span className="italic font-medium">(Thinking)</span>
+      </button>
+      {open && (
+        <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
+          {thinking}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function NarrationBubble({
   message,
 }: {
-  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string; typing?: boolean };
+  message: { role: string; content: string; source?: "communicator" | "manager_raw" | "manager"; thinking?: string; typing?: boolean; preparingPlan?: boolean };
 }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
   const isActivelyThinking = message.typing === true;
+  const isPreparing = message.preparingPlan === true;
 
   return (
     <div className="px-3 text-[13px] leading-relaxed text-foreground" data-testid="plan-message-bubble">
       {isActivelyThinking ? (
         <>
-          {message.thinking ? (
+          {isPreparing ? (
+            <div className="mb-2" data-testid="thinking-live-block">
+              {message.thinking && (
+                <ThinkingToggle thinking={message.thinking} />
+              )}
+              <div className="flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+                <span className="text-[13px] text-muted-foreground/90 font-medium">Preparing plan…</span>
+              </div>
+            </div>
+          ) : message.thinking ? (
             <div className="mb-2" data-testid="thinking-live-block">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full bg-blue-400/80 animate-pulse" data-testid="thinking-pulse-dot" />
@@ -1952,21 +1991,7 @@ function NarrationBubble({
       ) : (
         <>
           {message.thinking && (
-            <div className="mb-1.5">
-              <button
-                className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
-                onClick={() => setThinkingOpen(o => !o)}
-                data-testid="button-toggle-thinking"
-              >
-                {thinkingOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                <span className="italic font-medium">(Thinking)</span>
-              </button>
-              {thinkingOpen && (
-                <p className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2" data-testid="text-thinking-content">
-                  {message.thinking}
-                </p>
-              )}
-            </div>
+            <ThinkingToggle thinking={message.thinking} />
           )}
           <p className="text-foreground/90 whitespace-pre-wrap">{message.content}</p>
         </>
@@ -2353,6 +2378,17 @@ export function ChatPanel() {
               }
               await new Promise<void>(r => setTimeout(r, 0));
             }
+          } else if (evType === "plan_preparing") {
+            if (!isCurrentProject) continue;
+            const msgs = useIDEStore.getState().managerMessages;
+            const typingIdx = msgs.findIndex((m) => m.typing === true);
+            if (typingIdx !== -1) {
+              const updated = [...msgs];
+              updated[typingIdx] = { ...updated[typingIdx], thinking: managerThinkingAccumulated || undefined, preparingPlan: true };
+              useIDEStore.setState({ managerMessages: updated });
+            } else {
+              addManagerMessage({ role: "assistant", content: "", typing: true, preparingPlan: true, thinking: managerThinkingAccumulated || undefined });
+            }
           } else if (evType === "plan_ready") {
             if (!isCurrentProject) continue;
             removeTypingBubble();
@@ -2380,7 +2416,7 @@ export function ChatPanel() {
               updateTaskStatus(String(step.step), "pending");
             }
             setManagerPlan(plan);
-            addManagerMessage({ role: "assistant", content: "", plan });
+            addManagerMessage({ role: "assistant", content: "", plan, thinking: managerThinkingAccumulated || undefined });
             if (chatMode === "build") {
               autoExecutePlanRef.current = true;
             }
@@ -2497,7 +2533,7 @@ export function ChatPanel() {
                       updateTaskStatus(String(step.step), "pending");
                     }
                     setManagerPlan(parsedPlan);
-                    addManagerMessage({ role: "assistant", content: "", plan: parsedPlan });
+                    addManagerMessage({ role: "assistant", content: "", plan: parsedPlan, thinking: managerThinkingAccumulated || undefined });
                   } else {
                     // Fallback: plan object has no steps — extract readable prose fields
                     const fallbackText = parsedPlan.overview || parsedPlan.whatAndWhy || parsedPlan.title || JSON.stringify(parsedPlan);

@@ -104,6 +104,7 @@ export interface ManagerMessage {
   hidden?: boolean;
   checkpointId?: string;
   thinking?: string;
+  preparingPlan?: boolean;
   buildResult?: BuildResultData;
 }
 

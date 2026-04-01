@@ -567,6 +567,8 @@ export async function registerRoutes(
             ? result.exitArgs.project_name
             : undefined;
 
+          emit({ type: "plan_preparing" });
+
           const userLang = detectUserLanguage(messages);
           const steps = normalizeStepsList(plan);
           const commPrompt = buildCommunicatorMessage({
