@@ -1219,7 +1219,7 @@ function CodeBlockView({
   const fileName = block.filePath.split("/").pop() || block.filePath;
   const lineCount = block.code.split("\n").length;
 
-  const colors = THEME_COLORS[theme] || THEME_COLORS["vs-dark"];
+  const colors = THEME_COLORS[theme as keyof typeof THEME_COLORS] || THEME_COLORS["vs-dark"];
 
   const detectLang = (): "html" | "css" | "js" | "text" => {
     const lang = block.language.toLowerCase();
