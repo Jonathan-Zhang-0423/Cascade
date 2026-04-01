@@ -114,11 +114,9 @@ export function PreviewPanel() {
 
   const handlePlatformChange = (platform: "ios" | "android") => {
     setDevicePlatform(platform);
-    if (selectedDevice !== "custom") {
-      const currentSpec = getDeviceSpec(selectedDevice);
-      if (currentSpec.platform !== platform) {
-        setSelectedDevice(getFirstDeviceForPlatform(platform));
-      }
+    const currentSpec = getDeviceSpec(selectedDevice);
+    if (selectedDevice === "custom" || currentSpec.platform !== platform) {
+      setSelectedDevice(getFirstDeviceForPlatform(platform));
     }
   };
 

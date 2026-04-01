@@ -174,14 +174,7 @@ export function getDeviceName(deviceId: string): string {
   return DEVICE_SPECS[deviceId]?.name || "iPhone 16 Pro";
 }
 
-const PLATFORM_DEFAULTS: Record<"ios" | "android", string> = {
-  ios: "iphone-16-pro",
-  android: "pixel-7",
-};
-
 export function getFirstDeviceForPlatform(platform: "ios" | "android"): string {
-  const preferred = PLATFORM_DEFAULTS[platform];
-  if (DEVICE_SPECS[preferred]) return preferred;
   const device = DEVICE_LIST.find((d) => d.platform === platform);
   return device?.id || "iphone-16-pro";
 }
