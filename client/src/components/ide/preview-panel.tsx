@@ -244,7 +244,7 @@ export function PreviewPanel() {
             onClick={() => setDevicePlatform("ios")}
             data-testid="button-platform-ios"
           >
-            <img src={appleLogoPath} alt="iOS" className="w-3 h-3" />
+            <img src={appleLogoPath} alt="iOS" className="w-4 h-4" />
           </button>
           <div className="w-px h-4 bg-border" />
           <button
