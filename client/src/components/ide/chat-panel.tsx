@@ -4386,7 +4386,7 @@ export function ChatPanel() {
                 return;
               }
               const statusData = await statusRes.json();
-              if (statusData.done || statusData.active === false) {
+              if (statusData.active === false && !statusData.done) {
                 finalizeSessionCleanup();
                 return;
               }
@@ -5158,7 +5158,7 @@ export function ChatPanel() {
                   return;
                 }
                 const statusData = await statusRes.json();
-                if (statusData.done || statusData.active === false) {
+                if (statusData.active === false && !statusData.done) {
                   finalizeSessionCleanup();
                   return;
                 }
