@@ -3358,7 +3358,7 @@ export function ChatPanel() {
           const nameFromMarker = managerAccumulated
             .match(PROJECT_NAME_REGEX)?.[1]
             ?.trim();
-          if (nameFromMarker) renameProject(projectId, nameFromMarker);
+          if (nameFromMarker && projectId) renameProject(projectId, nameFromMarker);
         }
       } catch (error: any) {
         if (useIDEStore.getState().projectId === projectId) {
@@ -5229,7 +5229,7 @@ export function ChatPanel() {
     const msgs = (chatMode === "manager" ? managerMessages : chatMessages)
       .filter(
         (m) =>
-          !m.hidden && !m.typing && validRoles.has(m.role) && m.content?.trim(),
+          !m.hidden && !("typing" in m && m.typing) && validRoles.has(m.role) && m.content?.trim(),
       )
       .map((m) => ({
         role: m.role as "user" | "assistant",
