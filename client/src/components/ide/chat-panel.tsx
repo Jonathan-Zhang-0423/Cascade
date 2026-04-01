@@ -2652,6 +2652,12 @@ export function ChatPanel() {
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const buildResultMsgIdRef = useRef<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const lastReceivedEventIdRef = useRef<number>(-1);
@@ -2725,6 +2731,27 @@ export function ChatPanel() {
         document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [modeDropdownOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (mgrLiveClearTimerRef.current) {
+        clearTimeout(mgrLiveClearTimerRef.current);
+        mgrLiveClearTimerRef.current = null;
+      }
+      if (buildLiveClearTimerRef.current) {
+        clearTimeout(buildLiveClearTimerRef.current);
+        buildLiveClearTimerRef.current = null;
+      }
+      if (thinkingFadeTimerRef.current) {
+        clearTimeout(thinkingFadeTimerRef.current);
+        thinkingFadeTimerRef.current = null;
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const applyCodeBlock = useCallback(async (block: CodeBlock) => {
     const currentState = useIDEStore.getState();
@@ -2863,6 +2890,14 @@ export function ChatPanel() {
       const trimmed = overrideMessage?.trim() || input.trim();
       if (!trimmed || isManagerResponding || isAiResponding) return;
 
+      if (mgrLiveClearTimerRef.current) {
+        clearTimeout(mgrLiveClearTimerRef.current);
+        mgrLiveClearTimerRef.current = null;
+      }
+      setMgrLiveThinkingText("");
+      setMgrLiveNarrationText("");
+      setMgrLiveActionLog([]);
+
       addManagerMessage({ role: "user", content: trimmed });
       if (!overrideMessage) setInput("");
 
@@ -2986,16 +3021,24 @@ export function ChatPanel() {
               if (token) {
                 managerThinkingAccumulated += token;
                 if (isCurrentProject) {
+                  if (mgrLiveClearTimerRef.current) {
+                    clearTimeout(mgrLiveClearTimerRef.current);
+                    mgrLiveClearTimerRef.current = null;
+                  }
                   setMgrLiveThinkingText(managerThinkingAccumulated);
-                  await new Promise<void>((r) => setTimeout(r, 0));
+                  await new Promise<void>((r) => setTimeout(r, 16));
                 }
               }
             } else if (evType === "raw_token" || evType === "manager_token") {
               managerAccumulated += ev.token;
               if (isCurrentProject) {
+                if (mgrLiveClearTimerRef.current) {
+                  clearTimeout(mgrLiveClearTimerRef.current);
+                  mgrLiveClearTimerRef.current = null;
+                }
                 const display = stripProjectNameMarker(managerAccumulated);
                 setMgrLiveNarrationText(display);
-                await new Promise<void>((r) => setTimeout(r, 0));
+                await new Promise<void>((r) => setTimeout(r, 16));
               }
             } else if (evType === "action_log") {
               if (isCurrentProject) {
@@ -3014,9 +3057,6 @@ export function ChatPanel() {
             } else if (evType === "plan_ready") {
               if (!isCurrentProject) continue;
               setMgrPreparingPlan(false);
-              setMgrLiveThinkingText("");
-              setMgrLiveNarrationText("");
-              setMgrLiveActionLog([]);
               removeTypingBubble();
               const plan = ev.plan;
               const resolvedProjectName =
@@ -3037,6 +3077,15 @@ export function ChatPanel() {
                 plan,
                 thinking: managerThinkingAccumulated || undefined,
               });
+              if (mgrLiveClearTimerRef.current) {
+                clearTimeout(mgrLiveClearTimerRef.current);
+              }
+              mgrLiveClearTimerRef.current = setTimeout(() => {
+                setMgrLiveThinkingText("");
+                setMgrLiveNarrationText("");
+                setMgrLiveActionLog([]);
+                mgrLiveClearTimerRef.current = null;
+              }, 400);
               if (chatMode === "build") {
                 autoExecutePlanRef.current = true;
               }
@@ -3154,9 +3203,15 @@ export function ChatPanel() {
             } else if (evType === "manager_done") {
               if (!isCurrentProject) continue;
               setMgrPreparingPlan(false);
-              setMgrLiveThinkingText("");
-              setMgrLiveNarrationText("");
-              setMgrLiveActionLog([]);
+              if (mgrLiveClearTimerRef.current) {
+                clearTimeout(mgrLiveClearTimerRef.current);
+              }
+              mgrLiveClearTimerRef.current = setTimeout(() => {
+                setMgrLiveThinkingText("");
+                setMgrLiveNarrationText("");
+                setMgrLiveActionLog([]);
+                mgrLiveClearTimerRef.current = null;
+              }, 400);
               const nameFromDone = (
                 ev.project_name as string | undefined
               )?.trim();
@@ -3379,9 +3434,15 @@ export function ChatPanel() {
         if (useIDEStore.getState().projectId === projectId) {
           removeTypingBubble();
           setMgrPreparingPlan(false);
-          setMgrLiveThinkingText("");
-          setMgrLiveNarrationText("");
-          setMgrLiveActionLog([]);
+          if (mgrLiveClearTimerRef.current) {
+            clearTimeout(mgrLiveClearTimerRef.current);
+          }
+          mgrLiveClearTimerRef.current = setTimeout(() => {
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
+            mgrLiveClearTimerRef.current = null;
+          }, 300);
           if (!buildSessionIdRef.current) {
             setManagerResponding(false);
           }
@@ -3566,6 +3627,10 @@ export function ChatPanel() {
     if (!plan) return;
     if (buildSessionIdRef.current) return;
 
+    if (buildLiveClearTimerRef.current) {
+      clearTimeout(buildLiveClearTimerRef.current);
+      buildLiveClearTimerRef.current = null;
+    }
     setExecutingTaskIndex(0);
     setManagerResponding(false);
     setBuildPhase("thinking");
@@ -3779,6 +3844,10 @@ export function ChatPanel() {
               clearTimeout(thinkingFadeTimerRef.current);
               thinkingFadeTimerRef.current = null;
             }
+            if (buildLiveClearTimerRef.current) {
+              clearTimeout(buildLiveClearTimerRef.current);
+              buildLiveClearTimerRef.current = null;
+            }
             setBuildPhase("thinking");
             setLiveThinkingText("");
             setLiveNarrationText("");
@@ -3824,10 +3893,14 @@ export function ChatPanel() {
                 clearTimeout(thinkingFadeTimerRef.current);
                 thinkingFadeTimerRef.current = null;
               }
+              if (buildLiveClearTimerRef.current) {
+                clearTimeout(buildLiveClearTimerRef.current);
+                buildLiveClearTimerRef.current = null;
+              }
               thinkingAccumulated += token;
               flushThinkingToStore();
               setLiveThinkingText(thinkingAccumulated);
-              await new Promise<void>((r) => setTimeout(r, 0));
+              await new Promise<void>((r) => setTimeout(r, 16));
             }
             setBuildPhase("thinking");
           } else if (type === "action_log") {
@@ -3891,10 +3964,14 @@ export function ChatPanel() {
               setLiveThinkingText("");
               thinkingFadeTimerRef.current = null;
             }, 400);
+            if (buildLiveClearTimerRef.current) {
+              clearTimeout(buildLiveClearTimerRef.current);
+              buildLiveClearTimerRef.current = null;
+            }
             commAccumulated += ev.token || "";
             setLiveNarrationText(commAccumulated);
             setBuildPhase("working");
-            await new Promise<void>((r) => setTimeout(r, 0));
+            await new Promise<void>((r) => setTimeout(r, 16));
           } else if (type === "editor_token") {
             editorAccumulated += ev.token || "";
             setBuildPhase("working");
@@ -4074,8 +4151,15 @@ export function ChatPanel() {
                 }
               }
             }
-            setLiveActionLog([]);
-            setLiveThinkingText("");
+            if (buildLiveClearTimerRef.current) {
+              clearTimeout(buildLiveClearTimerRef.current);
+            }
+            buildLiveClearTimerRef.current = setTimeout(() => {
+              setLiveActionLog([]);
+              setLiveThinkingText("");
+              setLiveNarrationText("");
+              buildLiveClearTimerRef.current = null;
+            }, 400);
             streamDone = true;
             break;
           }
@@ -4285,8 +4369,15 @@ export function ChatPanel() {
           thinkingFadeTimerRef.current = null;
         }
         setBuildPhase(null);
-        setLiveThinkingText("");
-        setLiveNarrationText("");
+        if (buildLiveClearTimerRef.current) {
+          clearTimeout(buildLiveClearTimerRef.current);
+        }
+        buildLiveClearTimerRef.current = setTimeout(() => {
+          setLiveThinkingText("");
+          setLiveNarrationText("");
+          setLiveActionLog([]);
+          buildLiveClearTimerRef.current = null;
+        }, 300);
         const finalLog = [...actionLogRef.current];
         if (finalLog.length > 0) {
           const msgId = buildResultMsgIdRef.current;
@@ -4325,7 +4416,6 @@ export function ChatPanel() {
             }
           }
         }
-        setLiveActionLog([]);
         if (useIDEStore.getState().projectId === projectId) {
           normalizedSteps.forEach((step) => {
             const key = String(step.step);
@@ -4410,6 +4500,11 @@ export function ChatPanel() {
       const userLang = firstUserMsg
         ? detectLanguage(firstUserMsg.content || "")
         : "English";
+
+      if (buildLiveClearTimerRef.current) {
+        clearTimeout(buildLiveClearTimerRef.current);
+        buildLiveClearTimerRef.current = null;
+      }
 
       buildSessionIdRef.current = sessionId;
       let buildCompleted = false;
@@ -4725,10 +4820,14 @@ export function ChatPanel() {
                   clearTimeout(thinkingFadeTimerRef.current);
                   thinkingFadeTimerRef.current = null;
                 }
+                if (buildLiveClearTimerRef.current) {
+                  clearTimeout(buildLiveClearTimerRef.current);
+                  buildLiveClearTimerRef.current = null;
+                }
                 thinkingAccumulated += token;
                 flushThinkingToStore();
                 setLiveThinkingText(thinkingAccumulated);
-                await new Promise<void>((r) => setTimeout(r, 0));
+                await new Promise<void>((r) => setTimeout(r, 16));
               }
               setBuildPhase("thinking");
             } else if (type === "action_log") {
@@ -4792,10 +4891,14 @@ export function ChatPanel() {
                 setLiveThinkingText("");
                 thinkingFadeTimerRef.current = null;
               }, 400);
+              if (buildLiveClearTimerRef.current) {
+                clearTimeout(buildLiveClearTimerRef.current);
+                buildLiveClearTimerRef.current = null;
+              }
               commAccumulated += ev.token || "";
               setLiveNarrationText(commAccumulated);
               setBuildPhase("working");
-              await new Promise<void>((r) => setTimeout(r, 0));
+              await new Promise<void>((r) => setTimeout(r, 16));
             } else if (type === "editor_token") {
               editorAccumulated += ev.token || "";
               setBuildPhase("working");
@@ -4856,9 +4959,15 @@ export function ChatPanel() {
             } else if (type === "done") {
               finalizeEditor();
               flushNarrationToStore();
-              setLiveNarrationText("");
-              setLiveActionLog([]);
-              setLiveThinkingText("");
+              if (buildLiveClearTimerRef.current) {
+                clearTimeout(buildLiveClearTimerRef.current);
+              }
+              buildLiveClearTimerRef.current = setTimeout(() => {
+                setLiveNarrationText("");
+                setLiveActionLog([]);
+                setLiveThinkingText("");
+                buildLiveClearTimerRef.current = null;
+              }, 400);
               streamDone = true;
               break;
             }
@@ -4979,9 +5088,15 @@ export function ChatPanel() {
             thinkingFadeTimerRef.current = null;
           }
           setBuildPhase(null);
-          setLiveThinkingText("");
-          setLiveNarrationText("");
-          setLiveActionLog([]);
+          if (buildLiveClearTimerRef.current) {
+            clearTimeout(buildLiveClearTimerRef.current);
+          }
+          buildLiveClearTimerRef.current = setTimeout(() => {
+            setLiveThinkingText("");
+            setLiveNarrationText("");
+            setLiveActionLog([]);
+            buildLiveClearTimerRef.current = null;
+          }, 300);
           if (useIDEStore.getState().projectId === projectId) {
             if (buildCompleted) {
               const plan = useIDEStore.getState().managerPlan;
@@ -5448,8 +5563,7 @@ export function ChatPanel() {
         {isAiResponding &&
           chatMessages[chatMessages.length - 1]?.content === "" &&
           chatMode !== "manager" && <TypingIndicator />}
-        {isManagerResponding &&
-          !isExecuting &&
+        {!isExecuting &&
           (mgrLiveThinkingText ||
           mgrLiveNarrationText ||
           mgrLiveActionLog.length > 0 ? (
@@ -5468,28 +5582,29 @@ export function ChatPanel() {
                 </div>
               )}
             </div>
-          ) : mgrPreparingPlan ? (
-            <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
-              <span className="text-[12px] text-muted-foreground/90 font-medium">
-                Preparing plan…
-              </span>
-            </div>
-          ) : (
-            <TypingIndicator text={t(getPlanCardLang(), "planning")} />
-          ))}
-        {isExecuting &&
-          (liveActionLog.length > 0 ||
-            !!liveThinkingText ||
-            !!liveNarrationText) && (
-            <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-              <ActionLogLive
-                entries={liveActionLog}
-                thinkingText={liveThinkingText || undefined}
-                narrationText={liveNarrationText || undefined}
-              />
-            </div>
-          )}
+          ) : isManagerResponding ? (
+            mgrPreparingPlan ? (
+              <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+                <span className="text-[12px] text-muted-foreground/90 font-medium">
+                  Preparing plan…
+                </span>
+              </div>
+            ) : (
+              <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+            )
+          ) : null)}
+        {(liveActionLog.length > 0 ||
+          !!liveThinkingText ||
+          !!liveNarrationText) && (
+          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+            <ActionLogLive
+              entries={liveActionLog}
+              thinkingText={liveThinkingText || undefined}
+              narrationText={liveNarrationText || undefined}
+            />
+          </div>
+        )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
         {isReconnecting && (
