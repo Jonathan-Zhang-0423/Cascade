@@ -68,6 +68,12 @@ The CodeStart IDE features a modern web architecture:
     - **Monitor Component** (`client/src/components/ide/llm-monitor.tsx`): Non-modal floating panel at bottom-right. Shows timestamped, color-coded, source-labeled event rows. Auto-scrolls unless user scrolls up. Clear button and entry count in header.
     - **Instrumented SSE Streams**: All four SSE stream readers in `chat-panel.tsx` (manager-chat, build-session, vibe-chat, communicator-summary) publish events to the monitor store with correct source classification.
     - **Toggle Button**: Radio icon in tools dock bottom section with event count badge when closed.
+- **Background Build Persistence** (Task #117):
+    - Builds continue running on the server when the client disconnects (tab close, network drop).
+    - **Server**: `BuildSessionState` includes event buffer (`events[]`, `nextEventId`), `projectId`, `done`/`doneAt` flags, and `sseWriters` set. Build runs as a detached promise. SSE disconnect no longer aborts the build. Sessions kept 5 min after completion for reconnection.
+    - **New Endpoints**: `GET /api/build-session/:sessionId/status` (active/done/eventCount), `GET /api/build-session/active/:projectId` (find active session by project), `GET /api/build-session/:sessionId/stream?lastEventId=N` (replay buffered events then live SSE).
+    - **Client**: `activeBuildSessionId` persisted to localStorage per project. On mount, checks for active builds and reconnects. Auto-retry on stream drop (max 5 attempts, 2s delay). Replay events use fast-path (skip narration/thinking tokens, only apply state changes). "Reconnecting..." indicator shown during reconnect.
+    - **Explicit Stop**: DELETE `/api/build-session/:sessionId` still aborts the build.
 - **Live HTML Preview**: The preview panel inlines local project files referenced in HTML, capturing console output via `postMessage`.
 - **QR Code Phone Preview** (Task #113):
     - **Preview Server** (`server/preview-server.ts`): Integrated into the main Express app on port 5000. Serves project files at `/preview-serve/{token}/` with token-scoped sessions. Inlines CSS/JS referenced in HTML. WebSocket live reload via `/preview-ws?token={token}` on the same HTTP server.

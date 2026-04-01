@@ -36,7 +36,7 @@ import {
 } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
-import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
+import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./build-orchestrator";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
@@ -355,14 +355,89 @@ function spawnProcess(
 const buildSessions = new Map<string, BuildSessionState>();
 
 setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  for (const [id, session] of buildSessions.entries()) {
-    if ((session as any)._startedAt && (session as any)._startedAt < cutoff) {
+  const now = Date.now();
+  const maxAge = 30 * 60 * 1000;
+  const doneRetention = 5 * 60 * 1000;
+  Array.from(buildSessions.entries()).forEach(([id, session]) => {
+    if (session.done && session.doneAt && now - session.doneAt > doneRetention) {
+      buildSessions.delete(id);
+      return;
+    }
+    if ((session as any)._startedAt && now - (session as any)._startedAt > maxAge) {
       session.aborted = true;
       buildSessions.delete(id);
     }
-  }
+  });
 }, 60_000);
+
+function createSessionEmit(session: BuildSessionState): SseEmit {
+  return (data: Record<string, unknown>) => {
+    const eventId = session.nextEventId++;
+    const event: BufferedEvent = { eventId, data: { ...data, eventId } };
+    session.events.push(event);
+    const line = `data: ${JSON.stringify(event.data)}\n\n`;
+    Array.from(session.sseWriters).forEach(writer => {
+      try { writer(line); } catch {}
+    });
+  };
+}
+
+function attachSseWriter(session: BuildSessionState, res: any, lastEventId: number) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.socket?.setNoDelay?.(true);
+
+  const replayHighWater = session.nextEventId;
+  const sentEventIds = new Set<number>();
+
+  const writer = (line: string) => {
+    try {
+      const match = line.match(/^data: (.+)$/);
+      if (match) {
+        const parsed = JSON.parse(match[1]);
+        if (typeof parsed.eventId === "number" && parsed.eventId < replayHighWater) {
+          return;
+        }
+        if (typeof parsed.eventId === "number") {
+          if (sentEventIds.has(parsed.eventId)) return;
+          sentEventIds.add(parsed.eventId);
+        }
+      }
+      res.write(line); (res as any).flush?.();
+    } catch {}
+  };
+
+  session.sseWriters.add(writer);
+
+  const replayEvents = session.events.filter(e => e.eventId > lastEventId && e.eventId < replayHighWater);
+  for (const event of replayEvents) {
+    sentEventIds.add(event.eventId);
+    try { res.write(`data: ${JSON.stringify({ ...event.data, replay: true })}\n\n`); (res as any).flush?.(); } catch {}
+  }
+  if (replayEvents.length > 0) {
+    try { res.write(`data: ${JSON.stringify({ type: "replay_boundary" })}\n\n`); (res as any).flush?.(); } catch {}
+  }
+
+  const heartbeat = setInterval(() => {
+    try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
+  }, 2000);
+
+  res.on("close", () => {
+    session.sseWriters.delete(writer);
+    clearInterval(heartbeat);
+  });
+
+  if (session.done) {
+    setTimeout(() => {
+      try { res.end(); } catch {}
+    }, 100);
+  }
+}
+
+type SseEmit = (data: Record<string, unknown>) => void;
 
 export async function registerRoutes(
   httpServer: Server,
@@ -378,13 +453,12 @@ export async function registerRoutes(
   });
 
   app.post("/api/build-session", async (req, res) => {
-    let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework } = req.body as {
+      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework, projectId: reqProjectId } = req.body as {
         sessionId: string;
         plan: any;
         userRequest: string;
@@ -394,6 +468,7 @@ export async function registerRoutes(
         userConfirmation?: string;
         provider?: AIProvider;
         framework?: Framework;
+        projectId?: string;
       };
       if (!sessionId || !plan || !userRequest) {
         res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
@@ -407,6 +482,7 @@ export async function registerRoutes(
       }
       const session: BuildSessionState & { _startedAt: number } = {
         id: sessionId,
+        projectId: reqProjectId || undefined,
         aborted: false,
         files: fileMap,
         plan,
@@ -417,46 +493,74 @@ export async function registerRoutes(
         provider: provider || "doubao",
         framework: buildFramework,
         _startedAt: Date.now(),
+        events: [],
+        nextEventId: 0,
+        done: false,
+        sseWriters: new Set(),
       };
       buildSessions.set(sessionId, session);
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-      res.flushHeaders();
-      res.socket?.setNoDelay(true);
+      const emit = createSessionEmit(session);
 
-      res.on("close", () => { session.aborted = true; });
+      attachSseWriter(session, res, -1);
 
-      const emit = (data: Record<string, unknown>) => {
-        try {
-          res.write(`data: ${JSON.stringify(data)}\n\n`);
-          (res as any).flush?.();
-        } catch {}
-      };
+      const buildPromise = runBuildSession(session, emit)
+        .catch((err: any) => {
+          emit({ type: "build_error", message: err?.message || "Unknown error" });
+          emit({ type: "done" });
+        })
+        .finally(() => {
+          session.done = true;
+          session.doneAt = Date.now();
+        });
 
-      heartbeat = setInterval(() => {
-        try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
-      }, 2000);
+      buildPromise.catch(() => {});
 
-      try {
-        await runBuildSession(session, emit);
-      } catch (err: any) {
-        emit({ type: "build_error", message: err?.message || "Unknown error" });
-        emit({ type: "done" });
-      } finally {
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        buildSessions.delete(sessionId);
-        res.end();
-      }
     } catch (error: any) {
-      if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Build session error:", error?.message || error);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Build session failed" });
       }
     }
+  });
+
+  app.get("/api/build-session/:sessionId/status", (req, res) => {
+    const session = buildSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({
+      active: !session.done && !session.aborted,
+      eventCount: session.events.length,
+      done: session.done,
+    });
+  });
+
+  app.get("/api/build-session/active/:projectId", (req, res) => {
+    const projectId = req.params.projectId;
+    const entries = Array.from(buildSessions.entries());
+    const active = entries.find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+    if (active) {
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      return;
+    }
+    const done = entries.find(([, s]) => s.projectId === projectId && s.done && !s.aborted);
+    if (done) {
+      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
+      return;
+    }
+    res.status(404).json({ error: "No active build session for this project" });
+  });
+
+  app.get("/api/build-session/:sessionId/stream", (req, res) => {
+    const session = buildSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
+    attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
   });
 
   app.delete("/api/build-session/:sessionId", (req, res) => {

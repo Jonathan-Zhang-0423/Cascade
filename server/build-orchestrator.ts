@@ -32,8 +32,14 @@ export interface BuildPlan {
   sub_tasks?: BuildStep[];
 }
 
+export interface BufferedEvent {
+  eventId: number;
+  data: Record<string, unknown>;
+}
+
 export interface BuildSessionState {
   id: string;
+  projectId?: string;
   aborted: boolean;
   files: Map<string, string>;
   plan: BuildPlan;
@@ -44,6 +50,11 @@ export interface BuildSessionState {
   skillContent?: string;
   provider?: AIProvider;
   framework?: Framework;
+  events: BufferedEvent[];
+  nextEventId: number;
+  done: boolean;
+  doneAt?: number;
+  sseWriters: Set<(data: string) => void>;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;

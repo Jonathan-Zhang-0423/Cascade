@@ -2021,6 +2021,7 @@ export function ChatPanel() {
   const userConfirmationRef = useRef<string>("");
   const autoExecutePlanRef = useRef(false);
   const handleExecutePlanRef = useRef<(() => Promise<void>) | null>(null);
+  const connectToBuildStreamRef = useRef<((sessionId: string, lastEventId: number) => Promise<void>) | null>(null);
   const [autoAppliedMessageIds] = useState<Set<string>>(new Set());
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
@@ -2038,6 +2039,11 @@ export function ChatPanel() {
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const lastReceivedEventIdRef = useRef<number>(-1);
+  const reconnectRetryRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isReconnectingRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2676,6 +2682,11 @@ export function ChatPanel() {
 
     const sessionId = (crypto as any).randomUUID ? (crypto as any).randomUUID() : Math.random().toString(36).slice(2);
     buildSessionIdRef.current = sessionId;
+    lastReceivedEventIdRef.current = -1;
+    reconnectRetryRef.current = 0;
+    if (projectId) {
+      try { localStorage.setItem(`codestart-build-session-${projectId}`, sessionId); } catch {}
+    }
 
     let commAccumulated = "";
     let commMsgIndex = -1;
@@ -2771,6 +2782,7 @@ export function ChatPanel() {
           taskStatuses,
           userConfirmation: userConfirmation || undefined,
           provider: useIDEStore.getState().selectedProvider,
+          projectId: projectId || undefined,
         }),
       });
 
@@ -2803,6 +2815,10 @@ export function ChatPanel() {
 
           let ev: any;
           try { ev = JSON.parse(raw); } catch { continue; }
+
+          if (typeof ev.eventId === "number") {
+            lastReceivedEventIdRef.current = ev.eventId;
+          }
 
           const type = ev.type;
           if (KNOWN_BUILD_EVENT_TYPES.has(type)) {
@@ -3124,50 +3140,70 @@ export function ChatPanel() {
         }
       }
     } catch (err: any) {
-      if (err?.name !== "AbortError" && useIDEStore.getState().projectId === projectId) {
-        addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
-      }
-    } finally {
-      flushNarrationToStore();
-      buildSessionIdRef.current = null;
-      buildReaderRef.current = null;
-      if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
-      setBuildPhase(null);
-      setLiveThinkingText("");
-      setLiveNarrationText("");
-      const finalLog = [...actionLogRef.current];
-      if (finalLog.length > 0) {
-        const msgId = buildResultMsgIdRef.current;
-        if (msgId) {
-          const curMsgs = useIDEStore.getState().managerMessages;
-          const updated = curMsgs.map(m => m.id === msgId && m.buildResult
-            ? { ...m, buildResult: { ...m.buildResult, actionLog: finalLog } }
-            : m);
-          useIDEStore.setState({ managerMessages: updated });
-        } else if (useIDEStore.getState().projectId === projectId) {
-          const buildResult: BuildResultData = {
-            actionLog: finalLog,
-            completionData: { changedFiles: [], userLang },
-          };
-          const finallyMsgs = useIDEStore.getState().managerMessages;
-          const finallyPlanMsg = [...finallyMsgs].reverse().find(m => m.plan);
-          if (finallyPlanMsg) {
-            const updated = finallyMsgs.map(m => m.id === finallyPlanMsg.id ? { ...m, buildResult } : m);
-            useIDEStore.setState({ managerMessages: updated });
-          } else {
-            addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
-          }
+      if (err?.name !== "AbortError") {
+        const maxRetries = 5;
+        if (reconnectRetryRef.current < maxRetries && buildSessionIdRef.current) {
+          reconnectRetryRef.current++;
+          setIsReconnecting(true);
+          isReconnectingRef.current = true;
+          const retrySessionId = buildSessionIdRef.current;
+          const retryLastEventId = lastReceivedEventIdRef.current;
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectToBuildStreamRef.current?.(retrySessionId, retryLastEventId).catch(() => {});
+          }, 2000);
+          return;
+        }
+        if (useIDEStore.getState().projectId === projectId) {
+          addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
         }
       }
-      setLiveActionLog([]);
-      if (useIDEStore.getState().projectId === projectId) {
-        normalizedSteps.forEach(step => {
-          const key = String(step.step);
-          const s = useIDEStore.getState().taskStatuses[key];
-          if (s === "pending" || s === "running") updateTaskStatus(key, "done");
-        });
-        setExecutingTaskIndex(null);
-        setAiResponding(false);
+    } finally {
+      if (!isReconnectingRef.current) {
+        flushNarrationToStore();
+        buildSessionIdRef.current = null;
+        buildReaderRef.current = null;
+        if (projectId) {
+          try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+        }
+        if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+        setBuildPhase(null);
+        setLiveThinkingText("");
+        setLiveNarrationText("");
+        const finalLog = [...actionLogRef.current];
+        if (finalLog.length > 0) {
+          const msgId = buildResultMsgIdRef.current;
+          if (msgId) {
+            const curMsgs = useIDEStore.getState().managerMessages;
+            const updated = curMsgs.map(m => m.id === msgId && m.buildResult
+              ? { ...m, buildResult: { ...m.buildResult, actionLog: finalLog } }
+              : m);
+            useIDEStore.setState({ managerMessages: updated });
+          } else if (useIDEStore.getState().projectId === projectId) {
+            const buildResult: BuildResultData = {
+              actionLog: finalLog,
+              completionData: { changedFiles: [], userLang },
+            };
+            const finallyMsgs = useIDEStore.getState().managerMessages;
+            const finallyPlanMsg = [...finallyMsgs].reverse().find(m => m.plan);
+            if (finallyPlanMsg) {
+              const updated = finallyMsgs.map(m => m.id === finallyPlanMsg.id ? { ...m, buildResult } : m);
+              useIDEStore.setState({ managerMessages: updated });
+            } else {
+              addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+            }
+          }
+        }
+        setLiveActionLog([]);
+        if (useIDEStore.getState().projectId === projectId) {
+          normalizedSteps.forEach(step => {
+            const key = String(step.step);
+            const s = useIDEStore.getState().taskStatuses[key];
+            if (s === "pending" || s === "running") updateTaskStatus(key, "done");
+          });
+          setExecutingTaskIndex(null);
+          setAiResponding(false);
+        }
       }
     }
   }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setManagerResponding, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, projectId, createCheckpoint, setBuildPhase]);
@@ -3183,7 +3219,13 @@ export function ChatPanel() {
       buildReaderRef.current.cancel().catch(() => {});
       buildReaderRef.current = null;
     }
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+    if (projectId) {
+      try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+    }
+    setIsReconnecting(false);
+    isReconnectingRef.current = false;
     setAiResponding(false);
     setExecutingTaskIndex(null);
     setReviewPhase("idle");
@@ -3191,7 +3233,492 @@ export function ChatPanel() {
     setLiveThinkingText("");
     setLiveNarrationText("");
     setLiveActionLog([]);
-  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase]);
+  }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, setBuildPhase, projectId]);
+
+  const connectToBuildStream = useCallback(async (sessionId: string, lastEventId: number) => {
+    const plan = useIDEStore.getState().managerPlan;
+    const normalizedSteps = plan ? normalizeSteps(plan) : [];
+    const firstUserMsg = useIDEStore.getState().managerMessages.find(m => m.role === "user");
+    const userLang = firstUserMsg ? detectLanguage(firstUserMsg.content || "") : "English";
+
+    buildSessionIdRef.current = sessionId;
+    let buildCompleted = false;
+
+    let commAccumulated = "";
+    let commMsgIndex = -1;
+    let editorAccumulated = "";
+    let thinkingAccumulated = "";
+
+    if (lastEventId === -1) {
+      actionLogRef.current = [];
+      setLiveActionLog([]);
+      setLiveThinkingText("");
+      buildResultMsgIdRef.current = null;
+    }
+
+    const appendActionLog = (entry: ActionLogEntry) => {
+      actionLogRef.current = [...actionLogRef.current, entry];
+      setLiveActionLog([...actionLogRef.current]);
+    };
+
+    const flushNarrationToStore = () => {
+      if (!commAccumulated) return;
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      const content = commAccumulated;
+      if (commMsgIndex === -1) {
+        addManagerMessage({ role: "assistant", content, source: "communicator" });
+        commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+      } else {
+        const msgs = useIDEStore.getState().managerMessages;
+        const target = msgs[commMsgIndex];
+        if (target?.role === "assistant") {
+          const updated = [...msgs];
+          updated[commMsgIndex] = { ...target, content };
+          useIDEStore.setState({ managerMessages: updated });
+        }
+      }
+    };
+
+    const flushThinkingToStore = () => {
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      const msgs = useIDEStore.getState().managerMessages;
+      let idx = commMsgIndex;
+      if (idx === -1 || !msgs[idx] || msgs[idx].role !== "assistant") {
+        const fallbackIdx = [...msgs].reverse().findIndex(m => m.typing === true && m.role === "assistant");
+        idx = fallbackIdx !== -1 ? msgs.length - 1 - fallbackIdx : -1;
+      }
+      if (idx === -1) {
+        addManagerMessage({ role: "assistant", content: "", source: "communicator", typing: true });
+        commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+        idx = commMsgIndex;
+      }
+      const target = useIDEStore.getState().managerMessages[idx];
+      if (target?.role === "assistant") {
+        const updated = [...useIDEStore.getState().managerMessages];
+        updated[idx] = { ...target, thinking: thinkingAccumulated };
+        useIDEStore.setState({ managerMessages: updated });
+      }
+    };
+
+    const resetNarration = () => {
+      commAccumulated = "";
+      commMsgIndex = -1;
+      thinkingAccumulated = "";
+    };
+
+    const clearTypingOnCurrentMsg = () => {
+      const isCurrentProject = useIDEStore.getState().projectId === projectId;
+      if (!isCurrentProject) return;
+      if (commMsgIndex === -1) return;
+      const msgs = useIDEStore.getState().managerMessages;
+      const target = msgs[commMsgIndex];
+      if (target?.role === "assistant" && target.typing) {
+        const updated = [...msgs];
+        updated[commMsgIndex] = { ...target, typing: false };
+        useIDEStore.setState({ managerMessages: updated });
+      }
+    };
+
+    const finalizeEditor = () => {
+      editorAccumulated = "";
+    };
+
+    try {
+      const response = await fetch(`/api/build-session/${sessionId}/stream?lastEventId=${lastEventId}`);
+      if (!response.ok) {
+        if (projectId) {
+          try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+        }
+        buildSessionIdRef.current = null;
+        setIsReconnecting(false);
+        isReconnectingRef.current = false;
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      buildReaderRef.current = reader;
+      setIsReconnecting(false);
+      isReconnectingRef.current = false;
+      reconnectRetryRef.current = 0;
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamDone = false;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          const raw = trimmed.slice(6).trim();
+          if (raw === "[DONE]") { streamDone = true; break; }
+
+          let ev: any;
+          try { ev = JSON.parse(raw); } catch { continue; }
+
+          if (typeof ev.eventId === "number") {
+            lastReceivedEventIdRef.current = ev.eventId;
+          }
+
+          const isReplayEvent = !!ev.replay;
+
+          const type = ev.type;
+          if (type === "replay_boundary") continue;
+
+          if (!isReplayEvent && KNOWN_BUILD_EVENT_TYPES.has(type)) {
+            const buildMonitorContent = ev.token || ev.label || ev.message || ev.filePath || type;
+            useLLMMonitorStore.getState().addEvent(
+              BUILD_SOURCE_MAP[type] || "editor",
+              type as LLMEventType,
+              typeof buildMonitorContent === "string" ? buildMonitorContent : String(buildMonitorContent),
+            );
+          }
+
+          if (isReplayEvent) {
+            if (type === "step_starting") {
+              const stepNum = (ev.stepNumber as number) ?? 1;
+              setExecutingTaskIndex(stepNum - 1);
+              const stepTitle = (ev.stepTitle as string) || "";
+              const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
+              const stepLabel = totalSteps > 1 ? `Step ${stepNum}/${totalSteps}: ${stepTitle}` : stepTitle;
+              appendActionLog({ type: "step", label: stepLabel, detail: "", timestamp: Date.now() });
+            } else if (type === "step_completed") {
+              updateTaskStatus(String(ev.stepNumber), "done");
+            } else if (type === "step_failed") {
+              updateTaskStatus(String(ev.stepNumber), "failed");
+              if (ev.reason) setTaskFailureReason(String(ev.stepNumber), ev.reason);
+            } else if (type === "code_applied") {
+              if (useIDEStore.getState().projectId === projectId) {
+                await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
+              }
+            } else if (type === "action_log") {
+              const actionType = (ev.actionType as ActionLogEntry["type"]) || "tool_call";
+              const label = (ev.label as string) || "";
+              const detail = (ev.detail as string) || "";
+              const filePath = (ev.filePath as string) || undefined;
+              appendActionLog({ type: actionType, label, detail, filePath, timestamp: Date.now() });
+            } else if (type === "reviewing") {
+              setReviewPhase("reviewing");
+              setBuildPhase("verifying");
+            } else if (type === "review_passed") {
+              setReviewPhase("review_passed");
+              normalizedSteps.forEach(step => {
+                const key = String(step.step);
+                const s = useIDEStore.getState().taskStatuses[key];
+                if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+              });
+            } else if (type === "bugs_found") {
+              setReviewPhase("review_failed");
+              setBuildPhase("fixing");
+            } else if (type === "fixing") {
+              setReviewPhase("fixing");
+              setBuildPhase("fixing");
+              setFixCycle(ev.fixCycle || 1);
+            } else if (type === "all_complete") {
+              buildCompleted = true;
+              setReviewPhase("review_passed");
+              const changedFiles = (ev.changedFiles as string[]) || [];
+              const finalLog = [...actionLogRef.current];
+              if (useIDEStore.getState().projectId === projectId) {
+                const buildResult: BuildResultData = {
+                  actionLog: finalLog,
+                  completionData: { changedFiles, userLang },
+                };
+                const curMsgs = useIDEStore.getState().managerMessages;
+                const planMsg = [...curMsgs].reverse().find(m => m.plan);
+                if (planMsg) {
+                  const updated = curMsgs.map(m => m.id === planMsg.id ? { ...m, buildResult } : m);
+                  useIDEStore.setState({ managerMessages: updated });
+                  buildResultMsgIdRef.current = planMsg.id;
+                } else {
+                  addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+                  const msgs = useIDEStore.getState().managerMessages;
+                  buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
+                }
+              }
+            } else if (type === "done") {
+              streamDone = true; break;
+            }
+            continue;
+          }
+
+          if (type === "step_starting") {
+            finalizeEditor(); resetNarration();
+            if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+            setBuildPhase("thinking");
+            setLiveThinkingText("");
+            setLiveNarrationText("");
+            const stepNum = (ev.stepNumber as number) ?? 1;
+            const stepTitle = (ev.stepTitle as string) || "";
+            const totalSteps = (ev.totalSteps as number) || normalizedSteps.length;
+            const stepLabel = totalSteps > 1 ? `Step ${stepNum}/${totalSteps}: ${stepTitle}` : stepTitle;
+            appendActionLog({ type: "step", label: stepLabel, detail: "", timestamp: Date.now() });
+            const isCurrentProjectNow = useIDEStore.getState().projectId === projectId;
+            if (isCurrentProjectNow) {
+              commAccumulated = "";
+              addManagerMessage({ role: "assistant", content: stepLabel, source: "communicator", typing: true });
+              commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
+              setExecutingTaskIndex(stepNum - 1);
+            }
+            await new Promise<void>(r => setTimeout(r, 0));
+          } else if (type === "thinking_token") {
+            const token = (ev.token as string) || "";
+            if (token) {
+              if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+              thinkingAccumulated += token;
+              flushThinkingToStore();
+              setLiveThinkingText(thinkingAccumulated);
+              await new Promise<void>(r => setTimeout(r, 0));
+            }
+            setBuildPhase("thinking");
+          } else if (type === "action_log") {
+            const actionType = (ev.actionType as ActionLogEntry["type"]) || "tool_call";
+            const label = (ev.label as string) || "";
+            const detail = (ev.detail as string) || "";
+            const filePath = (ev.filePath as string) || undefined;
+            if (thinkingAccumulated) {
+              const existing = actionLogRef.current;
+              const lastIsThinking = existing.length > 0 && existing[existing.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                appendActionLog({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
+              }
+              thinkingAccumulated = "";
+              if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+              thinkingFadeTimerRef.current = setTimeout(() => {
+                setLiveThinkingText("");
+                thinkingFadeTimerRef.current = null;
+              }, 400);
+            }
+            setLiveNarrationText("");
+            appendActionLog({ type: actionType, label, detail, timestamp: Date.now(), filePath });
+          } else if (type === "narration_token") {
+            if (thinkingAccumulated) {
+              const existing = actionLogRef.current;
+              const lastIsThinking = existing.length > 0 && existing[existing.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                appendActionLog({ type: "thinking", label: "Thinking", detail: thinkingAccumulated, timestamp: Date.now() });
+              }
+              thinkingAccumulated = "";
+            }
+            if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+            thinkingFadeTimerRef.current = setTimeout(() => {
+              setLiveThinkingText("");
+              thinkingFadeTimerRef.current = null;
+            }, 400);
+            commAccumulated += ev.token || "";
+            setLiveNarrationText(commAccumulated);
+            setBuildPhase("working");
+            await new Promise<void>(r => setTimeout(r, 0));
+          } else if (type === "editor_token") {
+            editorAccumulated += ev.token || "";
+            setBuildPhase("working");
+          } else if (type === "code_applied") {
+            setBuildPhase("working");
+          } else if (type === "step_completed" || type === "step_failed" || type === "step_cancelled") {
+            clearTypingOnCurrentMsg(); finalizeEditor(); flushNarrationToStore();
+            setLiveNarrationText("");
+          } else if (type === "reviewing") {
+            flushNarrationToStore(); resetNarration();
+            setLiveNarrationText("");
+            setBuildPhase("verifying");
+          } else if (type === "bugs_found") {
+            setBuildPhase("fixing");
+          } else if (type === "fixing") {
+            setBuildPhase("fixing");
+          } else if (type === "all_complete") {
+            buildCompleted = true;
+            if (useIDEStore.getState().projectId === projectId) {
+              createCheckpoint("Build complete", { includeManagerThread: true });
+            }
+            const changedFiles = (ev.changedFiles as string[]) || [];
+            const finalLog = [...actionLogRef.current];
+            if (useIDEStore.getState().projectId === projectId) {
+              const buildResult: BuildResultData = {
+                actionLog: finalLog,
+                completionData: { changedFiles, userLang },
+              };
+              const curMsgs = useIDEStore.getState().managerMessages;
+              const planMsg = [...curMsgs].reverse().find(m => m.plan);
+              if (planMsg) {
+                const updated = curMsgs.map(m => m.id === planMsg.id ? { ...m, buildResult } : m);
+                useIDEStore.setState({ managerMessages: updated });
+                buildResultMsgIdRef.current = planMsg.id;
+              } else {
+                addManagerMessage({ role: "assistant", content: "", source: "communicator", buildResult });
+                const msgs = useIDEStore.getState().managerMessages;
+                buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
+              }
+            }
+          } else if (type === "done") {
+            finalizeEditor(); flushNarrationToStore();
+            setLiveNarrationText("");
+            setLiveActionLog([]);
+            setLiveThinkingText("");
+            streamDone = true; break;
+          }
+
+          const isCurrentProject = useIDEStore.getState().projectId === projectId;
+          if (!isCurrentProject) continue;
+
+          if (type === "step_starting") {
+            updateTaskStatus(String(ev.stepNumber), "running");
+          } else if (type === "code_applied") {
+            await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
+            refreshPreview();
+          } else if (type === "step_completed") {
+            updateTaskStatus(String(ev.stepNumber), "done");
+          } else if (type === "step_failed") {
+            updateTaskStatus(String(ev.stepNumber), "failed");
+            if (ev.reason) setTaskFailureReason(String(ev.stepNumber), ev.reason);
+          } else if (type === "step_cancelled") {
+            updateTaskStatus(String(ev.stepNumber), "pending");
+          } else if (type === "reviewing") {
+            setReviewPhase("reviewing");
+          } else if (type === "review_passed") {
+            setReviewPhase("review_passed");
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+            });
+          } else if (type === "bugs_found") {
+            setReviewPhase("review_failed");
+            if (ev.review) setHolisticReview(ev.review);
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "done" || s === "failed") updateTaskStatus(key, "bug");
+            });
+          } else if (type === "fixing") {
+            setReviewPhase("fixing");
+            setFixCycle(ev.fixCycle || 1);
+          } else if (type === "needs_input") {
+            setPendingConfirmation({ stepKey: "review", items: ev.items || [] });
+          } else if (type === "all_complete") {
+            setReviewPhase("review_passed");
+            normalizedSteps.forEach(step => {
+              const key = String(step.step);
+              const s = useIDEStore.getState().taskStatuses[key];
+              if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+            });
+          } else if (type === "build_error") {
+            addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildGeneric"), source: "communicator" });
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        const maxRetries = 5;
+        if (reconnectRetryRef.current < maxRetries && buildSessionIdRef.current) {
+          reconnectRetryRef.current++;
+          setIsReconnecting(true);
+          isReconnectingRef.current = true;
+          const retrySessionId = buildSessionIdRef.current;
+          const retryLastEventId = lastReceivedEventIdRef.current;
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectToBuildStreamRef.current?.(retrySessionId, retryLastEventId).catch(() => {});
+          }, 2000);
+          return;
+        }
+        isReconnectingRef.current = false;
+        setIsReconnecting(false);
+        if (useIDEStore.getState().projectId === projectId) {
+          addManagerMessage({ role: "assistant", content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"), source: "communicator" });
+        }
+      }
+    } finally {
+      if (!isReconnectingRef.current) {
+        flushNarrationToStore();
+        buildSessionIdRef.current = null;
+        buildReaderRef.current = null;
+        if (projectId) {
+          try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+        }
+        if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
+        setBuildPhase(null);
+        setLiveThinkingText("");
+        setLiveNarrationText("");
+        setLiveActionLog([]);
+        if (useIDEStore.getState().projectId === projectId) {
+          if (buildCompleted) {
+            const plan = useIDEStore.getState().managerPlan;
+            if (plan) {
+              normalizeSteps(plan).forEach(step => {
+                const key = String(step.step);
+                const s = useIDEStore.getState().taskStatuses[key];
+                if (s === "pending" || s === "running") updateTaskStatus(key, "done");
+              });
+            }
+          }
+          setExecutingTaskIndex(null);
+          setAiResponding(false);
+        }
+      }
+    }
+  }, [applyCodeBlock, refreshPreview, addManagerMessage, updateTaskStatus, setTaskFailureReason, setExecutingTaskIndex, setReviewPhase, setHolisticReview, setFixCycle, setPendingConfirmation, setChatMode, setAiResponding, projectId, createCheckpoint, setBuildPhase]);
+
+  connectToBuildStreamRef.current = connectToBuildStream;
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (buildSessionIdRef.current) return;
+
+    let cancelled = false;
+    const savedSessionId = (() => {
+      try { return localStorage.getItem(`codestart-build-session-${projectId}`); } catch { return null; }
+    })();
+
+    if (!savedSessionId) {
+      fetch(`/api/build-session/active/${projectId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (cancelled || !data?.sessionId) return;
+          if (buildSessionIdRef.current) return;
+          setIsReconnecting(true);
+          isReconnectingRef.current = true;
+          setExecutingTaskIndex(0);
+          setChatMode("build");
+          setReviewPhase("building");
+          setBuildPhase("thinking");
+          connectToBuildStream(data.sessionId, -1).catch(() => {});
+        })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }
+
+    fetch(`/api/build-session/${savedSessionId}/status`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (cancelled) return;
+        if (!data) {
+          try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+          return;
+        }
+        if (buildSessionIdRef.current) return;
+        setIsReconnecting(true);
+        isReconnectingRef.current = true;
+        setExecutingTaskIndex(0);
+        setChatMode("build");
+        setReviewPhase("building");
+        setBuildPhase("thinking");
+        connectToBuildStream(savedSessionId, -1).catch(() => {});
+      })
+      .catch(() => {
+        try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+      });
+
+    return () => { cancelled = true; };
+  }, [projectId, connectToBuildStream, setExecutingTaskIndex, setChatMode, setReviewPhase, setBuildPhase]);
 
   const handleContinueExecution = useCallback((userInput?: string) => {
     const plan = useIDEStore.getState().managerPlan;
@@ -3481,7 +4008,13 @@ export function ChatPanel() {
         )}
       </div>
       <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
-        {(isBusy || isExecuting) && buildPhase && (
+        {isReconnecting && (
+          <div className="flex items-center gap-1.5 px-1 pb-1.5" data-testid="reconnecting-indicator">
+            <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+            <span className="text-[11px] text-amber-500">Reconnecting to build...</span>
+          </div>
+        )}
+        {(isBusy || isExecuting) && buildPhase && !isReconnecting && (
           <div className="flex items-center gap-1.5 px-1 pb-1.5">
             <span className="relative flex h-2 w-2 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
