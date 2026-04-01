@@ -292,7 +292,7 @@ export const useProjectStore = create<ProjectStoreState>()(
 
           const localOnlyProjects = currentState.projects.filter((p) => !serverIds.has(p.id));
           for (const p of localOnlyProjects) {
-            await syncProjectToServer(p.id, p.name, p.emoji);
+            await syncProjectToServer(p.id, p.name, p.emoji, p.framework);
 
             const projectStateRaw = localStorage.getItem(`codestart-project-${p.id}`);
             if (projectStateRaw) {
