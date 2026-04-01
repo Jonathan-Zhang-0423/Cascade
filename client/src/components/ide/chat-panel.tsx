@@ -2664,6 +2664,7 @@ export function ChatPanel() {
   const reconnectRetryRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReconnectingRef = useRef(false);
+  const heartbeatWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2749,6 +2750,10 @@ export function ChatPanel() {
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (heartbeatWatchdogRef.current) {
+        clearTimeout(heartbeatWatchdogRef.current);
+        heartbeatWatchdogRef.current = null;
       }
     };
   }, []);
@@ -3796,9 +3801,28 @@ export function ChatPanel() {
       let buffer = "";
       let streamDone = false;
 
+      const HEARTBEAT_TIMEOUT_MS = 15000;
+      let heartbeatTimedOut = false;
+      const resetPostHeartbeat = () => {
+        if (heartbeatWatchdogRef.current) {
+          clearTimeout(heartbeatWatchdogRef.current);
+        }
+        heartbeatWatchdogRef.current = setTimeout(() => {
+          heartbeatWatchdogRef.current = null;
+          heartbeatTimedOut = true;
+          try { reader.cancel(); } catch {}
+        }, HEARTBEAT_TIMEOUT_MS);
+      };
+      resetPostHeartbeat();
+
       while (!streamDone) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (heartbeatTimedOut) throw new Error("heartbeat_timeout");
+          break;
+        }
+
+        resetPostHeartbeat();
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -4324,8 +4348,12 @@ export function ChatPanel() {
         }
       }
     } catch (err: any) {
+      if (heartbeatWatchdogRef.current) {
+        clearTimeout(heartbeatWatchdogRef.current);
+        heartbeatWatchdogRef.current = null;
+      }
       if (err?.name !== "AbortError") {
-        const maxRetries = 5;
+        const maxRetries = 10;
         if (
           reconnectRetryRef.current < maxRetries &&
           buildSessionIdRef.current
@@ -4335,12 +4363,36 @@ export function ChatPanel() {
           isReconnectingRef.current = true;
           const retrySessionId = buildSessionIdRef.current;
           const retryLastEventId = lastReceivedEventIdRef.current;
-          reconnectTimerRef.current = setTimeout(() => {
+          const backoffMs = Math.min(1000 * Math.pow(2, reconnectRetryRef.current - 1), 16000);
+          reconnectTimerRef.current = setTimeout(async () => {
             reconnectTimerRef.current = null;
+            try {
+              const statusRes = await fetch(`/api/build-session/${retrySessionId}/status`);
+              if (!statusRes.ok) {
+                isReconnectingRef.current = false;
+                setIsReconnecting(false);
+                buildSessionIdRef.current = null;
+                buildReaderRef.current = null;
+                if (projectId) {
+                  try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+                }
+                setBuildPhase(null);
+                setExecutingTaskIndex(null);
+                setAiResponding(false);
+                return;
+              }
+              const statusData = await statusRes.json();
+              if (statusData.done) {
+                connectToBuildStreamRef
+                  .current?.(retrySessionId, retryLastEventId)
+                  .catch(() => {});
+                return;
+              }
+            } catch {}
             connectToBuildStreamRef
               .current?.(retrySessionId, retryLastEventId)
               .catch(() => {});
-          }, 2000);
+          }, backoffMs);
           return;
         }
         if (useIDEStore.getState().projectId === projectId) {
@@ -4355,6 +4407,10 @@ export function ChatPanel() {
         }
       }
     } finally {
+      if (heartbeatWatchdogRef.current) {
+        clearTimeout(heartbeatWatchdogRef.current);
+        heartbeatWatchdogRef.current = null;
+      }
       if (!isReconnectingRef.current) {
         flushNarrationToStore();
         buildSessionIdRef.current = null;
@@ -4463,6 +4519,10 @@ export function ChatPanel() {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
+    }
+    if (heartbeatWatchdogRef.current) {
+      clearTimeout(heartbeatWatchdogRef.current);
+      heartbeatWatchdogRef.current = null;
     }
     if (thinkingFadeTimerRef.current) {
       clearTimeout(thinkingFadeTimerRef.current);
@@ -4628,9 +4688,28 @@ export function ChatPanel() {
         let buffer = "";
         let streamDone = false;
 
+        const HEARTBEAT_TIMEOUT_MS = 15000;
+        let heartbeatTimedOut = false;
+        const resetHeartbeatWatchdog = () => {
+          if (heartbeatWatchdogRef.current) {
+            clearTimeout(heartbeatWatchdogRef.current);
+          }
+          heartbeatWatchdogRef.current = setTimeout(() => {
+            heartbeatWatchdogRef.current = null;
+            heartbeatTimedOut = true;
+            try { reader.cancel(); } catch {}
+          }, HEARTBEAT_TIMEOUT_MS);
+        };
+        resetHeartbeatWatchdog();
+
         while (!streamDone) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            if (heartbeatTimedOut) throw new Error("heartbeat_timeout");
+            break;
+          }
+
+          resetHeartbeatWatchdog();
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -4679,6 +4758,7 @@ export function ChatPanel() {
               if (type === "step_starting") {
                 const stepNum = (ev.stepNumber as number) ?? 1;
                 setExecutingTaskIndex(stepNum - 1);
+                setBuildPhase("thinking");
                 const stepTitle = (ev.stepTitle as string) || "";
                 const totalSteps =
                   (ev.totalSteps as number) || normalizedSteps.length;
@@ -4692,21 +4772,14 @@ export function ChatPanel() {
                   detail: "",
                   timestamp: Date.now(),
                 });
-              } else if (type === "step_completed") {
-                updateTaskStatus(String(ev.stepNumber), "done");
-              } else if (type === "step_failed") {
-                updateTaskStatus(String(ev.stepNumber), "failed");
-                if (ev.reason)
-                  setTaskFailureReason(String(ev.stepNumber), ev.reason);
-              } else if (type === "code_applied") {
-                if (useIDEStore.getState().projectId === projectId) {
-                  await applyCodeBlock({
-                    filePath: ev.filePath,
-                    code: ev.code,
-                    language: "",
-                  });
-                }
+              } else if (type === "thinking_token") {
+                setBuildPhase("thinking");
+              } else if (type === "narration_token") {
+                setBuildPhase("working");
+              } else if (type === "editor_token") {
+                setBuildPhase("working");
               } else if (type === "action_log") {
+                setBuildPhase("working");
                 const actionType =
                   (ev.actionType as ActionLogEntry["type"]) || "tool_call";
                 const label = (ev.label as string) || "";
@@ -4719,6 +4792,21 @@ export function ChatPanel() {
                   filePath,
                   timestamp: Date.now(),
                 });
+              } else if (type === "step_completed") {
+                updateTaskStatus(String(ev.stepNumber), "done");
+              } else if (type === "step_failed") {
+                updateTaskStatus(String(ev.stepNumber), "failed");
+                if (ev.reason)
+                  setTaskFailureReason(String(ev.stepNumber), ev.reason);
+              } else if (type === "code_applied") {
+                setBuildPhase("working");
+                if (useIDEStore.getState().projectId === projectId) {
+                  await applyCodeBlock({
+                    filePath: ev.filePath,
+                    code: ev.code,
+                    language: "",
+                  });
+                }
               } else if (type === "reviewing") {
                 setReviewPhase("reviewing");
                 setBuildPhase("verifying");
@@ -5043,8 +5131,12 @@ export function ChatPanel() {
           }
         }
       } catch (err: any) {
+        if (heartbeatWatchdogRef.current) {
+          clearTimeout(heartbeatWatchdogRef.current);
+          heartbeatWatchdogRef.current = null;
+        }
         if (err?.name !== "AbortError") {
-          const maxRetries = 5;
+          const maxRetries = 10;
           if (
             reconnectRetryRef.current < maxRetries &&
             buildSessionIdRef.current
@@ -5054,12 +5146,36 @@ export function ChatPanel() {
             isReconnectingRef.current = true;
             const retrySessionId = buildSessionIdRef.current;
             const retryLastEventId = lastReceivedEventIdRef.current;
-            reconnectTimerRef.current = setTimeout(() => {
+            const backoffMs = Math.min(1000 * Math.pow(2, reconnectRetryRef.current - 1), 16000);
+            reconnectTimerRef.current = setTimeout(async () => {
               reconnectTimerRef.current = null;
+              try {
+                const statusRes = await fetch(`/api/build-session/${retrySessionId}/status`);
+                if (!statusRes.ok) {
+                  isReconnectingRef.current = false;
+                  setIsReconnecting(false);
+                  buildSessionIdRef.current = null;
+                  buildReaderRef.current = null;
+                  if (projectId) {
+                    try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+                  }
+                  setBuildPhase(null);
+                  setExecutingTaskIndex(null);
+                  setAiResponding(false);
+                  return;
+                }
+                const statusData = await statusRes.json();
+                if (statusData.done) {
+                  connectToBuildStreamRef
+                    .current?.(retrySessionId, retryLastEventId)
+                    .catch(() => {});
+                  return;
+                }
+              } catch {}
               connectToBuildStreamRef
                 .current?.(retrySessionId, retryLastEventId)
                 .catch(() => {});
-            }, 2000);
+            }, backoffMs);
             return;
           }
           isReconnectingRef.current = false;
@@ -5076,6 +5192,10 @@ export function ChatPanel() {
           }
         }
       } finally {
+        if (heartbeatWatchdogRef.current) {
+          clearTimeout(heartbeatWatchdogRef.current);
+          heartbeatWatchdogRef.current = null;
+        }
         if (!isReconnectingRef.current) {
           flushNarrationToStore();
           buildSessionIdRef.current = null;
