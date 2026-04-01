@@ -649,15 +649,23 @@ export async function registerRoutes(
 
   app.post("/api/chat", async (req, res) => {
     try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
-        return;
-      }
       const { messages, files, provider } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
       };
+
+      const selectedProvider = provider ?? "doubao";
+      const providerKeyMap: Record<string, string | undefined> = {
+        doubao: process.env.DOUBAO_API_KEY,
+        kimi: process.env.KIMI_API_KEY || process.env.DOUBAO_API_KEY,
+        minimax: process.env.MINIMAX_API_KEY || process.env.DOUBAO_API_KEY,
+        glm: process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY,
+      };
+      if (!providerKeyMap[selectedProvider]) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -743,7 +751,7 @@ export async function registerRoutes(
         },
       };
 
-      const { client: aiClient, model: aiModel } = getAIClient(provider ?? "doubao");
+      const { client: aiClient, model: aiModel } = getAIClient(selectedProvider);
 
       await runAgentLoop(
         systemPrompt,
