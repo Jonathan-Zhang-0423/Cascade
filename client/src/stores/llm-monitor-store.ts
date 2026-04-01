@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type LLMEventSource = "manager" | "editor" | "verifier" | "communicator" | "vibe-chat";
+export type LLMEventSource = "manager" | "editor" | "verifier" | "communicator" | "editor-chat";
 export type LLMEventType =
   | "thinking_token"
   | "narration_token"
@@ -27,8 +27,7 @@ export type LLMEventType =
   | "review_passed"
   | "bugs_found"
   | "fixing"
-  | "needs_input"
-  | "vibe_token";
+  | "needs_input";
 
 export interface LLMEvent {
   id: string;

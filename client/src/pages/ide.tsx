@@ -10,7 +10,6 @@ import { ChatPanel } from "@/components/ide/chat-panel";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
 import { CommandPalette } from "@/components/ide/command-palette";
-import { NotebookPanel } from "@/components/ide/notebook-panel";
 import { LLMMonitor } from "@/components/ide/llm-monitor";
 import {
   ResizablePanelGroup,
@@ -22,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, activeSpace } =
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId } =
     useIDEStore();
   const { projects } = useProjectStore();
   const { toast } = useToast();
@@ -105,11 +104,6 @@ export default function IDEPage() {
             )}
 
             <ResizablePanel defaultSize={activeTool ? 80 : 100} minSize={30} id="workspace" order={2}>
-              <div className={activeSpace === "learner" ? "h-full bg-background rounded-lg border border-border/50 overflow-hidden" : "hidden"}>
-                <NotebookPanel />
-              </div>
-
-              {activeSpace !== "learner" && (
                 <ResizablePanelGroup direction="vertical" className="gap-1.5">
                   <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
                     <ResizablePanelGroup direction="horizontal" className="gap-1.5">
@@ -151,7 +145,6 @@ export default function IDEPage() {
                     </>
                   )}
                 </ResizablePanelGroup>
-              )}
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>

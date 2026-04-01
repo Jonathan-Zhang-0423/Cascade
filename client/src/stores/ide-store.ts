@@ -88,64 +88,6 @@ export interface HolisticReviewResult {
 
 export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing";
 
-export type ActiveSpace = "workspace" | "learner";
-
-export interface NotebookKeyConcept {
-  term: string;
-  explanation: string;
-}
-
-export interface NotebookCodeBlock {
-  code: string;
-  language: string;
-  walkthrough: string;
-}
-
-export interface NotebookFeature {
-  label: string;
-  explanation: string;
-  code_blocks: NotebookCodeBlock[];
-  prompt_tip?: string;
-}
-
-export interface NotebookFileBreakdown {
-  file?: string;
-  path?: string;
-  name?: string;
-  what_it_does?: string;
-  description?: string;
-  key_concepts?: NotebookKeyConcept[];
-  connections?: string[];
-  features?: NotebookFeature[];
-}
-
-export interface NotebookMindMapChild {
-  label: string;
-  explanation: string;
-}
-
-export interface NotebookMindMapBranch {
-  label: string;
-  file: string;
-  description?: string;
-  children: NotebookMindMapChild[];
-}
-
-export interface NotebookMindMap {
-  central_node: string;
-  branches: NotebookMindMapBranch[];
-}
-
-export interface NotebookContent {
-  project_summary: string;
-  file_breakdowns: NotebookFileBreakdown[];
-  mind_map: NotebookMindMap;
-  learning_tips: string[];
-  generatedAt?: number;
-  sourceHash?: string;
-  sourceFiles?: { path: string; content: string }[];
-}
-
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
   completionData: { changedFiles: string[]; userLang?: string; summary?: string };
@@ -326,12 +268,6 @@ interface IDEState {
   setLLMMonitorOpen: (v: boolean) => void;
   toggleLLMMonitor: () => void;
 
-  activeSpace: ActiveSpace;
-  notebookContent: NotebookContent | null;
-  isNotebookLoading: boolean;
-  isNotebookOptimizing: boolean;
-  notebookError: string | null;
-
   selectedProvider: AIProvider;
   setSelectedProvider: (provider: AIProvider) => void;
 
@@ -386,11 +322,6 @@ interface IDEState {
   setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
 
-  setActiveSpace: (space: ActiveSpace) => void;
-  setNotebookContent: (content: NotebookContent | null) => void;
-  setNotebookLoading: (v: boolean) => void;
-  setNotebookOptimizing: (v: boolean) => void;
-  setNotebookError: (error: string | null) => void;
   updateManagerMessageThinking: (index: number, thinking: string) => void;
 }
 
@@ -509,8 +440,6 @@ function persistState(state: IDEState) {
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
       : state.managerMessages,
-    activeSpace: state.activeSpace,
-    notebookContent: state.notebookContent,
     selectedDevice: state.selectedDevice,
     deviceOrientation: state.deviceOrientation,
     devicePlatform: state.devicePlatform,
@@ -612,7 +541,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       id: "welcome",
       role: "assistant",
       content:
-        "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+        "你好！我是你的 AI 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
       timestamp: Date.now(),
     },
   ],
@@ -645,12 +574,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isLLMMonitorOpen: false,
   setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
   toggleLLMMonitor: () => set((s) => ({ isLLMMonitorOpen: !s.isLLMMonitorOpen })),
-
-  activeSpace: "workspace",
-  notebookContent: null,
-  isNotebookLoading: false,
-  isNotebookOptimizing: false,
-  notebookError: null,
 
   selectedDevice: "iphone-15",
   deviceOrientation: "portrait" as const,
@@ -709,7 +632,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         id: "welcome",
         role: "assistant" as const,
         content:
-          "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+          "你好！我是你的 AI 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
         timestamp: Date.now(),
       },
     ];
@@ -742,11 +665,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       reviewPhase: "idle" as ReviewPhase,
       holisticReview: null,
       fixCycle: 0,
-      activeSpace: (saved.activeSpace || "workspace") as ActiveSpace,
-      notebookContent: saved.notebookContent || null,
-      isNotebookLoading: false,
-      isNotebookOptimizing: false,
-      notebookError: null,
       selectedDevice: saved.selectedDevice || "iphone-15",
       deviceOrientation: (saved.deviceOrientation || "portrait") as "portrait" | "landscape",
       devicePlatform: (saved.devicePlatform || "ios") as "ios" | "android",
@@ -781,11 +699,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       reviewPhase: "idle" as ReviewPhase,
       holisticReview: null,
       fixCycle: 0,
-      activeSpace: "workspace" as ActiveSpace,
-      notebookContent: null,
-      isNotebookLoading: false,
-      isNotebookOptimizing: false,
-      notebookError: null,
       selectedDevice: "iphone-15",
       deviceOrientation: "portrait" as "portrait" | "landscape",
       devicePlatform: "ios" as "ios" | "android",
@@ -1198,27 +1111,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setFixCycle: (cycle) =>
     set({ fixCycle: cycle }),
-
-  setActiveSpace: (space) => {
-    set({ activeSpace: space });
-    const state = get();
-    debouncedPersist(state);
-  },
-
-  setNotebookContent: (content) => {
-    set({ notebookContent: content, notebookError: null });
-    const state = get();
-    debouncedPersist(state);
-  },
-
-  setNotebookLoading: (v) =>
-    set({ isNotebookLoading: v }),
-
-  setNotebookOptimizing: (v) =>
-    set({ isNotebookOptimizing: v }),
-
-  setNotebookError: (error) =>
-    set({ notebookError: error, isNotebookLoading: false, isNotebookOptimizing: false }),
 
   updateManagerMessageThinking: (index, thinking) =>
     set((state) => {

@@ -2595,7 +2595,7 @@ export function ChatPanel() {
     }
   }, [input, isManagerResponding, isAiResponding, files, addManagerMessage, setManagerResponding, setManagerPlan, updateTaskStatus, projectId, renameProject, chatMode, clearManagerPlan]);
 
-  const handleVibeSend = useCallback(async () => {
+  const handleEditorSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isAiResponding || isManagerResponding) return;
 
@@ -2629,7 +2629,7 @@ export function ChatPanel() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messagesForApi, files: fileContext }),
+        body: JSON.stringify({ messages: messagesForApi, files: fileContext, provider: useIDEStore.getState().selectedProvider }),
         signal: controller.signal,
       });
 
@@ -2659,11 +2659,17 @@ export function ChatPanel() {
           let ev: any;
           try { ev = JSON.parse(raw); } catch { continue; }
 
-          if (ev.content) {
-            accumulated += ev.content;
-            useLLMMonitorStore.getState().addEvent("vibe-chat", "vibe_token", ev.content);
+          if (ev.type === "narration_token" && typeof ev.token === "string") {
+            accumulated += ev.token;
+            useLLMMonitorStore.getState().addEvent("editor-chat", "editor_token", ev.token);
             updateLastAssistantMessage(stripProjectNameMarker(accumulated));
             await new Promise<void>(r => setTimeout(r, 0));
+          } else if (ev.type === "thinking_token" && typeof ev.token === "string") {
+            useLLMMonitorStore.getState().addEvent("editor-chat", "thinking_token", ev.token);
+          } else if (ev.type === "code_applied" && ev.filePath && typeof ev.code === "string") {
+            await applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
+          } else if (ev.type === "action_log") {
+            useLLMMonitorStore.getState().addEvent("editor-chat", "action_log", JSON.stringify(ev));
           }
         }
       }
@@ -2675,13 +2681,6 @@ export function ChatPanel() {
 
       const stripped = stripProjectNameMarker(accumulated);
       updateLastAssistantMessage(stripped);
-
-      const codeBlocks = extractCodeBlocks(stripped);
-      for (const block of codeBlocks) {
-        if (block.filePath) {
-          await applyCodeBlock(block);
-        }
-      }
 
       createCheckpoint("AI response");
     } catch (error: any) {
@@ -3337,11 +3336,11 @@ export function ChatPanel() {
       return;
     }
     if (chatMode === "build") {
-      handleVibeSend();
+      handleEditorSend();
       return;
     }
     handleManagerSend();
-  }, [handleManagerSend, handleVibeSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
+  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
 
   const handleCurrentKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

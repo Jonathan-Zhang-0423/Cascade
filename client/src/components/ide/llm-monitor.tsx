@@ -32,7 +32,6 @@ const TYPE_STYLES: Record<string, { color: string; label: string }> = {
   fixing: { color: "text-amber-400", label: "FIX" },
   review_passed: { color: "text-emerald-400", label: "PASS" },
   needs_input: { color: "text-amber-400", label: "INPUT" },
-  vibe_token: { color: "text-pink-400", label: "VIBE" },
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -40,7 +39,7 @@ const SOURCE_COLORS: Record<string, string> = {
   editor: "text-orange-500",
   verifier: "text-violet-500",
   communicator: "text-cyan-500",
-  "vibe-chat": "text-pink-500",
+  "editor-chat": "text-pink-500",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -48,7 +47,7 @@ const SOURCE_LABELS: Record<string, string> = {
   editor: "EDIT",
   verifier: "VER",
   communicator: "COMM",
-  "vibe-chat": "VIBE",
+  "editor-chat": "EDITOR CHAT",
 };
 
 function formatTime(ts: number) {

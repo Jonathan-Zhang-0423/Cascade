@@ -1,6 +1,5 @@
-import { useState, useMemo } from "react";
-import { useIDEStore, computeFilesHash, type FileNode } from "@/stores/ide-store";
-import type { ActiveSpace } from "@/stores/ide-store";
+import { useState } from "react";
+import { useIDEStore, type FileNode } from "@/stores/ide-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, ChevronLeft, BookOpen, Wrench, Loader2 } from "lucide-react";
+import { Play, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { LangToggle } from "@/components/lang-toggle";
@@ -45,10 +44,7 @@ export function Navbar({ projectName }: NavbarProps) {
     activeFile,
     setPreviewFile,
     files,
-    notebookContent,
     saveProject,
-    activeSpace,
-    setActiveSpace,
     addConsoleEntry,
     clearConsole,
     isConsoleOpen,
@@ -58,9 +54,6 @@ export function Navbar({ projectName }: NavbarProps) {
   const [, navigate] = useLocation();
   const t = useT();
   const [isRunning, setIsRunning] = useState(false);
-
-  const currentHash = useMemo(() => computeFilesHash(files), [files]);
-  const isNotebookStale = notebookContent != null && notebookContent.sourceHash !== currentHash;
 
   const handleThemeChange = (v: string) => {
     setThemeId(v as ThemeId);
@@ -178,39 +171,6 @@ export function Navbar({ projectName }: NavbarProps) {
             {projectName}
           </span>
         </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
-            activeSpace === "workspace"
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-          onClick={() => setActiveSpace("workspace")}
-          data-testid="button-workspace"
-        >
-          <Wrench className="w-3 h-3" />
-          {t("navbar.workspace")}
-        </button>
-        <button
-          className={`relative inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md transition-colors ${
-            activeSpace === "learner"
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-          onClick={() => setActiveSpace("learner")}
-          data-testid="button-learner-space"
-        >
-          <BookOpen className="w-3 h-3" />
-          {t("navbar.notebook")}
-          {isNotebookStale && activeSpace !== "learner" && (
-            <span
-              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500"
-              data-testid="notebook-stale-dot"
-              title={t("navbar.notebookOutdated")}
-            />
-          )}
-        </button>
       </div>
       <div className="flex items-center gap-2">
         <Select value={themeId} onValueChange={handleThemeChange}>

@@ -16,12 +16,10 @@ import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
+  EDITOR_CHAT_SYSTEM_PROMPT,
   buildEditorContextMessage,
+  buildEditorChatContextMessage,
 } from "./editor-prompt";
-import {
-  VIBE_AGENT_SYSTEM_PROMPT,
-  buildVibeContextMessage,
-} from "./vibe-prompt";
 import {
   MANAGER_AGENT_SYSTEM_PROMPT,
   MANAGER_FIX_MODE_SYSTEM_PROMPT,
@@ -37,11 +35,6 @@ import {
   buildCommunicatorMessage,
 } from "./communicator-prompt";
 import type { CommunicatorEvent } from "./communicator-prompt";
-import {
-  MENTOR_SYSTEM_PROMPT,
-  MENTOR_PATCH_PROMPT,
-  MENTOR_OPTIMIZE_PROMPT,
-} from "./mentor-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState } from "./build-orchestrator";
 import { detectSkillFromText, loadSkill } from "./skill-loader";
@@ -660,9 +653,10 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files } = req.body as {
+      const { messages, files, provider } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
+        provider?: AIProvider;
       };
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -670,22 +664,14 @@ export async function registerRoutes(
         return;
       }
 
-      const systemMessages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }> = [{ role: "system", content: VIBE_AGENT_SYSTEM_PROMPT }];
-
-      if (files && files.length > 0) {
-        const contextMsg = buildVibeContextMessage(files);
-        systemMessages.push({ role: "system", content: contextMsg });
-      } else {
-        systemMessages.push({
-          role: "system",
-          content: "The project currently has no files. Start fresh!",
-        });
+      const fileMap = new Map<string, string>();
+      if (files) {
+        for (const f of files) fileMap.set(f.path, f.content);
       }
 
-      const allMessages = [...systemMessages, ...messages];
+      const contextMsg = buildEditorChatContextMessage(files || []);
+
+      const systemPrompt = `${EDITOR_CHAT_SYSTEM_PROMPT}\n\n${contextMsg}`;
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -701,28 +687,80 @@ export async function registerRoutes(
         } catch {}
       };
 
-      const stream = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages: allMessages,
-        stream: true,
-        max_tokens: 16384,
-      });
+      const chatToolSchemas: import("./agent-loop").ToolSchema[] = [
+        {
+          type: "function",
+          function: {
+            name: "write_file",
+            description: "Write or overwrite a file in the project with the given content.",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "The file path, e.g. /project/index.html" },
+                content: { type: "string", description: "The complete file content to write" },
+              },
+              required: ["path", "content"],
+            },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "read_file",
+            description: "Read the current content of a file from the project.",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "The file path to read, e.g. /project/index.html" },
+              },
+              required: ["path"],
+            },
+          },
+        },
+      ];
 
-      for await (const chunk of stream) {
-        if (res.destroyed) break;
-        const token = chunk.choices[0]?.delta?.content;
-        if (token) {
-          emit({ content: token });
-        }
-      }
+      const chatToolHandlers: Record<string, import("./agent-loop").ToolHandler> = {
+        write_file: async (args, toolEmit) => {
+          const path = args.path as string;
+          const content = args.content as string;
+          if (!path || typeof content !== "string") return "Error: path and content are required";
+          const fileName = path.split("/").pop() || path;
+          fileMap.set(path, content);
+          toolEmit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path });
+          toolEmit({ type: "code_applied", filePath: path, code: content });
+          return `File written successfully: ${path} (${content.length} chars)`;
+        },
+        read_file: async (args, toolEmit) => {
+          const path = args.path as string;
+          if (!path) return "Error: path is required";
+          const fileName = path.split("/").pop() || path;
+          const content = fileMap.get(path);
+          toolEmit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
+          if (content === undefined) {
+            return `File not found: ${path}. Available files: ${Array.from(fileMap.keys()).join(", ") || "(none)"}`;
+          }
+          return `File: ${path}\n\n${content}`;
+        },
+      };
+
+      const { client: aiClient, model: aiModel } = getAIClient(provider ?? "doubao");
+
+      await runAgentLoop(
+        systemPrompt,
+        messages,
+        chatToolSchemas,
+        chatToolHandlers,
+        emit,
+        { maxIterations: 10, client: aiClient, model: aiModel },
+      );
 
       res.write("data: [DONE]\n\n");
       (res as any).flush?.();
       res.end();
     } catch (error: any) {
-      console.error("Vibe chat API error:", error?.message || error);
+      console.error("Chat API error:", error?.message || error);
       if (!res.headersSent) {
-        res.status(500).json({ error: error?.message || "Failed to get Vibe Agent response" });
+        res.status(500).json({ error: error?.message || "Failed to get chat response" });
       } else {
         try {
           res.write("data: [DONE]\n\n");
@@ -981,243 +1019,6 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/mentor-analyze", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "AI service not configured" });
-        return;
-      }
-
-      const { files, lang, framework: mentorFramework } = req.body;
-
-      if (!files || !Array.isArray(files) || files.length === 0) {
-        res.status(400).json({ error: "No files provided" });
-        return;
-      }
-
-      const fileContext = files
-        .map(
-          (f: { path: string; content: string }) =>
-            `--- ${f.path} ---\n${f.content}`,
-        )
-        .join("\n\n");
-
-      const langDirective =
-        lang === "zh"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field — project_summary, what_it_does, explanations, walkthroughs, learning_tips, mind map labels, key concepts — must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
-          : lang === "en"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
-          : "";
-
-      const resolvedMentorFramework: Framework = mentorFramework || (files && files.length > 0 ? detectFramework(files) : "web");
-      let mentorSystemPrompt = MENTOR_SYSTEM_PROMPT;
-      if (resolvedMentorFramework && resolvedMentorFramework !== "web") {
-        const mobileSupplement = getMobilePromptSupplement("mentor", resolvedMentorFramework);
-        if (mobileSupplement) {
-          mentorSystemPrompt = `${mentorSystemPrompt}\n${mobileSupplement}`;
-        }
-      }
-
-      const messages = [
-        { role: "system" as const, content: mentorSystemPrompt },
-        {
-          role: "user" as const,
-          content: `${langDirective}Please analyze the following project files and generate the Coding Notebook:\n\n${fileContext}`,
-        },
-      ];
-
-      const completion = await doubaoClient.chat.completions.create({
-        model: DOUBAO_LITE_MODEL,
-        messages,
-        stream: false,
-        max_tokens: 16384,
-      });
-
-      const responseContent = completion.choices[0]?.message?.content || "";
-
-      const notebook = parseAIJson(responseContent);
-      if (!notebook) {
-        res.json({
-          raw: responseContent,
-          error: "Mentor did not return valid JSON",
-        });
-        return;
-      }
-
-      if (notebook.file_breakdowns) {
-        notebook.file_breakdowns = normalizeFeatures(notebook.file_breakdowns);
-      }
-
-      res.json({ notebook });
-    } catch (error: any) {
-      console.error("Mentor analyze API error:", error?.message || error);
-      res
-        .status(500)
-        .json({ error: error?.message || "Failed to get Mentor analysis" });
-    }
-  });
-
-  app.post("/api/mentor-patch", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "AI service not configured" });
-        return;
-      }
-
-      const { changedFiles, notebookOutline, affectedSections, lang, framework: patchFramework } = req.body;
-
-      if (
-        !changedFiles ||
-        !Array.isArray(changedFiles) ||
-        changedFiles.length === 0
-      ) {
-        res.status(400).json({ error: "No changed files provided" });
-        return;
-      }
-
-      const fileContext = changedFiles
-        .map(
-          (f: { path: string; content: string; status: string }) =>
-            `--- ${f.path} [${f.status}] ---\n${f.status === "deleted" ? "(file deleted)" : f.content}`,
-        )
-        .join("\n\n");
-
-      const outlineText = notebookOutline || "No existing notebook outline.";
-      const sectionsText = affectedSections
-        ? `\n\nAffected existing sections:\n${JSON.stringify(affectedSections, null, 2)}`
-        : "";
-
-      const patchLangDirective =
-        lang === "zh"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
-          : lang === "en"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
-          : "";
-
-      const resolvedPatchFramework: Framework = patchFramework || (changedFiles && changedFiles.length > 0 ? detectFramework(changedFiles) : "web");
-      let patchMentorPrompt = MENTOR_PATCH_PROMPT;
-      if (resolvedPatchFramework && resolvedPatchFramework !== "web") {
-        const mobileSupplement = getMobilePromptSupplement("mentor", resolvedPatchFramework);
-        if (mobileSupplement) {
-          patchMentorPrompt = `${patchMentorPrompt}\n${mobileSupplement}`;
-        }
-      }
-
-      const messages = [
-        { role: "system" as const, content: patchMentorPrompt },
-        {
-          role: "user" as const,
-          content: `${patchLangDirective}## Existing Notebook Outline\n${outlineText}${sectionsText}\n\n## Changed Files\n${fileContext}`,
-        },
-      ];
-
-      const completion = await doubaoClient.chat.completions.create({
-        model: DOUBAO_LITE_MODEL,
-        messages,
-        stream: false,
-        max_tokens: 16384,
-      });
-
-      const responseContent = completion.choices[0]?.message?.content || "";
-      const patch = parseAIJson(responseContent);
-      if (!patch) {
-        res.json({
-          raw: responseContent,
-          error: "Mentor did not return valid JSON patch",
-        });
-        return;
-      }
-
-      if (patch.updated_breakdowns) {
-        patch.updated_breakdowns = normalizeFeatures(patch.updated_breakdowns);
-      }
-      if (patch.new_breakdowns) {
-        patch.new_breakdowns = normalizeFeatures(patch.new_breakdowns);
-      }
-
-      res.json({ patch });
-    } catch (error: any) {
-      console.error("Mentor patch API error:", error?.message || error);
-      res
-        .status(500)
-        .json({ error: error?.message || "Failed to get Mentor patch" });
-    }
-  });
-
-  app.post("/api/mentor-optimize", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "AI service not configured" });
-        return;
-      }
-
-      const { notebook, files, lang, framework: optimizeFramework } = req.body;
-
-      if (!notebook || !files || !Array.isArray(files) || files.length === 0) {
-        res.status(400).json({ error: "Notebook and files are required" });
-        return;
-      }
-
-      const fileContext = files
-        .map(
-          (f: { path: string; content: string }) =>
-            `--- ${f.path} ---\n${f.content}`,
-        )
-        .join("\n\n");
-
-      const optimizeLangDirective =
-        lang === "zh"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in Simplified Chinese (简体中文). Every word in every field must be in Chinese. Do NOT use English anywhere except inside code snippets.\n\n"
-          : lang === "en"
-          ? "CRITICAL LANGUAGE RULE: You MUST write ALL output entirely in English. Every word in every field must be in English. Do NOT use Chinese anywhere except inside code snippets.\n\n"
-          : "";
-
-      const messages = [
-        { role: "system" as const, content: (() => {
-          const resolvedOptFramework: Framework = optimizeFramework || (files && files.length > 0 ? detectFramework(files) : "web");
-          if (resolvedOptFramework && resolvedOptFramework !== "web") {
-            const mobileSupplement = getMobilePromptSupplement("mentor", resolvedOptFramework);
-            if (mobileSupplement) return `${MENTOR_OPTIMIZE_PROMPT}\n${mobileSupplement}`;
-          }
-          return MENTOR_OPTIMIZE_PROMPT;
-        })() },
-        {
-          role: "user" as const,
-          content: `${optimizeLangDirective}## Existing Notebook\n${JSON.stringify(notebook, null, 2)}\n\n## All Current Project Files\n${fileContext}`,
-        },
-      ];
-
-      const completion = await doubaoClient.chat.completions.create({
-        model: DOUBAO_LITE_MODEL,
-        messages,
-        stream: false,
-        max_tokens: 16384,
-      });
-
-      const responseContent = completion.choices[0]?.message?.content || "";
-      const optimized = parseAIJson(responseContent);
-      if (!optimized) {
-        res.json({
-          raw: responseContent,
-          error: "Mentor did not return valid JSON",
-        });
-        return;
-      }
-
-      if (optimized.file_breakdowns) {
-        optimized.file_breakdowns = normalizeFeatures(
-          optimized.file_breakdowns,
-        );
-      }
-
-      res.json({ notebook: optimized });
-    } catch (error: any) {
-      console.error("Mentor optimize API error:", error?.message || error);
-      res
-        .status(500)
-        .json({ error: error?.message || "Failed to get Mentor optimization" });
-    }
-  });
 
   app.post("/api/smart-response", async (req, res) => {
     try {

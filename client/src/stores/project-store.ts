@@ -99,7 +99,7 @@ function getDefaultProjectState(initialPrompt?: string) {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "你好！我是你的 Vibe 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
+          "你好！我是你的 AI 编程助手。告诉我你想做什么，我来帮你实现！不需要任何编程经验——用中文描述你的想法就行！",
         timestamp: Date.now(),
       },
     ],

@@ -1,6 +1,6 @@
 import type { Framework } from "./framework-detector";
 
-export type AgentRole = "manager" | "editor" | "verifier" | "mentor" | "communicator";
+export type AgentRole = "manager" | "editor" | "verifier" | "communicator";
 
 const MOBILE_FRAMEWORKS: Framework[] = ["rn-expo", "flutter", "swiftui", "kotlin"];
 
@@ -139,52 +139,6 @@ const verifierSupplements: Record<string, string> = {
 - Verify MaterialTheme is used for colors and typography instead of hardcoded values.`,
 };
 
-const mentorSupplements: Record<string, string> = {
-  "rn-expo": `
-## Mobile Concepts to Teach (React Native / Expo)
-When explaining this mobile project, use these beginner-friendly concepts:
-- **Screens** instead of "pages" — a mobile app has screens you navigate between, like flipping through cards.
-- **Navigation stack** — think of screens as a stack of cards; you push a new card on top and pop it to go back.
-- **Components** — React Native uses its own building blocks (View, Text, Pressable) instead of HTML tags.
-- **Safe areas** — the areas of the screen not blocked by the notch, status bar, or home indicator.
-- **Gestures** — tapping, swiping, and pinching that users do with their fingers.
-- **Permissions** — the app has to ask the user before using the camera, location, or sending notifications.
-- **App lifecycle** — the app can be in the foreground (active), background (hidden), or terminated (closed).`,
-
-  flutter: `
-## Mobile Concepts to Teach (Flutter)
-When explaining this mobile project, use these beginner-friendly concepts:
-- **Widgets** — everything you see on screen is a widget. Widgets are like building blocks that snap together.
-- **Widget tree** — widgets are nested inside each other like a family tree, creating the layout.
-- **Screens** instead of "pages" — each screen is a widget you navigate to.
-- **State** — data that can change (like a score or a text input). When state changes, the widget rebuilds.
-- **Scaffold** — a ready-made screen layout with a top bar, body area, and optional floating button.
-- **Permissions** — the app must ask before using the camera, location, or notifications.
-- **Hot reload** — Flutter can update the app almost instantly while you're developing, without restarting it.`,
-
-  swiftui: `
-## Mobile Concepts to Teach (SwiftUI)
-When explaining this mobile project, use these beginner-friendly concepts:
-- **Views** — everything on screen is a View. Views are like LEGO pieces you stack and combine.
-- **Modifiers** — instructions chained onto a view to change how it looks (color, size, padding).
-- **Stacks** — VStack (vertical), HStack (horizontal), and ZStack (layered) arrange views on screen.
-- **State** — data that the view watches. When state changes, the view automatically updates.
-- **Navigation** — moving between screens using links, like tapping a menu item to see a detail page.
-- **Safe areas** — the screen regions not blocked by the notch or home bar. SwiftUI handles this automatically.
-- **Permissions** — the app must explain to the user why it needs access to camera, photos, or location.`,
-
-  kotlin: `
-## Mobile Concepts to Teach (Kotlin / Jetpack Compose)
-When explaining this mobile project, use these beginner-friendly concepts:
-- **Composables** — functions that describe what the screen should look like. They're the building blocks of the UI.
-- **Screens** instead of "pages" — each screen is a composable function.
-- **State** — data that can change (like a counter or text input). When state changes, the composable redraws.
-- **Material Design** — a design system by Google that provides ready-made buttons, cards, menus, and color themes.
-- **Scaffold** — a ready-made screen layout with a top bar, content area, and floating action button.
-- **Navigation** — moving between screens using a navigation controller, like following links.
-- **Permissions** — the app has to ask the user before accessing the camera, location, or files.`,
-};
-
 const communicatorSupplements: Record<string, string> = {
   "rn-expo": `
 ## Mobile Vocabulary (React Native / Expo)
@@ -231,7 +185,6 @@ const supplementsByRole: Record<AgentRole, Record<string, string>> = {
   manager: managerSupplements,
   editor: editorSupplements,
   verifier: verifierSupplements,
-  mentor: mentorSupplements,
   communicator: communicatorSupplements,
 };
 
