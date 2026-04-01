@@ -2952,6 +2952,7 @@ export function ChatPanel() {
             files: fileContext,
             provider: useIDEStore.getState().selectedProvider,
             framework: useProjectStore.getState().projects.find((p) => p.id === projectId)?.framework || undefined,
+            projectId: projectId || undefined,
           }),
           signal: controller.signal,
         });

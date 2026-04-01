@@ -588,11 +588,12 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { messages, files, provider, framework: reqFramework } = req.body as {
+      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
         framework?: Framework;
+        projectId?: string;
       };
       const activeProvider: AIProvider = provider || "doubao";
       const { client: activeAIClient, model: activeAIModel } = getAIClient(activeProvider);
@@ -623,8 +624,18 @@ export async function registerRoutes(
       }, 5000);
 
       // Build system prompt (async work runs after stream is open)
+      let resolvedFramework: Framework | undefined = reqFramework;
+      if (!resolvedFramework && reqProjectId) {
+        try {
+          const projectRecord = await storage.getProject(reqProjectId);
+          if (projectRecord?.framework) {
+            resolvedFramework = projectRecord.framework as Framework;
+          }
+        } catch {}
+      }
+
       const allConversationText = messages.map((m) => m.content).join(" ");
-      const frameworkSkill = reqFramework ? getSkillForFramework(reqFramework) : null;
+      const frameworkSkill = resolvedFramework ? getSkillForFramework(resolvedFramework) : null;
       const detectedSkill = frameworkSkill || (await detectSkillFromText(allConversationText));
 
       let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
@@ -642,7 +653,7 @@ export async function registerRoutes(
         }
       }
 
-      const resolvedManagerFramework = reqFramework || (files && files.length > 0 ? detectFramework(files) : "web");
+      const resolvedManagerFramework = resolvedFramework || (files && files.length > 0 ? detectFramework(files) : "web");
       if (resolvedManagerFramework && resolvedManagerFramework !== "web") {
         const mobileSupplement = getMobilePromptSupplement("manager", resolvedManagerFramework);
         if (mobileSupplement) {

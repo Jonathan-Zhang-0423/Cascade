@@ -95,7 +95,6 @@ const FRAMEWORK_TO_SKILL: Record<string, string> = {
   "flutter": "flutter",
   "swiftui": "swiftui",
   "kotlin": "kotlin-compose",
-  "web": "vanilla-js",
 };
 
 export function getSkillForFramework(framework: string): string | null {
