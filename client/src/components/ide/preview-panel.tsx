@@ -274,6 +274,15 @@ export function PreviewPanel() {
   }, [files, previewUrl, previewToken]);
 
   useEffect(() => {
+    if (!previewToken || previewRefreshKey === 0) return;
+    fetch("/api/preview-server/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: previewToken }),
+    }).catch(() => {});
+  }, [previewRefreshKey, previewToken]);
+
+  useEffect(() => {
     const token = previewToken;
     return () => {
       if (token) {
