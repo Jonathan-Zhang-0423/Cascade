@@ -105,6 +105,15 @@ export function PreviewPanel() {
     [devicePlatform]
   );
 
+  useEffect(() => {
+    if (selectedDevice !== "custom") {
+      const spec = getDeviceSpec(selectedDevice);
+      if (spec.platform !== devicePlatform) {
+        setSelectedDevice(getFirstDeviceForPlatform(devicePlatform));
+      }
+    }
+  }, []);
+
   const isCustom = selectedDevice === "custom";
   const deviceSpec = isCustom
     ? makeCustomSpec(customDeviceWidth || 390, customDeviceHeight || 844, devicePlatform)
