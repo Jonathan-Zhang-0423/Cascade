@@ -2316,8 +2316,6 @@ export function ChatPanel() {
             }
           } else if (evType === "plan_preparing") {
             if (!isCurrentProject) continue;
-            setMgrLiveThinkingText("");
-            setMgrLiveNarrationText("");
             setMgrPreparingPlan(true);
           } else if (evType === "plan_ready") {
             if (!isCurrentProject) continue;
@@ -2361,9 +2359,6 @@ export function ChatPanel() {
           } else if (evType === "communicator_narration_starting") {
             if (!isCurrentProject) continue;
             setMgrPreparingPlan(false);
-            setMgrLiveThinkingText("");
-            setMgrLiveNarrationText("");
-            setMgrLiveActionLog([]);
             const msgs = useIDEStore.getState().managerMessages;
             const tIdx = msgs.findIndex((m) => m.typing === true);
             commTypingIdx = tIdx;
@@ -2849,9 +2844,6 @@ export function ChatPanel() {
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
             if (token) {
-              if (!thinkingAccumulated && import.meta.env.DEV) {
-                console.log("[build-session] first thinking_token received for current step");
-              }
               if (thinkingFadeTimerRef.current) { clearTimeout(thinkingFadeTimerRef.current); thinkingFadeTimerRef.current = null; }
               thinkingAccumulated += token;
               flushThinkingToStore();
@@ -3462,15 +3454,21 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {isManagerResponding && chatMode !== "build" && (
-          mgrPreparingPlan ? (
+        {isManagerResponding && !isExecuting && (
+          (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) ? (
+            <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+              <ActionLogLive entries={mgrLiveActionLog} thinkingText={mgrLiveThinkingText || undefined} narrationText={mgrLiveNarrationText || undefined} />
+              {mgrPreparingPlan && (
+                <div className="px-3 py-1.5 border-t border-border/20 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+                  <span className="text-[11px] text-muted-foreground/80 font-medium">Preparing plan…</span>
+                </div>
+              )}
+            </div>
+          ) : mgrPreparingPlan ? (
             <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
               <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
               <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
-            </div>
-          ) : (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) ? (
-            <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-              <ActionLogLive entries={mgrLiveActionLog} thinkingText={mgrLiveThinkingText || undefined} narrationText={mgrLiveNarrationText || undefined} />
             </div>
           ) : (
             <TypingIndicator text={t(getPlanCardLang(), "planning")} />
