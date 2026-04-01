@@ -1,6 +1,6 @@
 import { useIDEStore, findFileContent, type FileNode } from "@/stores/ide-store";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { RefreshCw, Smartphone, Rotate3D, Moon, Sun } from "lucide-react";
+import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, Apple, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
@@ -243,9 +243,7 @@ export function PreviewPanel() {
             onClick={() => setDevicePlatform("ios")}
             data-testid="button-platform-ios"
           >
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-              <path d="M8.4 6.3c0-1.5 1.2-2.2 1.3-2.3-.7-1-1.8-1.2-2.2-1.2-1-.1-1.9.6-2.4.6s-1.2-.5-2-.5C1.8 2.9.5 4.1.5 6.4c0 1.4.5 2.8 1.2 3.8.7 1 1.5 2 2.5 2 1 0 1.4-.7 2.6-.7s1.6.7 2.6.6c1.1 0 1.8-.9 2.4-1.9C12.5 9 12.8 7.8 12.8 7.7 12.8 7.7 10.9 7 8.4 6.3zM7.5 2.5c.6-.7 1-1.7.9-2.5-.9 0-2 .6-2.6 1.3-.5.6-1 1.6-.9 2.5C5.9 3.8 6.9 3.2 7.5 2.5z" transform="scale(0.77) translate(-0.5, 0)" />
-            </svg>
+            <Apple className="w-3 h-3" />
           </button>
           <div className="w-px h-4 bg-border" />
           <button
@@ -257,9 +255,7 @@ export function PreviewPanel() {
             onClick={() => setDevicePlatform("android")}
             data-testid="button-platform-android"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" transform="scale(0.5) translate(0, 0)" />
-            </svg>
+            <Cpu className="w-3 h-3" />
           </button>
         </div>
 
