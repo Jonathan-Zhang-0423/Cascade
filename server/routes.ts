@@ -546,6 +546,8 @@ export async function registerRoutes(
           emit({ type: "raw_token", token: data.token });
         } else if (data.type === "thinking_token" && typeof data.token === "string") {
           emit({ type: "thinking_token", token: data.token });
+        } else if (data.type === "action_log") {
+          emit({ type: "action_log", actionType: data.actionType, label: data.label, detail: data.detail });
         }
       };
 

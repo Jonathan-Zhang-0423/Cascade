@@ -16,6 +16,7 @@ const KNOWN_MGR_EVENT_TYPES: Set<string> = new Set([
   "thinking_token", "raw_token", "manager_token", "communicator_token",
   "communicator_narration_starting", "communicator_error",
   "plan_preparing", "plan_ready", "manager_done", "manager_error",
+  "action_log",
 ]);
 
 const MGR_SOURCE_MAP: Record<string, LLMEventSource> = {
@@ -2031,6 +2032,9 @@ export function ChatPanel() {
   const [liveThinkingText, setLiveThinkingText] = useState<string>("");
   const [liveNarrationText, setLiveNarrationText] = useState<string>("");
   const [mgrPreparingPlan, setMgrPreparingPlan] = useState(false);
+  const [mgrLiveThinkingText, setMgrLiveThinkingText] = useState<string>("");
+  const [mgrLiveNarrationText, setMgrLiveNarrationText] = useState<string>("");
+  const [mgrLiveActionLog, setMgrLiveActionLog] = useState<ActionLogEntry[]>([]);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
@@ -2062,7 +2066,7 @@ export function ChatPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText, liveThinkingText]);
+  }, [chatMessages, managerMessages, liveActionLog, liveNarrationText, liveThinkingText, mgrLiveThinkingText, mgrLiveNarrationText, mgrLiveActionLog]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -2288,15 +2292,37 @@ export function ChatPanel() {
             const token = (ev.token as string) || "";
             if (token) {
               managerThinkingAccumulated += token;
+              if (isCurrentProject) {
+                setMgrLiveThinkingText(managerThinkingAccumulated);
+              }
             }
           } else if (evType === "raw_token" || evType === "manager_token") {
             managerAccumulated += ev.token;
+            if (isCurrentProject) {
+              const display = stripProjectNameMarker(managerAccumulated);
+              setMgrLiveNarrationText(display);
+            }
+          } else if (evType === "action_log") {
+            if (isCurrentProject) {
+              const entry: ActionLogEntry = {
+                type: (ev.actionType as ActionLogEntry["type"]) || "tool_call",
+                label: (ev.label as string) || "",
+                detail: (ev.detail as string) || "",
+                timestamp: Date.now(),
+              };
+              setMgrLiveActionLog(prev => [...prev, entry]);
+            }
           } else if (evType === "plan_preparing") {
             if (!isCurrentProject) continue;
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
             setMgrPreparingPlan(true);
           } else if (evType === "plan_ready") {
             if (!isCurrentProject) continue;
             setMgrPreparingPlan(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
             removeTypingBubble();
             const plan = ev.plan;
             const resolvedProjectName = ((ev.project_name as string | undefined) || "").trim() || undefined;
@@ -2333,6 +2359,9 @@ export function ChatPanel() {
           } else if (evType === "communicator_narration_starting") {
             if (!isCurrentProject) continue;
             setMgrPreparingPlan(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
             const msgs = useIDEStore.getState().managerMessages;
             const tIdx = msgs.findIndex((m) => m.typing === true);
             commTypingIdx = tIdx;
@@ -2382,6 +2411,9 @@ export function ChatPanel() {
           } else if (evType === "manager_done") {
             if (!isCurrentProject) continue;
             setMgrPreparingPlan(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
@@ -2502,6 +2534,9 @@ export function ChatPanel() {
       if (useIDEStore.getState().projectId === projectId) {
         removeTypingBubble();
         setMgrPreparingPlan(false);
+        setMgrLiveThinkingText("");
+        setMgrLiveNarrationText("");
+        setMgrLiveActionLog([]);
         if (!buildSessionIdRef.current) {
           setManagerResponding(false);
         }
@@ -3225,6 +3260,9 @@ export function ChatPanel() {
     setAiResponding(false);
     setManagerResponding(false);
     setMgrPreparingPlan(false);
+    setMgrLiveThinkingText("");
+    setMgrLiveNarrationText("");
+    setMgrLiveActionLog([]);
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution]);
 
   const handleToggleMode = useCallback(() => {
@@ -3427,6 +3465,10 @@ export function ChatPanel() {
             <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
               <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
               <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
+            </div>
+          ) : (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) ? (
+            <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
+              <ActionLogLive entries={mgrLiveActionLog} thinkingText={mgrLiveThinkingText || undefined} narrationText={mgrLiveNarrationText || undefined} />
             </div>
           ) : (
             <TypingIndicator text={t(getPlanCardLang(), "planning")} />
