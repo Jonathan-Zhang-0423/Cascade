@@ -1,0 +1,103 @@
+chat-panel.tsx# Issues Summary: Missing Streaming Observable Execution Flow in chat-panel.tsx
+Problem Background
+The chat-panel.tsx component is intended to render the observable execution flow of AI-driven build/thinking processes (e.g., LLM-generated tokens, action logs, step executions) in a chat panel UI. However, it fails to implement a streaming observable execution flow—instead of real-time incremental updates (e.g., 逐 token thinking text, new action logs as they generate, step progress), the UI only renders static, full batches of data, breaking the core requirement of streaming observability.
+Core Architectural & Logical Issues (Root Causes + Recommendations)
+1. Broken Streaming Event Production-Consumption Pipeline
+Root Cause
+No mechanism to subscribe/consume streaming event sources (e.g., SSE/WebSockets for real-time LLM/execution events) or listen to incremental state changes in global stores (e.g., llm-monitor-store, ide-store).
+The UI relies on static props (e.g., entries, thinkingText) passed in one-time, with no logic to append new streaming events to local state.
+Recommendation
+Implement streaming event consumption (e.g., use useEffect to create an EventSource for SSE or WebSocket listeners) to capture real-time backend events.
+Add incremental update actions to global stores (e.g., appendLLMEvent in llm-monitor-store) to add new events instead of replacing the entire dataset.
+In components, listen to incremental state changes in global stores (via store subscriptions or useEffect) and append new events to local state (e.g., setEntries(prev => [...prev, newEntry])).
+2. Static State Model (No Incremental Update Support)
+Root Cause
+Core state variables (entries, thinkingText, narrationText) are fully replaced on update (static batch model) instead of incrementally appended.
+Parsing logic (e.g., parseCompletionSummary, code block extraction) is designed for full text/data batches, not incremental streaming chunks (e.g., partial LLM tokens).
+Recommendation
+Refactor state updates to be incremental: For streaming text (e.g., thinkingText), use functional state updates to append new tokens (setThinkingText(prev => prev + newToken)).
+Split batch parsing logic into incremental functions that process partial chunks (e.g., parse partial raw text in parseCompletionSummary as streaming chunks arrive).
+Separate state for "historical entries" (collapsed) and "real-time streaming entries" (highlighted) to avoid full re-renders of old data.
+3. Lack of Streaming-Grained Observability
+Root Cause
+UI components (ThinkingStream, CollapsedThinking, ActionLogLive) render static full text/data instead of updating in real-time with new tokens/chunks.
+No differentiation between historical events (to collapse) and real-time streaming events (to highlight).
+ActionLogLive only shows a static slice of the last 5 entries (no dynamic extension as new streaming events arrive).
+Recommendation
+Modify ThinkingStream to auto-scroll and append new tokens incrementally (ensure the text prop is updated with streaming tokens).
+Add logic to distinguish "historical events" (collapsed by default) and "real-time streaming events" (expanded/highlighted) in ActionLogLive/ActionLogCollapsed.
+Dynamically extend the last5 entries list in ActionLogLive as new streaming events are added (replace static slice(-5) with incremental appending).
+4. Disconnected Execution Lifecycle & Observability Controls
+Root Cause
+UI controls (e.g., stop/build buttons) only have UI interaction logic but are not bound to the underlying streaming execution instance (no pause/stop of event production/consumption).
+No state to track real-time execution lifecycle status (e.g., "paused", "stopped", "in progress") or progress (e.g., current step, completion percentage).
+Recommendation
+Create an execution flow controller (e.g., BuildExecutor/ManagerExecutor) with start(), pause(), stop() methods to manage streaming lifecycle.
+Bind UI buttons to controller methods and listen to lifecycle events (e.g., onProgress, onStop) to update UI state (e.g., disable buttons, show "stopped" status).
+Add real-time progress tracking state (current step, completion percentage) and render it in the UI to reflect streaming execution progress.
+5. Inefficient Full Re-Rendering for Streaming
+Root Cause
+Components use full re-rendering (e.g., entries.map for all entries) when new streaming events arrive, with no performance optimizations (e.g., React.memo, unique keys).
+No incremental rendering (all entries re-render when new events are added) or virtualization for long historical event lists.
+Recommendation
+Optimize child components (e.g., ActionLogLiveRow, ActionLogChip) with React.memo and use stable unique keys (e.g., event timestamp instead of array index).
+Implement incremental rendering: Only render newly added entries instead of re-rendering the entire list for streaming events.
+Add virtualization (e.g., react-window) for long historical event lists to reduce re-render overhead.
+Summary of Critical Fixes
+To enable streaming observable execution flow:
+Build a streaming event pipeline (subscribe to real-time events + incremental global store updates).
+Refactor state models for incremental appends (replace full batch updates).
+Adapt parsing/rendering logic to handle streaming chunks/tokens (not just full batches).
+Bind UI controls to execution lifecycle and track real-time progress.
+Optimize UI rendering for incremental streaming updates (avoid full re-renders).# Issues Summary: Missing Streaming Observable Execution Flow in chat-panel.tsx
+Problem Background
+The chat-panel.tsx component is intended to render the observable execution flow of AI-driven build/thinking processes (e.g., LLM-generated tokens, action logs, step executions) in a chat panel UI. However, it fails to implement a streaming observable execution flow—instead of real-time incremental updates (e.g., 逐 token thinking text, new action logs as they generate, step progress), the UI only renders static, full batches of data, breaking the core requirement of streaming observability.
+Core Architectural & Logical Issues (Root Causes + Recommendations)
+1. Broken Streaming Event Production-Consumption Pipeline
+Root Cause
+No mechanism to subscribe/consume streaming event sources (e.g., SSE/WebSockets for real-time LLM/execution events) or listen to incremental state changes in global stores (e.g., llm-monitor-store, ide-store).
+The UI relies on static props (e.g., entries, thinkingText) passed in one-time, with no logic to append new streaming events to local state.
+Recommendation
+Implement streaming event consumption (e.g., use useEffect to create an EventSource for SSE or WebSocket listeners) to capture real-time backend events.
+Add incremental update actions to global stores (e.g., appendLLMEvent in llm-monitor-store) to add new events instead of replacing the entire dataset.
+In components, listen to incremental state changes in global stores (via store subscriptions or useEffect) and append new events to local state (e.g., setEntries(prev => [...prev, newEntry])).
+2. Static State Model (No Incremental Update Support)
+Root Cause
+Core state variables (entries, thinkingText, narrationText) are fully replaced on update (static batch model) instead of incrementally appended.
+Parsing logic (e.g., parseCompletionSummary, code block extraction) is designed for full text/data batches, not incremental streaming chunks (e.g., partial LLM tokens).
+Recommendation
+Refactor state updates to be incremental: For streaming text (e.g., thinkingText), use functional state updates to append new tokens (setThinkingText(prev => prev + newToken)).
+Split batch parsing logic into incremental functions that process partial chunks (e.g., parse partial raw text in parseCompletionSummary as streaming chunks arrive).
+Separate state for "historical entries" (collapsed) and "real-time streaming entries" (highlighted) to avoid full re-renders of old data.
+3. Lack of Streaming-Grained Observability
+Root Cause
+UI components (ThinkingStream, CollapsedThinking, ActionLogLive) render static full text/data instead of updating in real-time with new tokens/chunks.
+No differentiation between historical events (to collapse) and real-time streaming events (to highlight).
+ActionLogLive only shows a static slice of the last 5 entries (no dynamic extension as new streaming events arrive).
+Recommendation
+Modify ThinkingStream to auto-scroll and append new tokens incrementally (ensure the text prop is updated with streaming tokens).
+Add logic to distinguish "historical events" (collapsed by default) and "real-time streaming events" (expanded/highlighted) in ActionLogLive/ActionLogCollapsed.
+Dynamically extend the last5 entries list in ActionLogLive as new streaming events are added (replace static slice(-5) with incremental appending).
+4. Disconnected Execution Lifecycle & Observability Controls
+Root Cause
+UI controls (e.g., stop/build buttons) only have UI interaction logic but are not bound to the underlying streaming execution instance (no pause/stop of event production/consumption).
+No state to track real-time execution lifecycle status (e.g., "paused", "stopped", "in progress") or progress (e.g., current step, completion percentage).
+Recommendation
+Create an execution flow controller (e.g., BuildExecutor/ManagerExecutor) with start(), pause(), stop() methods to manage streaming lifecycle.
+Bind UI buttons to controller methods and listen to lifecycle events (e.g., onProgress, onStop) to update UI state (e.g., disable buttons, show "stopped" status).
+Add real-time progress tracking state (current step, completion percentage) and render it in the UI to reflect streaming execution progress.
+5. Inefficient Full Re-Rendering for Streaming
+Root Cause
+Components use full re-rendering (e.g., entries.map for all entries) when new streaming events arrive, with no performance optimizations (e.g., React.memo, unique keys).
+No incremental rendering (all entries re-render when new events are added) or virtualization for long historical event lists.
+Recommendation
+Optimize child components (e.g., ActionLogLiveRow, ActionLogChip) with React.memo and use stable unique keys (e.g., event timestamp instead of array index).
+Implement incremental rendering: Only render newly added entries instead of re-rendering the entire list for streaming events.
+Add virtualization (e.g., react-window) for long historical event lists to reduce re-render overhead.
+Summary of Critical Fixes
+To enable streaming observable execution flow:
+Build a streaming event pipeline (subscribe to real-time events + incremental global store updates).
+Refactor state models for incremental appends (replace full batch updates).
+Adapt parsing/rendering logic to handle streaming chunks/tokens (not just full batches).
+Bind UI controls to execution lifecycle and track real-time progress.
+Optimize UI rendering for incremental streaming updates (avoid full re-renders).
