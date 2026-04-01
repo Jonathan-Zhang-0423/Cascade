@@ -112,7 +112,7 @@ export function PreviewPanel() {
         setSelectedDevice(getFirstDeviceForPlatform(devicePlatform));
       }
     }
-  }, []);
+  }, [selectedDevice, devicePlatform, setSelectedDevice]);
 
   const isCustom = selectedDevice === "custom";
   const deviceSpec = isCustom
