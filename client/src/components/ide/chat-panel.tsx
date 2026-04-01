@@ -2030,6 +2030,7 @@ export function ChatPanel() {
   const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [liveThinkingText, setLiveThinkingText] = useState<string>("");
   const [liveNarrationText, setLiveNarrationText] = useState<string>("");
+  const [mgrPreparingPlan, setMgrPreparingPlan] = useState(false);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
@@ -2292,8 +2293,10 @@ export function ChatPanel() {
             managerAccumulated += ev.token;
           } else if (evType === "plan_preparing") {
             if (!isCurrentProject) continue;
+            setMgrPreparingPlan(true);
           } else if (evType === "plan_ready") {
             if (!isCurrentProject) continue;
+            setMgrPreparingPlan(false);
             removeTypingBubble();
             const plan = ev.plan;
             const resolvedProjectName = ((ev.project_name as string | undefined) || "").trim() || undefined;
@@ -2377,6 +2380,7 @@ export function ChatPanel() {
             }
           } else if (evType === "manager_done") {
             if (!isCurrentProject) continue;
+            setMgrPreparingPlan(false);
             const nameFromDone = (ev.project_name as string | undefined)?.trim();
             if (projectId && nameFromDone) {
               renameProject(projectId, nameFromDone);
@@ -2496,6 +2500,7 @@ export function ChatPanel() {
       if (abortRef.current === controller) abortRef.current = null;
       if (useIDEStore.getState().projectId === projectId) {
         removeTypingBubble();
+        setMgrPreparingPlan(false);
         if (!buildSessionIdRef.current) {
           setManagerResponding(false);
         }
@@ -3218,6 +3223,7 @@ export function ChatPanel() {
     }
     setAiResponding(false);
     setManagerResponding(false);
+    setMgrPreparingPlan(false);
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution]);
 
   const handleToggleMode = useCallback(() => {
@@ -3416,7 +3422,14 @@ export function ChatPanel() {
           <TypingIndicator />
         )}
         {isManagerResponding && chatMode !== "build" && (
-          <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+          mgrPreparingPlan ? (
+            <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+              <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
+            </div>
+          ) : (
+            <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+          )
         )}
         {isExecuting && (liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
