@@ -2294,6 +2294,7 @@ export function ChatPanel() {
               managerThinkingAccumulated += token;
               if (isCurrentProject) {
                 setMgrLiveThinkingText(managerThinkingAccumulated);
+                await new Promise<void>(r => setTimeout(r, 0));
               }
             }
           } else if (evType === "raw_token" || evType === "manager_token") {
@@ -2301,6 +2302,7 @@ export function ChatPanel() {
             if (isCurrentProject) {
               const display = stripProjectNameMarker(managerAccumulated);
               setMgrLiveNarrationText(display);
+              await new Promise<void>(r => setTimeout(r, 0));
             }
           } else if (evType === "action_log") {
             if (isCurrentProject) {
