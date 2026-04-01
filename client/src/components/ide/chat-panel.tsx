@@ -3869,9 +3869,10 @@ export function ChatPanel() {
             // even when the AI provider emits no delta.content (e.g. Kimi thinking mode).
             const isCurrentProjectNow =
               useIDEStore.getState().projectId === projectId;
+            if (isCurrentProjectNow || buildSessionIdRef.current) {
+              setExecutingTaskIndex(stepNum - 1);
+            }
             if (isCurrentProjectNow) {
-              // commAccumulated stays "" so narration tokens stream as fresh content
-              // (header is the message's initial content, not part of narration stream).
               commAccumulated = "";
               addManagerMessage({
                 role: "assistant",
@@ -3880,11 +3881,7 @@ export function ChatPanel() {
                 typing: true,
               });
               commMsgIndex = useIDEStore.getState().managerMessages.length - 1;
-              // Set isExecuting=true before the yield so ActionLogLive renders in the same
-              // render cycle as the step-header message (not one async tick later).
-              setExecutingTaskIndex(stepNum - 1);
             }
-            // Yield so React commits the step-header + ActionLogLive before thinking tokens arrive.
             await new Promise<void>((r) => setTimeout(r, 0));
           } else if (type === "thinking_token") {
             const token = (ev.token as string) || "";
@@ -4800,6 +4797,9 @@ export function ChatPanel() {
               });
               const isCurrentProjectNow =
                 useIDEStore.getState().projectId === projectId;
+              if (isCurrentProjectNow || buildSessionIdRef.current) {
+                setExecutingTaskIndex(stepNum - 1);
+              }
               if (isCurrentProjectNow) {
                 commAccumulated = "";
                 addManagerMessage({
@@ -4810,7 +4810,6 @@ export function ChatPanel() {
                 });
                 commMsgIndex =
                   useIDEStore.getState().managerMessages.length - 1;
-                setExecutingTaskIndex(stepNum - 1);
               }
               await new Promise<void>((r) => setTimeout(r, 0));
             } else if (type === "thinking_token") {
