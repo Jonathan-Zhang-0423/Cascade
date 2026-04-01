@@ -2459,7 +2459,7 @@ export function ChatPanel() {
                   const target = msgs[commTypingIdx];
                   if (target?.typing) {
                     const updated = [...msgs];
-                    updated[commTypingIdx] = { ...target, content: commAccumulated, typing: false, source: "communicator" as const };
+                    updated[commTypingIdx] = { ...target, content: commAccumulated, typing: false, preparingPlan: undefined, source: "communicator" as const };
                     useIDEStore.setState({ managerMessages: updated });
                     commNarrationMsgIndex = commTypingIdx;
                     commTypingIdx = -1;
