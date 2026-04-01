@@ -12,26 +12,26 @@ interface DeviceSimulatorProps {
 function IOSStatusBar({ isDark }: { isDark: boolean }) {
   const color = isDark ? "#fff" : "#000";
   return (
-    <div className="flex items-center justify-between w-full px-6" style={{ height: 20 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <div className="flex items-center justify-between w-full px-7" style={{ height: 22 }}>
+      <span style={{ fontSize: 14, fontWeight: 600, color, fontFamily: "-apple-system, 'SF Pro Text', system-ui, sans-serif", letterSpacing: 0.2 }}>
         9:41
       </span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-[5px]">
+        <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+          <rect x="0.5" y="6" width="3" height="6" rx="1" fill={color} opacity="0.35" />
+          <rect x="4.5" y="4" width="3" height="8" rx="1" fill={color} opacity="0.55" />
+          <rect x="8.5" y="2" width="3" height="10" rx="1" fill={color} opacity="0.75" />
+          <rect x="12.5" y="0" width="3" height="12" rx="1" fill={color} />
+        </svg>
         <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-          <rect x="0" y="6" width="3" height="6" rx="0.5" fill={color} opacity="0.4" />
-          <rect x="4" y="4" width="3" height="8" rx="0.5" fill={color} opacity="0.6" />
-          <rect x="8" y="2" width="3" height="10" rx="0.5" fill={color} opacity="0.8" />
-          <rect x="12" y="0" width="3" height="12" rx="0.5" fill={color} />
+          <path d="M8 3.5C9.6 3.5 11 4.1 12.1 5.2L13.5 3.8C12 2.3 10.1 1.5 8 1.5C5.9 1.5 4 2.3 2.5 3.8L3.9 5.2C5 4.1 6.4 3.5 8 3.5Z" fill={color} opacity="0.45" />
+          <path d="M8 6.5C9 6.5 9.9 6.9 10.6 7.6L12 6.2C10.9 5.1 9.5 4.5 8 4.5C6.5 4.5 5.1 5.1 4 6.2L5.4 7.6C6.1 6.9 7 6.5 8 6.5Z" fill={color} opacity="0.7" />
+          <circle cx="8" cy="10" r="1.5" fill={color} />
         </svg>
-        <svg width="15" height="11" viewBox="0 0 15 11" fill="none">
-          <path d="M7.5 3.5C9.2 3.5 10.7 4.2 11.8 5.3L13.2 3.9C11.7 2.4 9.7 1.5 7.5 1.5C5.3 1.5 3.3 2.4 1.8 3.9L3.2 5.3C4.3 4.2 5.8 3.5 7.5 3.5Z" fill={color} opacity="0.5" />
-          <path d="M7.5 6.5C8.6 6.5 9.6 6.9 10.4 7.7L11.8 6.3C10.6 5.1 9.1 4.5 7.5 4.5C5.9 4.5 4.4 5.1 3.2 6.3L4.6 7.7C5.4 6.9 6.4 6.5 7.5 6.5Z" fill={color} opacity="0.75" />
-          <circle cx="7.5" cy="10" r="1.5" fill={color} />
-        </svg>
-        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
-          <rect x="0" y="1" width="21" height="10" rx="2" stroke={color} strokeWidth="1" fill="none" opacity="0.4" />
-          <rect x="1.5" y="2.5" width="15" height="7" rx="1" fill={color} />
-          <rect x="22" y="4" width="2" height="4" rx="0.5" fill={color} opacity="0.4" />
+        <svg width="27" height="13" viewBox="0 0 27 13" fill="none">
+          <rect x="0.5" y="1" width="22" height="11" rx="3.5" stroke={color} strokeWidth="1" fill="none" opacity="0.35" />
+          <rect x="2" y="2.5" width="16" height="8" rx="2" fill={color} />
+          <path d="M24 4.5C24.8 4.8 25.5 5.7 25.5 6.5C25.5 7.3 24.8 8.2 24 8.5V4.5Z" fill={color} opacity="0.4" />
         </svg>
       </div>
     </div>
@@ -41,93 +41,79 @@ function IOSStatusBar({ isDark }: { isDark: boolean }) {
 function AndroidStatusBar({ isDark }: { isDark: boolean }) {
   const color = isDark ? "#fff" : "#000";
   return (
-    <div className="flex items-center justify-between w-full px-4" style={{ height: 20 }}>
-      <span style={{ fontSize: 11, fontWeight: 500, color, fontFamily: "'Roboto', system-ui, sans-serif" }}>
+    <div className="flex items-center justify-between w-full px-5" style={{ height: 22 }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color, fontFamily: "'Roboto', system-ui, sans-serif" }}>
         9:41
       </span>
-      <div className="flex items-center gap-1.5">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <div className="flex items-center gap-[5px]">
+        <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
           <rect x="0" y="8" width="2.5" height="4" rx="0.5" fill={color} opacity="0.3" />
-          <rect x="3.2" y="5.5" width="2.5" height="6.5" rx="0.5" fill={color} opacity="0.5" />
-          <rect x="6.4" y="3" width="2.5" height="9" rx="0.5" fill={color} opacity="0.75" />
-          <rect x="9.6" y="0" width="2.4" height="12" rx="0.5" fill={color} />
+          <rect x="3.5" y="5.5" width="2.5" height="6.5" rx="0.5" fill={color} opacity="0.5" />
+          <rect x="7" y="3" width="2.5" height="9" rx="0.5" fill={color} opacity="0.75" />
+          <rect x="10.5" y="0" width="2.5" height="12" rx="0.5" fill={color} />
         </svg>
-        <svg width="15" height="11" viewBox="0 0 15 11" fill="none">
-          <path d="M7.5 3.5C9.2 3.5 10.7 4.2 11.8 5.3L13.2 3.9C11.7 2.4 9.7 1.5 7.5 1.5C5.3 1.5 3.3 2.4 1.8 3.9L3.2 5.3C4.3 4.2 5.8 3.5 7.5 3.5Z" fill={color} opacity="0.5" />
-          <path d="M7.5 6.5C8.6 6.5 9.6 6.9 10.4 7.7L11.8 6.3C10.6 5.1 9.1 4.5 7.5 4.5C5.9 4.5 4.4 5.1 3.2 6.3L4.6 7.7C5.4 6.9 6.4 6.5 7.5 6.5Z" fill={color} opacity="0.75" />
-          <circle cx="7.5" cy="10" r="1.5" fill={color} />
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <path d="M8 3.5C9.6 3.5 11 4.1 12.1 5.2L13.5 3.8C12 2.3 10.1 1.5 8 1.5C5.9 1.5 4 2.3 2.5 3.8L3.9 5.2C5 4.1 6.4 3.5 8 3.5Z" fill={color} opacity="0.45" />
+          <path d="M8 6.5C9 6.5 9.9 6.9 10.6 7.6L12 6.2C10.9 5.1 9.5 4.5 8 4.5C6.5 4.5 5.1 5.1 4 6.2L5.4 7.6C6.1 6.9 7 6.5 8 6.5Z" fill={color} opacity="0.7" />
+          <circle cx="8" cy="10" r="1.5" fill={color} />
         </svg>
-        <svg width="22" height="12" viewBox="0 0 22 12" fill="none">
-          <rect x="0" y="1" width="19" height="10" rx="2" stroke={color} strokeWidth="1" fill="none" opacity="0.4" />
-          <rect x="1.5" y="2.5" width="13" height="7" rx="1" fill={color} />
-          <rect x="20" y="3.5" width="2" height="5" rx="0.5" fill={color} opacity="0.4" />
+        <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+          <rect x="0" y="1" width="20" height="10" rx="2.5" stroke={color} strokeWidth="1" fill="none" opacity="0.35" />
+          <rect x="1.5" y="2.5" width="14" height="7" rx="1.5" fill={color} />
+          <rect x="21" y="3.5" width="2" height="5" rx="0.5" fill={color} opacity="0.4" />
         </svg>
       </div>
     </div>
   );
 }
 
-function DynamicIsland({ isDark }: { isDark: boolean }) {
+function DynamicIsland() {
   return (
     <div
       className="absolute left-1/2 -translate-x-1/2"
       style={{
-        top: 10,
+        top: 12,
         width: 126,
-        height: 36,
-        borderRadius: 20,
-        backgroundColor: isDark ? "#000" : "#1a1a1a",
+        height: 37,
+        borderRadius: 22,
+        backgroundColor: "#000",
+        boxShadow: "0 0 0 0.5px rgba(0,0,0,0.3)",
       }}
     />
   );
 }
 
-function ClassicNotch({ isDark, width }: { isDark: boolean; width: number }) {
-  const notchW = Math.min(width * 0.45, 180);
+function ClassicNotch({ width }: { width: number }) {
+  const notchW = Math.min(width * 0.42, 170);
   return (
-    <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: notchW, height: 26 }}>
-      <svg width="100%" height="100%" viewBox={`0 0 ${notchW} 26`} preserveAspectRatio="none">
+    <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: notchW, height: 30 }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${notchW} 30`} preserveAspectRatio="none">
         <path
-          d={`M0,0 L${notchW * 0.1},0 Q${notchW * 0.15},0 ${notchW * 0.15},6 L${notchW * 0.15},16 Q${notchW * 0.15},26 ${notchW * 0.25},26 L${notchW * 0.75},26 Q${notchW * 0.85},26 ${notchW * 0.85},16 L${notchW * 0.85},6 Q${notchW * 0.85},0 ${notchW * 0.9},0 L${notchW},0`}
-          fill={isDark ? "#1c1c1e" : "#e8e8ed"}
+          d={`M0,0 L${notchW * 0.08},0 Q${notchW * 0.12},0 ${notchW * 0.14},8 L${notchW * 0.14},18 Q${notchW * 0.14},30 ${notchW * 0.24},30 L${notchW * 0.76},30 Q${notchW * 0.86},30 ${notchW * 0.86},18 L${notchW * 0.86},8 Q${notchW * 0.88},0 ${notchW * 0.92},0 L${notchW},0`}
+          fill="#000"
         />
       </svg>
       <div
         className="absolute rounded-full"
-        style={{
-          top: 8,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 10,
-          height: 10,
-          backgroundColor: isDark ? "#2c2c2e" : "#bbb",
-          border: `1px solid ${isDark ? "#3a3a3c" : "#aaa"}`,
-        }}
+        style={{ top: 9, left: "50%", transform: "translateX(-50%)", width: 12, height: 12, backgroundColor: "#1a1a2e", border: "1.5px solid #2a2a3e" }}
       />
       <div
         className="absolute rounded-full"
-        style={{
-          top: 10,
-          left: "50%",
-          transform: "translateX(10px)",
-          width: 6,
-          height: 6,
-          backgroundColor: isDark ? "#1a1a2e" : "#ccc",
-        }}
+        style={{ top: 12, left: "50%", transform: "translateX(12px)", width: 6, height: 6, backgroundColor: "#222" }}
       />
     </div>
   );
 }
 
-function ClassicHomeButton({ isDark }: { isDark: boolean }) {
+function ClassicHomeButton() {
   return (
-    <div className="flex items-center justify-center" style={{ height: 44 }}>
+    <div className="flex items-center justify-center" style={{ height: 50 }}>
       <div
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          border: `2px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          border: "2.5px solid rgba(255,255,255,0.12)",
           backgroundColor: "transparent",
         }}
       />
@@ -137,13 +123,13 @@ function ClassicHomeButton({ isDark }: { isDark: boolean }) {
 
 function IOSHomeIndicator({ isDark }: { isDark: boolean }) {
   return (
-    <div className="flex items-center justify-center" style={{ height: 28 }}>
+    <div className="flex items-center justify-center" style={{ height: 30, paddingBottom: 6 }}>
       <div
         style={{
           width: 134,
           height: 5,
           borderRadius: 3,
-          backgroundColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)",
+          backgroundColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.2)",
         }}
       />
     </div>
@@ -151,17 +137,17 @@ function IOSHomeIndicator({ isDark }: { isDark: boolean }) {
 }
 
 function AndroidNavBar({ isDark }: { isDark: boolean }) {
-  const iconColor = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.35)";
+  const iconColor = isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.3)";
   return (
-    <div className="flex items-center justify-center gap-12" style={{ height: 36 }}>
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <polygon points="14,3 4,9 14,15" fill={iconColor} />
+    <div className="flex items-center justify-center gap-14" style={{ height: 40 }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <polygon points="12,2 4,8 12,14" fill={iconColor} />
       </svg>
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <circle cx="9" cy="9" r="7" fill="none" stroke={iconColor} strokeWidth="2" />
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="6" fill="none" stroke={iconColor} strokeWidth="1.8" />
       </svg>
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <rect x="3" y="3" width="12" height="12" rx="2" fill="none" stroke={iconColor} strokeWidth="2" />
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="3" y="3" width="10" height="10" rx="2" fill="none" stroke={iconColor} strokeWidth="1.8" />
       </svg>
     </div>
   );
@@ -174,6 +160,69 @@ function getDeviceVariant(spec: DeviceSpec, isIOS: boolean): DeviceVariant {
   if (spec.hasDynamicIsland) return "dynamic-island";
   if (spec.id === "ipad") return "flat";
   return "classic-notch";
+}
+
+function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: number; isIOS: boolean }) {
+  const btnColor = isDark ? "#2a2a2c" : "#b0b0b4";
+  const btnBorder = isDark ? "#3a3a3c" : "#9a9a9e";
+  if (!isIOS) return null;
+
+  return (
+    <>
+      <div
+        className="absolute"
+        style={{
+          right: -3,
+          top: height * 0.18,
+          width: 3,
+          height: 70,
+          backgroundColor: btnColor,
+          borderRadius: "0 2px 2px 0",
+          border: `0.5px solid ${btnBorder}`,
+          borderLeft: "none",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          left: -3,
+          top: height * 0.16,
+          width: 3,
+          height: 32,
+          backgroundColor: btnColor,
+          borderRadius: "2px 0 0 2px",
+          border: `0.5px solid ${btnBorder}`,
+          borderRight: "none",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          left: -3,
+          top: height * 0.24,
+          width: 3,
+          height: 52,
+          backgroundColor: btnColor,
+          borderRadius: "2px 0 0 2px",
+          border: `0.5px solid ${btnBorder}`,
+          borderRight: "none",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          left: -3,
+          top: height * 0.32,
+          width: 3,
+          height: 52,
+          backgroundColor: btnColor,
+          borderRadius: "2px 0 0 2px",
+          border: `0.5px solid ${btnBorder}`,
+          borderRight: "none",
+        }}
+      />
+    </>
+  );
 }
 
 export function DeviceSimulator({
@@ -195,16 +244,17 @@ export function DeviceSimulator({
   const isIPad = deviceSpec.id === "ipad";
   const isClassicNotch = variant === "classic-notch";
   const hasDI = variant === "dynamic-island";
+  const isSE = deviceSpec.id === "iphone-se";
 
-  const bezelRadius = isIPad ? 18 : isClassicNotch ? 36 : 40;
-  const sideBezel = isIPad ? 16 : 10;
-
-  const statusBarH = 24;
-  const topChromeH = hasDI ? 54 : isClassicNotch ? 30 : statusBarH;
-  const bottomChromeH = isIOS ? (isClassicNotch ? 48 : 28) : 36;
+  const sideBezel = isIPad ? 18 : isSE ? 14 : 12;
+  const topBezel = isIPad ? 18 : isSE ? 60 : 12;
+  const bottomBezel = isIPad ? 18 : isSE ? 70 : 12;
+  const specScreenR = deviceSpec.screenRadius ?? (isIPad ? 18 : isSE ? 0 : 55);
+  const outerRadius = isIPad ? 24 : isSE ? 12 : Math.min(specScreenR + sideBezel, 58);
+  const innerRadius = isIPad ? 8 : isSE ? 0 : specScreenR;
 
   const totalW = deviceW + sideBezel * 2;
-  const totalH = deviceH + topChromeH + bottomChromeH + sideBezel * 2;
+  const totalH = deviceH + topBezel + bottomBezel;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -212,11 +262,11 @@ export function DeviceSimulator({
   const computeScale = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const pad = 32;
+    const pad = 40;
     const availW = rect.width - pad;
     const availH = rect.height - pad;
     if (availW <= 0 || availH <= 0) return;
-    const s = Math.min(availW / totalW, availH / totalH, 1);
+    const s = Math.min(availW / (totalW + 8), availH / (totalH + 8), 1);
     setScale(s);
   }, [totalW, totalH]);
 
@@ -227,96 +277,93 @@ export function DeviceSimulator({
     return () => ro.disconnect();
   }, [computeScale]);
 
-  const frameBg = isDark ? "#1c1c1e" : "#e8e8ed";
-  const frameEdge = isDark ? "#3a3a3c" : "#c7c7cc";
-  const screenBg = isDark ? "#000" : "#fff";
-  const statusBg = isDark ? "rgba(0,0,0,0.85)" : "rgba(245,245,247,0.9)";
+  const frameBg = isDark ? "#1a1a1c" : "#e0e0e4";
+  const frameEdge = isDark ? "#2c2c2e" : "#bbbbc0";
 
   return (
     <div
       ref={containerRef}
       className="flex items-center justify-center w-full h-full overflow-hidden"
-      style={{ backgroundColor: isDark ? "#0c0c0e" : "#f0f0f2" }}
+      style={{ backgroundColor: isDark ? "#0a0a0c" : "#f0f0f2" }}
       data-testid="device-simulator-container"
     >
       <div
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "center center",
-          transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-          width: totalW,
-          height: totalH,
+          transition: "transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+          width: totalW + 8,
+          height: totalH + 8,
           flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <div
-          className="relative overflow-hidden"
+          className="relative"
           style={{
             width: totalW,
             height: totalH,
-            borderRadius: bezelRadius,
+            borderRadius: outerRadius,
             backgroundColor: frameBg,
-            border: `2px solid ${frameEdge}`,
+            border: `2.5px solid ${frameEdge}`,
             boxShadow: isDark
-              ? "0 25px 80px rgba(0,0,0,0.9), 0 4px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)"
-              : "0 25px 80px rgba(0,0,0,0.18), 0 4px 20px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)",
-            transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.4s ease",
+              ? `0 30px 90px rgba(0,0,0,0.95), 0 8px 30px rgba(0,0,0,0.7), inset 0 0.5px 0 rgba(255,255,255,0.08), inset 0 -0.5px 0 rgba(0,0,0,0.3)`
+              : `0 30px 90px rgba(0,0,0,0.2), 0 8px 30px rgba(0,0,0,0.1), inset 0 0.5px 0 rgba(255,255,255,0.9), inset 0 -0.5px 0 rgba(0,0,0,0.05)`,
+            transition: "width 0.35s cubic-bezier(0.4, 0, 0.2, 1), height 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.35s ease",
           }}
           data-testid="device-frame"
         >
-          <div
-            className="absolute flex flex-col items-center justify-end"
-            style={{
-              top: sideBezel,
-              left: sideBezel,
-              right: sideBezel,
-              height: topChromeH,
-              backgroundColor: statusBg,
-              borderRadius: `${Math.max(bezelRadius - sideBezel, 8)}px ${Math.max(bezelRadius - sideBezel, 8)}px 0 0`,
-              zIndex: 10,
-              paddingBottom: 2,
-              overflow: "hidden",
-              position: "absolute",
-            }}
-          >
-            {hasDI && <DynamicIsland isDark={isDark} />}
-            {isClassicNotch && <ClassicNotch isDark={isDark} width={deviceW} />}
-            {isIOS ? <IOSStatusBar isDark={isDark} /> : <AndroidStatusBar isDark={isDark} />}
-          </div>
+          <SideButtons isDark={isDark} height={totalH} isIOS={isIOS && !isIPad} />
 
           <div
             className="absolute overflow-hidden"
             style={{
-              top: sideBezel + topChromeH,
+              top: topBezel,
               left: sideBezel,
               right: sideBezel,
-              bottom: sideBezel + bottomChromeH,
-              backgroundColor: screenBg,
-              cursor: "pointer",
+              bottom: bottomBezel,
+              borderRadius: innerRadius,
+              backgroundColor: isDark ? "#000" : "#fff",
             }}
             data-testid="device-screen"
           >
-            {children}
+            <div
+              className="absolute inset-0 flex flex-col"
+              style={{ zIndex: 20, pointerEvents: "none" }}
+            >
+              {hasDI && <DynamicIsland />}
+              {isClassicNotch && <ClassicNotch width={deviceW} />}
+
+              <div style={{ pointerEvents: "none" }}>
+                {isIOS ? <IOSStatusBar isDark={isDark} /> : <AndroidStatusBar isDark={isDark} />}
+              </div>
+
+              <div className="flex-1" />
+
+              <div style={{ pointerEvents: "none" }}>
+                {isIOS ? (
+                  isSE || isClassicNotch ? null : <IOSHomeIndicator isDark={isDark} />
+                ) : (
+                  <AndroidNavBar isDark={isDark} />
+                )}
+              </div>
+            </div>
+
+            <div className="absolute inset-0" style={{ zIndex: 10 }}>
+              {children}
+            </div>
           </div>
 
-          <div
-            className="absolute flex items-center justify-center"
-            style={{
-              bottom: sideBezel,
-              left: sideBezel,
-              right: sideBezel,
-              height: bottomChromeH,
-              backgroundColor: statusBg,
-              borderRadius: `0 0 ${Math.max(bezelRadius - sideBezel, 8)}px ${Math.max(bezelRadius - sideBezel, 8)}px`,
-              zIndex: 10,
-            }}
-          >
-            {isIOS ? (
-              isClassicNotch ? <ClassicHomeButton isDark={isDark} /> : <IOSHomeIndicator isDark={isDark} />
-            ) : (
-              <AndroidNavBar isDark={isDark} />
-            )}
-          </div>
+          {isSE && isIOS && (
+            <div
+              className="absolute left-0 right-0 flex items-center justify-center"
+              style={{ bottom: 0, height: bottomBezel }}
+            >
+              <ClassicHomeButton />
+            </div>
+          )}
         </div>
       </div>
     </div>

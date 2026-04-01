@@ -5,6 +5,7 @@ export interface DeviceSpec {
   height: number;
   platform: "ios" | "android";
   hasDynamicIsland?: boolean;
+  screenRadius?: number;
   safeAreaInsets?: {
     top: number;
     bottom: number;
@@ -21,15 +22,17 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     height: 667,
     platform: "ios",
     hasDynamicIsland: false,
+    screenRadius: 0,
     safeAreaInsets: { top: 20, bottom: 0, left: 0, right: 0 },
   },
   "iphone-15": {
     id: "iphone-15",
     name: "iPhone 15",
-    width: 390,
-    height: 844,
+    width: 393,
+    height: 852,
     platform: "ios",
     hasDynamicIsland: true,
+    screenRadius: 55,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
   "iphone-15-pro-max": {
@@ -39,6 +42,87 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     height: 932,
     platform: "ios",
     hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-16": {
+    id: "iphone-16",
+    name: "iPhone 16",
+    width: 393,
+    height: 852,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-16-plus": {
+    id: "iphone-16-plus",
+    name: "iPhone 16 Plus",
+    width: 430,
+    height: 932,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-16-pro": {
+    id: "iphone-16-pro",
+    name: "iPhone 16 Pro",
+    width: 402,
+    height: 874,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-16-pro-max": {
+    id: "iphone-16-pro-max",
+    name: "iPhone 16 Pro Max",
+    width: 440,
+    height: 956,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-17": {
+    id: "iphone-17",
+    name: "iPhone 17",
+    width: 393,
+    height: 852,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-17-plus": {
+    id: "iphone-17-plus",
+    name: "iPhone 17 Plus",
+    width: 430,
+    height: 932,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-17-pro": {
+    id: "iphone-17-pro",
+    name: "iPhone 17 Pro",
+    width: 402,
+    height: 874,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
+    safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
+  },
+  "iphone-17-pro-max": {
+    id: "iphone-17-pro-max",
+    name: "iPhone 17 Pro Max",
+    width: 440,
+    height: 956,
+    platform: "ios",
+    hasDynamicIsland: true,
+    screenRadius: 55,
     safeAreaInsets: { top: 59, bottom: 34, left: 0, right: 0 },
   },
   ipad: {
@@ -48,6 +132,7 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     height: 1080,
     platform: "ios",
     hasDynamicIsland: false,
+    screenRadius: 18,
     safeAreaInsets: { top: 24, bottom: 24, left: 24, right: 24 },
   },
   "pixel-7": {
@@ -56,6 +141,7 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 412,
     height: 915,
     platform: "android",
+    screenRadius: 40,
     safeAreaInsets: { top: 24, bottom: 0, left: 0, right: 0 },
   },
   "pixel-fold": {
@@ -64,6 +150,7 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 884,
     height: 1104,
     platform: "android",
+    screenRadius: 24,
     safeAreaInsets: { top: 24, bottom: 0, left: 0, right: 0 },
   },
   "galaxy-s24": {
@@ -72,6 +159,7 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
     width: 360,
     height: 780,
     platform: "android",
+    screenRadius: 40,
     safeAreaInsets: { top: 24, bottom: 0, left: 0, right: 0 },
   },
 };
@@ -79,11 +167,23 @@ export const DEVICE_SPECS: Record<string, DeviceSpec> = {
 export const DEVICE_LIST = Object.values(DEVICE_SPECS);
 
 export function getDeviceSpec(deviceId: string): DeviceSpec {
-  return DEVICE_SPECS[deviceId] || DEVICE_SPECS["iphone-15"];
+  return DEVICE_SPECS[deviceId] || DEVICE_SPECS["iphone-16-pro"];
 }
 
 export function getDeviceName(deviceId: string): string {
-  return DEVICE_SPECS[deviceId]?.name || "iPhone 15";
+  return DEVICE_SPECS[deviceId]?.name || "iPhone 16 Pro";
+}
+
+const PLATFORM_DEFAULTS: Record<"ios" | "android", string> = {
+  ios: "iphone-16-pro",
+  android: "pixel-7",
+};
+
+export function getFirstDeviceForPlatform(platform: "ios" | "android"): string {
+  const preferred = PLATFORM_DEFAULTS[platform];
+  if (DEVICE_SPECS[preferred]) return preferred;
+  const device = DEVICE_LIST.find((d) => d.platform === platform);
+  return device?.id || "iphone-16-pro";
 }
 
 export const ORIENTATION_PRESETS = ["portrait", "landscape"] as const;

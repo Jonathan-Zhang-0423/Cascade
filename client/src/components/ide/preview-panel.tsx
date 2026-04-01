@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DeviceSimulator } from "./device-simulator";
-import { DEVICE_LIST, getDeviceSpec, makeCustomSpec } from "@/lib/device-specs";
+import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -100,12 +100,27 @@ export function PreviewPanel() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const t = useT();
 
+  const filteredDevices = useMemo(
+    () => DEVICE_LIST.filter((d) => d.platform === devicePlatform),
+    [devicePlatform]
+  );
+
   const isCustom = selectedDevice === "custom";
   const deviceSpec = isCustom
     ? makeCustomSpec(customDeviceWidth || 390, customDeviceHeight || 844, devicePlatform)
     : getDeviceSpec(selectedDevice);
 
   const effectiveRefresh = refreshKey + previewRefreshKey;
+
+  const handlePlatformChange = (platform: "ios" | "android") => {
+    setDevicePlatform(platform);
+    if (selectedDevice !== "custom") {
+      const currentSpec = getDeviceSpec(selectedDevice);
+      if (currentSpec.platform !== platform) {
+        setSelectedDevice(getFirstDeviceForPlatform(platform));
+      }
+    }
+  };
 
   const htmlContent = useMemo(() => {
     return findFileContent(files, previewFile) || "";
@@ -184,12 +199,40 @@ export function PreviewPanel() {
       <div className="flex items-center gap-1.5 px-2 h-9 border-b border-border/50 shrink-0 flex-wrap">
         <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
 
+        <div className="flex items-center border rounded-md overflow-hidden h-6 shrink-0">
+          <button
+            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
+              devicePlatform === "ios"
+                ? "bg-primary text-primary-foreground"
+                : "bg-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => handlePlatformChange("ios")}
+            data-testid="button-platform-ios"
+          >
+            <img src={appleLogoPath} alt="iOS" className="w-4 h-4" />
+          </button>
+          <div className="w-px h-4 bg-border" />
+          <button
+            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
+              devicePlatform === "android"
+                ? "bg-primary text-primary-foreground"
+                : "bg-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => handlePlatformChange("android")}
+            data-testid="button-platform-android"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
+            </svg>
+          </button>
+        </div>
+
         <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-          <SelectTrigger className="w-[120px] h-6 text-xs rounded-md" data-testid="select-device">
+          <SelectTrigger className="w-[140px] h-6 text-xs rounded-md" data-testid="select-device">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">
-            {DEVICE_LIST.map((device) => (
+            {filteredDevices.map((device) => (
               <SelectItem key={device.id} value={device.id} className="text-xs">
                 {device.name}
               </SelectItem>
@@ -233,34 +276,6 @@ export function PreviewPanel() {
             />
           </div>
         )}
-
-        <div className="flex items-center border rounded-md overflow-hidden h-6 shrink-0">
-          <button
-            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
-              devicePlatform === "ios"
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setDevicePlatform("ios")}
-            data-testid="button-platform-ios"
-          >
-            <img src={appleLogoPath} alt="iOS" className="w-4 h-4" />
-          </button>
-          <div className="w-px h-4 bg-border" />
-          <button
-            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
-              devicePlatform === "android"
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setDevicePlatform("android")}
-            data-testid="button-platform-android"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
-            </svg>
-          </button>
-        </div>
 
         <Button
           size="icon"
