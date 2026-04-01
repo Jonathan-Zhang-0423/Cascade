@@ -2332,6 +2332,7 @@ export function ChatPanel() {
             }
           } else if (evType === "communicator_narration_starting") {
             if (!isCurrentProject) continue;
+            setMgrPreparingPlan(false);
             const msgs = useIDEStore.getState().managerMessages;
             const tIdx = msgs.findIndex((m) => m.typing === true);
             commTypingIdx = tIdx;
