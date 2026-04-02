@@ -44,7 +44,8 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
     - Supports two-tier incremental updates: auto-patching for minor changes and user-initiated optimization for deeper refinement.
 - **LLM Output Monitor**: A non-modal floating panel displaying real-time, color-coded, source-labeled events from LLM interactions, with pub/sub event bus and batching.
 - **Background Build Persistence**: Server-side builds continue independently of client connection, with reconnection support and event buffering.
-- **Framework-Aware Preview Adapters**: Provides specialized preview modes for different frameworks (iframe for Web, Expo Snack for React Native, DartPad for Flutter, static code preview with download for SwiftUI/Kotlin). Includes a zip export feature.
+- **Framework-Aware Preview Adapters**: Provides specialized preview modes for different frameworks (iframe for Web, Expo Snack for React Native, DartPad for Flutter, Kotlin/Wasm live preview for Kotlin/Compose, static code preview with download for SwiftUI). Includes a zip export feature.
+- **Native Code Compilation to Web (Scheme 3)**: Compiles native UI code to WebAssembly for real native browser preview. Kotlin/Compose uses Compose Multiplatform + Kotlin/Wasm (Beta, most viable path). SwiftUI uses SwiftWasm + JavaScriptKit (Tokamak is archived — JavaScriptKit is the active replacement).
 - **Live HTML Preview**: Inlines local HTML, CSS, and JS, capturing console output.
 - **QR Code Phone Preview**: A local preview server serves project files with live reload via WebSockets, accessible on mobile devices via a QR code. Sessions are token-scoped and auto-expire.
 - **Command Palette**: Provides quick access to actions.
@@ -60,3 +61,41 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
 - **Resizable Panels**: `react-resizable-panels`.
 - **Routing**: wouter.
 - **API Client**: `openai` (used with Doubao's API endpoint).
+- **Kotlin/Wasm Compilation**: Gradle 8.10, Kotlin 2.1+ (via Compose Multiplatform plugin), Compose for Web runtime.
+
+## Product Specification — Native Code Compilation to Web
+
+### Strategy
+The product follows "Scheme 3: Native Code Compilation for Web" — compiling native UI code (Kotlin/Compose, SwiftUI) to WebAssembly for real native browser preview, rather than using cloud simulators (Appetize.io) or DSL-to-HTML translation.
+
+### Web Client Preview Paths
+- **Web (HTML/CSS/JS)**: iframe-preview with inlined assets
+- **React Native/Expo**: Expo Snack embed
+- **Flutter/Dart**: DartPad embed
+- **Kotlin/Compose**: Compile to WebAssembly via Compose Multiplatform + Kotlin/Wasm. Server-side Gradle build produces `.wasm` + `.js` artifacts rendered on HTML canvas in browser. All modern browsers support WasmGC. ~3x faster than JS interpretation.
+- **SwiftUI**: (Phase 2) Compile to WebAssembly via SwiftWasm (first-class in Swift 6.1+) + JavaScriptKit for Swift↔DOM bridge. Tokamak is **ARCHIVED** — JavaScriptKit (v0.46.5+, active) is the replacement. Requires custom SwiftUI-subset-to-DOM translation layer.
+
+### Mobile Client Scheme (Future)
+- **Android**: Dynamic Kotlin compilation on-device using Kotlin Scripting API + Compose runtime. Hot-reload capable.
+- **iOS**: DSL interpretation layer (not full compilation due to App Store JIT restrictions). Parse SwiftUI-like DSL and render via native UIKit/SwiftUI components.
+
+### Research Findings (April 2026)
+- Kotlin/Wasm: Compose Multiplatform for Web reached Beta (Sep 2025). Most viable path. Kotlin 2.1+ required for WasmGC target.
+- SwiftWasm: Officially upstreamed to swiftlang/swift in Swift 6.1+. First-class WASI support.
+- Tokamak (SwiftUI→Web): **ARCHIVED/DEAD** as of early 2025. Do not use.
+- JavaScriptKit: Active (v0.46.5+), provides Swift↔JavaScript interop over WASM. Use for DOM manipulation from Swift.
+- Appetize.io: Cloud simulator option evaluated but NOT chosen per spec (too expensive, latency, dependency on third party).
+
+### Implementation Phases
+1. **Phase 1 (Current)**: Kotlin/Wasm compilation service + client runner. Server-side Gradle compilation, artifact caching, WasmPreview component with error display and "Ask AI to Fix" integration.
+2. **Phase 2**: SwiftUI/WASM compilation + JavaScriptKit DOM bridge. SwiftUI-subset renderer (Text, VStack, HStack, ZStack, Button, List, etc.)
+3. **Phase 3**: Mobile native clients (Android dynamic compilation, iOS DSL parsing).
+
+### Kotlin/Wasm Compilation Architecture
+- **Template**: `server/compile-templates/kotlin-wasm/` — Compose Multiplatform project targeting `wasmJs { browser() }` with Material3
+- **Compiler**: `server/kotlin-wasm-compiler.ts` — accepts source files, injects into template, runs Gradle `wasmJsBrowserDistribution`, returns artifacts
+- **Endpoints**: `POST /api/compile/kotlin-wasm` (compile), `GET /api/compile/artifacts/:buildId/*` (serve), `GET /api/compile/status` (availability)
+- **Caching**: Source hash → build artifacts, 30-minute TTL, avoids recompilation for identical sources
+- **Frontend**: `WasmPreview` component triggers compilation on file change (debounced 1.5s), renders in sandboxed iframe, shows errors with "Ask AI to Fix" button via `setPendingPrompt`
+- **Fallback**: If compiler unavailable or compilation fails, falls back to CodePreview (syntax-highlighted code viewer with download)
+- **Preview Mode**: `kotlin-wasm` in preview-adapters.ts, mapped from `kotlin` framework

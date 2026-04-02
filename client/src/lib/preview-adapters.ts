@@ -1,4 +1,4 @@
-export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview";
+export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview" | "kotlin-wasm";
 
 export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin";
 
@@ -8,8 +8,9 @@ export function getPreviewMode(framework: Framework | string | undefined): Previ
       return "expo-snack";
     case "flutter":
       return "dartpad";
-    case "swiftui":
     case "kotlin":
+      return "kotlin-wasm";
+    case "swiftui":
       return "code-preview";
     case "web":
     default:

@@ -43,6 +43,7 @@ import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 import { getAIClient, type AIProvider } from "./kimi-client";
 import { setupPreviewServer } from "./preview-server";
+import { compileKotlinWasm, getArtifactPath, isCompilerAvailable } from "./kotlin-wasm-compiler";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -1860,6 +1861,114 @@ Generate the codestart.md content for this project based on both the plan and th
     } finally {
       try { await rm(tmpBase, { recursive: true, force: true }); } catch {}
     }
+  });
+
+  app.post("/api/compile/kotlin-wasm", async (req, res) => {
+    try {
+      if (!isCompilerAvailable()) {
+        res.status(503).json({
+          success: false,
+          error: "Kotlin/Wasm compiler not available",
+          errors: ["Gradle SDK not found. The compilation environment is not configured."],
+        });
+        return;
+      }
+
+      const { files } = req.body as {
+        files: Array<{ path: string; content: string }>;
+      };
+
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "At least one Kotlin source file is required",
+          errors: ["No source files provided"],
+        });
+        return;
+      }
+
+      for (const f of files) {
+        if (f.path.includes("..") || f.path.includes("\0")) {
+          res.status(400).json({
+            success: false,
+            error: "Invalid file path",
+            errors: [`Invalid file path: ${f.path}`],
+          });
+          return;
+        }
+      }
+
+      const result = await compileKotlinWasm(files);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Kotlin/Wasm compile error:", error?.message || error);
+      res.status(500).json({
+        success: false,
+        error: error?.message || "Compilation failed",
+        errors: [error?.message || "Unknown compilation error"],
+      });
+    }
+  });
+
+  app.use("/api/compile/artifacts", (req, res, next) => {
+    if (req.method !== "GET") { next(); return; }
+    try {
+      const subPath = req.path.replace(/^\//, "");
+      const slashIdx = subPath.indexOf("/");
+      if (slashIdx < 0) {
+        res.status(400).json({ error: "Missing file path" });
+        return;
+      }
+
+      const buildId = subPath.slice(0, slashIdx);
+      const requestedFile = subPath.slice(slashIdx + 1);
+
+      const artifactDir = getArtifactPath(buildId);
+      if (!artifactDir) {
+        res.status(404).json({ error: "Build artifacts not found or expired" });
+        return;
+      }
+
+      if (!requestedFile || requestedFile.includes("..") || requestedFile.includes("\0")) {
+        res.status(400).json({ error: "Invalid file path" });
+        return;
+      }
+
+      const filePath = resolve(join(artifactDir, requestedFile));
+
+      if (!filePath.startsWith(artifactDir)) {
+        res.status(403).json({ error: "Access denied" });
+        return;
+      }
+
+      const ext = requestedFile.split(".").pop()?.toLowerCase() || "";
+      const mimeTypes: Record<string, string> = {
+        html: "text/html",
+        js: "application/javascript",
+        mjs: "application/javascript",
+        wasm: "application/wasm",
+        css: "text/css",
+        json: "application/json",
+        map: "application/json",
+      };
+
+      res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      res.sendFile(filePath);
+    } catch (error: any) {
+      console.error("Artifact serve error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Failed to serve artifact" });
+      }
+    }
+  });
+
+  app.get("/api/compile/status", (_req, res) => {
+    res.json({
+      kotlinWasm: isCompilerAvailable(),
+    });
   });
 
   setupPreviewServer(httpServer, app);

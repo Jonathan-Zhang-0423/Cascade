@@ -23,6 +23,7 @@ import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
 import { getPreviewMode, getFrameworkLabel, getFrameworkColor, getMainEntryFile, buildExpoSnackUrl, buildDartPadUrl } from "@/lib/preview-adapters";
 import { CodePreview } from "./code-preview";
+import { WasmPreview } from "./wasm-preview";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -560,7 +561,14 @@ export function PreviewPanel() {
           frameStyle={deviceFrameStyle}
           platformOverride={devicePlatform}
         >
-          {previewMode === "code-preview" ? (
+          {previewMode === "kotlin-wasm" ? (
+            <WasmPreview
+              files={files}
+              framework={framework}
+              projectId={projectId}
+              refreshKey={effectiveRefresh}
+            />
+          ) : previewMode === "code-preview" ? (
             <CodePreview
               files={files}
               framework={framework}
