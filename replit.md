@@ -63,6 +63,7 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
 - **Routing**: wouter.
 - **API Client**: `openai` (used with Doubao's API endpoint).
 - **Kotlin/Wasm Compilation**: Gradle 8.10, Kotlin 2.1+ (via Compose Multiplatform plugin), Compose for Web runtime.
+- **SwiftUI/Wasm Compilation**: Swift 6.1 toolchain + SwiftWasm SDK for `wasm32-unknown-wasi`, JavaScriptKit 0.21.0. Setup via `scripts/setup-swift-wasm.sh`.
 
 ## Product Specification — Native Code Compilation to Web
 
@@ -110,4 +111,4 @@ The product follows "Scheme 3: Native Code Compilation for Web" — compiling na
 - **Frontend**: Unified `WasmPreview` component handles both Kotlin and Swift — detects framework, uses correct endpoint and file extension (.kt/.swift), shows appropriate labels and accent colors
 - **Fallback**: If Swift toolchain unavailable or compilation fails, falls back to CodePreview with "Ask AI to Fix" button
 - **Preview Mode**: `swift-wasm` in preview-adapters.ts, mapped from `swiftui` framework
-- **Requires**: Swift 6.1+ toolchain with SwiftWasm SDK installed at `SWIFT_WASM_PATH` env var (default `/usr/local/bin/swift`)
+- **Requires**: Swift 6.1+ toolchain with SwiftWasm SDK installed at `SWIFT_WASM_PATH` env var (default `~/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift`). Run `bash scripts/setup-swift-wasm.sh` to install. SDK ID configurable via `SWIFT_WASM_SDK_ID` env var (default `wasm32-unknown-wasi`).

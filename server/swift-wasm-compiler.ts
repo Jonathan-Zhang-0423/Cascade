@@ -5,7 +5,9 @@ import { tmpdir } from "os";
 import { createHash, randomBytes } from "crypto";
 import { existsSync } from "fs";
 
-const SWIFT_WASM_PATH = process.env.SWIFT_WASM_PATH || "/usr/local/bin/swift";
+const SWIFT_WASM_PATH = process.env.SWIFT_WASM_PATH ||
+  `${process.env.HOME}/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift`;
+const SWIFT_WASM_SDK_ID = process.env.SWIFT_WASM_SDK_ID || "wasm32-unknown-wasi";
 const TEMPLATE_DIR = resolve(process.cwd(), "server", "compile-templates", "swift-wasm");
 const COMPILE_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -340,7 +342,7 @@ runApp(GeneratedApp.self)
       SWIFT_WASM_PATH,
       [
         "build",
-        "--triple", "wasm32-unknown-wasi",
+        "--swift-sdk", SWIFT_WASM_SDK_ID,
         "--product", "App",
         "-c", "release",
       ],
@@ -521,21 +523,63 @@ export function getSwiftArtifactPath(buildId: string): string | null {
   return null;
 }
 
+let sdkVerified: boolean | null = null;
+
 export function isSwiftWasmAvailable(): boolean {
   try {
-    return existsSync(SWIFT_WASM_PATH);
+    if (!existsSync(SWIFT_WASM_PATH)) {
+      return false;
+    }
+    if (sdkVerified === null) {
+      verifySdkInstalled();
+    }
+    return sdkVerified === true;
   } catch {
     return false;
   }
 }
 
+function verifySdkInstalled(): void {
+  if (!existsSync(SWIFT_WASM_PATH)) {
+    sdkVerified = false;
+    return;
+  }
+  try {
+    const { execFileSync } = require("child_process");
+    const output = execFileSync(SWIFT_WASM_PATH, ["sdk", "list"], {
+      timeout: 10_000,
+      encoding: "utf8",
+    });
+    sdkVerified = output.includes(SWIFT_WASM_SDK_ID);
+  } catch {
+    sdkVerified = null;
+  }
+}
+
 export function checkSwiftCompilerOnStartup(): void {
-  if (isSwiftWasmAvailable()) {
-    console.log(`[swift-wasm] Compiler available: Swift at ${SWIFT_WASM_PATH}`);
-  } else {
+  if (!existsSync(SWIFT_WASM_PATH)) {
     console.warn(
       `[swift-wasm] WARNING: Swift toolchain not found at ${SWIFT_WASM_PATH}. ` +
-        `SwiftUI/WASM preview will be unavailable. Install Swift 6.1+ with SwiftWasm SDK.`
+        `SwiftUI/WASM preview will be unavailable. Run: bash scripts/setup-swift-wasm.sh`
+    );
+    sdkVerified = false;
+    return;
+  }
+
+  verifySdkInstalled();
+
+  if (sdkVerified === true) {
+    console.log(
+      `[swift-wasm] Compiler available: Swift at ${SWIFT_WASM_PATH}, SDK "${SWIFT_WASM_SDK_ID}" verified`
+    );
+  } else if (sdkVerified === false) {
+    console.warn(
+      `[swift-wasm] WARNING: Swift binary found at ${SWIFT_WASM_PATH} but SDK "${SWIFT_WASM_SDK_ID}" not installed. ` +
+        `Run: bash scripts/setup-swift-wasm.sh`
+    );
+  } else {
+    console.log(
+      `[swift-wasm] Swift binary found at ${SWIFT_WASM_PATH} (SDK verification skipped)`
     );
   }
 }
