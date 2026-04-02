@@ -561,7 +561,7 @@ export function PreviewPanel() {
           frameStyle={deviceFrameStyle}
           platformOverride={devicePlatform}
         >
-          {previewMode === "kotlin-wasm" ? (
+          {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (
             <WasmPreview
               files={files}
               framework={framework}

@@ -18,15 +18,39 @@ interface CompileState {
   errors?: string[];
 }
 
-function getProjectKotlinFiles(
-  files: FileNode[]
+type CompileTarget = "kotlin" | "swift";
+
+function getCompileTarget(framework: string): CompileTarget {
+  if (framework === "swiftui") return "swift";
+  return "kotlin";
+}
+
+function getCompileEndpoint(target: CompileTarget): string {
+  if (target === "swift") return "/api/compile/swift-wasm";
+  return "/api/compile/kotlin-wasm";
+}
+
+function getFileExtension(target: CompileTarget): string {
+  if (target === "swift") return ".swift";
+  return ".kt";
+}
+
+function getLanguageLabel(target: CompileTarget): string {
+  if (target === "swift") return "SwiftUI";
+  return "Compose";
+}
+
+function getProjectSourceFiles(
+  files: FileNode[],
+  target: CompileTarget
 ): Array<{ path: string; content: string }> {
+  const ext = getFileExtension(target);
   return flattenFiles(files)
     .filter(
       (f) =>
         f.content !== undefined &&
         f.path.startsWith("/project/") &&
-        f.path.endsWith(".kt")
+        f.path.endsWith(ext)
     )
     .map((f) => ({ path: f.path, content: f.content || "" }));
 }
@@ -38,6 +62,21 @@ function hashFiles(files: Array<{ path: string; content: string }>): string {
   }
   return h;
 }
+
+const accentStyles = {
+  kotlin: {
+    buttonClass: "border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300",
+    iconBgClass: "bg-purple-500/15",
+    progressClass: "bg-purple-500",
+    emoji: "🔨",
+  },
+  swift: {
+    buttonClass: "border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 text-orange-300",
+    iconBgClass: "bg-orange-500/15",
+    progressClass: "bg-orange-500",
+    emoji: "🍎",
+  },
+} as const;
 
 export function WasmPreview({
   files,
@@ -55,11 +94,14 @@ export function WasmPreview({
   const abortRef = useRef<AbortController | null>(null);
   const setPendingPrompt = useIDEStore((s) => s.setPendingPrompt);
 
-  const kotlinFiles = useMemo(() => getProjectKotlinFiles(files), [files]);
-  const currentHash = useMemo(() => hashFiles(kotlinFiles), [kotlinFiles]);
+  const compileTarget = useMemo(() => getCompileTarget(framework), [framework]);
+  const sourceFiles = useMemo(() => getProjectSourceFiles(files, compileTarget), [files, compileTarget]);
+  const currentHash = useMemo(() => hashFiles(sourceFiles), [sourceFiles]);
+  const langLabel = getLanguageLabel(compileTarget);
+  const styles = accentStyles[compileTarget];
 
   const triggerCompile = useCallback(async () => {
-    if (kotlinFiles.length === 0) {
+    if (sourceFiles.length === 0) {
       setCompileState({ status: "idle" });
       return;
     }
@@ -74,10 +116,11 @@ export function WasmPreview({
     setCompileState({ status: "compiling" });
 
     try {
-      const res = await fetch("/api/compile/kotlin-wasm", {
+      const endpoint = getCompileEndpoint(compileTarget);
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: kotlinFiles }),
+        body: JSON.stringify({ files: sourceFiles }),
         signal: abortController.signal,
       });
 
@@ -117,7 +160,7 @@ export function WasmPreview({
         errors: [err?.message || "Network error during compilation"],
       });
     }
-  }, [kotlinFiles]);
+  }, [sourceFiles, compileTarget]);
 
   useEffect(() => {
     if (currentHash === lastHashRef.current && compileState.status === "success") {
@@ -159,9 +202,10 @@ export function WasmPreview({
   const handleAskAiFix = useCallback(() => {
     if (!compileState.errors || compileState.errors.length === 0) return;
     const errorText = compileState.errors.join("\n");
-    const prompt = `The Kotlin/Compose code has compilation errors. Please fix these errors:\n\n${errorText}`;
+    const langName = compileTarget === "swift" ? "SwiftUI" : "Kotlin/Compose";
+    const prompt = `The ${langName} code has compilation errors. Please fix these errors:\n\n${errorText}`;
     setPendingPrompt(prompt);
-  }, [compileState.errors, setPendingPrompt]);
+  }, [compileState.errors, setPendingPrompt, compileTarget]);
 
   if (showFallback || compileState.status === "unavailable") {
     return (
@@ -170,7 +214,7 @@ export function WasmPreview({
           <div className="px-3 py-2 bg-yellow-500/10 border-b border-yellow-500/30 flex items-center gap-2">
             <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
             <span className="text-xs text-yellow-400">
-              Wasm compiler not available. Showing code preview.
+              {langLabel} Wasm compiler not available. Showing code preview.
             </span>
           </div>
         )}
@@ -201,7 +245,7 @@ export function WasmPreview({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 text-xs gap-1.5 border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300"
+            className={`h-7 text-xs gap-1.5 ${styles.buttonClass}`}
             onClick={handleAskAiFix}
             data-testid="button-ask-ai-fix"
           >
@@ -253,7 +297,7 @@ export function WasmPreview({
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           <span className="text-[10px] text-green-400 font-medium">
-            Live Compose Preview
+            Live {langLabel} Preview
           </span>
           <div className="flex-1" />
           <Button
@@ -272,7 +316,7 @@ export function WasmPreview({
             key={`wasm-${compileState.buildId}`}
             src={iframeSrc}
             className="w-full h-full border-0"
-            title="Kotlin Compose WASM Preview"
+            title={`${langLabel} WASM Preview`}
             sandbox="allow-scripts allow-same-origin"
             data-testid="preview-wasm-iframe"
           />
@@ -287,20 +331,20 @@ export function WasmPreview({
       data-testid="wasm-preview-idle"
     >
       <div className="flex flex-col items-center gap-3 text-center px-6">
-        <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center">
-          <span className="text-lg">🔨</span>
+        <div className={`w-10 h-10 rounded-xl ${styles.iconBgClass} flex items-center justify-center`}>
+          <span className="text-lg">{styles.emoji}</span>
         </div>
         <p className="text-sm text-gray-300 font-medium">
-          Preparing Compose Preview
+          Preparing {langLabel} Preview
         </p>
         <p className="text-xs text-gray-500 max-w-[240px]">
           {compileState.status === "compiling"
-            ? "Compiling Kotlin to WebAssembly..."
-            : "Waiting for Kotlin source files..."}
+            ? `Compiling ${langLabel} to WebAssembly...`
+            : `Waiting for ${getFileExtension(compileTarget)} source files...`}
         </p>
         {compileState.status === "compiling" && (
           <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">
-            <div className="h-full bg-purple-500 rounded-full animate-pulse w-2/3" />
+            <div className={`h-full ${styles.progressClass} rounded-full animate-pulse w-2/3`} />
           </div>
         )}
       </div>

@@ -44,6 +44,7 @@ import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 import { getAIClient, type AIProvider } from "./kimi-client";
 import { setupPreviewServer } from "./preview-server";
 import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "./kotlin-wasm-compiler";
+import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -467,6 +468,7 @@ export async function registerRoutes(
   app: Express,
 ): Promise<Server> {
   checkCompilerOnStartup();
+  checkSwiftCompilerOnStartup();
 
   app.get("/api/providers", (_req, res) => {
     res.json({
@@ -2036,6 +2038,53 @@ Generate the codestart.md content for this project based on both the plan and th
     }
   });
 
+  app.post("/api/compile/swift-wasm", async (req, res) => {
+    try {
+      if (!isSwiftWasmAvailable()) {
+        res.status(503).json({
+          success: false,
+          error: "Swift/Wasm compiler not available",
+          errors: ["Swift toolchain not found. The SwiftWasm compilation environment is not configured."],
+        });
+        return;
+      }
+
+      const { files } = req.body as {
+        files: Array<{ path: string; content: string }>;
+      };
+
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "At least one Swift source file is required",
+          errors: ["No source files provided"],
+        });
+        return;
+      }
+
+      for (const f of files) {
+        if (f.path.includes("..") || f.path.includes("\0")) {
+          res.status(400).json({
+            success: false,
+            error: "Invalid file path",
+            errors: [`Invalid file path: ${f.path}`],
+          });
+          return;
+        }
+      }
+
+      const result = await compileSwiftWasm(files);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Swift/Wasm compile error:", error?.message || error);
+      res.status(500).json({
+        success: false,
+        error: error?.message || "Compilation failed",
+        errors: [error?.message || "Unknown compilation error"],
+      });
+    }
+  });
+
   app.use("/api/compile/artifacts", (req, res, next) => {
     if (req.method !== "GET") { next(); return; }
     try {
@@ -2049,7 +2098,7 @@ Generate the codestart.md content for this project based on both the plan and th
       const buildId = subPath.slice(0, slashIdx);
       const requestedFile = subPath.slice(slashIdx + 1);
 
-      const artifactDir = getArtifactPath(buildId);
+      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId);
       if (!artifactDir) {
         res.status(404).json({ error: "Build artifacts not found or expired" });
         return;
@@ -2094,6 +2143,7 @@ Generate the codestart.md content for this project based on both the plan and th
   app.get("/api/compile/status", (_req, res) => {
     res.json({
       kotlinWasm: isCompilerAvailable(),
+      swiftWasm: isSwiftWasmAvailable(),
     });
   });
 

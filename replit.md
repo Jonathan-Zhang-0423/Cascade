@@ -88,8 +88,8 @@ The product follows "Scheme 3: Native Code Compilation for Web" — compiling na
 - Appetize.io: Cloud simulator option evaluated but NOT chosen per spec (too expensive, latency, dependency on third party).
 
 ### Implementation Phases
-1. **Phase 1 (Current)**: Kotlin/Wasm compilation service + client runner. Server-side Gradle compilation, artifact caching, WasmPreview component with error display and "Ask AI to Fix" integration.
-2. **Phase 2**: SwiftUI/WASM compilation + JavaScriptKit DOM bridge. SwiftUI-subset renderer (Text, VStack, HStack, ZStack, Button, List, etc.)
+1. **Phase 1 (Complete)**: Kotlin/Wasm compilation service + client runner. Server-side Gradle compilation, artifact caching, WasmPreview component with error display and "Ask AI to Fix" integration.
+2. **Phase 2 (Complete)**: SwiftUI/WASM compilation + JavaScriptKit DOM bridge. SwiftUI-subset renderer (Text, VStack, HStack, ZStack, Button, List, NavigationStack, Spacer, Divider, ScrollView, common modifiers). Server-side Swift/SwiftWasm compilation, artifact caching, unified WasmPreview component supporting both Kotlin and Swift.
 3. **Phase 3**: Mobile native clients (Android dynamic compilation, iOS DSL parsing).
 
 ### Kotlin/Wasm Compilation Architecture
@@ -100,3 +100,14 @@ The product follows "Scheme 3: Native Code Compilation for Web" — compiling na
 - **Frontend**: `WasmPreview` component triggers compilation on file change (debounced 1.5s), renders in sandboxed iframe, shows errors with "Ask AI to Fix" button via `setPendingPrompt`
 - **Fallback**: If compiler unavailable or compilation fails, falls back to CodePreview (syntax-highlighted code viewer with download)
 - **Preview Mode**: `kotlin-wasm` in preview-adapters.ts, mapped from `kotlin` framework
+
+### SwiftUI/Wasm Compilation Architecture
+- **Template**: `server/compile-templates/swift-wasm/` — SwiftPM project with JavaScriptKit dependency and SwiftUI-subset DOM renderer library (`SwiftUIWeb`)
+- **SwiftUI-subset Renderer**: `Sources/SwiftUIWeb/` — Provides SwiftUI-like API types (Text, VStack, HStack, ZStack, Button, Image, List, NavigationStack, ScrollView, Spacer, Divider, Group) with modifiers (.padding, .foregroundColor, .background, .font, .frame, .cornerRadius, .border, .opacity, .shadow, .navigationTitle, .bold, .italic, .lineLimit) that render to HTML/CSS DOM elements via JavaScriptKit
+- **Compiler**: `server/swift-wasm-compiler.ts` — accepts Swift source files, transforms `import SwiftUI` to `import SwiftUIWeb`, strips iOS-specific imports, injects into template, runs Swift build targeting `wasm32-unknown-wasi`, returns `.wasm` + `.js` artifacts
+- **Endpoints**: `POST /api/compile/swift-wasm` (compile), artifacts served via shared `GET /api/compile/artifacts/:buildId/*`, status at `GET /api/compile/status`
+- **Caching**: Same pattern as Kotlin — source hash → build artifacts, 30-minute TTL, max 50 entries, max 2 concurrent compiles
+- **Frontend**: Unified `WasmPreview` component handles both Kotlin and Swift — detects framework, uses correct endpoint and file extension (.kt/.swift), shows appropriate labels and accent colors
+- **Fallback**: If Swift toolchain unavailable or compilation fails, falls back to CodePreview with "Ask AI to Fix" button
+- **Preview Mode**: `swift-wasm` in preview-adapters.ts, mapped from `swiftui` framework
+- **Requires**: Swift 6.1+ toolchain with SwiftWasm SDK installed at `SWIFT_WASM_PATH` env var (default `/usr/local/bin/swift`)
