@@ -1676,7 +1676,8 @@ function StepItem({
     <div
       className={cn(
         "py-1 px-1.5 rounded-md -mx-1.5 transition-colors",
-        isRunning && "bg-blue-500/8",
+        isRunning &&
+          "bg-blue-500/15 border-l-2 border-blue-400 animate-pulse",
       )}
       data-testid={`step-${task.step}`}
     >
@@ -1707,6 +1708,14 @@ function StepItem({
         >
           {task.title}
         </span>
+        {isRunning && (
+          <span
+            className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded px-1.5 py-0.5 shrink-0 font-medium"
+            data-testid={`step-building-${task.step}`}
+          >
+            Building…
+          </span>
+        )}
         {failureReasonLabel && (
           <span
             className="text-[10px] bg-red-500/15 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5 shrink-0"
