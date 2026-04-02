@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Download, FileCode, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type FileNode, flattenFiles } from "@/stores/ide-store";
@@ -167,6 +167,10 @@ function getProjectFileList(files: FileNode[]): Array<{ path: string; content: s
 export function CodePreview({ files, framework, projectId, mainEntryFile }: CodePreviewProps) {
   const projectFiles = useMemo(() => getProjectFileList(files), [files]);
   const [selectedFile, setSelectedFile] = useState(mainEntryFile);
+
+  useEffect(() => {
+    setSelectedFile(mainEntryFile);
+  }, [mainEntryFile]);
   const [downloading, setDownloading] = useState(false);
 
   const currentFile = useMemo(
