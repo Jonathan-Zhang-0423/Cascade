@@ -2669,7 +2669,6 @@ export function ChatPanel() {
   const mgrLastEventIdRef = useRef<number>(-1);
   const mgrReconnectRetryRef = useRef<number>(0);
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const snapshotFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectToMgrStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -3005,6 +3004,7 @@ export function ChatPanel() {
             projectId: projectId || "",
             updatedAt: now,
             sessionId: mgrSessionIdRef.current || undefined,
+            lastEventId: mgrLastEventIdRef.current,
           });
         };
 
@@ -3801,6 +3801,7 @@ export function ChatPanel() {
         sessionId: sessionId,
         projectId: projectId || "",
         updatedAt: now,
+        lastEventId: lastReceivedEventIdRef.current,
       });
     };
 
@@ -4704,6 +4705,7 @@ export function ChatPanel() {
           sessionId: sessionId,
           projectId: projectId || "",
           updatedAt: now,
+          lastEventId: lastReceivedEventIdRef.current,
         });
       };
 
@@ -5456,7 +5458,6 @@ export function ChatPanel() {
   const connectToMgrStream = useCallback(
     async (sessionId: string, lastEventId: number) => {
       mgrSessionIdRef.current = sessionId;
-      mgrReconnectRetryRef.current = 0;
 
       try {
         const response = await fetch(
@@ -5471,6 +5472,8 @@ export function ChatPanel() {
           setManagerResponding(false);
           return;
         }
+
+        mgrReconnectRetryRef.current = 0;
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -5491,6 +5494,7 @@ export function ChatPanel() {
             projectId: projectId || "",
             updatedAt: now,
             sessionId: sessionId,
+            lastEventId: mgrLastEventIdRef.current,
           });
         };
 
@@ -5634,13 +5638,15 @@ export function ChatPanel() {
     }
 
     if (sessionIdToReconnect) {
+      const resumeEventId = (snapshot?.type === "manager" && typeof snapshot.lastEventId === "number")
+        ? snapshot.lastEventId : -1;
       fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (cancelled) return;
           if (data?.active) {
             setManagerResponding(true);
-            connectToMgrStream(sessionIdToReconnect, -1);
+            connectToMgrStream(sessionIdToReconnect, resumeEventId);
           } else {
             useIDEStore.getState().setStreamingSnapshot(null);
             try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}

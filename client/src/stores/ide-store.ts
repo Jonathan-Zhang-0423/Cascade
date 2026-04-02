@@ -134,6 +134,7 @@ export interface StreamingSnapshot {
   sessionId?: string;
   projectId: string;
   updatedAt: number;
+  lastEventId?: number;
 }
 
 function flattenToFlatFiles(files: FileNode[]): FlatFile[] {
