@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, resolve } from "path";
 import { randomBytes } from "crypto";
 import archiver from "archiver";
 import { z } from "zod";

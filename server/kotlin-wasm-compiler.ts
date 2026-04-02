@@ -229,6 +229,86 @@ export async function compileKotlinWasm(
   }
 }
 
+const ANDROID_IMPORT_RE = /^import\s+(android\.|androidx\.activity|androidx\.appcompat|androidx\.core\.os|com\.google\.android).*$/gm;
+const ANDROID_CLASS_RE = /class\s+\w+\s*:\s*(ComponentActivity|AppCompatActivity|Activity|Fragment|Service|BroadcastReceiver)\s*\(\s*\)\s*\{/;
+
+function transformForWasm(source: string): string {
+  let code = source;
+  code = code.replace(/^package\s+[\w.]+\s*$/gm, "");
+  code = code.replace(ANDROID_IMPORT_RE, "");
+
+  if (ANDROID_CLASS_RE.test(code)) {
+    const composableBlocks: string[] = [];
+    const composableRe = /@Composable\s+(?:fun\s+\w+\s*\([^)]*\)\s*\{)/g;
+    let match;
+    while ((match = composableRe.exec(code)) !== null) {
+      const start = match.index;
+      let depth = 0;
+      let end = start;
+      let foundBrace = false;
+      for (let i = start; i < code.length; i++) {
+        if (code[i] === "{") { depth++; foundBrace = true; }
+        if (code[i] === "}") { depth--; }
+        if (foundBrace && depth === 0) { end = i + 1; break; }
+      }
+      composableBlocks.push(code.slice(start, end));
+    }
+
+    if (composableBlocks.length === 0) {
+      const setContentRe = /setContent\s*\{/;
+      const setContentMatch = setContentRe.exec(code);
+      if (setContentMatch) {
+        const start = setContentMatch.index + setContentMatch[0].length;
+        let depth = 1;
+        let end = start;
+        for (let i = start; i < code.length && depth > 0; i++) {
+          if (code[i] === "{") depth++;
+          if (code[i] === "}") depth--;
+          if (depth === 0) { end = i; break; }
+        }
+        const body = code.slice(start, end).trim();
+        composableBlocks.push(`@Composable\nfun App() {\n    ${body}\n}`);
+      }
+    }
+
+    if (composableBlocks.length === 0) return "";
+
+    const hasApp = composableBlocks.some((b) => /fun\s+App\s*\(/.test(b));
+    if (!hasApp) {
+      const firstName = composableBlocks[0].match(/fun\s+(\w+)/)?.[1];
+      if (firstName) {
+        composableBlocks.push(`@Composable\nfun App() {\n    ${firstName}()\n}`);
+      }
+    }
+
+    const wasmImports = [
+      "import androidx.compose.material3.*",
+      "import androidx.compose.foundation.layout.*",
+      "import androidx.compose.runtime.*",
+      "import androidx.compose.ui.Alignment",
+      "import androidx.compose.ui.Modifier",
+      "import androidx.compose.ui.unit.dp",
+      "import androidx.compose.ui.unit.sp",
+    ];
+    return wasmImports.join("\n") + "\n\n" + composableBlocks.join("\n\n") + "\n";
+  }
+
+  code = code.replace(/^import\s+androidx\.compose\.ui\.tooling\.preview\..*$/gm, "");
+  code = code.replace(/@Preview\b[^@]*(?=@|fun\s|$)/g, "");
+
+  if (!/fun\s+App\s*\(/.test(code)) {
+    const composableFns = code.match(/@Composable\s+fun\s+(\w+)/g);
+    if (composableFns && composableFns.length > 0) {
+      const firstName = composableFns[0].match(/fun\s+(\w+)/)?.[1];
+      if (firstName && firstName !== "App") {
+        code += `\n\n@Composable\nfun App() {\n    ${firstName}()\n}\n`;
+      }
+    }
+  }
+
+  return code;
+}
+
 async function doCompile(
   sourceFiles: Array<{ path: string; content: string }>,
   sourceHash: string
@@ -258,10 +338,20 @@ fun main() {
       "utf8"
     );
 
-    for (const file of sourceFiles) {
-      const fileName = file.path.split("/").pop() || "App.kt";
-      const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-      await writeFile(join(kotlinSrcDir, sanitizedName), file.content, "utf8");
+    const transformedFiles = sourceFiles
+      .filter((f) => f.path.endsWith(".kt"))
+      .map((f) => ({ ...f, content: transformForWasm(f.content) }))
+      .filter((f) => f.content.trim().length > 0);
+
+    if (transformedFiles.length === 0) {
+      const defaultApp = `import androidx.compose.material3.*\nimport androidx.compose.foundation.layout.*\nimport androidx.compose.runtime.*\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.unit.dp\nimport androidx.compose.ui.unit.sp\n\n@Composable\nfun App() {\n    MaterialTheme {\n        Column(\n            modifier = Modifier.fillMaxSize().padding(16.dp),\n            horizontalAlignment = Alignment.CenterHorizontally,\n            verticalArrangement = Arrangement.Center\n        ) {\n            Text("Hello, Compose!", fontSize = 28.sp)\n        }\n    }\n}\n`;
+      await writeFile(join(kotlinSrcDir, "App.kt"), defaultApp, "utf8");
+    } else {
+      for (const file of transformedFiles) {
+        const fileName = file.path.split("/").pop() || "App.kt";
+        const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        await writeFile(join(kotlinSrcDir, sanitizedName), file.content, "utf8");
+      }
     }
 
     if (!existsSync(GRADLE_PATH)) {
