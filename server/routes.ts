@@ -43,7 +43,7 @@ import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
 import { getAIClient, type AIProvider } from "./kimi-client";
 import { setupPreviewServer } from "./preview-server";
-import { compileKotlinWasm, getArtifactPath, isCompilerAvailable } from "./kotlin-wasm-compiler";
+import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "./kotlin-wasm-compiler";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -445,6 +445,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  checkCompilerOnStartup();
+
   app.get("/api/providers", (_req, res) => {
     res.json({
       doubao: !!process.env.DOUBAO_API_KEY,

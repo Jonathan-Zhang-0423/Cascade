@@ -480,3 +480,14 @@ export function getArtifactPath(buildId: string): string | null {
 export function isCompilerAvailable(): boolean {
   return existsSync(GRADLE_PATH);
 }
+
+export function checkCompilerOnStartup(): void {
+  if (existsSync(GRADLE_PATH)) {
+    console.log(`[kotlin-wasm] Compiler available: Gradle at ${GRADLE_PATH}`);
+  } else {
+    console.warn(
+      `[kotlin-wasm] WARNING: Gradle not found at ${GRADLE_PATH}. ` +
+        `Kotlin/Wasm preview will be unavailable. Run: bash scripts/setup-gradle.sh`
+    );
+  }
+}
