@@ -287,6 +287,7 @@ interface IDEState {
 
   loadProject: (id: string) => void;
   saveProject: () => void;
+  setPendingPrompt: (prompt: string) => void;
   clearPendingPrompt: () => void;
   setActiveFile: (path: string) => void;
   openFile: (path: string) => void;
@@ -738,6 +739,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   saveProject: () => {
     persistState(get());
+  },
+
+  setPendingPrompt: (prompt: string) => {
+    set({ pendingPrompt: prompt });
+    const state = get();
+    debouncedPersist(state);
   },
 
   clearPendingPrompt: () => {
