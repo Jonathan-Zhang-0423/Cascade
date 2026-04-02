@@ -1,0 +1,31 @@
+# CodeStart Project Technical Specification
+## Core Product Definition
+AI-powered mobile-native programming platform: enables AI-generated code + real-time native preview & testing on mobile devices; synchronized web-based development & preview support.
+
+## Development Priority
+**TOP PRIORITY: Full development of the Web端 (Web Client) first** (Scheme 3: Native Code Compilation for Web)
+Secondary: Mobile Client (Android + iOS) technical implementation
+
+## 1. Web Client Technical Scheme (Scheme 3: Native Code Compilation to Web)
+Core implementation: Compile native UI code directly to browser-executable code (no visual simulation, no streaming, pure native syntax compilation)
+- Android/Jetpack Compose Web: Adopt **Compose Multiplatform (CMP) + Kotlin/Wasm**; compile standard Android Compose code to JavaScript/WebAssembly for native browser rendering
+- iOS/SwiftUI Web: Adopt **Tokamak + SwiftWasm**; compile SwiftUI code to WebAssembly for browser execution
+- Core features: 1:1 consistent API with native mobile frameworks, real-time code preview, pure front-end running, zero server dependency
+
+## 2. Mobile Client Technical Scheme
+### 2.1 Android Client (Scheme 2: Compose Local Dynamic Compilation)
+- Pure native Jetpack Compose implementation
+- Built-in lightweight Kotlin compiler on Android device
+- Local dynamic compilation & loading of native Compose code
+- Real-time native UI preview & offline testing
+- Full compliance with Android ecosystem rules
+
+### 2.2 iOS Client (Scheme 3: SwiftUI DSL Parsing + Native Rendering)
+- Compliant with Apple App Store review guidelines (NO dynamic code compilation)
+- Built-in lightweight SwiftUI DSL parser
+- Translate AI-generated SwiftUI code into native iOS UI components (SwiftUI/UIKit)
+- Real-time native UI rendering & interactive testing
+- Full native iOS experience & app store publishable
+
+## Output Requirement
+Strictly organize and save all the above project background, development priorities, and dual-end technical solutions into this MARKDOWN file as the official development specification.
