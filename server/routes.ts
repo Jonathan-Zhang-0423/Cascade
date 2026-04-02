@@ -5,6 +5,7 @@ import { writeFile, mkdir, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { randomBytes } from "crypto";
+import archiver from "archiver";
 import { z } from "zod";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { withRetry } from "./retry";
@@ -1643,6 +1644,43 @@ Generate the codestart.md content for this project based on both the plan and th
     } catch (error: any) {
       console.error("Delete project file error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to delete file" });
+    }
+  });
+
+  app.get("/api/projects/:id/export", async (req, res) => {
+    try {
+      const files = await storage.getProjectFiles(req.params.id);
+      if (!files || files.length === 0) {
+        res.status(404).json({ error: "No files found for this project" });
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="project-${req.params.id}.zip"`);
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.on("error", (err: Error) => {
+        console.error("Archive error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to create archive" });
+        }
+      });
+      archive.pipe(res);
+
+      for (const file of files) {
+        let relativePath = file.path.replace(/^\/project\//, "");
+        if (!relativePath) continue;
+        relativePath = relativePath.split("/").filter((seg) => seg !== ".." && seg !== "." && seg !== "").join("/");
+        if (!relativePath || relativePath.startsWith("/")) continue;
+        archive.append(file.content, { name: relativePath });
+      }
+
+      await archive.finalize();
+    } catch (error: any) {
+      console.error("Export project error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Failed to export project" });
+      }
     }
   });
 

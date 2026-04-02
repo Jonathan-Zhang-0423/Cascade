@@ -1,6 +1,7 @@
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
+import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink } from "lucide-react";
+import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink, Download } from "lucide-react";
 import appleLogoPath from "@assets/logo-apple-3_1775015525544.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,8 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
+import { getPreviewMode, getFrameworkLabel, getFrameworkColor, getMainEntryFile, buildExpoSnackUrl, buildDartPadUrl } from "@/lib/preview-adapters";
+import { CodePreview } from "./code-preview";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -101,10 +104,20 @@ export function PreviewPanel() {
     customDeviceWidth,
     customDeviceHeight,
     setCustomDeviceDimensions,
+    projectId,
   } = useIDEStore();
+  const { projects } = useProjectStore();
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const snackIframeRef = useRef<HTMLIFrameElement>(null);
   const t = useT();
+
+  const currentProject = useMemo(
+    () => projects.find((p) => p.id === projectId),
+    [projects, projectId]
+  );
+  const framework = currentProject?.framework || "web";
+  const previewMode = getPreviewMode(framework);
 
   const filteredDevices = useMemo(
     () => DEVICE_LIST.filter((d) => d.platform === devicePlatform),
@@ -207,6 +220,24 @@ export function PreviewPanel() {
     setRefreshKey((k) => k + 1);
   };
 
+  const expoSnackUrl = useMemo(() => {
+    if (previewMode !== "expo-snack") return null;
+    const flat = flattenFiles(files).filter((f) => f.content !== undefined && f.path.startsWith("/project/"));
+    const snackFiles = flat.map((f) => ({ path: f.path, content: f.content || "" }));
+    return buildExpoSnackUrl(snackFiles, currentProject?.name);
+  }, [previewMode, files, effectiveRefresh, currentProject?.name]);
+
+  const dartPadUrl = useMemo(() => {
+    if (previewMode !== "dartpad") return null;
+    const mainDart = findFileContent(files, "/project/lib/main.dart") || "";
+    return buildDartPadUrl(mainDart);
+  }, [previewMode, files, effectiveRefresh]);
+
+  const dartPadSource = useMemo(() => {
+    if (previewMode !== "dartpad") return "";
+    return findFileContent(files, "/project/lib/main.dart") || "";
+  }, [previewMode, files, effectiveRefresh]);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -308,6 +339,13 @@ export function PreviewPanel() {
     <div className="h-full flex flex-col" data-testid="preview-panel">
       <div className="flex items-center gap-1.5 px-2 h-9 border-b border-border/50 shrink-0 flex-wrap">
         <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
+          data-testid="badge-framework"
+        >
+          {getFrameworkLabel(framework)}
+        </span>
 
         <div className="flex items-center border rounded-md overflow-hidden h-6 shrink-0">
           <button
@@ -512,23 +550,55 @@ export function PreviewPanel() {
       </div>
 
       <div className="flex-1 min-h-0">
-        <DeviceSimulator
-          deviceSpec={deviceSpec}
-          orientation={deviceOrientation}
-          frameStyle={deviceFrameStyle}
-          platformOverride={devicePlatform}
-        >
-          <iframe
-            ref={iframeRef}
-            key={effectiveRefresh}
-            srcDoc={injectedHtml}
-            className="w-full h-full border-0"
-            style={{ cursor: "pointer" }}
-            title={t("preview.title")}
-            sandbox="allow-scripts allow-modals allow-same-origin"
-            data-testid="preview-iframe"
+        {previewMode === "code-preview" ? (
+          <CodePreview
+            files={files}
+            framework={framework}
+            projectId={projectId}
+            mainEntryFile={getMainEntryFile(framework)}
           />
-        </DeviceSimulator>
+        ) : (
+          <DeviceSimulator
+            deviceSpec={deviceSpec}
+            orientation={deviceOrientation}
+            frameStyle={deviceFrameStyle}
+            platformOverride={devicePlatform}
+          >
+            {previewMode === "expo-snack" && expoSnackUrl ? (
+              <iframe
+                ref={snackIframeRef}
+                key={`snack-${effectiveRefresh}`}
+                src={expoSnackUrl}
+                className="w-full h-full border-0"
+                title="Expo Snack Preview"
+                allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+                sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+                data-testid="preview-expo-snack"
+              />
+            ) : previewMode === "dartpad" ? (
+              <iframe
+                key={`dartpad-${effectiveRefresh}`}
+                src={dartPadUrl || undefined}
+                srcDoc={dartPadUrl ? undefined : `<html><body style="background:#1e1e1e;color:#999;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><p>No main.dart found</p></body></html>`}
+                className="w-full h-full border-0"
+                title="DartPad Preview"
+                sandbox="allow-scripts allow-same-origin allow-popups"
+                data-testid="preview-dartpad"
+              />
+            ) : (
+              <iframe
+                ref={iframeRef}
+                key={effectiveRefresh}
+                srcDoc={injectedHtml}
+                className="w-full h-full border-0"
+                style={{ cursor: "pointer" }}
+                title={t("preview.title")}
+                sandbox="allow-scripts allow-modals allow-same-origin"
+                data-testid="preview-iframe"
+              />
+            )}
+          </DeviceSimulator>
+        )}
       </div>
     </div>
   );
