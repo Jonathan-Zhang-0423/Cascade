@@ -3250,6 +3250,12 @@ export function ChatPanel() {
               }
             } else if (evType === "manager_done") {
               if (!isCurrentProject) continue;
+              useIDEStore.getState().setStreamingSnapshot(null);
+              mgrSessionIdRef.current = null;
+              mgrReconnectRetryRef.current = 0;
+              if (projectId) {
+                try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+              }
               setMgrPreparingPlan(false);
               if (mgrLiveClearTimerRef.current) {
                 clearTimeout(mgrLiveClearTimerRef.current);
@@ -3403,6 +3409,12 @@ export function ChatPanel() {
               }
             } else if (evType === "manager_error") {
               if (!isCurrentProject) continue;
+              useIDEStore.getState().setStreamingSnapshot(null);
+              mgrSessionIdRef.current = null;
+              mgrReconnectRetryRef.current = 0;
+              if (projectId) {
+                try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+              }
               removeTypingBubble();
               addManagerMessage({
                 role: "assistant",
@@ -4687,10 +4699,11 @@ export function ChatPanel() {
       buildSessionIdRef.current = sessionId;
       let buildCompleted = false;
 
-      let commAccumulated = "";
+      const buildSnapshot = useIDEStore.getState().streamingSnapshot;
+      let commAccumulated = (buildSnapshot?.type === "build" ? buildSnapshot.narrationText : "") || "";
       let commMsgIndex = -1;
       let editorAccumulated = "";
-      let thinkingAccumulated = "";
+      let thinkingAccumulated = (buildSnapshot?.type === "build" ? buildSnapshot.thinkingText : "") || "";
 
       let lastBuildSnapshotFlush = 0;
       const BUILD_SNAPSHOT_INTERVAL = 500;
@@ -5478,8 +5491,9 @@ export function ChatPanel() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let managerAccumulated = "";
-        let managerThinkingAccumulated = "";
+        const existingSnapshot = useIDEStore.getState().streamingSnapshot;
+        let managerAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.narrationText : "") || "";
+        let managerThinkingAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.thinkingText : "") || "";
 
         let lastMgrReconnectSnapshotFlush = 0;
         const MGR_RECONNECT_SNAPSHOT_INTERVAL = 500;
@@ -5670,6 +5684,44 @@ export function ChatPanel() {
         setMgrLiveThinkingText("");
         setMgrLiveNarrationText("");
       }, 2000);
+    }
+
+    if (snapshot?.type === "build" && snapshot.projectId === projectId) {
+      setLiveThinkingText(snapshot.thinkingText || "");
+      setLiveNarrationText(snapshot.narrationText || "");
+      const savedBuildSessionId = (() => {
+        try { return localStorage.getItem(`codestart-build-session-${projectId}`); } catch { return null; }
+      })();
+      const buildSessionToReconnect = snapshot.sessionId || savedBuildSessionId;
+      if (buildSessionToReconnect && !buildSessionIdRef.current) {
+        const resumeBuildEventId = typeof snapshot.lastEventId === "number" ? snapshot.lastEventId : -1;
+        fetch(`/api/build-session/${buildSessionToReconnect}/status`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (cancelled) return;
+            if (data?.active) {
+              connectToBuildStreamRef.current?.(buildSessionToReconnect, resumeBuildEventId);
+            } else {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+              setLiveThinkingText("");
+              setLiveNarrationText("");
+            }
+          })
+          .catch(() => {
+            useIDEStore.getState().setStreamingSnapshot(null);
+            try { localStorage.removeItem(`codestart-build-session-${projectId}`); } catch {}
+            setLiveThinkingText("");
+            setLiveNarrationText("");
+          });
+      } else if (!buildSessionToReconnect) {
+        setTimeout(() => {
+          if (cancelled) return;
+          useIDEStore.getState().setStreamingSnapshot(null);
+          setLiveThinkingText("");
+          setLiveNarrationText("");
+        }, 2000);
+      }
     }
 
     return () => { cancelled = true; };
