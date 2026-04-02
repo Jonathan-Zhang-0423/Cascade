@@ -127,6 +127,15 @@ export interface Checkpoint {
   diff?: FileDiff[];
 }
 
+export interface StreamingSnapshot {
+  type: "manager" | "build";
+  thinkingText: string;
+  narrationText: string;
+  sessionId?: string;
+  projectId: string;
+  updatedAt: number;
+}
+
 function flattenToFlatFiles(files: FileNode[]): FlatFile[] {
   const result: FlatFile[] = [];
   for (const file of files) {
@@ -255,6 +264,7 @@ interface IDEState {
   chatMode: ChatMode;
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
+  streamingSnapshot: StreamingSnapshot | null;
   executingTaskIndex: number | null;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons: Record<string, string>;
@@ -289,6 +299,7 @@ interface IDEState {
   saveProject: () => void;
   setPendingPrompt: (prompt: string) => void;
   clearPendingPrompt: () => void;
+  setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => void;
   setActiveFile: (path: string) => void;
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
@@ -443,6 +454,7 @@ function persistState(state: IDEState) {
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
       : state.managerMessages,
+    streamingSnapshot: state.streamingSnapshot,
     selectedDevice: state.selectedDevice,
     deviceOrientation: state.deviceOrientation,
     devicePlatform: state.devicePlatform,
@@ -563,6 +575,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   chatMode: "build",
   managerPlan: null,
   managerMessages: [],
+  streamingSnapshot: null,
   executingTaskIndex: null,
   taskStatuses: {},
   taskFailureReasons: {},
@@ -657,6 +670,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isSidebarOpen: false,
       chatMode: (saved.chatMode === "manager" ? "manager" : "build") as ChatMode,
       managerMessages: saved.managerMessages || [],
+      streamingSnapshot: saved.streamingSnapshot || null,
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
       executingTaskIndex: null,
       taskStatuses: {},
@@ -691,6 +705,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isSidebarOpen: false,
       chatMode: "build" as ChatMode,
       managerMessages: [],
+      streamingSnapshot: null,
       managerPlan: null,
       executingTaskIndex: null,
       taskStatuses: {},
@@ -751,6 +766,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set({ pendingPrompt: null });
     const state = get();
     debouncedPersist(state);
+  },
+
+  setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => {
+    set({ streamingSnapshot: snapshot });
+    const state = get();
+    persistState(state);
   },
 
   createCheckpoint: (label, options) => {

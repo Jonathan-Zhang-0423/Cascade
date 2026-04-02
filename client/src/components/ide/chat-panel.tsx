@@ -2665,6 +2665,14 @@ export function ChatPanel() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReconnectingRef = useRef(false);
   const heartbeatWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mgrSessionIdRef = useRef<string | null>(null);
+  const mgrLastEventIdRef = useRef<number>(-1);
+  const mgrReconnectRetryRef = useRef<number>(0);
+  const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapshotFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectToMgrStreamRef = useRef<
+    ((sessionId: string, lastEventId: number) => Promise<void>) | null
+  >(null);
 
   useEffect(() => {
     fetch("/api/providers")
@@ -2984,6 +2992,22 @@ export function ChatPanel() {
         let commNarrationMsgIndex = -1;
         let commTypingIdx = -1;
 
+        let lastSnapshotFlush = 0;
+        const SNAPSHOT_FLUSH_INTERVAL = 500;
+        const flushStreamingSnapshot = () => {
+          const now = Date.now();
+          if (now - lastSnapshotFlush < SNAPSHOT_FLUSH_INTERVAL) return;
+          lastSnapshotFlush = now;
+          useIDEStore.getState().setStreamingSnapshot({
+            type: "manager",
+            thinkingText: managerThinkingAccumulated,
+            narrationText: managerAccumulated,
+            projectId: projectId || "",
+            updatedAt: now,
+            sessionId: mgrSessionIdRef.current || undefined,
+          });
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -3005,7 +3029,22 @@ export function ChatPanel() {
               continue;
             }
 
+            if (typeof ev.eventId === "number") {
+              mgrLastEventIdRef.current = ev.eventId;
+            }
+
             const evType = ev.type;
+
+            if (evType === "session_id") {
+              mgrSessionIdRef.current = ev.sessionId || null;
+              if (mgrSessionIdRef.current && projectId) {
+                try {
+                  localStorage.setItem(`codestart-mgr-session-${projectId}`, mgrSessionIdRef.current);
+                } catch {}
+              }
+              continue;
+            }
+
             if (KNOWN_MGR_EVENT_TYPES.has(evType)) {
               const mgrMonitorContent =
                 ev.token ||
@@ -3027,6 +3066,7 @@ export function ChatPanel() {
               const token = (ev.token as string) || "";
               if (token) {
                 managerThinkingAccumulated += token;
+                flushStreamingSnapshot();
                 if (isCurrentProject) {
                   if (mgrLiveClearTimerRef.current) {
                     clearTimeout(mgrLiveClearTimerRef.current);
@@ -3038,6 +3078,7 @@ export function ChatPanel() {
               }
             } else if (evType === "raw_token" || evType === "manager_token") {
               managerAccumulated += ev.token;
+              flushStreamingSnapshot();
               if (isCurrentProject) {
                 if (mgrLiveClearTimerRef.current) {
                   clearTimeout(mgrLiveClearTimerRef.current);
@@ -3423,22 +3464,77 @@ export function ChatPanel() {
           if (nameFromMarker && projectId) renameProject(projectId, nameFromMarker);
         }
       } catch (error: any) {
-        if (useIDEStore.getState().projectId === projectId) {
-          removeTypingBubble();
-          if (error?.name !== "AbortError") {
-            addManagerMessage({
-              role: "assistant",
-              content: tr(
-                useLanguageStore.getState().lang,
-                "chat.errorConnect",
-              ),
-              source: "communicator",
-            });
+        let mgrReconnectScheduled = false;
+        if (error?.name !== "AbortError" && mgrSessionIdRef.current) {
+          const maxRetries = 8;
+          if (mgrReconnectRetryRef.current < maxRetries) {
+            mgrReconnectRetryRef.current++;
+            mgrReconnectScheduled = true;
+            const retrySessionId = mgrSessionIdRef.current;
+            const retryLastEventId = mgrLastEventIdRef.current;
+            const backoffMs = Math.min(1000 * Math.pow(2, mgrReconnectRetryRef.current - 1), 16000);
+            mgrReconnectTimerRef.current = setTimeout(async () => {
+              mgrReconnectTimerRef.current = null;
+              try {
+                const statusRes = await fetch(`/api/manager-chat/${retrySessionId}/status`);
+                if (!statusRes.ok) {
+                  useIDEStore.getState().setStreamingSnapshot(null);
+                  mgrSessionIdRef.current = null;
+                  setManagerResponding(false);
+                  return;
+                }
+                const statusData = await statusRes.json();
+                if (statusData.done || !statusData.active) {
+                  useIDEStore.getState().setStreamingSnapshot(null);
+                  mgrSessionIdRef.current = null;
+                  setManagerResponding(false);
+                  return;
+                }
+              } catch {
+                useIDEStore.getState().setStreamingSnapshot(null);
+                mgrSessionIdRef.current = null;
+                setManagerResponding(false);
+                return;
+              }
+              connectToMgrStreamRef.current?.(retrySessionId, retryLastEventId);
+            }, backoffMs);
+          }
+        }
+        if (!mgrReconnectScheduled) {
+          useIDEStore.getState().setStreamingSnapshot(null);
+          mgrSessionIdRef.current = null;
+          mgrReconnectRetryRef.current = 0;
+          if (projectId) {
+            try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+          }
+          if (useIDEStore.getState().projectId === projectId) {
+            removeTypingBubble();
+            if (error?.name !== "AbortError") {
+              addManagerMessage({
+                role: "assistant",
+                content: tr(
+                  useLanguageStore.getState().lang,
+                  "chat.errorConnect",
+                ),
+                source: "communicator",
+              });
+            }
+            setMgrPreparingPlan(false);
+            if (mgrLiveClearTimerRef.current) clearTimeout(mgrLiveClearTimerRef.current);
+            mgrLiveClearTimerRef.current = setTimeout(() => {
+              setMgrLiveThinkingText("");
+              setMgrLiveNarrationText("");
+              setMgrLiveActionLog([]);
+              mgrLiveClearTimerRef.current = null;
+            }, 300);
+            if (!buildSessionIdRef.current) {
+              setManagerResponding(false);
+            }
           }
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        if (useIDEStore.getState().projectId === projectId) {
+        if (!mgrSessionIdRef.current && useIDEStore.getState().projectId === projectId) {
           removeTypingBubble();
           setMgrPreparingPlan(false);
           if (mgrLiveClearTimerRef.current) {
@@ -3692,6 +3788,22 @@ export function ChatPanel() {
     let editorAccumulated = "";
     let thinkingAccumulated = "";
 
+    let lastPrimaryBuildSnapshotFlush = 0;
+    const PRIMARY_BUILD_SNAPSHOT_INTERVAL = 500;
+    const flushPrimaryBuildSnapshot = () => {
+      const now = Date.now();
+      if (now - lastPrimaryBuildSnapshotFlush < PRIMARY_BUILD_SNAPSHOT_INTERVAL) return;
+      lastPrimaryBuildSnapshotFlush = now;
+      useIDEStore.getState().setStreamingSnapshot({
+        type: "build",
+        thinkingText: thinkingAccumulated,
+        narrationText: commAccumulated,
+        sessionId: sessionId,
+        projectId: projectId || "",
+        updatedAt: now,
+      });
+    };
+
     actionLogRef.current = [];
     setLiveActionLog([]);
     setLiveThinkingText("");
@@ -3936,6 +4048,7 @@ export function ChatPanel() {
               }
               thinkingAccumulated += token;
               flushThinkingToStore();
+              flushPrimaryBuildSnapshot();
               setLiveThinkingText(thinkingAccumulated);
               await new Promise<void>((r) => setTimeout(r, 16));
             }
@@ -4006,6 +4119,7 @@ export function ChatPanel() {
               buildLiveClearTimerRef.current = null;
             }
             commAccumulated += ev.token || "";
+            flushPrimaryBuildSnapshot();
             setLiveNarrationText(commAccumulated);
             setBuildPhase("working");
             await new Promise<void>((r) => setTimeout(r, 16));
@@ -4415,6 +4529,7 @@ export function ChatPanel() {
       }
       if (!isReconnectingRef.current) {
         flushNarrationToStore();
+        useIDEStore.getState().setStreamingSnapshot(null);
         buildSessionIdRef.current = null;
         buildReaderRef.current = null;
         if (projectId) {
@@ -4575,6 +4690,22 @@ export function ChatPanel() {
       let commMsgIndex = -1;
       let editorAccumulated = "";
       let thinkingAccumulated = "";
+
+      let lastBuildSnapshotFlush = 0;
+      const BUILD_SNAPSHOT_INTERVAL = 500;
+      const flushBuildSnapshot = () => {
+        const now = Date.now();
+        if (now - lastBuildSnapshotFlush < BUILD_SNAPSHOT_INTERVAL) return;
+        lastBuildSnapshotFlush = now;
+        useIDEStore.getState().setStreamingSnapshot({
+          type: "build",
+          thinkingText: thinkingAccumulated,
+          narrationText: commAccumulated,
+          sessionId: sessionId,
+          projectId: projectId || "",
+          updatedAt: now,
+        });
+      };
 
       if (lastEventId === -1) {
         actionLogRef.current = [];
@@ -4918,6 +5049,7 @@ export function ChatPanel() {
                 }
                 thinkingAccumulated += token;
                 flushThinkingToStore();
+                flushBuildSnapshot();
                 setLiveThinkingText(thinkingAccumulated);
                 await new Promise<void>((r) => setTimeout(r, 16));
               }
@@ -4988,6 +5120,7 @@ export function ChatPanel() {
                 buildLiveClearTimerRef.current = null;
               }
               commAccumulated += ev.token || "";
+              flushBuildSnapshot();
               setLiveNarrationText(commAccumulated);
               setBuildPhase("working");
               await new Promise<void>((r) => setTimeout(r, 16));
@@ -5189,6 +5322,7 @@ export function ChatPanel() {
         }
         if (!isReconnectingRef.current) {
           flushNarrationToStore();
+          useIDEStore.getState().setStreamingSnapshot(null);
           buildSessionIdRef.current = null;
           buildReaderRef.current = null;
           if (projectId) {
@@ -5318,6 +5452,222 @@ export function ChatPanel() {
     setReviewPhase,
     setBuildPhase,
   ]);
+
+  const connectToMgrStream = useCallback(
+    async (sessionId: string, lastEventId: number) => {
+      mgrSessionIdRef.current = sessionId;
+      mgrReconnectRetryRef.current = 0;
+
+      try {
+        const response = await fetch(
+          `/api/manager-chat/${sessionId}/stream?lastEventId=${lastEventId}`,
+        );
+        if (!response.ok || !response.body) {
+          useIDEStore.getState().setStreamingSnapshot(null);
+          mgrSessionIdRef.current = null;
+          if (projectId) {
+            try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+          }
+          setManagerResponding(false);
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let managerAccumulated = "";
+        let managerThinkingAccumulated = "";
+
+        let lastMgrReconnectSnapshotFlush = 0;
+        const MGR_RECONNECT_SNAPSHOT_INTERVAL = 500;
+        const flushMgrReconnectSnapshot = () => {
+          const now = Date.now();
+          if (now - lastMgrReconnectSnapshotFlush < MGR_RECONNECT_SNAPSHOT_INTERVAL) return;
+          lastMgrReconnectSnapshotFlush = now;
+          useIDEStore.getState().setStreamingSnapshot({
+            type: "manager",
+            thinkingText: managerThinkingAccumulated,
+            narrationText: managerAccumulated,
+            projectId: projectId || "",
+            updatedAt: now,
+            sessionId: sessionId,
+          });
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+            const raw = trimmed.slice(6).trim();
+            if (raw === "[DONE]") break;
+
+            let ev: any;
+            try { ev = JSON.parse(raw); } catch { continue; }
+
+            if (typeof ev.eventId === "number") {
+              mgrLastEventIdRef.current = ev.eventId;
+            }
+
+            const evType = ev.type;
+            if (evType === "session_id") continue;
+
+            const isCurrentProject = useIDEStore.getState().projectId === projectId;
+
+            if (evType === "thinking_token") {
+              managerThinkingAccumulated += (ev.token as string) || "";
+              flushMgrReconnectSnapshot();
+              if (isCurrentProject) setMgrLiveThinkingText(managerThinkingAccumulated);
+            } else if (evType === "raw_token" || evType === "manager_token") {
+              managerAccumulated += ev.token;
+              flushMgrReconnectSnapshot();
+              if (isCurrentProject) setMgrLiveNarrationText(stripProjectNameMarker(managerAccumulated));
+            } else if (evType === "communicator_token") {
+              if (isCurrentProject) setMgrLiveNarrationText(ev.token || "");
+            } else if (evType === "plan_ready") {
+              if (isCurrentProject) {
+                const msgs = useIDEStore.getState().managerMessages;
+                const typingIdx = msgs.findIndex((m) => m.typing === true);
+                if (typingIdx !== -1) {
+                  useIDEStore.setState({
+                    managerMessages: msgs.filter((_, i) => i !== typingIdx),
+                  });
+                }
+                const plan = ev.plan;
+                useIDEStore.getState().clearManagerPlan();
+                const steps = normalizeSteps(plan);
+                for (const step of steps) updateTaskStatus(String(step.step), "pending");
+                useIDEStore.getState().setManagerPlan(plan);
+                addManagerMessage({
+                  role: "assistant",
+                  content: "",
+                  plan,
+                  thinking: managerThinkingAccumulated || undefined,
+                });
+              }
+            } else if (evType === "manager_done" || evType === "manager_error") {
+              break;
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError" && mgrSessionIdRef.current) {
+          const maxRetries = 8;
+          if (mgrReconnectRetryRef.current < maxRetries) {
+            mgrReconnectRetryRef.current++;
+            const retrySessionId = mgrSessionIdRef.current;
+            const retryLastEventId = mgrLastEventIdRef.current;
+            const backoffMs = Math.min(1000 * Math.pow(2, mgrReconnectRetryRef.current - 1), 16000);
+            mgrReconnectTimerRef.current = setTimeout(async () => {
+              mgrReconnectTimerRef.current = null;
+              try {
+                const statusRes = await fetch(`/api/manager-chat/${retrySessionId}/status`);
+                if (!statusRes.ok || !(await statusRes.json()).active) {
+                  useIDEStore.getState().setStreamingSnapshot(null);
+                  mgrSessionIdRef.current = null;
+                  setManagerResponding(false);
+                  return;
+                }
+              } catch {
+                useIDEStore.getState().setStreamingSnapshot(null);
+                mgrSessionIdRef.current = null;
+                setManagerResponding(false);
+                return;
+              }
+              connectToMgrStreamRef.current?.(retrySessionId, retryLastEventId);
+            }, backoffMs);
+            return;
+          }
+        }
+      } finally {
+        if (!mgrReconnectTimerRef.current) {
+          useIDEStore.getState().setStreamingSnapshot(null);
+          mgrSessionIdRef.current = null;
+          if (projectId) {
+            try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+          }
+          if (mgrLiveClearTimerRef.current) clearTimeout(mgrLiveClearTimerRef.current);
+          mgrLiveClearTimerRef.current = setTimeout(() => {
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            setMgrLiveActionLog([]);
+            mgrLiveClearTimerRef.current = null;
+          }, 300);
+          if (!buildSessionIdRef.current) {
+            setManagerResponding(false);
+          }
+        }
+      }
+    },
+    [
+      projectId,
+      addManagerMessage,
+      updateTaskStatus,
+      setManagerResponding,
+    ],
+  );
+
+  connectToMgrStreamRef.current = connectToMgrStream;
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (mgrSessionIdRef.current) return;
+
+    let cancelled = false;
+
+    const snapshot = useIDEStore.getState().streamingSnapshot;
+    const savedMgrSessionId = (() => {
+      try { return localStorage.getItem(`codestart-mgr-session-${projectId}`); } catch { return null; }
+    })();
+    const sessionIdToReconnect = (snapshot?.type === "manager" ? snapshot.sessionId : null) || savedMgrSessionId;
+
+    if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
+      setMgrLiveThinkingText(snapshot.thinkingText || "");
+      setMgrLiveNarrationText(snapshot.narrationText || "");
+      setManagerResponding(true);
+    }
+
+    if (sessionIdToReconnect) {
+      fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (cancelled) return;
+          if (data?.active) {
+            setManagerResponding(true);
+            connectToMgrStream(sessionIdToReconnect, -1);
+          } else {
+            useIDEStore.getState().setStreamingSnapshot(null);
+            try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+            setManagerResponding(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+          }
+        })
+        .catch(() => {
+          useIDEStore.getState().setStreamingSnapshot(null);
+          try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+          setManagerResponding(false);
+          setMgrLiveThinkingText("");
+          setMgrLiveNarrationText("");
+        });
+    } else if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
+      setTimeout(() => {
+        if (cancelled) return;
+        useIDEStore.getState().setStreamingSnapshot(null);
+        setManagerResponding(false);
+        setMgrLiveThinkingText("");
+        setMgrLiveNarrationText("");
+      }, 2000);
+    }
+
+    return () => { cancelled = true; };
+  }, [projectId, connectToMgrStream, setManagerResponding]);
 
   const handleContinueExecution = useCallback(
     (userInput?: string) => {

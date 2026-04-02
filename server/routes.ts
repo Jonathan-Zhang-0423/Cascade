@@ -356,6 +356,18 @@ function spawnProcess(
 
 const buildSessions = new Map<string, BuildSessionState>();
 
+interface ManagerChatSession {
+  id: string;
+  projectId?: string;
+  events: Array<{ eventId: number; data: Record<string, unknown> }>;
+  nextEventId: number;
+  done: boolean;
+  startedAt: number;
+  sseWriters: Set<(line: string) => void>;
+}
+
+const managerChatSessions = new Map<string, ManagerChatSession>();
+
 setInterval(() => {
   const now = Date.now();
   const maxAge = 30 * 60 * 1000;
@@ -368,6 +380,15 @@ setInterval(() => {
     if ((session as any)._startedAt && now - (session as any)._startedAt > maxAge) {
       session.aborted = true;
       buildSessions.delete(id);
+    }
+  });
+  Array.from(managerChatSessions.entries()).forEach(([id, session]) => {
+    if (session.done && now - session.startedAt > doneRetention) {
+      managerChatSessions.delete(id);
+      return;
+    }
+    if (now - session.startedAt > maxAge) {
+      managerChatSessions.delete(id);
     }
   });
 }, 60_000);
@@ -585,8 +606,82 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  app.get("/api/manager-chat/:sessionId/status", (req, res) => {
+    const session = managerChatSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({
+      active: !session.done,
+      done: session.done,
+      eventCount: session.events.length,
+    });
+  });
+
+  app.get("/api/manager-chat/active/:projectId", (req, res) => {
+    const projectId = req.params.projectId;
+    const entries = Array.from(managerChatSessions.entries());
+    const active = entries.find(([, s]) => s.projectId === projectId && !s.done);
+    if (active) {
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      return;
+    }
+    const done = entries.find(([, s]) => s.projectId === projectId && s.done);
+    if (done) {
+      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
+      return;
+    }
+    res.status(404).json({ error: "No active manager session for this project" });
+  });
+
+  app.get("/api/manager-chat/:sessionId/stream", (req, res) => {
+    const session = managerChatSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
+    const parsedLast = isNaN(lastEventId) ? -1 : lastEventId;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.socket?.setNoDelay?.(true);
+
+    const writer = (line: string) => {
+      try { res.write(line); (res as any).flush?.(); } catch {}
+    };
+    session.sseWriters.add(writer);
+
+    for (const ev of session.events) {
+      if (ev.eventId > parsedLast) {
+        writer(`data: ${JSON.stringify(ev.data)}\n\n`);
+      }
+    }
+
+    if (session.done) {
+      writer("data: [DONE]\n\n");
+      res.end();
+      session.sseWriters.delete(writer);
+      return;
+    }
+
+    const heartbeat = setInterval(() => {
+      try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
+    }, 5000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      session.sseWriters.delete(writer);
+    });
+  });
+
   app.post("/api/manager-chat", async (req, res) => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let mgrSessionId: string | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -607,8 +702,18 @@ export async function registerRoutes(
         return;
       }
 
-      // Open the SSE stream immediately — before any async work so the browser
-      // gets a connection right away rather than waiting for skill detection.
+      mgrSessionId = `mgr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const mgrSession: ManagerChatSession = {
+        id: mgrSessionId,
+        projectId: reqProjectId,
+        events: [],
+        nextEventId: 0,
+        done: false,
+        startedAt: Date.now(),
+        sseWriters: new Set(),
+      };
+      managerChatSessions.set(mgrSessionId, mgrSession);
+
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
@@ -616,16 +721,30 @@ export async function registerRoutes(
       res.flushHeaders();
       res.socket?.setNoDelay(true);
 
-      const emit = (data: Record<string, unknown>) => {
-        try {
-          res.write(`data: ${JSON.stringify(data)}\n\n`);
-          (res as any).flush?.();
-        } catch {}
+      const mgrWriter = (line: string) => {
+        try { res.write(line); (res as any).flush?.(); } catch {}
       };
+      mgrSession.sseWriters.add(mgrWriter);
+
+      const emit = (data: Record<string, unknown>) => {
+        const eventId = mgrSession.nextEventId++;
+        const eventData = { ...data, eventId };
+        mgrSession.events.push({ eventId, data: eventData });
+        const line = `data: ${JSON.stringify(eventData)}\n\n`;
+        Array.from(mgrSession.sseWriters).forEach(w => {
+          try { w(line); } catch {}
+        });
+      };
+
+      emit({ type: "session_id", sessionId: mgrSessionId });
 
       heartbeat = setInterval(() => {
         try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
       }, 5000);
+
+      req.on("close", () => {
+        mgrSession.sseWriters.delete(mgrWriter);
+      });
 
       // Build system prompt (async work runs after stream is open)
       let resolvedFramework: Framework | undefined = reqFramework;
@@ -753,21 +872,26 @@ export async function registerRoutes(
           emit({ type: "manager_done" });
         }
 
-        res.write("data: [DONE]\n\n");
-        (res as any).flush?.();
+        mgrSession.done = true;
+        const doneLine = "data: [DONE]\n\n";
+        Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         res.end();
       } catch (err: unknown) {
         clearInterval(heartbeat);
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error("Manager agent loop error:", errMsg);
         emit({ type: "manager_error" });
-        res.write("data: [DONE]\n\n");
-        (res as any).flush?.();
+        mgrSession.done = true;
+        const doneLine = "data: [DONE]\n\n";
+        Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         res.end();
       }
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
+      if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
+        managerChatSessions.get(mgrSessionId)!.done = true;
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
       } else {

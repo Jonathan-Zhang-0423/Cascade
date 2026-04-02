@@ -43,7 +43,8 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
     - Features a toggle between "Workspace" and "Learner Space" with auto-generation of notebooks.
     - Supports two-tier incremental updates: auto-patching for minor changes and user-initiated optimization for deeper refinement.
 - **LLM Output Monitor**: A non-modal floating panel displaying real-time, color-coded, source-labeled events from LLM interactions, with pub/sub event bus and batching.
-- **Background Build Persistence**: Server-side builds continue independently of client connection, with reconnection support and event buffering.
+- **Background Build Persistence**: Server-side builds continue independently of client connection, with reconnection support and event buffering. Manager-chat sessions now also have server-side tracking with session IDs, event buffering, and reconnection support.
+- **Streaming State Persistence**: StreamingSnapshot is persisted to localStorage during active SSE streams (both manager-chat and build-session), enabling UI state restoration and session reconnection after page reload or HMR.
 - **Framework-Aware Preview Adapters**: Provides specialized preview modes for different frameworks (iframe for Web, Expo Snack for React Native, DartPad for Flutter, Kotlin/Wasm live preview for Kotlin/Compose, static code preview with download for SwiftUI). Includes a zip export feature.
 - **Native Code Compilation to Web (Scheme 3)**: Compiles native UI code to WebAssembly for real native browser preview. Kotlin/Compose uses Compose Multiplatform + Kotlin/Wasm (Beta, most viable path). SwiftUI uses SwiftWasm + JavaScriptKit (Tokamak is archived — JavaScriptKit is the active replacement).
 - **Live HTML Preview**: Inlines local HTML, CSS, and JS, capturing console output.
