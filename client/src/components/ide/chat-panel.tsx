@@ -4907,6 +4907,10 @@ export function ChatPanel() {
                 const stepNum = (ev.stepNumber as number) ?? 1;
                 setExecutingTaskIndex(stepNum - 1);
                 setBuildPhase("thinking");
+                thinkingAccumulated = "";
+                commAccumulated = "";
+                setLiveThinkingText("");
+                setLiveNarrationText("");
                 const stepTitle = (ev.stepTitle as string) || "";
                 const totalSteps =
                   (ev.totalSteps as number) || normalizedSteps.length;
@@ -4921,8 +4925,22 @@ export function ChatPanel() {
                   timestamp: Date.now(),
                 });
               } else if (type === "thinking_token") {
+                const token = (ev.token as string) || "";
+                if (token) {
+                  thinkingAccumulated += token;
+                  setLiveThinkingText(thinkingAccumulated);
+                }
                 setBuildPhase("thinking");
               } else if (type === "narration_token") {
+                if (thinkingAccumulated) {
+                  thinkingAccumulated = "";
+                  setLiveThinkingText("");
+                }
+                const token = (ev.token as string) || "";
+                if (token) {
+                  commAccumulated += token;
+                  setLiveNarrationText(commAccumulated);
+                }
                 setBuildPhase("working");
               } else if (type === "editor_token") {
                 setBuildPhase("working");
