@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Sparkles, X, Loader2 } from "lucide-react";
 
@@ -52,6 +53,7 @@ export function ChatPanel() {
 
   const planCardLang = usePlanCardLang();
   const tGlobal = useT();
+  const { toast } = useToast();
 
   const {
     handleManagerSend,
@@ -207,11 +209,13 @@ export function ChatPanel() {
     if (chatMode === "build") {
       const editorSent = await handleEditorSend(input);
       if (editorSent) setInput("");
+      else if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
       return;
     }
     const sent = await handleManagerSend(undefined, input);
     if (sent) setInput("");
-  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
+    else if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
+  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");

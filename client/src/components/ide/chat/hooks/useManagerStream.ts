@@ -59,10 +59,25 @@ export function useManagerStream() {
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
   const autoExecutePlanRef = useRef(false);
+  const mgrInactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (mgrInactivityTimerRef.current) clearTimeout(mgrInactivityTimerRef.current);
+    mgrInactivityTimerRef.current = setTimeout(() => {
+      mgrInactivityTimerRef.current = null;
+      if (useIDEStore.getState().isManagerResponding) {
+        setManagerResponding(false);
+      }
+    }, 120_000);
+  }, [setManagerResponding]);
 
   useEffect(() => {
     return () => {
       isUnmountingRef.current = true;
+      if (mgrInactivityTimerRef.current) {
+        clearTimeout(mgrInactivityTimerRef.current);
+        mgrInactivityTimerRef.current = null;
+      }
       const currentProjectId = useIDEStore.getState().projectId;
       const sessionId = mgrSessionIdRef.current;
       if (sessionId && currentProjectId) {
@@ -130,6 +145,7 @@ export function useManagerStream() {
 
       addManagerMessage({ role: "user", content: trimmed });
       setManagerResponding(true);
+      resetInactivityTimer();
       setMgrPreparingPlan(false);
       setMgrLiveThinkingText("");
       setMgrLiveNarrationText("");
@@ -216,6 +232,7 @@ export function useManagerStream() {
           signal: controller.signal,
           validate: validateManagerEvent,
           onEvent: async (ev) => {
+            resetInactivityTimer();
             if (typeof ev.eventId === "number") {
               mgrLastEventIdRef.current = ev.eventId;
             }
@@ -663,6 +680,7 @@ export function useManagerStream() {
       clearManagerPlan,
       clearMgrLive,
       removeTypingBubble,
+      resetInactivityTimer,
     ],
   );
 

@@ -106,6 +106,7 @@ export function useEditorStream() {
 
     try {
       const response = await fetch("/api/chat", {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -204,7 +205,7 @@ export function useEditorStream() {
       if (editorAbortRef.current === controller) editorAbortRef.current = null;
       setAiResponding(false);
     }
-    return false;
+    return true;
   }, [
     isAiResponding,
     isManagerResponding,
