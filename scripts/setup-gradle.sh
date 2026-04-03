@@ -16,8 +16,9 @@ TEMP_ZIP="/tmp/gradle-$GRADLE_VERSION-bin.zip"
 
 mkdir -p "$HOME/.gradle-sdk"
 curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_ZIP"
-unzip -qo "$TEMP_ZIP" -d "$HOME/.gradle-sdk"
+python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$TEMP_ZIP" "$HOME/.gradle-sdk"
 rm -f "$TEMP_ZIP"
+chmod +x "$GRADLE_BIN" 2>/dev/null || true
 
 if [ -x "$GRADLE_BIN" ]; then
   echo "Gradle $GRADLE_VERSION installed successfully at $GRADLE_BIN"
