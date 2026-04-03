@@ -61,11 +61,11 @@ export default function DashboardPage() {
 
   const t = useT();
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const idea = ideaText.trim();
     if (!idea) return;
     const emoji = getProjectEmoji(idea);
-    const id = createProject(t("dashboard.newProject"), idea, emoji, selectedFramework);
+    const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework);
     setIdeaText("");
     setSelectedFramework("web");
     setShowNewDialog(false);

@@ -729,7 +729,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     set(baseState);
 
-    fetchFilesFromServer(id).then((serverFiles) => {
+    const fetchWithRetry = async (retries = 0): Promise<{ path: string; content: string }[] | null> => {
+      const result = await fetchFilesFromServer(id);
+      if ((!result || result.length === 0) && framework && framework !== "web" && retries < 3) {
+        await new Promise((r) => setTimeout(r, 500 * (retries + 1)));
+        return fetchWithRetry(retries + 1);
+      }
+      return result;
+    };
+
+    fetchWithRetry().then((serverFiles) => {
       if (!serverFiles || serverFiles.length === 0) return;
       const fileTree = rebuildFileTree(serverFiles);
       const currentState = get();

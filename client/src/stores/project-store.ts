@@ -21,7 +21,7 @@ export interface ProjectEntry {
 interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
-  createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => string;
+  createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => Promise<string>;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
   syncFromServer: () => Promise<void>;
@@ -211,7 +211,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       projects: [],
       serverSynced: false,
 
-      createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
+      createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
         const id = generateId();
         const isWeb = !framework || framework === "web";
         const state = getDefaultProjectState(initialPrompt, framework);
@@ -227,8 +227,9 @@ export const useProjectStore = create<ProjectStoreState>()(
           ],
         }));
 
-        syncProjectToServer(id, name, emoji, framework).then(() => {
-          if (!isWeb) return;
+        await syncProjectToServer(id, name, emoji, framework);
+
+        if (isWeb) {
           const flatFiles: { path: string; content: string }[] = [];
           function flattenNode(nodes: typeof BLANK_FILES) {
             for (const n of nodes) {
@@ -246,7 +247,7 @@ export const useProjectStore = create<ProjectStoreState>()(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ files: flatFiles }),
           }).catch(() => {});
-        });
+        }
 
         return id;
       },
