@@ -3258,34 +3258,18 @@ export function ChatPanel() {
                 await new Promise<void>((r) => setTimeout(r, 0));
               }
             } else if (evType === "manager_done") {
-              if (!isCurrentProject) continue;
               useIDEStore.getState().setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
               if (projectId) {
                 try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
               }
-              setMgrPreparingPlan(false);
-              if (mgrLiveClearTimerRef.current) {
-                clearTimeout(mgrLiveClearTimerRef.current);
-              }
-              mgrLiveClearTimerRef.current = setTimeout(() => {
-                setMgrLiveThinkingText("");
-                setMgrLiveNarrationText("");
-                setMgrLiveActionLog([]);
-                mgrLiveClearTimerRef.current = null;
-              }, 400);
-              const nameFromDone = (
-                ev.project_name as string | undefined
-              )?.trim();
-              if (projectId && nameFromDone) {
-                renameProject(projectId, nameFromDone);
-              }
 
+              let parsedPlan: any = null;
+              let canonical: string | null = null;
               if (managerAccumulated) {
-                const canonical = stripProjectNameMarker(managerAccumulated);
+                canonical = stripProjectNameMarker(managerAccumulated);
                 if (canonical) {
-                  let parsedPlan: any = null;
                   try {
                     const trimmed = canonical.trim();
                     if (trimmed.startsWith("{")) {
@@ -3299,22 +3283,50 @@ export function ChatPanel() {
                       }
                     }
                   } catch {}
+                }
+              }
 
+              const nameFromDone = (
+                ev.project_name as string | undefined
+              )?.trim();
+
+              if (isCurrentProject) {
+                setMgrPreparingPlan(false);
+                if (mgrLiveClearTimerRef.current) {
+                  clearTimeout(mgrLiveClearTimerRef.current);
+                }
+                mgrLiveClearTimerRef.current = setTimeout(() => {
+                  setMgrLiveThinkingText("");
+                  setMgrLiveNarrationText("");
+                  setMgrLiveActionLog([]);
+                  mgrLiveClearTimerRef.current = null;
+                }, 400);
+                if (projectId && nameFromDone) {
+                  renameProject(projectId, nameFromDone);
+                }
+
+                if (canonical) {
                   if (parsedPlan) {
                     removeTypingBubble();
                     const steps = normalizeSteps(parsedPlan);
                     if (steps.length > 0) {
-                      clearManagerPlan();
-                      for (const step of steps) {
-                        updateTaskStatus(String(step.step), "pending");
+                      const existingMsgs = useIDEStore.getState().managerMessages;
+                      const alreadyHasPlan = existingMsgs.some(
+                        (m) => m.plan && JSON.stringify(m.plan) === JSON.stringify(parsedPlan),
+                      );
+                      if (!alreadyHasPlan) {
+                        clearManagerPlan();
+                        for (const step of steps) {
+                          updateTaskStatus(String(step.step), "pending");
+                        }
+                        setManagerPlan(parsedPlan);
+                        addManagerMessage({
+                          role: "assistant",
+                          content: "",
+                          plan: parsedPlan,
+                          thinking: managerThinkingAccumulated || undefined,
+                        });
                       }
-                      setManagerPlan(parsedPlan);
-                      addManagerMessage({
-                        role: "assistant",
-                        content: "",
-                        plan: parsedPlan,
-                        thinking: managerThinkingAccumulated || undefined,
-                      });
                     } else {
                       const fallbackText =
                         parsedPlan.overview ||
@@ -3363,76 +3375,171 @@ export function ChatPanel() {
                     }
                   }
                 }
-              }
 
-              const archKeywords = [
-                "architect",
-                "restructur",
-                "refactor",
-                "replac",
-                "migrat",
-                "rewrite",
-                "framework",
-                "library",
-                "dependenc",
-                "api",
-                "backend",
-                "frontend",
-                "database",
-                "stack",
-              ];
-              const managerText = managerAccumulated.toLowerCase();
-              const hasArchChange = archKeywords.some((kw) =>
-                managerText.includes(kw),
-              );
-              const existingPlan = useIDEStore.getState().managerPlan;
-              if (hasArchChange && existingPlan && projectId) {
-                const promptMsg = useIDEStore
-                  .getState()
-                  .managerMessages.find((m) => m.role === "user");
-                const archFileNodes = flattenFiles(
-                  useIDEStore.getState().files,
+                const archKeywords = [
+                  "architect",
+                  "restructur",
+                  "refactor",
+                  "replac",
+                  "migrat",
+                  "rewrite",
+                  "framework",
+                  "library",
+                  "dependenc",
+                  "api",
+                  "backend",
+                  "frontend",
+                  "database",
+                  "stack",
+                ];
+                const managerText = managerAccumulated.toLowerCase();
+                const hasArchChange = archKeywords.some((kw) =>
+                  managerText.includes(kw),
                 );
-                const archCurrentFiles = archFileNodes
-                  .filter((f) => f.path && !f.path.endsWith("codestart.md"))
-                  .map((f) => ({ path: f.path!, content: f.content || "" }));
-                fetch("/api/generate-codestart", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    plan: existingPlan,
-                    userPrompt: input.trim() || promptMsg?.content || "",
-                    projectName: undefined,
-                    currentFiles: archCurrentFiles,
-                  }),
-                })
-                  .then(async (r) => {
-                    if (!r.ok) return;
-                    const d = await r.json();
-                    if (d.content)
-                      useIDEStore
-                        .getState()
-                        .updateFileContent("/project/codestart.md", d.content);
+                const existingPlan = useIDEStore.getState().managerPlan;
+                if (hasArchChange && existingPlan && projectId) {
+                  const promptMsg = useIDEStore
+                    .getState()
+                    .managerMessages.find((m) => m.role === "user");
+                  const archFileNodes = flattenFiles(
+                    useIDEStore.getState().files,
+                  );
+                  const archCurrentFiles = archFileNodes
+                    .filter((f) => f.path && !f.path.endsWith("codestart.md"))
+                    .map((f) => ({ path: f.path!, content: f.content || "" }));
+                  fetch("/api/generate-codestart", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      plan: existingPlan,
+                      userPrompt: input.trim() || promptMsg?.content || "",
+                      projectName: undefined,
+                      currentFiles: archCurrentFiles,
+                    }),
                   })
-                  .catch(() => {});
+                    .then(async (r) => {
+                      if (!r.ok) return;
+                      const d = await r.json();
+                      if (d.content)
+                        useIDEStore
+                          .getState()
+                          .updateFileContent("/project/codestart.md", d.content);
+                    })
+                    .catch(() => {});
+                }
+              } else if (projectId) {
+                try {
+                  const savedRaw = localStorage.getItem(`codestart-project-${projectId}`);
+                  const saved = savedRaw ? JSON.parse(savedRaw) : null;
+                  if (saved) {
+                    let msgs: ManagerMessage[] = saved.managerMessages || [];
+                    msgs = msgs.filter((m: ManagerMessage) => !m.typing);
+
+                    if (canonical) {
+                      if (parsedPlan) {
+                        const alreadyHasPlan = msgs.some(
+                          (m: ManagerMessage) => m.plan && JSON.stringify(m.plan) === JSON.stringify(parsedPlan),
+                        );
+                        if (!alreadyHasPlan) {
+                          msgs.push({
+                            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            role: "assistant",
+                            content: "",
+                            plan: parsedPlan,
+                            thinking: managerThinkingAccumulated || undefined,
+                            timestamp: Date.now(),
+                          });
+                        }
+                      } else {
+                        msgs.push({
+                          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                          role: "assistant",
+                          content: canonical,
+                          source: "manager",
+                          timestamp: Date.now(),
+                        });
+                      }
+                    }
+
+                    if (commAccumulated) {
+                      const friendlyLines = commAccumulated
+                        .split("\n")
+                        .filter(
+                          (l: string) =>
+                            !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) &&
+                            !l.trim().match(/^\[STEP[_ ]\d+\]/i) &&
+                            !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) &&
+                            !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) &&
+                            !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i),
+                        )
+                        .map((l: string) => l.trim())
+                        .filter(Boolean)
+                        .join("\n");
+                      if (friendlyLines) {
+                        const existingNarrationIdx = msgs.findIndex(
+                          (m: ManagerMessage) => m.role === "assistant" && m.source === "communicator" && !m.plan,
+                        );
+                        if (existingNarrationIdx >= 0) {
+                          msgs[existingNarrationIdx] = { ...msgs[existingNarrationIdx], content: friendlyLines };
+                        } else {
+                          msgs.push({
+                            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-comm`,
+                            role: "assistant",
+                            content: friendlyLines,
+                            source: "communicator",
+                            timestamp: Date.now(),
+                          });
+                        }
+                      }
+                    }
+
+                    saved.managerMessages = msgs;
+                    saved.streamingSnapshot = null;
+                    localStorage.setItem(`codestart-project-${projectId}`, JSON.stringify(saved));
+                  }
+                } catch {}
+
+                if (nameFromDone) {
+                  renameProject(projectId, nameFromDone);
+                }
               }
             } else if (evType === "manager_error") {
-              if (!isCurrentProject) continue;
               useIDEStore.getState().setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
               if (projectId) {
                 try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
               }
-              removeTypingBubble();
-              addManagerMessage({
-                role: "assistant",
-                content: tr(
-                  useLanguageStore.getState().lang,
-                  "chat.errorConnect",
-                ),
-                source: "communicator",
-              });
+              if (isCurrentProject) {
+                removeTypingBubble();
+                addManagerMessage({
+                  role: "assistant",
+                  content: tr(
+                    useLanguageStore.getState().lang,
+                    "chat.errorConnect",
+                  ),
+                  source: "communicator",
+                });
+              } else if (projectId) {
+                try {
+                  const savedRaw = localStorage.getItem(`codestart-project-${projectId}`);
+                  const saved = savedRaw ? JSON.parse(savedRaw) : null;
+                  if (saved) {
+                    let msgs: ManagerMessage[] = saved.managerMessages || [];
+                    msgs = msgs.filter((m: ManagerMessage) => !m.typing);
+                    msgs.push({
+                      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-err`,
+                      role: "assistant",
+                      content: tr(useLanguageStore.getState().lang, "chat.errorConnect"),
+                      source: "communicator",
+                      timestamp: Date.now(),
+                    });
+                    saved.managerMessages = msgs;
+                    saved.streamingSnapshot = null;
+                    localStorage.setItem(`codestart-project-${projectId}`, JSON.stringify(saved));
+                  }
+                } catch {}
+              }
             }
           }
         }
@@ -5662,66 +5769,96 @@ export function ChatPanel() {
 
   useEffect(() => {
     if (!projectId) return;
-    if (mgrSessionIdRef.current) return;
 
     let cancelled = false;
 
-    const snapshot = useIDEStore.getState().streamingSnapshot;
-    const savedMgrSessionId = (() => {
-      try { return localStorage.getItem(`codestart-mgr-session-${projectId}`); } catch { return null; }
-    })();
-    const sessionIdToReconnect = (snapshot?.type === "manager" ? snapshot.sessionId : null) || savedMgrSessionId;
+    const attemptManagerReconnect = () => {
+      const snapshot = useIDEStore.getState().streamingSnapshot;
+      const savedMgrSessionId = (() => {
+        try { return localStorage.getItem(`codestart-mgr-session-${projectId}`); } catch { return null; }
+      })();
+      const sessionIdToReconnect = (snapshot?.type === "manager" && snapshot.projectId === projectId ? snapshot.sessionId : null) || savedMgrSessionId;
 
-    if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
-      setMgrLiveThinkingText(snapshot.thinkingText || "");
-      setMgrLiveNarrationText(snapshot.narrationText || "");
-      setManagerResponding(true);
-    }
+      if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
+        setMgrLiveThinkingText(snapshot.thinkingText || "");
+        setMgrLiveNarrationText(snapshot.narrationText || "");
+        setManagerResponding(true);
+      }
 
-    if (sessionIdToReconnect) {
-      const resumeEventId = (snapshot?.type === "manager" && typeof snapshot.lastEventId === "number")
-        ? snapshot.lastEventId : -1;
-      fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (cancelled) return;
-          if (data?.active) {
-            setManagerResponding(true);
-            connectToMgrStream(sessionIdToReconnect, resumeEventId);
-          } else {
+      if (sessionIdToReconnect) {
+        const resumeEventId = (snapshot?.type === "manager" && typeof snapshot.lastEventId === "number")
+          ? snapshot.lastEventId : -1;
+        fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (cancelled) return;
+            if (data?.active) {
+              setManagerResponding(true);
+              connectToMgrStream(sessionIdToReconnect, resumeEventId);
+            } else {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
+              setManagerResponding(false);
+              setMgrLiveThinkingText("");
+              setMgrLiveNarrationText("");
+            }
+          })
+          .catch(() => {
             useIDEStore.getState().setStreamingSnapshot(null);
             try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
             setManagerResponding(false);
             setMgrLiveThinkingText("");
             setMgrLiveNarrationText("");
-          }
-        })
-        .catch(() => {
+          });
+      } else if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
+        setTimeout(() => {
+          if (cancelled) return;
           useIDEStore.getState().setStreamingSnapshot(null);
-          try { localStorage.removeItem(`codestart-mgr-session-${projectId}`); } catch {}
           setManagerResponding(false);
           setMgrLiveThinkingText("");
           setMgrLiveNarrationText("");
+        }, 2000);
+      }
+    };
+
+    if (mgrSessionIdRef.current) {
+      const staleSessionId = mgrSessionIdRef.current;
+      fetch(`/api/manager-chat/${staleSessionId}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (cancelled) return;
+          if (!data?.active) {
+            mgrSessionIdRef.current = null;
+            const snap = useIDEStore.getState().streamingSnapshot;
+            if (snap?.sessionId === staleSessionId) {
+              useIDEStore.getState().setStreamingSnapshot(null);
+            }
+            setManagerResponding(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+            attemptManagerReconnect();
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          mgrSessionIdRef.current = null;
+          setManagerResponding(false);
+          attemptManagerReconnect();
         });
-    } else if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
-      setTimeout(() => {
-        if (cancelled) return;
-        useIDEStore.getState().setStreamingSnapshot(null);
-        setManagerResponding(false);
-        setMgrLiveThinkingText("");
-        setMgrLiveNarrationText("");
-      }, 2000);
+    } else {
+      attemptManagerReconnect();
     }
 
-    if (snapshot?.type === "build" && snapshot.projectId === projectId) {
-      setLiveThinkingText(snapshot.thinkingText || "");
-      setLiveNarrationText(snapshot.narrationText || "");
+    const buildSnapshot = useIDEStore.getState().streamingSnapshot;
+    if (buildSnapshot?.type === "build" && buildSnapshot.projectId === projectId) {
+      setLiveThinkingText(buildSnapshot.thinkingText || "");
+      setLiveNarrationText(buildSnapshot.narrationText || "");
       const savedBuildSessionId = (() => {
         try { return localStorage.getItem(`codestart-build-session-${projectId}`); } catch { return null; }
       })();
-      const buildSessionToReconnect = snapshot.sessionId || savedBuildSessionId;
+      const buildSessionToReconnect = buildSnapshot.sessionId || savedBuildSessionId;
       if (buildSessionToReconnect && !buildSessionIdRef.current) {
-        const resumeBuildEventId = typeof snapshot.lastEventId === "number" ? snapshot.lastEventId : -1;
+        const resumeBuildEventId = typeof buildSnapshot.lastEventId === "number" ? buildSnapshot.lastEventId : -1;
         fetch(`/api/build-session/${buildSessionToReconnect}/status`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
