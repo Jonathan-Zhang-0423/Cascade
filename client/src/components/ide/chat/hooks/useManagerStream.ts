@@ -591,7 +591,7 @@ export function useManagerStream() {
                   return;
                 }
                 const statusData = await statusRes.json();
-                if (statusData.done || !statusData.active) {
+                if (!statusData.active && !statusData.done) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
@@ -811,7 +811,8 @@ export function useManagerStream() {
                 const statusRes = await fetch(
                   `/api/manager-chat/${retrySessionId}/status`,
                 );
-                if (!statusRes.ok || !(await statusRes.json()).active) {
+                const statusData = statusRes.ok ? await statusRes.json() : null;
+                if (!statusData || (!statusData.active && !statusData.done)) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
@@ -881,6 +882,40 @@ export function useManagerStream() {
         setManagerResponding(true);
       }
 
+      const fallbackToActiveEndpoint = () => {
+        fetch(`/api/manager-chat/active/${projectId}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((activeData) => {
+            if (cancelled || !activeData?.sessionId) {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              setManagerResponding(false);
+              setMgrLiveThinkingText("");
+              setMgrLiveNarrationText("");
+              return;
+            }
+            const existingSnap = useIDEStore.getState().streamingSnapshot;
+            if (existingSnap?.sessionId !== activeData.sessionId) {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              setMgrLiveThinkingText("");
+              setMgrLiveNarrationText("");
+            }
+            try {
+              localStorage.setItem(
+                `codestart-mgr-session-${projectId}`,
+                activeData.sessionId,
+              );
+            } catch {}
+            setManagerResponding(true);
+            connectToMgrStream(activeData.sessionId, -1);
+          })
+          .catch(() => {
+            useIDEStore.getState().setStreamingSnapshot(null);
+            setManagerResponding(false);
+            setMgrLiveThinkingText("");
+            setMgrLiveNarrationText("");
+          });
+      };
+
       if (sessionIdToReconnect) {
         const resumeEventId =
           snapshot?.type === "manager" &&
@@ -894,26 +929,23 @@ export function useManagerStream() {
             if (data?.active) {
               setManagerResponding(true);
               connectToMgrStream(sessionIdToReconnect, resumeEventId);
+            } else if (data?.done) {
+              setManagerResponding(true);
+              connectToMgrStream(sessionIdToReconnect, resumeEventId);
             } else {
-              useIDEStore.getState().setStreamingSnapshot(null);
               try {
                 localStorage.removeItem(
                   `codestart-mgr-session-${projectId}`,
                 );
               } catch {}
-              setManagerResponding(false);
-              setMgrLiveThinkingText("");
-              setMgrLiveNarrationText("");
+              fallbackToActiveEndpoint();
             }
           })
           .catch(() => {
-            useIDEStore.getState().setStreamingSnapshot(null);
             try {
               localStorage.removeItem(`codestart-mgr-session-${projectId}`);
             } catch {}
-            setManagerResponding(false);
-            setMgrLiveThinkingText("");
-            setMgrLiveNarrationText("");
+            fallbackToActiveEndpoint();
           });
       } else if (
         snapshot?.type === "manager" &&
