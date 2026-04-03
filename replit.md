@@ -45,6 +45,13 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
 - **LLM Output Monitor**: A non-modal floating panel displaying real-time, color-coded, source-labeled events from LLM interactions, with pub/sub event bus and batching.
 - **Background Build Persistence**: Server-side builds continue independently of client connection, with reconnection support and event buffering. Manager-chat sessions now also have server-side tracking with session IDs, event buffering, and reconnection support.
 - **Streaming State Persistence**: StreamingSnapshot is persisted to localStorage during active SSE streams (both manager-chat and build-session), enabling UI state restoration and session reconnection after page reload or HMR.
+- **Chat Panel Modular Architecture**: The chat panel (`chat-panel.tsx`) is split into extracted modules under `client/src/components/ide/chat/`:
+    - `chat-types.ts`: Shared types, constants, and i18n strings
+    - `chat-utils.tsx`: Pure utility functions (language detection, code parsing, tokenization, markdown rendering)
+    - `action-log.tsx`: Action log components (live stream, collapsed, chips)
+    - `message-components.tsx`: Chat message bubbles, code blocks, checkpoint markers, completion cards
+    - `plan-components.tsx`: Plan card, step items, review badges, manager message bubbles
+    - `error-boundary.tsx`: React ErrorBoundary wrapping the chat panel to prevent white-screen crashes
 - **Framework-Aware Preview Adapters**: Provides specialized preview modes for different frameworks (iframe for Web, Expo Snack for React Native, DartPad for Flutter, Kotlin/Wasm live preview for Kotlin/Compose, static code preview with download for SwiftUI). Includes a zip export feature.
 - **Native Code Compilation to Web (Scheme 3)**: Compiles native UI code to WebAssembly for real native browser preview. Kotlin/Compose uses Compose Multiplatform + Kotlin/Wasm (Beta, most viable path). SwiftUI uses SwiftWasm + JavaScriptKit (Tokamak is archived — JavaScriptKit is the active replacement).
 - **Live HTML Preview**: Inlines local HTML, CSS, and JS, capturing console output.

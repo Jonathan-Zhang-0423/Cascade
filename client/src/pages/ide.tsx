@@ -7,6 +7,7 @@ import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
 import { CodeEditor } from "@/components/ide/code-editor";
 import { ChatPanel } from "@/components/ide/chat-panel";
+import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
 import { CommandPalette } from "@/components/ide/command-palette";
@@ -97,7 +98,7 @@ export default function IDEPage() {
                   className="bg-background rounded-lg border border-border/50 overflow-hidden"
                 >
                   {activeTool === "files" && <FileTree />}
-                  {activeTool === "chat" && <ChatPanel />}
+                  {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
                 </ResizablePanel>
                 <ResizableHandle className="w-0 bg-transparent" />
               </>

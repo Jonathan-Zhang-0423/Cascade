@@ -1,0 +1,481 @@
+import { useState } from "react";
+import {
+  useIDEStore,
+  type ChatMessage,
+} from "@/stores/ide-store";
+import { useT } from "@/lib/i18n";
+import {
+  ChevronRight,
+  ChevronDown,
+  FileCode,
+  Check,
+  ExternalLink,
+  History,
+  RotateCcw,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { CodeBlock } from "./chat-types";
+import { THEME_COLORS } from "./chat-types";
+import {
+  parseCodeBlocks,
+  parseCompletionSummary,
+  escapeHtml,
+  tokenizeLine,
+  formatRelativeTime,
+  findSummaryHeader,
+  renderBoldMarkdown,
+  splitSummaryBody,
+  t,
+  usePlanCardLang,
+} from "./chat-utils";
+
+export function CodeBlockView({
+  block,
+  applied,
+}: {
+  block: CodeBlock;
+  autoApplied?: boolean;
+  applied?: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(true);
+  const { openFile, theme } = useIDEStore();
+  const tGlobalRef = useT();
+  const fileName = block.filePath.split("/").pop() || block.filePath;
+  const lineCount = block.code.split("\n").length;
+
+  const colors = THEME_COLORS[theme as keyof typeof THEME_COLORS] || THEME_COLORS["vs-dark"];
+
+  const detectLang = (): "html" | "css" | "js" | "text" => {
+    const lang = block.language.toLowerCase();
+    if (lang === "html" || fileName.endsWith(".html")) return "html";
+    if (lang === "css" || fileName.endsWith(".css")) return "css";
+    if (
+      lang === "javascript" ||
+      lang === "js" ||
+      lang === "jsx" ||
+      lang === "ts" ||
+      lang === "tsx" ||
+      fileName.endsWith(".js") ||
+      fileName.endsWith(".jsx") ||
+      fileName.endsWith(".ts") ||
+      fileName.endsWith(".tsx")
+    )
+      return "js";
+    return "text";
+  };
+
+  const lang = detectLang();
+
+  const highlightLine = (line: string): string => {
+    if (lang === "text") return escapeHtml(line);
+    const tokens = tokenizeLine(line, lang);
+    return tokens
+      .map((t) => {
+        const escaped = escapeHtml(t.text);
+        const colorMap: Record<string, string> = {
+          keyword: colors.keyword,
+          string: colors.string,
+          comment: colors.comment,
+          tag: colors.tag,
+          property: colors.property,
+          number: colors.number,
+          attr: colors.attr,
+        };
+        const c = colorMap[t.type];
+        if (c) return `<span style="color:${c}">${escaped}</span>`;
+        return escaped;
+      })
+      .join("");
+  };
+
+  return (
+    <div
+      className="w-full my-1 rounded-lg border border-border/50 overflow-hidden"
+      data-testid={`code-block-${block.filePath}`}
+    >
+      <div
+        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
+        onClick={() => setCollapsed((c) => !c)}
+        data-testid={`toggle-code-${block.filePath}`}
+      >
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3 h-3 shrink-0" />
+          )}
+          <FileCode className="w-3 h-3 shrink-0" />
+          <span className="truncate text-foreground/80">{fileName}</span>
+          <span className="shrink-0 text-muted-foreground/50">
+            {lineCount}L
+          </span>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          {applied && (
+            <span
+              className="inline-flex items-center gap-0.5 text-green-500/80 text-[10px] font-medium"
+              data-testid={`applied-${block.filePath}`}
+            >
+              <Check className="w-3 h-3" />
+              {tGlobalRef("chat.applied")}
+            </span>
+          )}
+          <button
+            className="inline-flex items-center gap-1 text-primary/70 hover:text-primary hover:bg-primary/10 px-2 py-1 rounded transition-all text-[10px] font-medium"
+            onClick={(e) => {
+              e.stopPropagation();
+              openFile(block.filePath);
+            }}
+            data-testid={`button-open-${block.filePath}`}
+          >
+            <ExternalLink className="w-3 h-3" />
+            <span>{tGlobalRef("chat.open")}</span>
+          </button>
+        </div>
+      </div>
+      {!collapsed && (
+        <div
+          className="overflow-x-auto text-[11px] leading-[1.6] border-t border-border/20 max-h-[240px] overflow-y-auto font-mono"
+          style={{ backgroundColor: colors.bg, color: colors.foreground }}
+        >
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
+            <tbody>
+              {block.code.split("\n").map((line, idx) => (
+                <tr key={idx} style={{ height: "20px" }}>
+                  <td
+                    className="select-none text-right sticky left-0"
+                    style={{
+                      padding: "0 8px",
+                      color: colors.lineNum,
+                      width: "44px",
+                      minWidth: "44px",
+                      borderRight: `1px solid ${colors.lineBorder}`,
+                      backgroundColor: colors.bg,
+                      userSelect: "none",
+                    }}
+                  >
+                    {idx + 1}
+                  </td>
+                  <td style={{ padding: "0 12px", whiteSpace: "pre" }}>
+                    <code
+                      dangerouslySetInnerHTML={{ __html: highlightLine(line) }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextWithSummary({ text }: { text: string }) {
+  const match = findSummaryHeader(text);
+
+  if (!match) {
+    return <div className="whitespace-pre-wrap">{text}</div>;
+  }
+
+  const before = text.slice(0, match.index);
+  const headerText = text.slice(match.index, match.index + match.length);
+  const after = text.slice(match.index + match.length);
+  const { body, trailing } = splitSummaryBody(after);
+
+  return (
+    <div>
+      {before.trim().length > 0 && (
+        <div className="whitespace-pre-wrap">{before}</div>
+      )}
+      <div
+        className="mt-1 rounded-lg border border-primary/15 bg-primary/[0.03] px-3 py-2.5"
+        data-testid="changes-summary"
+      >
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-primary/80 mb-1.5">
+          <Check className="w-3.5 h-3.5" />
+          {headerText}
+        </div>
+        <div className="text-[12.5px] leading-relaxed">
+          {renderBoldMarkdown(body)}
+        </div>
+      </div>
+      {trailing.trim().length > 0 && (
+        <div className="whitespace-pre-wrap mt-1">{trailing}</div>
+      )}
+    </div>
+  );
+}
+
+export function MessageContent({
+  content,
+  autoApplied,
+  appliedBlockIndices,
+}: {
+  content: string;
+  autoApplied?: boolean;
+  appliedBlockIndices?: Set<number>;
+}) {
+  const parts = parseCodeBlocks(content);
+
+  if (parts.length === 1 && typeof parts[0] === "string") {
+    return <TextWithSummary text={parts[0]} />;
+  }
+
+  let blockIdx = 0;
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (typeof part === "string") {
+          return <TextWithSummary key={i} text={part} />;
+        }
+        const currentBlockIdx = blockIdx++;
+        return (
+          <CodeBlockView
+            key={i}
+            block={part}
+            autoApplied={autoApplied}
+            applied={autoApplied || appliedBlockIndices?.has(currentBlockIdx)}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+export function MessageBubble({
+  message,
+  autoApplied,
+  appliedBlockIndices,
+}: {
+  message: ChatMessage;
+  autoApplied?: boolean;
+  appliedBlockIndices?: Set<number>;
+}) {
+  const isAssistant = message.role === "assistant";
+
+  if (isAssistant) {
+    return (
+      <div
+        className="px-3 text-[13px] leading-relaxed text-foreground"
+        data-testid={`chat-message-${message.id}`}
+      >
+        <MessageContent
+          content={message.content}
+          autoApplied={autoApplied}
+          appliedBlockIndices={appliedBlockIndices}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex justify-end px-3"
+      data-testid={`chat-message-${message.id}`}
+    >
+      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+        <MessageContent content={message.content} />
+      </div>
+    </div>
+  );
+}
+
+export function CheckpointMarker({ message }: { message: ChatMessage }) {
+  const { restoreCheckpoint, refreshPreview, checkpoints } = useIDEStore();
+  const [restored, setRestored] = useState(false);
+  const tCp = useT();
+
+  const isAvailable = message.checkpointId
+    ? checkpoints.some((cp) => cp.id === message.checkpointId)
+    : false;
+
+  const handleRestore = () => {
+    if (!message.checkpointId || !isAvailable) return;
+    restoreCheckpoint(message.checkpointId);
+    refreshPreview();
+    setRestored(true);
+    setTimeout(() => setRestored(false), 2000);
+  };
+
+  return (
+    <div
+      className={cn(
+        "px-3 flex items-center gap-1.5 text-[11px]",
+        isAvailable ? "text-muted-foreground/60" : "text-muted-foreground/30",
+      )}
+      data-testid={`checkpoint-${message.checkpointId}`}
+    >
+      <History className="w-3 h-3 shrink-0" />
+      <span className="truncate">{message.content}</span>
+      <span className="shrink-0">·</span>
+      <span className="shrink-0">{formatRelativeTime(message.timestamp)}</span>
+      {isAvailable && (
+        <>
+          <span className="shrink-0">·</span>
+          <span
+            className={cn(
+              "shrink-0 cursor-pointer transition-colors",
+              restored ? "text-green-500" : "hover:text-foreground",
+            )}
+            onClick={handleRestore}
+            data-testid={`button-restore-${message.checkpointId}`}
+          >
+            {restored ? (
+              <span className="inline-flex items-center gap-0.5">
+                <Check className="w-3 h-3" />
+                {tCp("chat.restored")}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 underline underline-offset-2">
+                <RotateCcw className="w-2.5 h-2.5" />
+                {tCp("chat.restore")}
+              </span>
+            )}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function TypingIndicator({ text }: { text?: string }) {
+  const lang = usePlanCardLang();
+  return (
+    <div
+      className="px-3 flex items-center gap-1.5"
+      data-testid="typing-indicator"
+    >
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">
+        {text || t(lang, "thinking")}
+      </span>
+    </div>
+  );
+}
+
+export function BuildCompletionCard({
+  changedFiles,
+  summary,
+  userLang,
+}: {
+  changedFiles: string[];
+  summary?: string;
+  userLang?: string;
+}) {
+  const lang =
+    userLang?.toLowerCase().includes("chinese") || userLang === "zh"
+      ? "zh"
+      : "en";
+  const isZh = lang === "zh";
+  const [showFiles, setShowFiles] = useState(false);
+
+  const defaultHeadline = isZh ? "✅ 构建完成！" : "✅ Build complete!";
+  const filesLabel = isZh ? "查看变更文件" : "View changed files";
+  const hideFilesLabel = isZh ? "隐藏文件" : "Hide files";
+  const generatingLabel = isZh ? "正在生成摘要…" : "Generating summary…";
+  const whatBuiltLabel = isZh ? "构建内容" : "What was built";
+  const nextStepsLabel = isZh ? "下一步" : "Next steps";
+
+  const parsed = summary ? parseCompletionSummary(summary) : null;
+  const headline = parsed?.headline || defaultHeadline;
+
+  return (
+    <div
+      className="mx-3 mt-2 mb-1 rounded-lg border border-green-500/25 bg-green-500/[0.04] overflow-hidden"
+      data-testid="build-completion-card"
+    >
+      <div className="px-3 py-2 border-b border-green-500/15 flex items-start gap-2">
+        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
+        <span
+          className="text-[12.5px] font-semibold text-green-500 leading-snug"
+          data-testid="completion-headline"
+        >
+          {headline}
+        </span>
+      </div>
+
+      {!summary && (
+        <div className="px-3 py-2">
+          <p className="text-[11px] text-muted-foreground italic">
+            {generatingLabel}
+          </p>
+        </div>
+      )}
+
+      {parsed && parsed.fileChanges.length > 0 && (
+        <div className="px-3 py-2.5 space-y-2">
+          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">
+            {whatBuiltLabel}
+          </p>
+          <ol className="space-y-1.5 list-none">
+            {parsed.fileChanges.map((change, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-2 text-[11.5px] text-foreground/75"
+                data-testid={`file-change-${i}`}
+              >
+                <span className="shrink-0 w-4 h-4 rounded-full bg-green-500/15 text-green-500 text-[9px] font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="leading-relaxed">{change}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {parsed && !parsed.fileChanges.length && summary && (
+        <div className="px-3 py-2">
+          <p className="text-[11.5px] text-foreground/75 leading-relaxed whitespace-pre-wrap">
+            {summary}
+          </p>
+        </div>
+      )}
+
+      {parsed?.specialNotes && (
+        <div className="px-3 py-2 border-t border-green-500/10">
+          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">
+            {nextStepsLabel}
+          </p>
+          <p
+            className="text-[11.5px] text-foreground/70 leading-relaxed"
+            data-testid="completion-special-notes"
+          >
+            {parsed.specialNotes}
+          </p>
+        </div>
+      )}
+
+      {changedFiles.length > 0 && (
+        <div className="border-t border-green-500/10">
+          <button
+            className="w-full px-3 py-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors"
+            onClick={() => setShowFiles((v) => !v)}
+            data-testid="toggle-changed-files"
+          >
+            <FileCode className="w-3 h-3 shrink-0" />
+            <span>
+              {showFiles ? hideFilesLabel : filesLabel} ({changedFiles.length})
+            </span>
+          </button>
+          {showFiles && (
+            <div className="px-3 pb-2 space-y-1">
+              {changedFiles.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono"
+                  data-testid={`changed-file-${i}`}
+                >
+                  <span className="truncate">{f}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
