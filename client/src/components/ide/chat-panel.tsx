@@ -204,7 +204,11 @@ export function ChatPanel() {
       handleExecutePlan();
       return;
     }
-    if (chatMode === "build") { handleEditorSend(input); setInput(""); return; }
+    if (chatMode === "build") {
+      const editorSent = await handleEditorSend(input);
+      if (editorSent) setInput("");
+      return;
+    }
     const sent = await handleManagerSend(undefined, input);
     if (sent) setInput("");
   }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);

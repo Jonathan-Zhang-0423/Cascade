@@ -70,9 +70,9 @@ export function useEditorStream() {
     [],
   );
 
-  const handleEditorSend = useCallback(async (inputText: string) => {
+  const handleEditorSend = useCallback(async (inputText: string): Promise<boolean> => {
     const trimmed = inputText.trim();
-    if (!trimmed || isAiResponding || isManagerResponding) return;
+    if (!trimmed || isAiResponding || isManagerResponding) return false;
 
     const priorMsgs = useIDEStore.getState().chatMessages;
     const isFirstUserMessage = !priorMsgs.some((m) => m.role === "user");
@@ -120,7 +120,7 @@ export function useEditorStream() {
         updateLastAssistantMessage(
           tr(useLanguageStore.getState().lang, "chat.errorConnect"),
         );
-        return;
+        return true;
       }
 
       const reader = response.body.getReader();
@@ -199,10 +199,12 @@ export function useEditorStream() {
           tr(useLanguageStore.getState().lang, "chat.errorConnect"),
         );
       }
+      return true;
     } finally {
       if (editorAbortRef.current === controller) editorAbortRef.current = null;
       setAiResponding(false);
     }
+    return false;
   }, [
     isAiResponding,
     isManagerResponding,

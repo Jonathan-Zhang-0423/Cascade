@@ -637,6 +637,7 @@ export function useManagerStream() {
             setManagerResponding(false);
           }
         }
+        return false;
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         if (
