@@ -3,6 +3,7 @@ import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { getAIClient, type AIProvider } from "./kimi-client";
+import { storage } from "./storage";
 import {
   buildBuilderTools,
   buildVerifierTools,
@@ -353,6 +354,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       .map(f => f.path);
 
     emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "" });
+
+    if (session.projectId) {
+      storage.updateProjectBuildResult(session.projectId, {
+        changedFiles,
+        summary: plan.summary ?? "",
+        completedAt: Date.now(),
+      }).catch(() => {});
+    }
   }
 
   emit({ type: "done" });

@@ -24,11 +24,15 @@ export const projects = pgTable("projects", {
   framework: text("framework").notNull().default("web"),
   language: text("language").notNull().default("html"),
   targetPlatform: text("target_platform"),
+  lastPlan: text("last_plan"),
+  lastBuildResult: text("last_build_result"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
   createdAt: true,
+  lastPlan: true,
+  lastBuildResult: true,
 }).extend({
   framework: z.enum(["web", "rn-expo", "flutter", "swiftui", "kotlin"]).optional(),
   language: z.enum(["html", "typescript", "dart", "swift", "kotlin"]).optional(),

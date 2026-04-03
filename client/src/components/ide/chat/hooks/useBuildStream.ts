@@ -827,6 +827,17 @@ export function useBuildStream() {
                 saveBuildResult(finalLog, [], userLang);
               }
             }
+            if (projectId && useIDEStore.getState().projectId === projectId) {
+              fetch(`/api/projects/${projectId}/files`)
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) => {
+                  if (!data?.files?.length) return;
+                  if (useIDEStore.getState().projectId === projectId) {
+                    useIDEStore.getState().loadProject(projectId);
+                  }
+                })
+                .catch(() => {});
+            }
             clearBuildLive(400);
             return;
           }
@@ -1218,6 +1229,17 @@ export function useBuildStream() {
             if (type === "done") {
               helpers.finalizeEditor();
               helpers.flushNarrationToStore();
+              if (projectId && useIDEStore.getState().projectId === projectId) {
+                fetch(`/api/projects/${projectId}/files`)
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((data) => {
+                    if (!data?.files?.length) return;
+                    if (useIDEStore.getState().projectId === projectId) {
+                      useIDEStore.getState().loadProject(projectId);
+                    }
+                  })
+                  .catch(() => {});
+              }
               clearBuildLive(400);
               return;
             }

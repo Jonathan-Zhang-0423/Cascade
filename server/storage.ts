@@ -12,6 +12,8 @@ export interface IStorage {
   getProjects(): Promise<Project[]>;
   createProject(project: InsertProject): Promise<Project>;
   updateProjectName(id: string, name: string): Promise<void>;
+  updateProjectPlan(id: string, plan: unknown): Promise<void>;
+  updateProjectBuildResult(id: string, result: unknown): Promise<void>;
   deleteProject(id: string): Promise<void>;
 
   getProjectFiles(projectId: string): Promise<ProjectFile[]>;
@@ -53,6 +55,14 @@ export class DatabaseStorage implements IStorage {
 
   async updateProjectName(id: string, name: string): Promise<void> {
     await db.update(projects).set({ name }).where(eq(projects.id, id));
+  }
+
+  async updateProjectPlan(id: string, plan: unknown): Promise<void> {
+    await db.update(projects).set({ lastPlan: JSON.stringify(plan) }).where(eq(projects.id, id));
+  }
+
+  async updateProjectBuildResult(id: string, result: unknown): Promise<void> {
+    await db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id));
   }
 
   async deleteProject(id: string): Promise<void> {

@@ -884,6 +884,35 @@ export function useManagerStream() {
 
     let cancelled = false;
 
+    const restorePlanFromDB = () => {
+      fetch(`/api/projects/${projectId}/plan`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (cancelled || !data?.plan) return;
+          const plan = data.plan;
+          const store = useIDEStore.getState();
+          if (store.managerPlan) return;
+          const steps = (plan.steps ?? plan.sub_tasks ?? []).map((s: any, i: number) => ({
+            ...s,
+            step: s.step ?? i + 1,
+            status: "pending",
+          }));
+          store.setManagerPlan({ ...plan, steps });
+          for (const step of steps) {
+            updateTaskStatus(String(step.step), step.status);
+          }
+          const alreadyHasPlan = store.managerMessages.some((m: any) => m.plan);
+          if (!alreadyHasPlan) {
+            addManagerMessage({
+              role: "assistant",
+              content: plan.summary || "Plan restored from previous session.",
+              plan: { ...plan, steps },
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
     const attemptManagerReconnect = () => {
       const snapshot = useIDEStore.getState().streamingSnapshot;
       const savedMgrSessionId = (() => {
@@ -901,7 +930,6 @@ export function useManagerStream() {
       if (snapshot?.type === "manager" && snapshot.projectId === projectId) {
         setMgrLiveThinkingText(snapshot.thinkingText || "");
         setMgrLiveNarrationText(snapshot.narrationText || "");
-        setManagerResponding(true);
       }
 
       const fallbackToActiveEndpoint = () => {
@@ -913,6 +941,7 @@ export function useManagerStream() {
               setManagerResponding(false);
               setMgrLiveThinkingText("");
               setMgrLiveNarrationText("");
+              restorePlanFromDB();
               return;
             }
             const existingSnap = useIDEStore.getState().streamingSnapshot;
@@ -935,6 +964,7 @@ export function useManagerStream() {
             setManagerResponding(false);
             setMgrLiveThinkingText("");
             setMgrLiveNarrationText("");
+            restorePlanFromDB();
           });
       };
 
@@ -948,10 +978,7 @@ export function useManagerStream() {
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (cancelled) return;
-            if (data?.active) {
-              setManagerResponding(true);
-              connectToMgrStream(sessionIdToReconnect, resumeEventId);
-            } else if (data?.done) {
+            if (data?.active || data?.done) {
               setManagerResponding(true);
               connectToMgrStream(sessionIdToReconnect, resumeEventId);
             } else {
@@ -979,7 +1006,10 @@ export function useManagerStream() {
           setManagerResponding(false);
           setMgrLiveThinkingText("");
           setMgrLiveNarrationText("");
+          restorePlanFromDB();
         }, 2000);
+      } else {
+        restorePlanFromDB();
       }
     };
 

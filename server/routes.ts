@@ -372,7 +372,7 @@ const managerChatSessions = new Map<string, ManagerChatSession>();
 setInterval(() => {
   const now = Date.now();
   const maxAge = 30 * 60 * 1000;
-  const doneRetention = 5 * 60 * 1000;
+  const doneRetention = 30 * 60 * 1000;
   Array.from(buildSessions.entries()).forEach(([id, session]) => {
     if (session.done && session.doneAt && now - session.doneAt > doneRetention) {
       buildSessions.delete(id);
@@ -901,6 +901,11 @@ export async function registerRoutes(
           }
 
           emit({ type: "plan_ready", plan, project_name: projectName });
+
+          if (mgrSession.projectId) {
+            storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});
+          }
+
           emit({ type: "manager_done" });
         } else {
           emit({ type: "manager_done" });
@@ -1742,6 +1747,40 @@ Generate the codestart.md content for this project based on both the plan and th
     } catch (error: any) {
       console.error("Update project error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to update project" });
+    }
+  });
+
+  app.get("/api/projects/:id/plan", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      if (!project.lastPlan) {
+        res.json({ plan: null });
+        return;
+      }
+      res.json({ plan: JSON.parse(project.lastPlan) });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get plan" });
+    }
+  });
+
+  app.get("/api/projects/:id/build-result", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      if (!project.lastBuildResult) {
+        res.json({ result: null });
+        return;
+      }
+      res.json({ result: JSON.parse(project.lastBuildResult) });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get build result" });
     }
   });
 
