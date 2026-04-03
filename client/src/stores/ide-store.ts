@@ -457,6 +457,7 @@ function persistState(state: IDEState) {
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
       : state.managerMessages,
     streamingSnapshot: state.streamingSnapshot,
+    managerPlan: state.managerPlan,
     selectedDevice: state.selectedDevice,
     deviceOrientation: state.deviceOrientation,
     devicePlatform: state.devicePlatform,

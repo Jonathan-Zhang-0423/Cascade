@@ -969,7 +969,9 @@ export function useManagerStream() {
                 activeData.sessionId,
               );
             } catch {}
-            setManagerResponding(true);
+            if (activeData.active) {
+              setManagerResponding(true);
+            }
             connectToMgrStream(activeData.sessionId, -1);
           })
           .catch(() => {
