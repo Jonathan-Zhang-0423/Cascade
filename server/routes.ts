@@ -685,6 +685,7 @@ export async function registerRoutes(
   app.post("/api/manager-chat", async (req, res) => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let mgrSessionId: string | undefined;
+    let clientDisconnected = false;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -746,23 +747,41 @@ export async function registerRoutes(
       }, 5000);
 
       req.on("close", () => {
+        clientDisconnected = true;
         mgrSession.sseWriters.delete(mgrWriter);
+        if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
       });
 
-      // Build system prompt (async work runs after stream is open)
-      let resolvedFramework: Framework | undefined = reqFramework;
-      if (!resolvedFramework && reqProjectId) {
+      // Build system prompt — run independent async work in parallel
+      const allConversationText = messages.map((m) => m.content).join(" ");
+
+      const frameworkPromise = (async (): Promise<Framework | undefined> => {
+        if (reqFramework) return reqFramework;
+        if (!reqProjectId) return undefined;
         try {
           const projectRecord = await storage.getProject(reqProjectId);
-          if (projectRecord?.framework) {
-            resolvedFramework = projectRecord.framework as Framework;
-          }
-        } catch {}
-      }
+          return projectRecord?.framework as Framework | undefined;
+        } catch { return undefined; }
+      })();
 
-      const allConversationText = messages.map((m) => m.content).join(" ");
-      const frameworkSkill = resolvedFramework ? getSkillForFramework(resolvedFramework) : null;
-      const detectedSkill = frameworkSkill || (await detectSkillFromText(allConversationText));
+      const skillDetectionPromise = (async (): Promise<string | null> => {
+        const fw = reqFramework;
+        if (fw) {
+          const fwSkill = getSkillForFramework(fw);
+          if (fwSkill) return fwSkill;
+        }
+        return detectSkillFromText(allConversationText);
+      })();
+
+      const compressionPromise = compressMessages(messages);
+
+      const [resolvedFramework, detectedSkillRaw, processedMessages] = await Promise.all([
+        frameworkPromise,
+        skillDetectionPromise,
+        compressionPromise,
+      ]);
+
+      const detectedSkill = (resolvedFramework ? getSkillForFramework(resolvedFramework) : null) || detectedSkillRaw;
 
       let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
       if (files && files.length > 0) {
@@ -786,9 +805,6 @@ export async function registerRoutes(
           systemPrompt = `${systemPrompt}\n${mobileSupplement}`;
         }
       }
-
-      // Compress long conversation history before sending to the LLM
-      const processedMessages = await compressMessages(messages);
 
       const managerState: ManagerSessionState = {};
       const managerTools = buildManagerTools(managerState);
@@ -878,16 +894,18 @@ export async function registerRoutes(
         mgrSession.done = true;
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
-        res.end();
+        if (!clientDisconnected) { try { res.end(); } catch {} }
       } catch (err: unknown) {
         clearInterval(heartbeat);
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error("Manager agent loop error:", errMsg);
+        if (!clientDisconnected) {
+          console.error("Manager agent loop error:", errMsg);
+        }
         emit({ type: "manager_error" });
         mgrSession.done = true;
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
-        res.end();
+        if (!clientDisconnected) { try { res.end(); } catch {} }
       }
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
@@ -897,7 +915,7 @@ export async function registerRoutes(
       }
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
-      } else {
+      } else if (!clientDisconnected) {
         try {
           res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
           (res as any).flush?.();

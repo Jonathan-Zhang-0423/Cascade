@@ -1412,11 +1412,37 @@ export function useBuildStream() {
               `codestart-build-session-${projectId}`,
             );
           } catch {}
-          useIDEStore.getState().setStreamingSnapshot(null);
-          setAiResponding(false);
-          setExecutingTaskIndex(null);
-          setBuildPhase(null);
-          return;
+          return fetch(`/api/build-session/active/${projectId}`)
+            .then((r2) => (r2.ok ? r2.json() : null))
+            .then((activeData) => {
+              if (cancelled || !activeData?.sessionId) {
+                useIDEStore.getState().setStreamingSnapshot(null);
+                setAiResponding(false);
+                setExecutingTaskIndex(null);
+                setBuildPhase(null);
+                return;
+              }
+              if (buildSessionIdRef.current) return;
+              try {
+                localStorage.setItem(
+                  `codestart-build-session-${projectId}`,
+                  activeData.sessionId,
+                );
+              } catch {}
+              setIsReconnecting(true);
+              isReconnectingRef.current = true;
+              setExecutingTaskIndex(0);
+              setChatMode("build");
+              setReviewPhase("building");
+              setBuildPhase("thinking");
+              connectToBuildStream(activeData.sessionId, -1).catch(() => {});
+            })
+            .catch(() => {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              setAiResponding(false);
+              setExecutingTaskIndex(null);
+              setBuildPhase(null);
+            });
         }
         if (buildSessionIdRef.current) return;
         setIsReconnecting(true);
