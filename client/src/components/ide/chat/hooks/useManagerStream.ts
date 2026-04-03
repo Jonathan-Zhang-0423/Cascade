@@ -57,7 +57,6 @@ export function useManagerStream() {
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUnmountingRef = useRef(false);
-  const isMgrReconnectingRef = useRef(false);
   const connectToMgrStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -988,21 +987,18 @@ export function useManagerStream() {
           typeof snapshot.lastEventId === "number"
             ? snapshot.lastEventId
             : -1;
-        isMgrReconnectingRef.current = true;
         setIsMgrReconnecting(true);
         fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
-            if (cancelled) { isMgrReconnectingRef.current = false; setIsMgrReconnecting(false); return; }
+            if (cancelled) { setIsMgrReconnecting(false); return; }
             if (data?.active || data?.done) {
-              isMgrReconnectingRef.current = false;
               setIsMgrReconnecting(false);
               if (data.active) {
                 setManagerResponding(true);
               }
               connectToMgrStream(sessionIdToReconnect, resumeEventId);
             } else {
-              isMgrReconnectingRef.current = false;
               setIsMgrReconnecting(false);
               try {
                 localStorage.removeItem(
@@ -1013,7 +1009,6 @@ export function useManagerStream() {
             }
           })
           .catch(() => {
-            isMgrReconnectingRef.current = false;
             setIsMgrReconnecting(false);
             try {
               localStorage.removeItem(`codestart-mgr-session-${projectId}`);

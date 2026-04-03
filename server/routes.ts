@@ -938,7 +938,9 @@ export async function registerRoutes(
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
       if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
-        managerChatSessions.get(mgrSessionId)!.done = true;
+        const s = managerChatSessions.get(mgrSessionId)!;
+        s.done = true;
+        s.doneAt = Date.now();
       }
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
