@@ -163,7 +163,13 @@ export function ChatPanel() {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
-      handleManagerSend(prompt).then(() => clearPendingPrompt());
+      handleManagerSend(prompt).then((sent) => {
+        if (sent) {
+          clearPendingPrompt();
+        } else {
+          pendingHandled.current = false;
+        }
+      });
     }
   }, [pendingPrompt, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend]);
 
@@ -188,7 +194,7 @@ export function ChatPanel() {
     setChatMode("manager");
   }, [setChatMode]);
 
-  const handleCurrentSend = useCallback(() => {
+  const handleCurrentSend = useCallback(async () => {
     if (pendingConfirmation) {
       const trimmed = input.trim();
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
@@ -199,8 +205,8 @@ export function ChatPanel() {
       return;
     }
     if (chatMode === "build") { handleEditorSend(input); setInput(""); return; }
-    handleManagerSend(undefined, input);
-    setInput("");
+    const sent = await handleManagerSend(undefined, input);
+    if (sent) setInput("");
   }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan]);
 
   const handleToggleMode = useCallback(() => {

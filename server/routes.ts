@@ -676,7 +676,7 @@ export async function registerRoutes(
       try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
     }, 5000);
 
-    req.on("close", () => {
+    res.on("close", () => {
       clearInterval(heartbeat);
       session.sseWriters.delete(writer);
     });
@@ -746,7 +746,7 @@ export async function registerRoutes(
         try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
       }, 5000);
 
-      req.on("close", () => {
+      res.on("close", () => {
         clientDisconnected = true;
         mgrSession.sseWriters.delete(mgrWriter);
         if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
@@ -809,6 +809,15 @@ export async function registerRoutes(
       const managerState: ManagerSessionState = {};
       const managerTools = buildManagerTools(managerState);
 
+      const userMsgCount = processedMessages.filter(m => m.role === "user").length;
+      const lastUserMsg = processedMessages.filter(m => m.role === "user").pop()?.content || "";
+      const confirmPattern = /^(?:(?:yes|ok|go|confirm|sure|do it|proceed|let'?s go|sounds good)\b|没问题|好的|确认|可以|就这样|开始吧|行)/i;
+      const isConversational = userMsgCount <= 2 && !confirmPattern.test(lastUserMsg.trim());
+
+      const activeTools = isConversational ? [] : managerTools.schemas;
+      const activeHandlers = isConversational ? {} : managerTools.handlers;
+      const activeExitTools = isConversational ? [] : ["submit_plan"];
+
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
           emit({ type: "raw_token", token: data.token });
@@ -823,10 +832,16 @@ export async function registerRoutes(
         const result = await runAgentLoop(
           systemPrompt,
           processedMessages,
-          managerTools.schemas,
-          managerTools.handlers,
+          activeTools,
+          activeHandlers,
           emitRawToken,
-          { exitTools: ["submit_plan"], maxIterations: 10, client: activeAIClient, model: activeAIModel },
+          {
+            exitTools: activeExitTools,
+            maxIterations: isConversational ? 1 : 10,
+            client: activeAIClient,
+            model: activeAIModel,
+            disableThinking: isConversational,
+          },
         );
 
         clearInterval(heartbeat);

@@ -66,6 +66,8 @@ interface StreamResult {
   totalMs: number;
   tokenCount: number;
   seenManagerDone: boolean;
+  firstThinkingMs: number;
+  thinkingTokenCount: number;
 }
 
 function streamManagerChat(projectId: string): Promise<StreamResult> {
@@ -93,15 +95,18 @@ function streamManagerChat(projectId: string): Promise<StreamResult> {
         let lastTokenMs = -1;
         let tokenCount = 0;
         let seenManagerDone = false;
+        let firstThinkingMs = -1;
+        let thinkingTokenCount = 0;
         let buf = "";
         let done = false;
+        let firstEventMs = -1;
 
         const firstTokenGuard = setTimeout(() => {
-          if (!done && firstTokenMs === -1) {
+          if (!done && firstEventMs === -1) {
             done = true;
             res.destroy();
             reject(new Error(
-              `No raw_token within ${FIRST_TOKEN_MAX_MS}ms — ` +
+              `No raw_token or thinking_token within ${FIRST_TOKEN_MAX_MS}ms — ` +
               `server may still be buffering (nginx/compression issue)`
             ));
           }
@@ -122,10 +127,10 @@ function streamManagerChat(projectId: string): Promise<StreamResult> {
           clearTimeout(firstTokenGuard);
           clearTimeout(completionGuard);
           res.destroy();
-          if (firstTokenMs === -1) {
-            reject(new Error("Stream ended without any raw_token events"));
+          if (firstEventMs === -1) {
+            reject(new Error("Stream ended without any raw_token or thinking_token events"));
           } else {
-            resolve({ firstTokenMs, lastTokenMs, totalMs: Date.now() - startMs, tokenCount, seenManagerDone });
+            resolve({ firstTokenMs, lastTokenMs, totalMs: Date.now() - startMs, tokenCount, seenManagerDone, firstThinkingMs, thinkingTokenCount });
           }
         };
 
@@ -142,10 +147,14 @@ function streamManagerChat(projectId: string): Promise<StreamResult> {
               if (ev.type === "raw_token") {
                 const nowMs = Date.now() - startMs;
                 tokenCount++;
-                if (firstTokenMs === -1) {
-                  firstTokenMs = nowMs;
-                  clearTimeout(firstTokenGuard);
-                }
+                if (firstTokenMs === -1) firstTokenMs = nowMs;
+                if (firstEventMs === -1) { firstEventMs = nowMs; clearTimeout(firstTokenGuard); }
+                lastTokenMs = nowMs;
+              } else if (ev.type === "thinking_token") {
+                const nowMs = Date.now() - startMs;
+                thinkingTokenCount++;
+                if (firstThinkingMs === -1) firstThinkingMs = nowMs;
+                if (firstEventMs === -1) { firstEventMs = nowMs; clearTimeout(firstTokenGuard); }
                 lastTokenMs = nowMs;
               } else if (ev.type === "manager_done") {
                 seenManagerDone = true;
@@ -195,28 +204,34 @@ async function run() {
     console.log(`[2] Streaming /api/manager-chat (AI latency to Beijing: 5-18s)...`);
     const r = await streamManagerChat(projectId);
 
-    console.log(`    First raw_token:   ${r.firstTokenMs}ms`);
-    console.log(`    Last  raw_token:   ${r.lastTokenMs}ms`);
-    console.log(`    Token stream span: ${r.lastTokenMs - r.firstTokenMs}ms`);
-    console.log(`    Total tokens:      ${r.tokenCount}`);
+    console.log(`    First thinking:    ${r.firstThinkingMs === -1 ? "n/a (thinking disabled)" : `${r.firstThinkingMs}ms`}`);
+    console.log(`    First raw_token:   ${r.firstTokenMs === -1 ? "n/a" : `${r.firstTokenMs}ms`}`);
+    console.log(`    Last  token:       ${r.lastTokenMs}ms`);
+    console.log(`    Thinking tokens:   ${r.thinkingTokenCount}`);
+    console.log(`    Narration tokens:  ${r.tokenCount}`);
     console.log(`    Total duration:    ${r.totalMs}ms`);
     console.log(`    manager_done:      ${r.seenManagerDone}\n`);
 
+    const firstEventMs = Math.min(
+      ...[r.firstThinkingMs, r.firstTokenMs].filter(v => v !== -1)
+    );
+    const totalTokens = r.tokenCount + r.thinkingTokenCount;
+
     console.log("[3] Assertions:");
     results.push(check(
-      `First token within ${FIRST_TOKEN_MAX_MS / 1000}s`,
-      r.firstTokenMs <= FIRST_TOKEN_MAX_MS,
-      `${r.firstTokenMs}ms`
+      `First event (thinking or narration) within ${FIRST_TOKEN_MAX_MS / 1000}s`,
+      firstEventMs <= FIRST_TOKEN_MAX_MS,
+      `${firstEventMs}ms`
     ));
     results.push(check(
-      `Progressive streaming (≥${MIN_TOKENS} tokens)`,
-      r.tokenCount >= MIN_TOKENS,
-      `${r.tokenCount} tokens`
+      `Progressive streaming (≥${MIN_TOKENS} tokens including thinking)`,
+      totalTokens >= MIN_TOKENS,
+      `${totalTokens} tokens (${r.thinkingTokenCount} thinking + ${r.tokenCount} narration)`
     ));
     results.push(check(
       `Token span ≥${MIN_STREAM_SPAN_MS}ms (not all-at-once)`,
-      r.lastTokenMs - r.firstTokenMs >= MIN_STREAM_SPAN_MS,
-      `${r.lastTokenMs - r.firstTokenMs}ms`
+      r.lastTokenMs - firstEventMs >= MIN_STREAM_SPAN_MS,
+      `${r.lastTokenMs - firstEventMs}ms`
     ));
     results.push(check(
       `Completes within ${COMPLETION_MAX_MS / 1000}s`,

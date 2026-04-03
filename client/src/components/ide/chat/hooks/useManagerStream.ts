@@ -119,9 +119,9 @@ export function useManagerStream() {
   }, []);
 
   const handleManagerSend = useCallback(
-    async (overrideMessage?: string, input?: string) => {
+    async (overrideMessage?: string, input?: string): Promise<boolean> => {
       const trimmed = overrideMessage?.trim() || input?.trim() || "";
-      if (!trimmed || isManagerResponding || isAiResponding) return;
+      if (!trimmed || isManagerResponding || isAiResponding) return false;
 
       if (mgrLiveClearTimerRef.current) {
         clearTimeout(mgrLiveClearTimerRef.current);
@@ -207,7 +207,7 @@ export function useManagerStream() {
             content: tr(useLanguageStore.getState().lang, "chat.errorConnect"),
             source: "communicator",
           });
-          return;
+          return true;
         }
 
         const reader = response.body.getReader();
@@ -564,6 +564,7 @@ export function useManagerStream() {
           if (nameFromMarker && projectId)
             renameProject(projectId, nameFromMarker);
         }
+        return true;
       } catch (error: unknown) {
         let mgrReconnectScheduled = false;
         const isAbort = error instanceof DOMException && error.name === "AbortError";

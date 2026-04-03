@@ -39,7 +39,7 @@ export async function runAgentLoop(
   tools: ToolSchema[],
   handlers: ToolHandlers,
   emit: SseEmit,
-  opts: { maxIterations?: number; exitTools?: string[]; client?: OpenAI; model?: string } = {},
+  opts: { maxIterations?: number; exitTools?: string[]; client?: OpenAI; model?: string; disableThinking?: boolean } = {},
 ): Promise<AgentLoopResult> {
   const maxIterations = opts.maxIterations ?? 30;
   const exitTools = new Set(opts.exitTools ?? []);
@@ -60,16 +60,20 @@ export async function runAgentLoop(
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
   const isGLMModel = activeModel.toLowerCase().startsWith("glm");
-  const thinkingParam = isDoubaoModel
-    ? { thinking: { type: "enabled", budget_tokens: 8192 } }
-    : isKimiModel
-      ? { thinking: { type: "enabled" } }
-      : {};
-  const extraBody = isMinimaxModel
-    ? { reasoning_split: true }
-    : isGLMModel
-      ? { thinking: { type: "enabled" } }
-      : undefined;
+  const thinkingParam = opts.disableThinking
+    ? {}
+    : isDoubaoModel
+      ? { thinking: { type: "enabled", budget_tokens: 8192 } }
+      : isKimiModel
+        ? { thinking: { type: "enabled" } }
+        : {};
+  const extraBody = opts.disableThinking
+    ? undefined
+    : isMinimaxModel
+      ? { reasoning_split: true }
+      : isGLMModel
+        ? { thinking: { type: "enabled" } }
+        : undefined;
   const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
