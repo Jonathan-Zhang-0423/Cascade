@@ -1396,7 +1396,7 @@ export function useBuildStream() {
           if (alreadyHasResult) return;
           const buildResult: BuildResultData = {
             actionLog: [],
-            completionData: { changedFiles: data.result.changedFiles, userLang: "" },
+            completionData: { changedFiles: data.result.changedFiles, userLang: "", summary: data.result.summary },
           };
           const planMsg = [...store.managerMessages].reverse().find((m) => m.plan);
           if (planMsg) {

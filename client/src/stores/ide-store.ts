@@ -673,7 +673,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       chatMode: (saved.chatMode === "manager" ? "manager" : "build") as ChatMode,
       managerMessages: saved.managerMessages || [],
       streamingSnapshot: saved.streamingSnapshot || null,
-      managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || null,
+      managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
       taskStatuses: {},
       taskFailureReasons: {},
