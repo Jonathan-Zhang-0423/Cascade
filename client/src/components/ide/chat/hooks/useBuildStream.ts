@@ -44,6 +44,7 @@ export function useBuildStream() {
   const reconnectRetryRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReconnectingRef = useRef(false);
+  const isUnmountingRef = useRef(false);
   const heartbeatWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,15 +57,10 @@ export function useBuildStream() {
 
   useEffect(() => {
     return () => {
+      isUnmountingRef.current = true;
       if (buildReaderRef.current) {
         buildReaderRef.current.cancel().catch(() => {});
         buildReaderRef.current = null;
-      }
-      if (buildSessionIdRef.current) {
-        fetch(`/api/build-session/${buildSessionIdRef.current}`, {
-          method: "DELETE",
-        }).catch(() => {});
-        buildSessionIdRef.current = null;
       }
       if (buildLiveClearTimerRef.current) {
         clearTimeout(buildLiveClearTimerRef.current);
@@ -885,7 +881,7 @@ export function useBuildStream() {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
       }
-      if (!isReconnectingRef.current) {
+      if (!isReconnectingRef.current && !isUnmountingRef.current) {
         helpers.flushNarrationToStore();
         useIDEStore.getState().setStreamingSnapshot(null);
         buildSessionIdRef.current = null;
@@ -1281,7 +1277,7 @@ export function useBuildStream() {
           clearTimeout(heartbeatWatchdogRef.current);
           heartbeatWatchdogRef.current = null;
         }
-        if (!isReconnectingRef.current) {
+        if (!isReconnectingRef.current && !isUnmountingRef.current) {
           helpers.flushNarrationToStore();
           useIDEStore.getState().setStreamingSnapshot(null);
           buildSessionIdRef.current = null;
@@ -1387,6 +1383,10 @@ export function useBuildStream() {
               `codestart-build-session-${projectId}`,
             );
           } catch {}
+          useIDEStore.getState().setStreamingSnapshot(null);
+          setAiResponding(false);
+          setExecutingTaskIndex(null);
+          setBuildPhase(null);
           return;
         }
         if (buildSessionIdRef.current) return;
@@ -1404,6 +1404,10 @@ export function useBuildStream() {
             `codestart-build-session-${projectId}`,
           );
         } catch {}
+        useIDEStore.getState().setStreamingSnapshot(null);
+        setAiResponding(false);
+        setExecutingTaskIndex(null);
+        setBuildPhase(null);
       });
 
     return () => {
@@ -1415,6 +1419,7 @@ export function useBuildStream() {
     setExecutingTaskIndex,
     setChatMode,
     setReviewPhase,
+    setAiResponding,
   ]);
 
   const buildSnapshotReconnect = useCallback(() => {

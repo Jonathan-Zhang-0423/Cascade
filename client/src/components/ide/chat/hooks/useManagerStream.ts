@@ -54,6 +54,7 @@ export function useManagerStream() {
   const mgrReconnectRetryRef = useRef<number>(0);
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUnmountingRef = useRef(false);
   const connectToMgrStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -61,6 +62,17 @@ export function useManagerStream() {
 
   useEffect(() => {
     return () => {
+      isUnmountingRef.current = true;
+      const currentProjectId = useIDEStore.getState().projectId;
+      const sessionId = mgrSessionIdRef.current;
+      if (sessionId && currentProjectId) {
+        try {
+          localStorage.setItem(
+            `codestart-mgr-session-${currentProjectId}`,
+            sessionId,
+          );
+        } catch {}
+      }
       if (abortRef.current) {
         abortRef.current.abort();
         abortRef.current = null;
@@ -800,7 +812,7 @@ export function useManagerStream() {
           }
         }
       } finally {
-        if (!mgrReconnectTimerRef.current) {
+        if (!mgrReconnectTimerRef.current && !isUnmountingRef.current) {
           useIDEStore.getState().setStreamingSnapshot(null);
           mgrSessionIdRef.current = null;
           if (projectId) {

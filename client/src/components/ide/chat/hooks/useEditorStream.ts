@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   useIDEStore,
   type AIProvider,
@@ -28,6 +28,17 @@ export function useEditorStream() {
   const { renameProject } = useProjectStore();
 
   const editorAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (editorAbortRef.current) {
+        editorAbortRef.current.abort();
+        editorAbortRef.current = null;
+      }
+      useIDEStore.getState().setAiResponding(false);
+    };
+  }, []);
+
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [providers, setProviders] = useState<{
     doubao: boolean;
