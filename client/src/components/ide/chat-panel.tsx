@@ -742,6 +742,16 @@ export function ChatPanel() {
                     plan,
                     thinking: managerThinkingAccumulated || undefined,
                   });
+                } else if (managerAccumulated) {
+                  const stripped = stripProjectNameMarker(managerAccumulated);
+                  if (stripped.trim()) {
+                    removeTypingBubble();
+                    addManagerMessage({
+                      role: "assistant",
+                      content: stripped,
+                      thinking: managerThinkingAccumulated || undefined,
+                    });
+                  }
                 }
               }
 

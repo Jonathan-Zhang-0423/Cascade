@@ -518,10 +518,6 @@ export function splitSummaryBody(text: string): { body: string; trailing: string
   return { body, trailing };
 }
 
-export function getActionLogIcon(type: ActionLogEntry["type"]) {
-  return type;
-}
-
 export function getActionLogColor(type: ActionLogEntry["type"]): string {
   switch (type) {
     case "thinking":
