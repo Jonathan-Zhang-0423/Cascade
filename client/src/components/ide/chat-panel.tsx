@@ -50,7 +50,7 @@ import {
   parseCodeBlocks,
   extractCodeBlocks,
   t,
-  getPlanCardLang,
+  usePlanCardLang,
   generateCodestart,
 } from "./chat/chat-utils";
 import { ActionLogLive, ActionLogCollapsed } from "./chat/action-log";
@@ -110,6 +110,7 @@ export function ChatPanel() {
     setSelectedProvider,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
+  const planCardLang = usePlanCardLang();
   const tGlobal = useT();
   const chatTitle = tGlobal("chat.title");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -715,20 +716,33 @@ export function ChatPanel() {
                 }
               }
 
-              if (!planEmitted && ev.plan && isCurrentProject) {
-                const plan = ev.plan;
-                clearManagerPlan();
-                const steps = normalizeSteps(plan);
-                for (const step of steps) {
-                  updateTaskStatus(String(step.step), "pending");
+              if (!planEmitted && isCurrentProject) {
+                let plan = ev.plan;
+                if (!plan && managerAccumulated) {
+                  try {
+                    const jsonMatch = managerAccumulated.match(/```json\s*([\s\S]*?)```/);
+                    if (jsonMatch) {
+                      const parsed = JSON.parse(jsonMatch[1]);
+                      if (parsed && (parsed.steps || parsed.sub_tasks)) {
+                        plan = parsed;
+                      }
+                    }
+                  } catch {}
                 }
-                setManagerPlan(plan);
-                addManagerMessage({
-                  role: "assistant",
-                  content: "",
-                  plan,
-                  thinking: managerThinkingAccumulated || undefined,
-                });
+                if (plan) {
+                  clearManagerPlan();
+                  const steps = normalizeSteps(plan);
+                  for (const step of steps) {
+                    updateTaskStatus(String(step.step), "pending");
+                  }
+                  setManagerPlan(plan);
+                  addManagerMessage({
+                    role: "assistant",
+                    content: "",
+                    plan,
+                    thinking: managerThinkingAccumulated || undefined,
+                  });
+                }
               }
 
               let nameFromDone: string | undefined;
@@ -1758,39 +1772,6 @@ export function ChatPanel() {
               const s = useIDEStore.getState().taskStatuses[key];
               if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
             });
-
-            const currentPlan = useIDEStore.getState().managerPlan;
-            const currentProjectId = useIDEStore.getState().projectId;
-            if (currentPlan && currentProjectId) {
-              const userMsg = useIDEStore
-                .getState()
-                .managerMessages.find((m) => m.role === "user");
-              const userPromptForUpdate = userMsg?.content || userRequest;
-              const currentAllFiles = flattenFiles(
-                useIDEStore.getState().files,
-              );
-              const currentFilesForServer = currentAllFiles
-                .filter((f) => f.path)
-                .map((f) => ({ path: f.path!, content: f.content || "" }));
-              const existingCodestart = currentFilesForServer.find(
-                (f) => f.path === "/project/codestart.md",
-              );
-              const existingContent = existingCodestart?.content || "";
-              const hasStubContent =
-                existingContent.includes(
-                  "_Generated after planning is complete._",
-                ) || existingContent.includes("_Populated after");
-              if (hasStubContent || currentAllFiles.length > 4) {
-                const nonCSFiles = currentFilesForServer.filter(
-                  (f) => !f.path.endsWith("codestart.md"),
-                );
-                generateCodestart({
-                  plan: currentPlan,
-                  userPrompt: userPromptForUpdate,
-                  currentFiles: nonCSFiles,
-                });
-              }
-            }
           } else if (type === "build_error") {
             addManagerMessage({
               role: "assistant",
@@ -3479,7 +3460,7 @@ export function ChatPanel() {
                 </span>
               </div>
             ) : (
-              <TypingIndicator text={t(getPlanCardLang(), "planning")} />
+              <TypingIndicator text={t(planCardLang, "planning")} />
             )
           ) : null)}
         {(liveActionLog.length > 0 ||

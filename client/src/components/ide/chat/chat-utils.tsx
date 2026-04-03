@@ -37,11 +37,6 @@ export function usePlanCardLang(): PlanCardLang {
   return lang === "zh" ? "Chinese" : "English";
 }
 
-export function getPlanCardLang(): PlanCardLang {
-  const lang = useLanguageStore.getState().lang;
-  return lang === "zh" ? "Chinese" : "English";
-}
-
 export function normalizeSteps(plan: any): ManagerSubTask[] {
   const raw = plan?.steps ?? plan?.sub_tasks;
   if (!Array.isArray(raw)) return [];
