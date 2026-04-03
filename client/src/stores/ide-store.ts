@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getMainEntryFile } from "@/lib/preview-adapters";
 
 export interface FileNode {
   name: string;
@@ -296,7 +297,7 @@ interface IDEState {
   setDeviceFrameStyle: (style: "light" | "dark") => void;
   setCustomDeviceDimensions: (width: number, height: number) => void;
 
-  loadProject: (id: string) => void;
+  loadProject: (id: string, framework?: string) => void;
   saveProject: () => void;
   setPendingPrompt: (prompt: string) => void;
   clearPendingPrompt: () => void;
@@ -636,7 +637,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     debouncedPersist(get());
   },
 
-  loadProject: (id) => {
+  loadProject: (id, framework) => {
     const current = get();
     if (current.projectId) {
       persistState(current);
@@ -736,8 +737,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
       const allPaths = serverFiles.map((f) => f.path);
       const validOpenFiles = baseState.openFiles.filter((f) => allPaths.includes(f));
-      const htmlFile = allPaths.find((p) => p.endsWith(".html")) || allPaths[0] || "/project/index.html";
-      const openFiles = validOpenFiles.length > 0 ? validOpenFiles : [htmlFile];
+      const entryFile = getMainEntryFile(framework);
+      const fallbackFile = allPaths.find((p) => p === entryFile) || allPaths.find((p) => p.endsWith(".html")) || allPaths[0] || entryFile;
+      const openFiles = validOpenFiles.length > 0 ? validOpenFiles : [fallbackFile];
       const activeFile = openFiles.includes(baseState.activeFile || "") ? baseState.activeFile : openFiles[0];
 
       const updated = {
@@ -745,7 +747,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         files: fileTree,
         openFiles,
         activeFile,
-        previewFile: allPaths.includes(baseState.previewFile) ? baseState.previewFile : htmlFile,
+        previewFile: allPaths.includes(baseState.previewFile) ? baseState.previewFile : fallbackFile,
         previewRefreshKey: Date.now(),
       };
       set(updated);

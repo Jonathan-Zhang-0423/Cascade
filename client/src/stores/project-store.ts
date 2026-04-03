@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { getMainEntryFile } from "@/lib/preview-adapters";
 
 interface StoredFileNode {
   name: string;
@@ -89,12 +90,14 @@ _Populated after the first plan is created._
   },
 ];
 
-function getDefaultProjectState(initialPrompt?: string) {
+function getDefaultProjectState(initialPrompt?: string, framework?: string) {
+  const entryFile = getMainEntryFile(framework);
+  const isWeb = !framework || framework === "web";
   return {
-    files: BLANK_FILES,
-    openFiles: ["/project/index.html"],
-    activeFile: "/project/index.html",
-    previewFile: "/project/index.html",
+    files: isWeb ? BLANK_FILES : [],
+    openFiles: [entryFile],
+    activeFile: entryFile,
+    previewFile: entryFile,
     chatMessages: [
       {
         id: "welcome",
@@ -210,7 +213,8 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
         const id = generateId();
-        const state = getDefaultProjectState(initialPrompt);
+        const isWeb = !framework || framework === "web";
+        const state = getDefaultProjectState(initialPrompt, framework);
         localStorage.setItem(
           `codestart-project-${id}`,
           JSON.stringify(state)
@@ -224,6 +228,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         }));
 
         syncProjectToServer(id, name, emoji, framework).then(() => {
+          if (!isWeb) return;
           const flatFiles: { path: string; content: string }[] = [];
           function flattenNode(nodes: typeof BLANK_FILES) {
             for (const n of nodes) {

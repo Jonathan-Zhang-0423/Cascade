@@ -35,7 +35,7 @@ export default function IDEPage() {
       return;
     }
     if (projectId !== id) {
-      loadProject(id!);
+      loadProject(id!, project?.framework);
     }
 
     return () => {

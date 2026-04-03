@@ -1742,7 +1742,36 @@ Generate the codestart.md content for this project based on both the plan and th
 
   app.get("/api/projects/:id/files", async (req, res) => {
     try {
-      const files = await storage.getProjectFiles(req.params.id);
+      const projectId = req.params.id;
+      let files = await storage.getProjectFiles(projectId);
+
+      const project = await storage.getProject(projectId);
+      if (project && project.framework && project.framework !== "web") {
+        const paths = files.map((f: { path: string }) => f.path);
+        const webSignatures = new Set([
+          "/project/index.html", "/project/style.css", "/project/app.js",
+          "/project/script.js", "/project/codestart.md",
+        ]);
+        const hasOnlyWebFiles = paths.length > 0 && paths.every((p: string) => webSignatures.has(p));
+        if (hasOnlyWebFiles) {
+          const templateFiles = getTemplateFiles(project.framework as Framework);
+          if (templateFiles.length > 0) {
+            await storage.upsertProjectFiles(
+              projectId,
+              templateFiles.map((f) => ({ path: f.path, content: f.content }))
+            );
+            const templatePaths = new Set(templateFiles.map((t) => t.path));
+            for (const wp of paths) {
+              if (!templatePaths.has(wp)) {
+                await storage.deleteProjectFile(projectId, wp);
+              }
+            }
+            files = await storage.getProjectFiles(projectId);
+            console.log(`Repaired corrupted ${project.framework} project ${projectId}: replaced web files with framework templates`);
+          }
+        }
+      }
+
       res.json({ files });
     } catch (error: any) {
       console.error("Get project files error:", error?.message || error);
