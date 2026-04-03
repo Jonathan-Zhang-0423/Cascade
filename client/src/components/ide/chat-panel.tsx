@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   useIDEStore,
   type ChatMessage,
+  type ManagerMessage,
   type ManagerPlan,
   type ManagerSubTask,
   type VerificationResult,
@@ -5836,6 +5837,9 @@ export function ChatPanel() {
             setManagerResponding(false);
             setMgrLiveThinkingText("");
             setMgrLiveNarrationText("");
+          }
+          const staleProjectId = data?.projectId;
+          if (!data?.active || (staleProjectId && staleProjectId !== projectId)) {
             attemptManagerReconnect();
           }
         })

@@ -618,6 +618,7 @@ export async function registerRoutes(
       active: !session.done,
       done: session.done,
       eventCount: session.events.length,
+      projectId: session.projectId || null,
     });
   });
 
