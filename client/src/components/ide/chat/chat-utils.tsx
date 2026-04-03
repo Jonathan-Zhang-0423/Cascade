@@ -1,12 +1,15 @@
 import { useLanguageStore } from "@/stores/language-store";
 import { tr } from "@/lib/i18n";
-import type { ManagerSubTask } from "@/stores/ide-store";
+import type { ManagerSubTask, ManagerPlan } from "@/stores/ide-store";
+import type { ManagerStepPayload } from "./chat-types";
 import {
   type ActionLogEntry,
   type PlanCardLang,
   type ParsedCompletion,
   type CodeBlock,
   type Token,
+  type ManagerPlanPayload,
+  type NormalizedStep,
   planCardStrings,
   PROJECT_NAME_REGEX_GLOBAL,
   PLAIN_FENCE_RE,
@@ -37,17 +40,20 @@ export function usePlanCardLang(): PlanCardLang {
   return lang === "zh" ? "Chinese" : "English";
 }
 
-export function normalizeSteps(plan: any): ManagerSubTask[] {
-  const raw = plan?.steps ?? plan?.sub_tasks;
+export function normalizeSteps(plan: ManagerPlan | ManagerPlanPayload | null | undefined): NormalizedStep[] {
+  if (!plan) return [];
+  const raw = plan.steps ?? ("sub_tasks" in plan ? plan.sub_tasks : undefined);
   if (!Array.isArray(raw)) return [];
-  return raw.map((t: any, i: number) => ({
-    step: t.step ?? i + 1,
-    sub_task_id: t.sub_task_id ?? "",
-    title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
-    description: t.description ?? "",
-    acceptance_criteria: t.acceptance_criteria ?? "",
-    required_files: Array.isArray(t.required_files) ? t.required_files : [],
-  }));
+  return raw.map((t: ManagerSubTask | ManagerStepPayload, i: number) => {
+    return {
+      step: t.step ?? i + 1,
+      sub_task_id: t.sub_task_id ?? "",
+      title: t.title ?? ((t.description ?? "").slice(0, 50) || `Step ${i + 1}`),
+      description: t.description ?? "",
+      acceptance_criteria: t.acceptance_criteria ?? "",
+      required_files: Array.isArray(t.required_files) ? t.required_files : [],
+    };
+  });
 }
 
 export function stripProjectNameMarker(text: string): string {
@@ -538,7 +544,7 @@ export function getActionLogColor(type: ActionLogEntry["type"]): string {
 }
 
 export function generateCodestart(params: {
-  plan: any;
+  plan: ManagerPlan | ManagerPlanPayload;
   userPrompt: string;
   currentFiles: { path: string; content: string }[];
 }): void {

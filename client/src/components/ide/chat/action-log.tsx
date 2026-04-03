@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   MessageSquare,
+  TerminalSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ActionLogEntry } from "./chat-types";
@@ -24,6 +25,8 @@ function getActionLogIcon(type: ActionLogEntry["type"]) {
     case "file_read":
       return <FileSearch className="w-3 h-3 shrink-0" />;
     case "tool_call":
+      return <TerminalSquare className="w-3 h-3 shrink-0" />;
+    case "terminal_command":
       return <Terminal className="w-3 h-3 shrink-0" />;
     case "step":
       return <ListChecks className="w-3 h-3 shrink-0" />;
@@ -32,6 +35,39 @@ function getActionLogIcon(type: ActionLogEntry["type"]) {
     default:
       return <Wrench className="w-3 h-3 shrink-0" />;
   }
+}
+
+function getGroupLabel(type: ActionLogEntry["type"], count: number): string {
+  switch (type) {
+    case "file_write":
+      return count === 1 ? "Wrote 1 file" : `Wrote ${count} files`;
+    case "file_read":
+      return count === 1 ? "Read 1 file" : `Read ${count} files`;
+    case "tool_call":
+      return count === 1 ? "1 tool call" : `${count} tool calls`;
+    case "terminal_command":
+      return count === 1 ? "1 command" : `${count} commands`;
+    default:
+      return count === 1 ? "1 action" : `${count} actions`;
+  }
+}
+
+interface ActionGroup {
+  type: ActionLogEntry["type"];
+  entries: ActionLogEntry[];
+}
+
+function groupConsecutiveEntries(entries: ActionLogEntry[]): ActionGroup[] {
+  const groups: ActionGroup[] = [];
+  for (const entry of entries) {
+    const last = groups[groups.length - 1];
+    if (last && last.type === entry.type && entry.type !== "step" && entry.type !== "thinking") {
+      last.entries.push(entry);
+    } else {
+      groups.push({ type: entry.type, entries: [entry] });
+    }
+  }
+  return groups;
 }
 
 export function ActionLogLiveRow({
@@ -167,6 +203,56 @@ export function CollapsedThinking({ text }: { text: string }) {
   );
 }
 
+function GroupedActionRow({ group }: { group: ActionGroup }) {
+  const [expanded, setExpanded] = useState(false);
+  const count = group.entries.length;
+  const color = getActionLogColor(group.type);
+  const icon = getActionLogIcon(group.type);
+
+  if (count === 1) {
+    return <ActionLogLiveRow entry={group.entries[0]} />;
+  }
+
+  const label = getGroupLabel(group.type, count);
+
+  return (
+    <div className="border border-border/20 rounded-md overflow-hidden">
+      <button
+        className={cn(
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          color,
+        )}
+        onClick={() => setExpanded((e) => !e)}
+        data-testid={`grouped-action-${group.type}`}
+      >
+        <div className="flex items-center -space-x-1">
+          {icon}
+          {count > 1 && (
+            <span className="ml-1.5 inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
+              {count}
+            </span>
+          )}
+        </div>
+        <span className="flex-1 truncate leading-tight font-medium">{label}</span>
+        <span className="shrink-0 text-muted-foreground/40">
+          {expanded ? (
+            <ChevronDown className="w-2.5 h-2.5" />
+          ) : (
+            <ChevronRight className="w-2.5 h-2.5" />
+          )}
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-border/15 px-2 py-1 space-y-0.5">
+          {group.entries.map((entry, i) => (
+            <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === group.entries.length - 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ActionLogLive({
   entries,
   thinkingText,
@@ -180,11 +266,7 @@ export function ActionLogLive({
 
   const thinkingEntries = entries.filter((e) => e.type === "thinking");
   const nonThinkingEntries = last5.filter((e) => e.type !== "thinking");
-  const lastFileIdx =
-    [...nonThinkingEntries]
-      .map((e, i) => ({ e, i }))
-      .filter(({ e }) => e.type === "file_write" || e.type === "file_read")
-      .pop()?.i ?? -1;
+  const groups = groupConsecutiveEntries(nonThinkingEntries);
 
   return (
     <div className="px-3 py-2 space-y-1.5" data-testid="action-log-live">
@@ -204,12 +286,8 @@ export function ActionLogLive({
           </span>
         </div>
       )}
-      {nonThinkingEntries.map((entry, i) => (
-        <ActionLogLiveRow
-          key={i}
-          entry={entry}
-          showCodePreview={i === lastFileIdx}
-        />
+      {groups.map((group, i) => (
+        <GroupedActionRow key={i} group={group} />
       ))}
     </div>
   );
@@ -300,10 +378,67 @@ export function ActionLogChip({
   );
 }
 
+function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startIndex: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const count = group.entries.length;
+  const color = getActionLogColor(group.type);
+  const icon = getActionLogIcon(group.type);
+
+  if (count === 1) {
+    return group.entries[0].type === "thinking" ? (
+      <CollapsedThinking text={group.entries[0].detail} />
+    ) : (
+      <ActionLogChip entry={group.entries[0]} index={startIndex} />
+    );
+  }
+
+  const label = getGroupLabel(group.type, count);
+
+  return (
+    <div
+      className="border border-border/30 rounded-md overflow-hidden"
+      data-testid={`grouped-collapsed-${group.type}-${startIndex}`}
+    >
+      <button
+        className={cn(
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          color,
+        )}
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-center -space-x-1">
+          {icon}
+          <span className="ml-1.5 inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
+            {count}
+          </span>
+        </div>
+        <span className="flex-1 truncate leading-tight font-medium">{label}</span>
+        <span className="shrink-0 text-muted-foreground/40">
+          {expanded ? (
+            <ChevronDown className="w-2.5 h-2.5" />
+          ) : (
+            <ChevronRight className="w-2.5 h-2.5" />
+          )}
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-border/15 space-y-1 px-1 py-1">
+          {group.entries.map((entry, i) => (
+            <ActionLogChip key={i} entry={entry} index={startIndex + i} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
   const [showAll, setShowAll] = useState(false);
-  const displayEntries = showAll ? entries : entries.slice(0, 6);
-  const hasMore = entries.length > 6;
+  const groups = groupConsecutiveEntries(entries);
+  const displayGroups = showAll ? groups : groups.slice(0, 6);
+  const hasMore = groups.length > 6;
+
+  let runningIndex = 0;
 
   return (
     <div className="px-3 py-2 space-y-1" data-testid="action-log-collapsed">
@@ -313,13 +448,11 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
           Actions ({entries.length})
         </span>
       </div>
-      {displayEntries.map((entry, i) =>
-        entry.type === "thinking" ? (
-          <CollapsedThinking key={i} text={entry.detail} />
-        ) : (
-          <ActionLogChip key={i} entry={entry} index={i} />
-        ),
-      )}
+      {displayGroups.map((group, i) => {
+        const idx = runningIndex;
+        runningIndex += group.entries.length;
+        return <CollapsedGroupedRow key={i} group={group} startIndex={idx} />;
+      })}
       {hasMore && !showAll && (
         <button
           className="text-[10px] text-primary/70 hover:text-primary transition-colors flex items-center gap-1 mt-1"
@@ -327,7 +460,7 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
           data-testid="button-show-all-actions"
         >
           <ChevronDown className="w-3 h-3" />
-          Show {entries.length - 6} more actions
+          Show {groups.length - 6} more groups
         </button>
       )}
       {showAll && hasMore && (

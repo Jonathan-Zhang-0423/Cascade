@@ -1,9 +1,11 @@
 import type { LLMEventSource } from "@/stores/llm-monitor-store";
+import type { ManagerPlan, HolisticReviewResult } from "@/stores/ide-store";
 
 export interface ActionLogEntry {
   type:
     | "thinking"
     | "tool_call"
+    | "terminal_command"
     | "file_read"
     | "file_write"
     | "step"
@@ -94,6 +96,103 @@ export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   done: "manager",
   needs_input: "verifier",
 };
+
+export interface ManagerSseEvent {
+  type: string;
+  eventId?: number;
+  replay?: boolean;
+  sessionId?: string;
+  token?: string;
+  plan?: ManagerPlan;
+  autoExecute?: boolean;
+  label?: string;
+  detail?: string;
+  filePath?: string;
+  actionType?: ActionLogEntry["type"];
+  [key: string]: unknown;
+}
+
+export function validateManagerEvent(raw: { type: string; [key: string]: unknown }): ManagerSseEvent {
+  return raw as ManagerSseEvent;
+}
+
+export function validateBuildEvent(raw: { type: string; [key: string]: unknown }): BuildSseEvent {
+  return raw as BuildSseEvent;
+}
+
+export interface EditorSseEvent {
+  type: string;
+  eventId?: number;
+  token?: string;
+  filePath?: string;
+  code?: string;
+  [key: string]: unknown;
+}
+
+export function validateEditorEvent(raw: { type: string; [key: string]: unknown }): EditorSseEvent {
+  return raw as EditorSseEvent;
+}
+
+export interface ManagerPlanPayload {
+  summary?: string;
+  steps?: ManagerStepPayload[];
+  sub_tasks?: ManagerStepPayload[];
+  project_name?: string;
+  needs_input?: string[];
+  overview?: string;
+  what_and_why?: string;
+  done_looks_like?: string;
+  out_of_scope?: string;
+  relevant_files?: string[];
+  narrated_what_and_why?: string;
+  narrated_done_looks_like?: string;
+  narrated_out_of_scope?: string;
+  [key: string]: unknown;
+}
+
+export interface ManagerStepPayload {
+  step?: number;
+  sub_task_id?: string;
+  title?: string;
+  description?: string;
+  acceptance_criteria?: string;
+  required_files?: string[];
+  [key: string]: unknown;
+}
+
+export interface BuildSseEvent {
+  type: string;
+  eventId?: number;
+  replay?: boolean;
+  token?: string;
+  label?: string;
+  detail?: string;
+  message?: string;
+  filePath?: string;
+  code?: string;
+  language?: string;
+  actionType?: ActionLogEntry["type"];
+  stepNumber?: number;
+  stepTitle?: string;
+  totalSteps?: number;
+  reason?: string;
+  review?: HolisticReviewResult;
+  fixCycle?: number;
+  items?: string[];
+  changedFiles?: string[];
+  summary?: string;
+  content?: string;
+  [key: string]: unknown;
+}
+
+export interface NormalizedStep {
+  step: number;
+  sub_task_id: string;
+  title: string;
+  description: string;
+  acceptance_criteria: string;
+  required_files: string[];
+}
 
 export const PROJECT_NAME_REGEX = /\[\[PROJECT_NAME:([^\]]+)\]\]/;
 export const PROJECT_NAME_REGEX_GLOBAL = /\[\[PROJECT_NAME:[^\]]+\]\]/g;

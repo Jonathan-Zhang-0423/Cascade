@@ -45,12 +45,16 @@ The CodeStart IDE utilizes a modern web architecture with distinct frontend and 
 - **LLM Output Monitor**: A non-modal floating panel displaying real-time, color-coded, source-labeled events from LLM interactions, with pub/sub event bus and batching.
 - **Background Build Persistence**: Server-side builds continue independently of client connection, with reconnection support and event buffering. Manager-chat sessions now also have server-side tracking with session IDs, event buffering, and reconnection support.
 - **Streaming State Persistence**: StreamingSnapshot is persisted to localStorage during active SSE streams (both manager-chat and build-session), enabling UI state restoration and session reconnection after page reload or HMR.
-- **Chat Panel Modular Architecture**: The chat panel (`chat-panel.tsx`) is split into extracted modules under `client/src/components/ide/chat/`:
-    - `chat-types.ts`: Shared types, constants, and i18n strings
+- **Chat Panel Modular Architecture**: The chat panel (`chat-panel.tsx`, ~960 lines) is a thin orchestrator that delegates to composable hooks and modules under `client/src/components/ide/chat/`:
+    - `hooks/useSSEStream.ts`: Reusable SSE parsing (`parseSseStream`), heartbeat watchdog, and reconnect controller utilities
+    - `hooks/useManagerStream.ts`: Manager chat SSE flow, plan preparation, communicator integration, and manager reconnection logic
+    - `hooks/useBuildStream.ts`: Build session SSE flow, build phase tracking, action log accumulation, heartbeat watchdog, and build reconnection logic
+    - `chat-types.ts`: Shared types (including `terminal_command` action type), constants, and i18n strings
     - `chat-utils.tsx`: Pure utility functions (language detection, code parsing, tokenization, markdown rendering)
-    - `action-log.tsx`: Action log components (live stream, collapsed, chips)
-    - `message-components.tsx`: Chat message bubbles, code blocks, checkpoint markers, completion cards
-    - `plan-components.tsx`: Plan card, step items, review badges, manager message bubbles
+    - `action-log.tsx`: Action log with grouped consecutive tool calls (count badges, collapsible expand), live/collapsed/chip views
+    - `message-components.tsx`: Chat message bubbles with "Show more" truncation (~15 lines/600 chars), code blocks, checkpoint markers, completion cards
+    - `plan-components.tsx`: Plan card, step items, review badges, manager message bubbles with narration truncation
+    - `BuildPhaseIndicator.tsx`: Build phase pill/badge (Thinking/Working/Verifying/Fixing) with animated icons
     - `error-boundary.tsx`: React ErrorBoundary wrapping the chat panel to prevent white-screen crashes
 - **Framework-Aware Preview Adapters**: Provides specialized preview modes for different frameworks (iframe for Web, Expo Snack for React Native, DartPad for Flutter, Kotlin/Wasm live preview for Kotlin/Compose, static code preview with download for SwiftUI). Includes a zip export feature.
 - **Native Code Compilation to Web (Scheme 3)**: Compiles native UI code to WebAssembly for real native browser preview. Kotlin/Compose uses Compose Multiplatform + Kotlin/Wasm (Beta, most viable path). SwiftUI uses SwiftWasm + JavaScriptKit (Tokamak is archived — JavaScriptKit is the active replacement).

@@ -236,6 +236,9 @@ export function ThinkingToggle({ thinking }: { thinking: string }) {
   );
 }
 
+const NARRATION_TRUNCATE_LINES = 15;
+const NARRATION_TRUNCATE_CHARS = 600;
+
 export function NarrationBubble({
   message,
 }: {
@@ -247,16 +250,45 @@ export function NarrationBubble({
     typing?: boolean;
   };
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const content = message.content || "";
+  const lines = content.split("\n");
+  const needsTruncation =
+    lines.length > NARRATION_TRUNCATE_LINES || content.length > NARRATION_TRUNCATE_CHARS;
+  const showFull = !needsTruncation || expanded;
+
+  let displayContent = content;
+  if (!showFull) {
+    const truncatedLines = lines.slice(0, NARRATION_TRUNCATE_LINES);
+    displayContent = truncatedLines.join("\n");
+    if (displayContent.length > NARRATION_TRUNCATE_CHARS) {
+      displayContent = displayContent.slice(0, NARRATION_TRUNCATE_CHARS);
+    }
+    displayContent += "…";
+  }
+
   return (
     <div
       className="px-3 text-[13px] leading-relaxed text-foreground"
       data-testid="plan-message-bubble"
     >
       {message.thinking && <ThinkingToggle thinking={message.thinking} />}
-      {message.content && (
-        <p className="text-foreground/90 whitespace-pre-wrap">
-          {message.content}
-        </p>
+      {content && (
+        <>
+          <p className="text-foreground/90 whitespace-pre-wrap">
+            {displayContent}
+          </p>
+          {needsTruncation && (
+            <button
+              className="text-[11px] text-primary/70 hover:text-primary transition-colors mt-1"
+              onClick={() => setExpanded((e) => !e)}
+              data-testid="button-toggle-narration"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -489,7 +521,7 @@ export function TaskPlanCard({
           <>
             <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
               <p className="text-[13px] leading-snug min-w-0 flex-1 text-foreground">
-                {plan.summary || (plan as any).user_requirement || ""}
+                {plan.summary || (plan as unknown as Record<string, string>).user_requirement || ""}
               </p>
               <button
                 onClick={() => setModalOpen(true)}
@@ -550,10 +582,10 @@ export function TaskPlanCard({
           </>
         ) : (
           <div className="px-3 pb-2">
-            {(plan.summary || (plan as any).user_requirement) && (
+            {(plan.summary || (plan as unknown as Record<string, string>).user_requirement) && (
               <div className="flex items-start justify-between gap-2 pt-2.5 pb-1">
                 <p className="text-[12px] text-foreground/70 leading-snug flex-1 min-w-0">
-                  {plan.summary || (plan as any).user_requirement}
+                  {plan.summary || (plan as unknown as Record<string, string>).user_requirement}
                 </p>
                 <button
                   onClick={() => setModalOpen(true)}
@@ -639,7 +671,7 @@ export function TaskPlanCard({
 
         {(() => {
           const inputs: string[] =
-            plan.needs_input || (plan as any).user_confirmation_needed || [];
+            plan.needs_input || (plan as unknown as Record<string, string[]>).user_confirmation_needed || [];
           return inputs.length > 0 && inputs[0] !== "" ? (
             <div className="px-3 pb-2">
               <div className="flex items-center gap-1 mb-0.5">

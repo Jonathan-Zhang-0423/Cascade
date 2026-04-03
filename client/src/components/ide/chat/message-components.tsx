@@ -245,6 +245,55 @@ export function MessageContent({
   );
 }
 
+const TRUNCATE_LINES = 15;
+const TRUNCATE_CHARS = 600;
+
+function TruncatedText({ content, testId }: { content: string; testId?: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const lines = content.split("\n");
+  const needsTruncation =
+    lines.length > TRUNCATE_LINES || content.length > TRUNCATE_CHARS;
+
+  if (!needsTruncation || expanded) {
+    return (
+      <div>
+        <MessageContent content={content} />
+        {needsTruncation && (
+          <button
+            className="text-[11px] text-primary/70 hover:text-primary transition-colors mt-1"
+            onClick={() => setExpanded(false)}
+            data-testid={testId ? `button-show-less-${testId}` : "button-show-less"}
+          >
+            Show less
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const truncatedLines = lines.slice(0, TRUNCATE_LINES);
+  let truncated = truncatedLines.join("\n");
+  if (truncated.length > TRUNCATE_CHARS) {
+    truncated = truncated.slice(0, TRUNCATE_CHARS);
+  }
+
+  return (
+    <div className="relative">
+      <div className="overflow-hidden">
+        <MessageContent content={truncated + "…"} />
+      </div>
+      <button
+        className="text-[11px] text-primary/70 hover:text-primary transition-colors mt-1"
+        onClick={() => setExpanded(true)}
+        data-testid={testId ? `button-show-more-${testId}` : "button-show-more"}
+      >
+        Show more
+      </button>
+    </div>
+  );
+}
+
 export function MessageBubble({
   message,
   autoApplied,
@@ -257,16 +306,21 @@ export function MessageBubble({
   const isAssistant = message.role === "assistant";
 
   if (isAssistant) {
+    const hasCodeBlocks = message.content.includes('```');
     return (
       <div
         className="px-3 text-[13px] leading-relaxed text-foreground"
         data-testid={`chat-message-${message.id}`}
       >
-        <MessageContent
-          content={message.content}
-          autoApplied={autoApplied}
-          appliedBlockIndices={appliedBlockIndices}
-        />
+        {hasCodeBlocks ? (
+          <MessageContent
+            content={message.content}
+            autoApplied={autoApplied}
+            appliedBlockIndices={appliedBlockIndices}
+          />
+        ) : (
+          <TruncatedText content={message.content} testId={message.id} />
+        )}
       </div>
     );
   }
