@@ -696,6 +696,7 @@ export function useManagerStream() {
           (existingSnapshot?.type === "manager"
             ? existingSnapshot.thinkingText
             : "") || "";
+        let planEmittedInReconnect = false;
 
         let lastMgrReconnectSnapshotFlush = 0;
         const MGR_RECONNECT_SNAPSHOT_INTERVAL = 500;
@@ -760,6 +761,7 @@ export function useManagerStream() {
                 }
                 const plan = ev.plan;
                 if (plan) {
+                  planEmittedInReconnect = true;
                   useIDEStore.getState().clearManagerPlan();
                   const steps = normalizeSteps(plan);
                   for (const step of steps)
@@ -777,7 +779,7 @@ export function useManagerStream() {
               evType === "manager_done" ||
               evType === "manager_error"
             ) {
-              if (isCurrentProject && managerAccumulated2.trim()) {
+              if (!planEmittedInReconnect && isCurrentProject && managerAccumulated2.trim()) {
                 const stripped = stripProjectNameMarker(managerAccumulated2).trim();
                 if (stripped) {
                   addManagerMessage({
