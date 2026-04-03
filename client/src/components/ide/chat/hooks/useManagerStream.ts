@@ -55,6 +55,7 @@ export function useManagerStream() {
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUnmountingRef = useRef(false);
+  const isMgrReconnectingRef = useRef(false);
   const connectToMgrStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -887,26 +888,27 @@ export function useManagerStream() {
     const restorePlanFromDB = () => {
       fetch(`/api/projects/${projectId}/plan`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
+        .then((data: { plan: ManagerPlan | null } | null) => {
           if (cancelled || !data?.plan) return;
           const plan = data.plan;
           const store = useIDEStore.getState();
           if (store.managerPlan) return;
-          const steps = (plan.steps ?? plan.sub_tasks ?? []).map((s: any, i: number) => ({
+          const rawSteps = plan.steps ?? [];
+          const steps = rawSteps.map((s, i) => ({
             ...s,
             step: s.step ?? i + 1,
-            status: "pending",
           }));
-          store.setManagerPlan({ ...plan, steps });
+          const restoredPlan: ManagerPlan = { ...plan, steps };
+          store.setManagerPlan(restoredPlan);
           for (const step of steps) {
-            updateTaskStatus(String(step.step), step.status);
+            updateTaskStatus(String(step.step), "pending");
           }
-          const alreadyHasPlan = store.managerMessages.some((m: any) => m.plan);
+          const alreadyHasPlan = store.managerMessages.some((m) => !!m.plan);
           if (!alreadyHasPlan) {
             addManagerMessage({
               role: "assistant",
               content: plan.summary || "Plan restored from previous session.",
-              plan: { ...plan, steps },
+              plan: restoredPlan,
             });
           }
         })
@@ -974,14 +976,17 @@ export function useManagerStream() {
           typeof snapshot.lastEventId === "number"
             ? snapshot.lastEventId
             : -1;
+        isMgrReconnectingRef.current = true;
         fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
-            if (cancelled) return;
+            if (cancelled) { isMgrReconnectingRef.current = false; return; }
             if (data?.active || data?.done) {
+              isMgrReconnectingRef.current = false;
               setManagerResponding(true);
               connectToMgrStream(sessionIdToReconnect, resumeEventId);
             } else {
+              isMgrReconnectingRef.current = false;
               try {
                 localStorage.removeItem(
                   `codestart-mgr-session-${projectId}`,
@@ -991,6 +996,7 @@ export function useManagerStream() {
             }
           })
           .catch(() => {
+            isMgrReconnectingRef.current = false;
             try {
               localStorage.removeItem(`codestart-mgr-session-${projectId}`);
             } catch {}

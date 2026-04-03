@@ -1385,6 +1385,45 @@ export function useBuildStream() {
     if (buildSessionIdRef.current) return;
 
     let cancelled = false;
+
+    const restoreBuildResultFromDB = () => {
+      fetch(`/api/projects/${projectId}/build-result`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { result: { changedFiles: string[]; summary: string; completedAt: number } | null } | null) => {
+          if (cancelled || !data?.result) return;
+          const store = useIDEStore.getState();
+          const alreadyHasResult = store.managerMessages.some((m) => !!m.buildResult);
+          if (alreadyHasResult) return;
+          const buildResult: BuildResultData = {
+            actionLog: [],
+            completionData: { changedFiles: data.result.changedFiles, userLang: "" },
+          };
+          const planMsg = [...store.managerMessages].reverse().find((m) => m.plan);
+          if (planMsg) {
+            const updated = store.managerMessages.map((m) =>
+              m.id === planMsg.id ? { ...m, buildResult } : m,
+            );
+            useIDEStore.setState({ managerMessages: updated });
+            if (planMsg.plan) {
+              for (const step of planMsg.plan.steps) {
+                updateTaskStatus(String(step.step), "done");
+              }
+              store.setManagerPlan(planMsg.plan);
+              setReviewPhase("review_passed");
+            }
+          } else {
+            addManagerMessage({
+              role: "assistant",
+              content: data.result.summary || "",
+              source: "communicator",
+              buildResult,
+            });
+            setReviewPhase("review_passed");
+          }
+        })
+        .catch(() => {});
+    };
+
     const savedSessionId = (() => {
       try {
         return localStorage.getItem(`codestart-build-session-${projectId}`);
@@ -1402,6 +1441,7 @@ export function useBuildStream() {
             setAiResponding(false);
             setExecutingTaskIndex(null);
             setBuildPhase(null);
+            restoreBuildResultFromDB();
             return;
           }
           if (buildSessionIdRef.current) return;
@@ -1418,6 +1458,7 @@ export function useBuildStream() {
           setAiResponding(false);
           setExecutingTaskIndex(null);
           setBuildPhase(null);
+          restoreBuildResultFromDB();
         });
       return () => {
         cancelled = true;
@@ -1442,6 +1483,7 @@ export function useBuildStream() {
                 setAiResponding(false);
                 setExecutingTaskIndex(null);
                 setBuildPhase(null);
+                restoreBuildResultFromDB();
                 return;
               }
               if (buildSessionIdRef.current) return;
@@ -1464,6 +1506,7 @@ export function useBuildStream() {
               setAiResponding(false);
               setExecutingTaskIndex(null);
               setBuildPhase(null);
+              restoreBuildResultFromDB();
             });
         }
         if (buildSessionIdRef.current) return;
@@ -1485,6 +1528,7 @@ export function useBuildStream() {
         setAiResponding(false);
         setExecutingTaskIndex(null);
         setBuildPhase(null);
+        restoreBuildResultFromDB();
       });
 
     return () => {
