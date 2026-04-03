@@ -363,6 +363,7 @@ interface ManagerChatSession {
   events: Array<{ eventId: number; data: Record<string, unknown> }>;
   nextEventId: number;
   done: boolean;
+  doneAt?: number;
   startedAt: number;
   sseWriters: Set<(line: string) => void>;
 }
@@ -384,7 +385,7 @@ setInterval(() => {
     }
   });
   Array.from(managerChatSessions.entries()).forEach(([id, session]) => {
-    if (session.done && now - session.startedAt > doneRetention) {
+    if (session.done && session.doneAt && now - session.doneAt > doneRetention) {
       managerChatSessions.delete(id);
       return;
     }
@@ -912,6 +913,7 @@ export async function registerRoutes(
         }
 
         mgrSession.done = true;
+        mgrSession.doneAt = Date.now();
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -923,6 +925,7 @@ export async function registerRoutes(
         }
         emit({ type: "manager_error" });
         mgrSession.done = true;
+        mgrSession.doneAt = Date.now();
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }

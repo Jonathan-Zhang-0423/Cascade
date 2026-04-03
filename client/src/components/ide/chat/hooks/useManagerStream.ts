@@ -997,7 +997,9 @@ export function useManagerStream() {
             if (data?.active || data?.done) {
               isMgrReconnectingRef.current = false;
               setIsMgrReconnecting(false);
-              setManagerResponding(true);
+              if (data.active) {
+                setManagerResponding(true);
+              }
               connectToMgrStream(sessionIdToReconnect, resumeEventId);
             } else {
               isMgrReconnectingRef.current = false;
