@@ -375,8 +375,10 @@ setInterval(() => {
   const maxAge = 30 * 60 * 1000;
   const doneRetention = 30 * 60 * 1000;
   Array.from(buildSessions.entries()).forEach(([id, session]) => {
-    if (session.done && session.doneAt && now - session.doneAt > doneRetention) {
-      buildSessions.delete(id);
+    if (session.done) {
+      if (session.doneAt && now - session.doneAt > doneRetention) {
+        buildSessions.delete(id);
+      }
       return;
     }
     if ((session as any)._startedAt && now - (session as any)._startedAt > maxAge) {
@@ -385,8 +387,10 @@ setInterval(() => {
     }
   });
   Array.from(managerChatSessions.entries()).forEach(([id, session]) => {
-    if (session.done && session.doneAt && now - session.doneAt > doneRetention) {
-      managerChatSessions.delete(id);
+    if (session.done) {
+      if (session.doneAt && now - session.doneAt > doneRetention) {
+        managerChatSessions.delete(id);
+      }
       return;
     }
     if (now - session.startedAt > maxAge) {
