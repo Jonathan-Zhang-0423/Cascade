@@ -165,13 +165,8 @@ export function ChatPanel() {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
-      handleManagerSend(prompt).then((sent) => {
-        if (sent) {
-          clearPendingPrompt();
-        } else {
-          pendingHandled.current = false;
-        }
-      });
+      clearPendingPrompt();
+      handleManagerSend(prompt);
     }
   }, [pendingPrompt, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend]);
 
@@ -206,16 +201,23 @@ export function ChatPanel() {
       handleExecutePlan();
       return;
     }
+    const busy = isAiResponding || isManagerResponding;
     if (chatMode === "build") {
-      const editorSent = await handleEditorSend(input);
-      if (editorSent) setInput("");
-      else if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
+      if (!input.trim() || busy) {
+        if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
+        return;
+      }
+      setInput("");
+      handleEditorSend(input);
       return;
     }
-    const sent = await handleManagerSend(undefined, input);
-    if (sent) setInput("");
-    else if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
-  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal]);
+    if (!input.trim() || busy) {
+      if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
+      return;
+    }
+    setInput("");
+    handleManagerSend(undefined, input);
+  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");

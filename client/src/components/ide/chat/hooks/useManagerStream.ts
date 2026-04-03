@@ -742,6 +742,7 @@ export function useManagerStream() {
         await parseSseStream<ManagerSseEvent>(reader, {
           validate: validateManagerEvent,
           onEvent: async (ev) => {
+            resetInactivityTimer();
             if (typeof ev.eventId === "number") {
               mgrLastEventIdRef.current = ev.eventId;
             }
@@ -872,6 +873,7 @@ export function useManagerStream() {
       updateTaskStatus,
       setManagerResponding,
       clearMgrLive,
+      resetInactivityTimer,
     ],
   );
 
