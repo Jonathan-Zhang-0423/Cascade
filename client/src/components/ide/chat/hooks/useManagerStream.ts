@@ -72,6 +72,14 @@ export function useManagerStream() {
             sessionId,
           );
         } catch {}
+        const existingSnap = useIDEStore.getState().streamingSnapshot;
+        if (existingSnap?.type === "manager" && existingSnap.sessionId === sessionId) {
+          useIDEStore.getState().setStreamingSnapshot({
+            ...existingSnap,
+            updatedAt: Date.now(),
+            lastEventId: mgrLastEventIdRef.current,
+          });
+        }
       }
       if (abortRef.current) {
         abortRef.current.abort();
@@ -769,6 +777,16 @@ export function useManagerStream() {
               evType === "manager_done" ||
               evType === "manager_error"
             ) {
+              if (isCurrentProject && managerAccumulated2.trim()) {
+                const stripped = stripProjectNameMarker(managerAccumulated2).trim();
+                if (stripped) {
+                  addManagerMessage({
+                    role: "assistant",
+                    content: stripped,
+                    thinking: managerThinkingAccumulated2 || undefined,
+                  });
+                }
+              }
               return;
             }
           },

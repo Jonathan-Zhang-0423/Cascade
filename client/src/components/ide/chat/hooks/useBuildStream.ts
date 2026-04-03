@@ -58,6 +58,24 @@ export function useBuildStream() {
   useEffect(() => {
     return () => {
       isUnmountingRef.current = true;
+      const currentProjectId = useIDEStore.getState().projectId;
+      const sessionId = buildSessionIdRef.current;
+      if (sessionId && currentProjectId) {
+        try {
+          localStorage.setItem(
+            `codestart-build-session-${currentProjectId}`,
+            sessionId,
+          );
+        } catch {}
+        const existingSnap = useIDEStore.getState().streamingSnapshot;
+        if (existingSnap?.type === "build" && existingSnap.sessionId === sessionId) {
+          useIDEStore.getState().setStreamingSnapshot({
+            ...existingSnap,
+            updatedAt: Date.now(),
+            lastEventId: lastReceivedEventIdRef.current,
+          });
+        }
+      }
       if (buildReaderRef.current) {
         buildReaderRef.current.cancel().catch(() => {});
         buildReaderRef.current = null;
@@ -1357,7 +1375,13 @@ export function useBuildStream() {
       fetch(`/api/build-session/active/${projectId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
-          if (cancelled || !data?.sessionId) return;
+          if (cancelled || !data?.sessionId) {
+            useIDEStore.getState().setStreamingSnapshot(null);
+            setAiResponding(false);
+            setExecutingTaskIndex(null);
+            setBuildPhase(null);
+            return;
+          }
           if (buildSessionIdRef.current) return;
           setIsReconnecting(true);
           isReconnectingRef.current = true;
@@ -1367,7 +1391,12 @@ export function useBuildStream() {
           setBuildPhase("thinking");
           connectToBuildStream(data.sessionId, -1).catch(() => {});
         })
-        .catch(() => {});
+        .catch(() => {
+          useIDEStore.getState().setStreamingSnapshot(null);
+          setAiResponding(false);
+          setExecutingTaskIndex(null);
+          setBuildPhase(null);
+        });
       return () => {
         cancelled = true;
       };
