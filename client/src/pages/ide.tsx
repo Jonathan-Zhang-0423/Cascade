@@ -10,6 +10,7 @@ import { ChatPanel } from "@/components/ide/chat-panel";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
+import { CheckpointPanel } from "@/components/ide/CheckpointPanel";
 import { CommandPalette } from "@/components/ide/command-palette";
 import { LLMMonitor } from "@/components/ide/llm-monitor";
 import {
@@ -22,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId } =
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible } =
     useIDEStore();
   const { projects } = useProjectStore();
   const { toast } = useToast();
@@ -95,12 +96,13 @@ export default function IDEPage() {
                   maxSize={40}
                   id="tool-panel"
                   order={1}
-                  className="bg-background rounded-lg border border-border/50 overflow-hidden"
+                  className="bg-background rounded-lg border border-border/60 overflow-hidden"
                 >
                   {activeTool === "files" && <FileTree />}
                   {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
+                  {activeTool === "history" && <CheckpointPanel />}
                 </ResizablePanel>
-                <ResizableHandle className="w-0 bg-transparent" />
+                <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
               </>
             )}
 
@@ -108,22 +110,26 @@ export default function IDEPage() {
                 <ResizablePanelGroup direction="vertical" className="gap-1.5">
                   <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
                     <ResizablePanelGroup direction="horizontal" className="gap-1.5">
+                      {codeVisible && (
+                        <>
+                          <ResizablePanel
+                            defaultSize={layoutMode === "preview" ? 35 : 50}
+                            minSize={20}
+                            id="editor-pane"
+                            order={1}
+                            className="bg-background rounded-lg border border-border/60 overflow-hidden transition-all duration-300"
+                          >
+                            <CodeEditor />
+                          </ResizablePanel>
+                          <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
+                        </>
+                      )}
                       <ResizablePanel
-                        defaultSize={50}
-                        minSize={20}
-                        id="editor-pane"
-                        order={1}
-                        className="bg-background rounded-lg border border-border/50 overflow-hidden"
-                      >
-                        <CodeEditor />
-                      </ResizablePanel>
-                      <ResizableHandle className="w-0 bg-transparent" />
-                      <ResizablePanel
-                        defaultSize={50}
+                        defaultSize={codeVisible ? (layoutMode === "preview" ? 65 : 50) : 100}
                         minSize={20}
                         id="preview-pane"
                         order={2}
-                        className="bg-background rounded-lg border border-border/50 overflow-hidden"
+                        className="bg-background rounded-lg border border-border/60 overflow-hidden"
                       >
                         <PreviewPanel />
                       </ResizablePanel>
@@ -132,14 +138,14 @@ export default function IDEPage() {
 
                   {isConsoleOpen && (
                     <>
-                      <ResizableHandle className="h-0 bg-transparent" />
+                      <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
                       <ResizablePanel
                         defaultSize={25}
                         minSize={10}
                         maxSize={60}
                         id="console-pane"
                         order={2}
-                        className="bg-background rounded-lg border border-border/50 overflow-hidden"
+                        className="bg-background rounded-lg border border-border/60 overflow-hidden"
                       >
                         <ConsolePanel />
                       </ResizablePanel>
