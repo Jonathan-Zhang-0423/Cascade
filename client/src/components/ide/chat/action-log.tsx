@@ -3,7 +3,6 @@ import {
   Brain,
   FilePlus,
   FileSearch,
-  Terminal,
   ListChecks,
   Wrench,
   ChevronRight,
@@ -11,29 +10,34 @@ import {
   ChevronUp,
   MessageSquare,
   TerminalSquare,
+  GitCompare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ActionLogEntry } from "./chat-types";
 import { getActionLogColor } from "./chat-utils";
+import { useIDEStore } from "@/stores/ide-store";
+import { InlineDiffView } from "./InlineDiffView";
 
-function getActionLogIcon(type: ActionLogEntry["type"]) {
+function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
+  const cls = small ? "w-2.5 h-2.5 shrink-0" : "w-3 h-3 shrink-0";
   switch (type) {
     case "thinking":
-      return <Brain className="w-3 h-3 shrink-0" />;
+      return <Brain className={cls} />;
     case "file_write":
-      return <FilePlus className="w-3 h-3 shrink-0" />;
+      return <FilePlus className={cls} />;
     case "file_read":
-      return <FileSearch className="w-3 h-3 shrink-0" />;
+      return <FileSearch className={cls} />;
     case "tool_call":
-      return <TerminalSquare className="w-3 h-3 shrink-0" />;
+      return <TerminalSquare className={cls} />;
     case "terminal_command":
-      return <Terminal className="w-3 h-3 shrink-0" />;
+      // >_ glyph matches the terminal aesthetic in the screenshots
+      return <span className={cn("font-mono font-bold leading-none shrink-0", small ? "text-[8px]" : "text-[10px]")}>&gt;_</span>;
     case "step":
-      return <ListChecks className="w-3 h-3 shrink-0" />;
+      return <ListChecks className={cls} />;
     case "narration":
-      return <Wrench className="w-3 h-3 shrink-0" />;
+      return <Wrench className={cls} />;
     default:
-      return <Wrench className="w-3 h-3 shrink-0" />;
+      return <Wrench className={cls} />;
   }
 }
 
@@ -82,15 +86,34 @@ export function ActionLogLiveRow({
   const label =
     entry.label.length > 50 ? entry.label.slice(0, 50) + "…" : entry.label;
   const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
+  const isWrite = entry.type === "file_write";
+
+  const writeStatusLabel = isWrite
+    ? (entry.label.toLowerCase().includes("edit") ||
+       entry.label.toLowerCase().includes("updat") ||
+       entry.label.toLowerCase().includes("modif"))
+      ? "edited" : "created"
+    : null;
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
       <div
-        className={cn("flex items-center gap-1.5 py-0.5 text-[11px]", color)}
+        className={cn(
+          "flex items-center gap-1.5 py-[5px] text-[12px]",
+          isWrite
+            ? "border-l-2 border-green-500 bg-[#0d1f12] px-2"
+            : color,
+        )}
+        style={isWrite ? { animation: "file-flash 600ms ease-out, fade-up 150ms ease" } : undefined}
       >
         {icon}
-        <span className="truncate leading-tight font-medium">{label}</span>
-        {isFileEntry && entry.filePath && (
+        <span className={cn("truncate leading-tight font-medium", isWrite ? "text-green-400 font-medium" : "")}>
+          {label}
+        </span>
+        {isWrite && writeStatusLabel && (
+          <span className="ml-auto shrink-0 text-green-600 text-[11px]">{writeStatusLabel}</span>
+        )}
+        {!isWrite && isFileEntry && entry.filePath && (
           <span className="ml-auto shrink-0 text-muted-foreground/40 text-[10px] font-mono">
             {entry.filePath}
           </span>
@@ -152,14 +175,20 @@ export function ThinkingStream({ text }: { text: string }) {
   return (
     <div
       ref={containerRef}
-      className="max-h-[180px] overflow-y-auto rounded-md bg-muted/20 border border-blue-400/15 px-3 py-2"
+      className="max-h-[180px] overflow-y-auto rounded-md bg-[#1a1a2e] border border-indigo-900/50 px-3 py-2"
       data-testid="thinking-stream"
+      style={{ animation: "fade-up 150ms ease" }}
     >
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Brain className="w-3 h-3 shrink-0 text-blue-400 animate-pulse" />
-        <span className="text-[10px] font-semibold text-blue-400/80 uppercase tracking-wide">
+        <Brain className="w-3 h-3 shrink-0 text-indigo-400" />
+        <span className="text-[11px] font-medium text-indigo-400 uppercase tracking-wide flex-1">
           Thinking
         </span>
+        <div className="flex items-center gap-[3px]">
+          <span className="w-[4px] h-[4px] rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: "0ms" }} />
+          <span className="w-[4px] h-[4px] rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: "150ms" }} />
+          <span className="w-[4px] h-[4px] rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: "300ms" }} />
+        </div>
       </div>
       <p className="text-[12px] leading-relaxed italic text-muted-foreground/80 whitespace-pre-wrap break-words">
         {text}
@@ -207,16 +236,38 @@ function GroupedActionRow({ group }: { group: ActionGroup }) {
   const [expanded, setExpanded] = useState(false);
   const count = group.entries.length;
   const color = getActionLogColor(group.type);
-  const icon = getActionLogIcon(group.type);
 
   if (count === 1) {
     return <ActionLogLiveRow entry={group.entries[0]} />;
   }
 
+  // Collapsed view for consecutive file reads
+  if (group.type === "file_read" && count > 1) {
+    const fileNames = group.entries
+      .map(e => e.filePath?.split("/").pop() || e.label)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(", ");
+    return (
+      <div
+        className="flex items-center gap-1.5 py-[5px] px-1 text-[12px] rounded-md"
+        style={{ animation: "fade-up 150ms ease" }}
+      >
+        {getActionLogIcon("file_read")}
+        <span className="text-muted-foreground/60">Read {count} files</span>
+        {fileNames && (
+          <span className="text-muted-foreground/30 text-[11px] truncate ml-1">{fileNames}</span>
+        )}
+      </div>
+    );
+  }
+
   const label = getGroupLabel(group.type, count);
+  // Show up to 3 icons from individual entries to give a glanceable signature
+  const previewIcons = group.entries.slice(0, 3);
 
   return (
-    <div className="border border-border/20 rounded-md overflow-hidden">
+    <div className="border border-border/20 rounded-md overflow-hidden" style={{ animation: "fade-up 150ms ease" }}>
       <button
         className={cn(
           "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
@@ -225,13 +276,13 @@ function GroupedActionRow({ group }: { group: ActionGroup }) {
         onClick={() => setExpanded((e) => !e)}
         data-testid={`grouped-action-${group.type}`}
       >
-        <div className="flex items-center -space-x-1">
-          {icon}
-          {count > 1 && (
-            <span className="ml-1.5 inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
-              {count}
+        {/* Multi-icon strip: shows distinct entry icons side-by-side */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {previewIcons.map((entry, i) => (
+            <span key={i} className="opacity-80">
+              {getActionLogIcon(entry.type, true)}
             </span>
-          )}
+          ))}
         </div>
         <span className="flex-1 truncate leading-tight font-medium">{label}</span>
         <span className="shrink-0 text-muted-foreground/40">
@@ -301,6 +352,8 @@ export function ActionLogChip({
   index: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [diffExpanded, setDiffExpanded] = useState(false);
+  const lastBuildFileDiffs = useIDEStore((s) => s.lastBuildFileDiffs);
   const color = getActionLogColor(entry.type);
   const icon = getActionLogIcon(entry.type);
   const label =
@@ -308,10 +361,13 @@ export function ActionLogChip({
   const hasDetail = entry.detail && entry.detail.trim().length > 0;
 
   const isCodeEntry = entry.type === "file_write" || entry.type === "file_read";
+  const fileDiff = entry.type === "file_write" && entry.filePath
+    ? lastBuildFileDiffs[entry.filePath]
+    : undefined;
 
   return (
     <div
-      className="border border-border/30 rounded-md overflow-hidden"
+      className="border border-border/30 rounded-md overflow-hidden animate-in fade-in duration-200"
       data-testid={`action-chip-${index}`}
     >
       <button
@@ -320,11 +376,20 @@ export function ActionLogChip({
           color,
         )}
         onClick={() => hasDetail && setExpanded((e) => !e)}
-        disabled={!hasDetail}
+        disabled={!hasDetail && !fileDiff}
         data-testid={`button-action-chip-${index}`}
       >
         {icon}
         <span className="flex-1 truncate leading-tight">{label}</span>
+        {fileDiff && (
+          <button
+            className="shrink-0 flex items-center gap-0.5 text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors px-1"
+            onClick={(e) => { e.stopPropagation(); setDiffExpanded((d) => !d); }}
+            data-testid={`button-diff-${index}`}
+          >
+            <GitCompare className="w-2.5 h-2.5" />
+          </button>
+        )}
         {hasDetail && (
           <span className="shrink-0 text-muted-foreground/40">
             {expanded ? (
@@ -335,6 +400,11 @@ export function ActionLogChip({
           </span>
         )}
       </button>
+      {diffExpanded && fileDiff && (
+        <div className="border-t border-border/20 px-2 py-1.5">
+          <InlineDiffView oldContent={fileDiff.old} newContent={fileDiff.new} />
+        </div>
+      )}
       {expanded && hasDetail && (
         <div className="border-t border-border/20">
           {isCodeEntry ? (
@@ -382,7 +452,6 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
   const [expanded, setExpanded] = useState(false);
   const count = group.entries.length;
   const color = getActionLogColor(group.type);
-  const icon = getActionLogIcon(group.type);
 
   if (count === 1) {
     return group.entries[0].type === "thinking" ? (
@@ -393,6 +462,7 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
   }
 
   const label = getGroupLabel(group.type, count);
+  const previewIcons = group.entries.slice(0, 3);
 
   return (
     <div
@@ -406,11 +476,12 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
         )}
         onClick={() => setExpanded((e) => !e)}
       >
-        <div className="flex items-center -space-x-1">
-          {icon}
-          <span className="ml-1.5 inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
-            {count}
-          </span>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {previewIcons.map((entry, i) => (
+            <span key={i} className="opacity-80">
+              {getActionLogIcon(entry.type, true)}
+            </span>
+          ))}
         </div>
         <span className="flex-1 truncate leading-tight font-medium">{label}</span>
         <span className="shrink-0 text-muted-foreground/40">
