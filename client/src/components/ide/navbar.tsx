@@ -234,7 +234,7 @@ export function Navbar({ projectName }: NavbarProps) {
       {/* Left */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <button
-          className="flex items-center justify-center w-7 h-7 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          className="flex items-center justify-center w-7 h-7 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground [transition:var(--transition-fast)] shrink-0"
           onClick={handleBack}
           data-testid="button-back"
           aria-label="Back"
@@ -261,7 +261,7 @@ export function Navbar({ projectName }: NavbarProps) {
       <div className="flex items-center rounded-lg border border-border bg-muted p-[3px] gap-[2px]">
         <button
           className={cn(
-            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md transition-colors",
+            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md [transition:var(--transition-fast)]",
             layoutMode === "code"
               ? "bg-muted-foreground/20 text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -274,7 +274,7 @@ export function Navbar({ projectName }: NavbarProps) {
         </button>
         <button
           className={cn(
-            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md transition-colors",
+            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md [transition:var(--transition-fast)]",
             layoutMode === "preview"
               ? "bg-muted-foreground/20 text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -291,7 +291,7 @@ export function Navbar({ projectName }: NavbarProps) {
       <div className="flex items-center gap-2 flex-1 justify-end">
         <button
           className={cn(
-            "flex items-center justify-center w-7 h-7 rounded-md border border-border transition-colors",
+            "flex items-center justify-center w-7 h-7 rounded-md border border-border [transition:var(--transition-fast)]",
             !codeVisible
               ? "bg-accent text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"

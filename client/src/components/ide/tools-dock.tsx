@@ -21,7 +21,7 @@ function DockButton({
     <button
       className={cn(
         "relative flex items-center justify-center w-10 h-10 rounded-lg",
-        "transition-opacity",
+        "[transition:var(--transition-fast)]",
         isActive
           ? "bg-[#1e2940] ring-1 ring-primary/20 opacity-100"
           : "opacity-25 hover:opacity-70"
@@ -89,7 +89,7 @@ export function ToolsDock() {
       <div className="flex flex-col items-center gap-1">
         <button
           className={cn(
-            "relative flex items-center justify-center w-10 h-10 rounded-lg transition-opacity",
+            "relative flex items-center justify-center w-10 h-10 rounded-lg [transition:var(--transition-fast)]",
             isMonitorOpen
               ? "bg-[#1e2940] ring-1 ring-primary/20 opacity-100"
               : "opacity-25 hover:opacity-70"

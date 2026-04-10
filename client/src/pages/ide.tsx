@@ -102,7 +102,7 @@ export default function IDEPage() {
                   {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
                   {activeTool === "history" && <CheckpointPanel />}
                 </ResizablePanel>
-                <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
+                <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
               </>
             )}
 
@@ -117,11 +117,11 @@ export default function IDEPage() {
                             minSize={20}
                             id="editor-pane"
                             order={1}
-                            className="bg-background rounded-lg border border-border/60 overflow-hidden transition-all duration-300"
+                            className="bg-background rounded-lg border border-border/60 overflow-hidden [transition:var(--transition-slow)]"
                           >
                             <CodeEditor />
                           </ResizablePanel>
-                          <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
+                          <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
                         </>
                       )}
                       <ResizablePanel
@@ -138,7 +138,7 @@ export default function IDEPage() {
 
                   {isConsoleOpen && (
                     <>
-                      <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 transition-colors" />
+                      <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
                       <ResizablePanel
                         defaultSize={25}
                         minSize={10}
