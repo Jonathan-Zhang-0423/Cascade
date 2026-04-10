@@ -1,8 +1,8 @@
+import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Smartphone, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink } from "lucide-react";
-import appleLogoPath from "@assets/logo-apple-3_1775015525544.png";
+import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
@@ -21,9 +21,11 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
-import { getPreviewMode, getFrameworkLabel, getFrameworkColor, getMainEntryFile, buildExpoSnackUrl, buildDartPadUrl } from "@/lib/preview-adapters";
+import { getPreviewMode, getFrameworkLabel, getFrameworkColor, getMainEntryFile } from "@/lib/preview-adapters";
 import { CodePreview } from "./code-preview";
 import { WasmPreview } from "./wasm-preview";
+import { RnWebPreview } from "./rn-web-preview";
+import { FlutterWebPreview } from "./flutter-web-preview";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -94,6 +96,8 @@ export function PreviewPanel() {
     clearConsole,
     previewFile,
     previewRefreshKey,
+    previewOverrideHtml,
+    projectFramework,
     selectedDevice,
     setSelectedDevice,
     deviceOrientation,
@@ -116,7 +120,7 @@ export function PreviewPanel() {
     () => projects.find((p) => p.id === projectId),
     [projects, projectId]
   );
-  const framework = currentProject?.framework || "web";
+  const framework = projectFramework || currentProject?.framework || "web";
   const previewMode = getPreviewMode(framework);
 
   useEffect(() => {
@@ -230,19 +234,6 @@ export function PreviewPanel() {
     setRefreshKey((k) => k + 1);
   };
 
-  const expoSnackUrl = useMemo(() => {
-    if (previewMode !== "expo-snack") return null;
-    const flat = flattenFiles(files).filter((f) => f.content !== undefined && f.path.startsWith("/project/"));
-    const snackFiles = flat.map((f) => ({ path: f.path, content: f.content || "" }));
-    return buildExpoSnackUrl(snackFiles, currentProject?.name);
-  }, [previewMode, files, effectiveRefresh, currentProject?.name]);
-
-  const dartPadUrl = useMemo(() => {
-    if (previewMode !== "dartpad") return null;
-    const mainDart = findFileContent(files, "/project/lib/main.dart") || "";
-    return buildDartPadUrl(mainDart);
-  }, [previewMode, files, effectiveRefresh]);
-
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -342,41 +333,38 @@ export function PreviewPanel() {
 
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
-      <div className="flex items-center gap-1.5 px-2 h-9 border-b border-border/50 shrink-0 flex-wrap">
-        <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-
+      <div className="flex items-center gap-1.5 px-2 h-[38px] border-b border-border shrink-0 flex-wrap">
         <span
-          className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
+          className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
           data-testid="badge-framework"
         >
           {getFrameworkLabel(framework)}
         </span>
 
-        <div className="flex items-center border rounded-md overflow-hidden h-6 shrink-0">
+        <div className="flex items-center bg-muted border border-border rounded-lg p-[3px] gap-[1px]">
           <button
-            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
+            className={cn(
+              "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "ios"
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-muted-foreground hover:text-foreground"
-            }`}
+                ? "bg-muted-foreground/20 text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
             onClick={() => handlePlatformChange("ios")}
             data-testid="button-platform-ios"
           >
-            <img src={appleLogoPath} alt="iOS" className="w-4 h-4" />
+            iOS
           </button>
-          <div className="w-px h-4 bg-border" />
           <button
-            className={`px-1.5 h-full flex items-center justify-center text-xs transition-colors ${
+            className={cn(
+              "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "android"
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-muted-foreground hover:text-foreground"
-            }`}
+                ? "bg-muted-foreground/20 text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
             onClick={() => handlePlatformChange("android")}
             data-testid="button-platform-android"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
-            </svg>
+            Android
           </button>
         </div>
 
@@ -430,10 +418,8 @@ export function PreviewPanel() {
           </div>
         )}
 
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
+        <button
+          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
           onClick={() =>
             setDeviceOrientation(
               deviceOrientation === "portrait" ? "landscape" : "portrait"
@@ -443,12 +429,10 @@ export function PreviewPanel() {
           data-testid="button-toggle-orientation"
         >
           <Rotate3D className="w-3 h-3" />
-        </Button>
+        </button>
 
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
+        <button
+          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
           onClick={() =>
             setDeviceFrameStyle(deviceFrameStyle === "dark" ? "light" : "dark")
           }
@@ -460,22 +444,20 @@ export function PreviewPanel() {
           ) : (
             <Sun className="w-3 h-3" />
           )}
-        </Button>
+        </button>
 
         <div className="flex-1" />
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6 shrink-0"
+            <button
+              className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
               onClick={handleQrOpen}
               aria-label="QR Preview"
               data-testid="button-qr-preview"
             >
               <QrCode className="w-3 h-3" />
-            </Button>
+            </button>
           </PopoverTrigger>
           <PopoverContent
             className="w-64 p-4"
@@ -542,16 +524,14 @@ export function PreviewPanel() {
           </PopoverContent>
         </Popover>
 
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
+        <button
+          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
           onClick={handleRefresh}
           aria-label={t("preview.refresh")}
           data-testid="button-refresh-preview"
         >
           <RefreshCw className="w-3 h-3" />
-        </Button>
+        </button>
       </div>
 
       <div className="flex-1 min-h-0">
@@ -575,37 +555,47 @@ export function PreviewPanel() {
               projectId={projectId}
               mainEntryFile={getMainEntryFile(framework)}
             />
-          ) : previewMode === "expo-snack" && expoSnackUrl ? (
-            <iframe
-              key={`snack-${effectiveRefresh}`}
-              src={expoSnackUrl}
-              className="w-full h-full border-0"
-              title="Expo Snack Preview"
-              allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
-              sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
-              data-testid="preview-expo-snack"
+          ) : previewMode === "rn-web" ? (
+            <RnWebPreview
+              files={files}
+              framework={framework}
+              projectId={projectId}
+              refreshKey={effectiveRefresh}
+              projectName={currentProject?.name}
             />
-          ) : previewMode === "dartpad" ? (
-            <iframe
-              key={`dartpad-${effectiveRefresh}`}
-              src={dartPadUrl || undefined}
-              srcDoc={dartPadUrl ? undefined : `<html><body style="background:#1e1e1e;color:#999;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><p>No main.dart found</p></body></html>`}
-              className="w-full h-full border-0"
-              title="DartPad Preview"
-              sandbox="allow-scripts allow-same-origin allow-popups"
-              data-testid="preview-dartpad"
+          ) : previewMode === "flutter-web" ? (
+            <FlutterWebPreview
+              files={files}
+              framework={framework}
+              projectId={projectId}
+              refreshKey={effectiveRefresh}
             />
           ) : (
-            <iframe
-              ref={iframeRef}
-              key={effectiveRefresh}
-              srcDoc={injectedHtml}
-              className="w-full h-full border-0"
-              style={{ cursor: "pointer" }}
-              title={t("preview.title")}
-              sandbox="allow-scripts allow-modals allow-same-origin"
-              data-testid="preview-iframe"
-            />
+            <>
+              {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background"
+                  style={{ animation: "fade-up 150ms ease" }}
+                >
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-muted-foreground/20">
+                    <rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M11 10l7 4-7 4V10z" fill="currentColor" />
+                  </svg>
+                  <p className="text-[12px] text-muted-foreground/40">Run your project to see the preview</p>
+                </div>
+              ) : (
+                <iframe
+                  ref={iframeRef}
+                  key={effectiveRefresh}
+                  srcDoc={previewOverrideHtml ?? injectedHtml}
+                  className="w-full h-full border-0"
+                  style={{ cursor: "pointer" }}
+                  title={t("preview.title")}
+                  sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
+                  data-testid="preview-iframe"
+                />
+              )}
+            </>
           )}
         </DeviceSimulator>
       </div>
