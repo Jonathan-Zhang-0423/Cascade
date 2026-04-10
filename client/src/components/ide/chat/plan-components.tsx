@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   type ManagerPlan,
   type ManagerSubTask,
@@ -22,7 +22,6 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  Circle,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -46,38 +45,50 @@ function StepItem({
   failureReason,
   isCompleted,
   showNumber,
+  isLast,
 }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
   failureReason?: string;
   isCompleted?: boolean;
   showNumber?: boolean;
+  isLast?: boolean;
 }) {
   const s = status || "pending";
   const tStep = useT();
   const isRunning = s === "running";
   const isDone = s === "done";
-  const icons: Record<string, JSX.Element> = {
-    pending: (
-      <Circle className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />
-    ),
-    running: (
-      <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
-    ),
-    done: (
-      <CheckCircle2
-        className={cn(
-          "w-3.5 h-3.5 shrink-0",
-          isCompleted ? "text-muted-foreground/30" : "text-green-500",
-        )}
-      />
-    ),
-    failed: <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />,
-    "needs-input": (
-      <HelpCircle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
-    ),
-    bug: <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0" />,
-  };
+  const statusDotEl = (() => {
+    switch (s) {
+      case "done":
+        return (
+          <div
+            className="w-4 h-4 rounded-full bg-green-600 flex items-center justify-center shrink-0"
+            style={!isCompleted ? { animation: "step-complete 200ms var(--transition-spring)" } : undefined}
+          >
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+              <polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        );
+      case "running":
+        return (
+          <div className="w-4 h-4 rounded-full border-2 border-blue-400 bg-[#0d1829] flex items-center justify-center shrink-0">
+            <div className="w-[6px] h-[6px] rounded-full bg-blue-400" />
+          </div>
+        );
+      case "failed":
+        return <XCircle className="w-4 h-4 text-red-500 shrink-0" />;
+      case "needs-input":
+        return <HelpCircle className="w-4 h-4 text-yellow-500 shrink-0" />;
+      case "bug":
+        return <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />;
+      default: // pending
+        return (
+          <div className="w-4 h-4 rounded-full border border-border/40 bg-transparent shrink-0" />
+        );
+    }
+  })();
 
   const failureReasonLabel =
     s === "failed"
@@ -91,14 +102,22 @@ function StepItem({
   return (
     <div
       className={cn(
-        "py-1 px-1.5 rounded-md -mx-1.5 transition-colors",
-        isRunning &&
-          "bg-blue-500/15 border-l-2 border-blue-400 animate-pulse",
+        "flex gap-[10px] items-start py-[6px] px-[6px] rounded-md -mx-1.5",
+        "transition-colors",
+        isRunning && "bg-[#1e2940]",
       )}
       data-testid={`step-${task.step}`}
     >
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="shrink-0">{icons[s] || icons.pending}</div>
+      {/* Dot + connector column */}
+      <div className="flex flex-col items-center shrink-0" style={{ marginTop: 2 }}>
+        {statusDotEl}
+        {!isLast && (
+          <div className="w-px bg-border/60 mt-[3px]" style={{ height: 18 }} />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 flex items-center flex-wrap gap-x-2 min-w-0">
         {showNumber && (
           <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 w-4 text-right leading-none">
             {task.step}.
@@ -119,7 +138,7 @@ function StepItem({
                       ? "text-yellow-500"
                       : s === "bug"
                         ? "text-orange-500"
-                        : "text-foreground/50",
+                        : "text-muted-foreground/30",
           )}
         >
           {task.title}
@@ -353,6 +372,24 @@ export function TaskPlanCard({
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
+  // Track execution elapsed time
+  const executionStartRef = useRef<number | null>(null);
+  const [elapsedLabel, setElapsedLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (isExecuting && executionStartRef.current === null) {
+      executionStartRef.current = Date.now();
+    }
+    if (!isExecuting && executionStartRef.current !== null && isFullyComplete) {
+      const secs = Math.round((Date.now() - executionStartRef.current) / 1000);
+      if (secs < 60) {
+        setElapsedLabel(secs <= 1 ? "1 second" : `${secs} seconds`);
+      } else {
+        const mins = Math.round(secs / 60);
+        setElapsedLabel(mins === 1 ? "1 minute" : `${mins} minutes`);
+      }
+    }
+  }, [isExecuting, isFullyComplete]);
+
   const hasMore = steps.length > PREVIEW_STEP_COUNT;
   const visibleSteps =
     isPreExecution && !stepsExpanded
@@ -406,6 +443,24 @@ export function TaskPlanCard({
                 <FileText className="w-3 h-3" />
               </button>
             </div>
+            {isExecuting && total > 0 && (
+              <div className="px-3 pt-1 pb-2 border-b border-border/20">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-primary font-semibold uppercase tracking-wide">
+                    Plan · {doneCount} of {total}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/60">
+                    {Math.round((doneCount / total) * 100)}%
+                  </span>
+                </div>
+                <div className="h-[2px] rounded-full bg-border/40 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(doneCount / total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="px-3 pt-2 pb-2 border-b border-border/20">
               <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">
                 {t(lang, "whatAndWhy")}
@@ -467,7 +522,7 @@ export function TaskPlanCard({
                 ) : null}
               </div>
               <div className="space-y-0">
-                {visibleSteps.map((task: ManagerSubTask) => (
+                {visibleSteps.map((task: ManagerSubTask, idx: number) => (
                   <StepItem
                     key={task.step}
                     task={task}
@@ -475,6 +530,7 @@ export function TaskPlanCard({
                     failureReason={taskFailureReasons?.[String(task.step)]}
                     isCompleted={isFullyComplete}
                     showNumber
+                    isLast={idx === visibleSteps.length - 1}
                   />
                 ))}
               </div>
@@ -489,6 +545,7 @@ export function TaskPlanCard({
                         failureReason={taskFailureReasons?.[String(task.step)]}
                         isCompleted={isFullyComplete}
                         showNumber
+                        isLast={false}
                       />
                     ))}
                   </div>
@@ -534,13 +591,14 @@ export function TaskPlanCard({
             </div>
             <div className="relative px-3 pb-2">
               <div className="space-y-0">
-                {visibleSteps.map((task: ManagerSubTask) => (
+                {visibleSteps.map((task: ManagerSubTask, idx: number) => (
                   <StepItem
                     key={task.step}
                     task={task}
                     status={taskStatuses[String(task.step)]}
                     failureReason={taskFailureReasons?.[String(task.step)]}
                     isCompleted={isFullyComplete}
+                    isLast={idx === visibleSteps.length - 1}
                   />
                 ))}
               </div>
@@ -554,6 +612,7 @@ export function TaskPlanCard({
                         status={taskStatuses[String(task.step)]}
                         failureReason={taskFailureReasons?.[String(task.step)]}
                         isCompleted={isFullyComplete}
+                        isLast={false}
                       />
                     ))}
                   </div>
@@ -611,13 +670,14 @@ export function TaskPlanCard({
               </div>
             )}
             <div className="space-y-0">
-              {steps.map((task: ManagerSubTask) => (
+              {steps.map((task: ManagerSubTask, idx: number) => (
                 <StepItem
                   key={task.step}
                   task={task}
                   status={taskStatuses[String(task.step)]}
                   failureReason={taskFailureReasons?.[String(task.step)]}
                   isCompleted={isFullyComplete}
+                  isLast={idx === steps.length - 1}
                 />
               ))}
             </div>
@@ -649,6 +709,28 @@ export function TaskPlanCard({
             </span>
           </div>
         )}
+
+        {holisticReview &&
+          phase === "review_failed" && (
+            <div className="px-3 pb-1.5" data-testid="review-summary-row">
+              <div className="flex items-center gap-2 text-[10px] font-medium rounded-md border border-red-500/20 bg-red-500/5 px-2 py-1">
+                <XCircle className="w-3 h-3 text-red-500 shrink-0" />
+                <span className="text-red-400">Validation failed</span>
+                {holisticReview.requirement_match_percent !== undefined && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="text-green-500">{holisticReview.requirement_match_percent}% matched</span>
+                  </>
+                )}
+                {holisticReview.bugs?.length > 0 && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="text-red-400">{holisticReview.bugs.length} {holisticReview.bugs.length === 1 ? "issue" : "issues"}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
         {holisticReview &&
           phase === "review_failed" &&
@@ -755,7 +837,12 @@ export function TaskPlanCard({
         )}
 
         {isFullyComplete ? (
-          <div className="px-3 py-2 border-t border-green-500/20">
+          <div className="px-3 py-2 border-t border-green-500/20 space-y-1.5">
+            {elapsedLabel && (
+              <p className="text-[10px] text-muted-foreground/50 text-center">
+                Worked for {elapsedLabel}
+              </p>
+            )}
             <Button
               size="sm"
               variant="outline"
