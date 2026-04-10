@@ -88,12 +88,7 @@ export function ActionLogLiveRow({
   const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
   const isWrite = entry.type === "file_write";
 
-  const writeStatusLabel = isWrite
-    ? (entry.label.toLowerCase().includes("edit") ||
-       entry.label.toLowerCase().includes("updat") ||
-       entry.label.toLowerCase().includes("modif"))
-      ? "edited" : "created"
-    : null;
+  const writeStatusLabel = isWrite ? "written" : null;
 
   return (
     <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
