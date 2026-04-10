@@ -12,9 +12,8 @@ import {
   ExternalLink,
   History,
   RotateCcw,
-  Loader2,
-  CheckCircle2,
 } from "lucide-react";
+import { CodestartLoader } from "./CodestartLoader";
 import { cn } from "@/lib/utils";
 import type { CodeBlock } from "./chat-types";
 import { THEME_COLORS } from "./chat-types";
@@ -309,7 +308,7 @@ export function MessageBubble({
     const hasCodeBlocks = message.content.includes('```');
     return (
       <div
-        className="px-3 text-[13px] leading-relaxed text-foreground"
+        className="px-3 text-[13px] leading-[1.65] text-foreground"
         data-testid={`chat-message-${message.id}`}
       >
         {hasCodeBlocks ? (
@@ -402,7 +401,7 @@ export function TypingIndicator({ text }: { text?: string }) {
       className="px-3 flex items-center gap-1.5"
       data-testid="typing-indicator"
     >
-      <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+      <CodestartLoader className="text-muted-foreground" />
       <span className="text-xs text-muted-foreground">
         {text || t(lang, "thinking")}
       </span>
@@ -414,122 +413,77 @@ export function BuildCompletionCard({
   changedFiles,
   summary,
   userLang,
+  headline: _headline,
 }: {
   changedFiles: string[];
   summary?: string;
   userLang?: string;
+  headline?: string;
 }) {
-  const lang =
-    userLang?.toLowerCase().includes("chinese") || userLang === "zh"
-      ? "zh"
-      : "en";
-  const isZh = lang === "zh";
-  const [showFiles, setShowFiles] = useState(false);
-
-  const defaultHeadline = isZh ? "✅ 构建完成！" : "✅ Build complete!";
-  const filesLabel = isZh ? "查看变更文件" : "View changed files";
-  const hideFilesLabel = isZh ? "隐藏文件" : "Hide files";
-  const generatingLabel = isZh ? "正在生成摘要…" : "Generating summary…";
-  const whatBuiltLabel = isZh ? "构建内容" : "What was built";
-  const nextStepsLabel = isZh ? "下一步" : "Next steps";
-
   const parsed = summary ? parseCompletionSummary(summary) : null;
-  const headline = parsed?.headline || defaultHeadline;
 
   return (
     <div
-      className="mx-3 mt-2 mb-1 rounded-lg border border-green-500/25 bg-green-500/[0.04] overflow-hidden"
+      className="mx-3 mt-2 mb-1 rounded-lg border border-green-900/40 bg-[#0d1a0f] overflow-hidden"
+      style={{ animation: "fade-up 150ms ease" }}
       data-testid="build-completion-card"
     >
-      <div className="px-3 py-2 border-b border-green-500/15 flex items-start gap-2">
-        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
-        <span
-          className="text-[12.5px] font-semibold text-green-500 leading-snug"
-          data-testid="completion-headline"
-        >
-          {headline}
-        </span>
-      </div>
-
-      {!summary && (
-        <div className="px-3 py-2">
-          <p className="text-[11px] text-muted-foreground italic">
-            {generatingLabel}
-          </p>
+      <div className="px-3 py-3 border-b border-green-900/30">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-[22px] h-[22px] rounded-full bg-green-600 flex items-center justify-center shrink-0">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <polyline points="2,5.5 4.5,8 9,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span
+            className="text-[14px] font-semibold text-green-400 leading-snug"
+            data-testid="completion-headline"
+          >
+            Done
+          </span>
         </div>
-      )}
-
-      {parsed && parsed.fileChanges.length > 0 && (
-        <div className="px-3 py-2.5 space-y-2">
-          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">
-            {whatBuiltLabel}
-          </p>
-          <ol className="space-y-1.5 list-none">
-            {parsed.fileChanges.map((change, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-[11.5px] text-foreground/75"
-                data-testid={`file-change-${i}`}
-              >
-                <span className="shrink-0 w-4 h-4 rounded-full bg-green-500/15 text-green-500 text-[9px] font-bold flex items-center justify-center mt-0.5">
-                  {i + 1}
-                </span>
-                <span className="leading-relaxed">{change}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {parsed && !parsed.fileChanges.length && summary && (
-        <div className="px-3 py-2">
-          <p className="text-[11.5px] text-foreground/75 leading-relaxed whitespace-pre-wrap">
+        {summary && (
+          <p className="text-[13px] text-slate-300 leading-relaxed">
             {summary}
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      {parsed?.specialNotes && (
-        <div className="px-3 py-2 border-t border-green-500/10">
-          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">
-            {nextStepsLabel}
-          </p>
-          <p
-            className="text-[11.5px] text-foreground/70 leading-relaxed"
-            data-testid="completion-special-notes"
-          >
-            {parsed.specialNotes}
-          </p>
+      {parsed && parsed.fileChanges.length > 0 && (
+        <div className="px-3 py-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            {parsed.fileChanges.map((change, i) => (
+              <span
+                key={i}
+                className="bg-[#0f2415] border border-green-900/40 rounded px-2 py-0.5 text-[11px] font-mono text-green-400"
+                data-testid={`file-change-${i}`}
+              >
+                {change}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
       {changedFiles.length > 0 && (
-        <div className="border-t border-green-500/10">
-          <button
-            className="w-full px-3 py-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors"
-            onClick={() => setShowFiles((v) => !v)}
-            data-testid="toggle-changed-files"
-          >
-            <FileCode className="w-3 h-3 shrink-0" />
-            <span>
-              {showFiles ? hideFilesLabel : filesLabel} ({changedFiles.length})
-            </span>
-          </button>
-          {showFiles && (
-            <div className="px-3 pb-2 space-y-1">
-              {changedFiles.map((f, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-1.5 text-[10px] text-foreground/50 font-mono"
-                  data-testid={`changed-file-${i}`}
-                >
-                  <span className="truncate">{f}</span>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="px-3 py-2 border-t border-green-900/20">
+          <div className="flex flex-wrap gap-1.5">
+            {changedFiles.map((f, i) => (
+              <span
+                key={i}
+                className="bg-[#0f2415] border border-green-900/40 rounded px-2 py-0.5 text-[11px] font-mono text-green-400"
+                data-testid={`changed-file-${i}`}
+              >
+                {f.split("/").pop() || f}
+              </span>
+            ))}
+          </div>
         </div>
       )}
+
+      <div className="px-3 py-2 border-t border-green-900/20">
+        <p className="text-[12px] text-muted-foreground">What should we build next?</p>
+      </div>
     </div>
   );
 }
