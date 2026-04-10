@@ -129,7 +129,7 @@ function IOSHomeIndicator({ isDark }: { isDark: boolean }) {
           width: 134,
           height: 5,
           borderRadius: 3,
-          backgroundColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.2)",
+          backgroundColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
         }}
       />
     </div>
@@ -163,7 +163,7 @@ function getDeviceVariant(spec: DeviceSpec, isIOS: boolean): DeviceVariant {
 }
 
 function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: number; isIOS: boolean }) {
-  const btnColor = isDark ? "#2a2a2c" : "#b0b0b4";
+  const btnColor = isDark ? "#3a3a3e" : "#b0b0b4";
   const btnBorder = isDark ? "#3a3a3c" : "#9a9a9e";
   if (!isIOS) return null;
 
@@ -172,9 +172,9 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
       <div
         className="absolute"
         style={{
-          right: -3,
+          right: -2,
           top: height * 0.18,
-          width: 3,
+          width: 2,
           height: 70,
           backgroundColor: btnColor,
           borderRadius: "0 2px 2px 0",
@@ -185,9 +185,9 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
       <div
         className="absolute"
         style={{
-          left: -3,
+          left: -2,
           top: height * 0.16,
-          width: 3,
+          width: 2,
           height: 32,
           backgroundColor: btnColor,
           borderRadius: "2px 0 0 2px",
@@ -198,9 +198,9 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
       <div
         className="absolute"
         style={{
-          left: -3,
+          left: -2,
           top: height * 0.24,
-          width: 3,
+          width: 2,
           height: 52,
           backgroundColor: btnColor,
           borderRadius: "2px 0 0 2px",
@@ -211,9 +211,9 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
       <div
         className="absolute"
         style={{
-          left: -3,
+          left: -2,
           top: height * 0.32,
-          width: 3,
+          width: 2,
           height: 52,
           backgroundColor: btnColor,
           borderRadius: "2px 0 0 2px",
@@ -277,7 +277,8 @@ export function DeviceSimulator({
     return () => ro.disconnect();
   }, [computeScale]);
 
-  const frameBg = isDark ? "#1a1a1c" : "#e0e0e4";
+  const frameBg = isDark ? undefined : "#e0e0e4";
+  const frameGradient = isDark ? "linear-gradient(160deg, #2a2a2e, #111114)" : undefined;
   const frameEdge = isDark ? "#2c2c2e" : "#bbbbc0";
 
   return (
@@ -289,9 +290,7 @@ export function DeviceSimulator({
     >
       <div
         style={{
-          transform: `scale(${scale})`,
-          transformOrigin: "center center",
-          transition: "transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+          zoom: scale,
           width: totalW + 8,
           height: totalH + 8,
           flexShrink: 0,
@@ -306,11 +305,11 @@ export function DeviceSimulator({
             width: totalW,
             height: totalH,
             borderRadius: outerRadius,
-            backgroundColor: frameBg,
+            background: frameGradient || frameBg,
             border: `2.5px solid ${frameEdge}`,
             boxShadow: isDark
-              ? `0 30px 90px rgba(0,0,0,0.95), 0 8px 30px rgba(0,0,0,0.7), inset 0 0.5px 0 rgba(255,255,255,0.08), inset 0 -0.5px 0 rgba(0,0,0,0.3)`
-              : `0 30px 90px rgba(0,0,0,0.2), 0 8px 30px rgba(0,0,0,0.1), inset 0 0.5px 0 rgba(255,255,255,0.9), inset 0 -0.5px 0 rgba(0,0,0,0.05)`,
+              ? `0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06), 0 30px 90px rgba(0,0,0,0.95), 0 8px 30px rgba(0,0,0,0.7), inset 0 -0.5px 0 rgba(0,0,0,0.3)`
+              : `0 2px 12px rgba(0,0,0,0.15), 0 30px 90px rgba(0,0,0,0.2), 0 8px 30px rgba(0,0,0,0.1), inset 0 0.5px 0 rgba(255,255,255,0.9), inset 0 -0.5px 0 rgba(0,0,0,0.05)`,
             transition: "width 0.35s cubic-bezier(0.4, 0, 0.2, 1), height 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.35s ease",
           }}
           data-testid="device-frame"
