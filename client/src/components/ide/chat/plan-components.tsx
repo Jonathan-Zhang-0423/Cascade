@@ -63,18 +63,22 @@ function StepItem({
       case "done":
         return (
           <div
-            className="w-4 h-4 rounded-full bg-green-600 flex items-center justify-center shrink-0"
-            style={!isCompleted ? { animation: "step-complete 200ms var(--transition-spring)" } : undefined}
+            className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+            style={{
+              background: "#1a5e3a",
+              border: "1px solid rgba(52,214,138,0.25)",
+              ...((!isCompleted) ? { animation: "step-complete 200ms var(--transition-spring)" } : {}),
+            }}
           >
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-              <polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="#34d68a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
         );
       case "running":
         return (
-          <div className="w-4 h-4 rounded-full border-2 border-blue-400 bg-[#0d1829] flex items-center justify-center shrink-0">
-            <div className="w-[6px] h-[6px] rounded-full bg-blue-400" />
+          <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] bg-[#0d1422] flex items-center justify-center shrink-0">
+            <div className="w-[6px] h-[6px] rounded-full bg-[#4f82ff]" />
           </div>
         );
       case "failed":
@@ -85,7 +89,7 @@ function StepItem({
         return <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />;
       default: // pending
         return (
-          <div className="w-4 h-4 rounded-full border border-border/40 bg-transparent shrink-0" />
+          <div className="w-4 h-4 rounded-full border border-[rgba(255,255,255,0.07)] bg-transparent shrink-0" />
         );
     }
   })();
@@ -104,7 +108,7 @@ function StepItem({
       className={cn(
         "flex gap-[10px] items-start py-[6px] px-[6px] rounded-md -mx-1.5",
         "transition-colors",
-        isRunning && "bg-[#1e2940]",
+        isRunning && "bg-[#121a2e]",
       )}
       data-testid={`step-${task.step}`}
     >
@@ -112,7 +116,7 @@ function StepItem({
       <div className="flex flex-col items-center shrink-0" style={{ marginTop: 2 }}>
         {statusDotEl}
         {!isLast && (
-          <div className="w-px bg-border/60 mt-[3px]" style={{ height: 18 }} />
+          <div className="w-px bg-[rgba(255,255,255,0.07)] mt-[3px]" style={{ height: 18 }} />
         )}
       </div>
 
@@ -127,25 +131,25 @@ function StepItem({
           className={cn(
             "text-[12px] leading-snug flex-1",
             isCompleted
-              ? "text-muted-foreground/40"
+              ? "text-[#2e2e42]"
               : isDone
-                ? "text-muted-foreground/60"
+                ? "text-[#484860]"
                 : s === "failed"
                   ? "text-red-400"
                   : isRunning
-                    ? "text-foreground font-medium"
+                    ? "text-[#eeeef6] font-medium"
                     : s === "needs-input"
                       ? "text-yellow-500"
                       : s === "bug"
                         ? "text-orange-500"
-                        : "text-muted-foreground/30",
+                        : "text-[#2e2e42]",
           )}
         >
           {task.title}
         </span>
         {isRunning && (
           <span
-            className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded px-1.5 py-0.5 shrink-0 font-medium"
+            className="text-[10px] bg-[rgba(79,130,255,0.12)] text-[#4f82ff] border border-[rgba(79,130,255,0.25)] rounded px-1.5 py-0.5 shrink-0 font-medium"
             data-testid={`step-building-${task.step}`}
           >
             Building…
