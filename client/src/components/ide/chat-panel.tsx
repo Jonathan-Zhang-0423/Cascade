@@ -3,7 +3,8 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Sparkles, X, Loader2 } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
+import { CodestartLoader } from "./chat/CodestartLoader";
 
 import { normalizeSteps, t, usePlanCardLang } from "./chat/chat-utils";
 import { ActionLogLive } from "./chat/action-log";
@@ -11,8 +12,7 @@ import { TypingIndicator } from "./chat/message-components";
 import { ChatMessageList } from "./chat/ChatMessageList";
 import { ChatInputArea } from "./chat/ChatInputArea";
 import { useSmartResponse } from "./chat/hooks/useSmartResponse";
-import { useManagerStream } from "./chat/hooks/useManagerStream";
-import { useBuildStream } from "./chat/hooks/useBuildStream";
+import { useAgentStream } from "@/components/ide/AgentStreamProvider";
 import { useEditorStream } from "./chat/hooks/useEditorStream";
 
 export type { ActionLogEntry } from "./chat/chat-types";
@@ -23,6 +23,8 @@ export function ChatPanel() {
   const [appliedBlockIndices] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingHandled = useRef(false);
+  const planningStartRef = useRef<number | null>(null);
+  const [planningElapsed, setPlanningElapsed] = useState(0);
 
   const {
     chatMessages,
@@ -55,6 +57,7 @@ export function ChatPanel() {
   const tGlobal = useT();
   const { toast } = useToast();
 
+  const { manager, build } = useAgentStream();
   const {
     handleManagerSend,
     mgrPreparingPlan,
@@ -63,7 +66,7 @@ export function ChatPanel() {
     mgrLiveActionLog,
     autoExecutePlanRef,
     abortRef: mgrAbortRef,
-  } = useManagerStream();
+  } = manager;
 
   const {
     buildPhase,
@@ -74,7 +77,7 @@ export function ChatPanel() {
     handleExecutePlan,
     handleStopExecution,
     userConfirmationRef,
-  } = useBuildStream();
+  } = build;
 
   const {
     handleEditorSend,
@@ -134,6 +137,22 @@ export function ChatPanel() {
     mgrLiveNarrationText,
     mgrLiveActionLog,
   ]);
+
+  useEffect(() => {
+    if (isManagerResponding) {
+      if (planningStartRef.current === null) {
+        planningStartRef.current = Date.now();
+        setPlanningElapsed(0);
+      }
+      const id = setInterval(() => {
+        setPlanningElapsed(Math.floor((Date.now() - planningStartRef.current!) / 1000));
+      }, 1000);
+      return () => clearInterval(id);
+    } else {
+      planningStartRef.current = null;
+      setPlanningElapsed(0);
+    }
+  }, [isManagerResponding]);
 
   const handleContinueExecution = useCallback(
     (userInput?: string) => {
@@ -227,7 +246,7 @@ export function ChatPanel() {
 
   return (
     <div className="h-full flex flex-col" data-testid="chat-panel">
-      <div className="flex items-center justify-between gap-2 px-3 h-9 border-b border-border/50 shrink-0">
+      <div className="flex items-center justify-between gap-2 px-3 h-[34px] border-b border-[rgba(255,255,255,0.04)] shrink-0 text-[11px] font-medium text-[#8888a8]">
         <div className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
           <span className="text-xs font-medium text-foreground" data-testid="text-chat-title">
@@ -275,19 +294,31 @@ export function ChatPanel() {
             />
             {mgrPreparingPlan && (
               <div className="px-3 py-1.5 border-t border-border/20 flex items-center gap-1.5">
-                <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+                <CodestartLoader className="text-blue-400/80" />
                 <span className="text-[11px] text-muted-foreground/80 font-medium">Preparing plan…</span>
+                {planningElapsed > 0 && (
+                  <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
+                )}
               </div>
             )}
           </div>
         ) : isManagerResponding ? (
           mgrPreparingPlan ? (
             <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin text-blue-400/80" />
+              <CodestartLoader className="text-blue-400/80" />
               <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
+              {planningElapsed > 0 && (
+                <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
+              )}
             </div>
           ) : (
-            <TypingIndicator text={t(planCardLang, "planning")} />
+            <div className="mx-3 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
+              <CodestartLoader className="text-blue-400/80" />
+              <span className="text-[12px] text-muted-foreground/90 font-medium">{t(planCardLang, "planning")}</span>
+              {planningElapsed > 0 && (
+                <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
+              )}
+            </div>
           )
         ) : null)}
         {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (

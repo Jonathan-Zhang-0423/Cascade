@@ -116,8 +116,8 @@ export function ChatInputArea({
         className={cn(
           "rounded-xl border bg-background overflow-hidden transition-[border-color,box-shadow]",
           inputFocused
-            ? "border-primary ring-2 ring-primary/40"
-            : "border-border/60",
+            ? "border-[#4f82ff] ring-2 ring-[rgba(79,130,255,0.25)]"
+            : "border-[rgba(255,255,255,0.07)]",
         )}
       >
         <Textarea
@@ -251,7 +251,7 @@ export function ChatInputArea({
           ) : (
             <Button
               size="icon"
-              className="h-7 w-7 rounded-lg shrink-0"
+              className="h-7 w-7 rounded-lg shrink-0 bg-gradient-to-br from-[#5585ff] to-[#2a5ce0] hover:from-[#6693ff] hover:to-[#3b6de8] border-0 shadow-[0_1px_6px_rgba(79,130,255,0.30),inset_0_1px_0_rgba(255,255,255,0.12)]"
               onClick={onSend}
               disabled={
                 !input.trim() &&
