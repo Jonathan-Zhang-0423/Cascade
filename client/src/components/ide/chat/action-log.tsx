@@ -96,17 +96,17 @@ export function ActionLogLiveRow({
         className={cn(
           "flex items-center gap-1.5 py-[5px] text-[12px]",
           isWrite
-            ? "border-l-2 border-green-500 bg-[#0d1f12] px-2"
+            ? "border-l-2 border-[#34d68a] bg-[rgba(52,214,138,0.05)] px-2 rounded-r-[4px]"
             : color,
         )}
         style={isWrite ? { animation: "file-flash 600ms ease-out, fade-up 150ms ease" } : undefined}
       >
         {icon}
-        <span className={cn("truncate leading-tight font-medium", isWrite ? "text-green-400 font-medium" : "")}>
+        <span className={cn("truncate leading-tight font-medium", isWrite ? "text-[#4ddc96] font-medium" : "")}>
           {label}
         </span>
         {isWrite && writeStatusLabel && (
-          <span className="ml-auto shrink-0 text-green-600 text-[11px]">{writeStatusLabel}</span>
+          <span className="ml-auto shrink-0 text-[#2a7a4e] text-[11px]">{writeStatusLabel}</span>
         )}
         {!isWrite && isFileEntry && entry.filePath && (
           <span className="ml-auto shrink-0 text-muted-foreground/40 text-[10px] font-mono">
@@ -170,13 +170,17 @@ export function ThinkingStream({ text }: { text: string }) {
   return (
     <div
       ref={containerRef}
-      className="max-h-[180px] overflow-y-auto rounded-md bg-[#1a1a2e] border border-indigo-900/50 px-3 py-2"
+      className="max-h-[180px] overflow-y-auto rounded-md px-3 py-2"
+      style={{
+        background: "rgba(129,140,248,0.06)",
+        border: "1px solid rgba(129,140,248,0.12)",
+        animation: "fade-up 150ms ease",
+      }}
       data-testid="thinking-stream"
-      style={{ animation: "fade-up 150ms ease" }}
     >
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Brain className="w-3 h-3 shrink-0 text-indigo-400" />
-        <span className="text-[11px] font-medium text-indigo-400 uppercase tracking-wide flex-1">
+        <Brain className="w-3 h-3 shrink-0 text-[#818cf8]" />
+        <span className="text-[11px] font-medium text-[#818cf8] uppercase tracking-wide flex-1">
           Thinking
         </span>
         <div className="flex items-center gap-[3px]">
