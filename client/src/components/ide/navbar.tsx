@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw, ChevronLeft, Loader2, Monitor, Code2, EyeOff, Eye } from "lucide-react";
+import { RefreshCw, ChevronLeft, Loader2, EyeOff, Eye } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { getMainEntryFile } from "@/lib/preview-adapters";
@@ -86,8 +86,6 @@ export function Navbar({ projectName }: NavbarProps) {
     isConsoleOpen,
     toggleConsole,
     projectId,
-    layoutMode,
-    setLayoutMode,
     codeVisible,
     toggleCodeVisible,
   } = useIDEStore();
@@ -228,13 +226,13 @@ export function Navbar({ projectName }: NavbarProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-2 px-3 h-11 border-b border-border bg-[#111114] dark:bg-[#111114] shrink-0"
+      className="flex items-center justify-between gap-2 px-3 h-11 border-b border-[rgba(255,255,255,0.07)] bg-[#08080e] shrink-0"
       data-testid="navbar"
     >
       {/* Left */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <button
-          className="flex items-center justify-center w-7 h-7 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground [transition:var(--transition-fast)] shrink-0"
+          className="flex items-center justify-center w-7 h-7 rounded-md bg-[#0c0c14] border border-[rgba(255,255,255,0.07)] text-[#8888a8] hover:text-[#eeeef6] hover:bg-[#14141e] [transition:var(--transition-fast)] shrink-0"
           onClick={handleBack}
           data-testid="button-back"
           aria-label="Back"
@@ -242,59 +240,29 @@ export function Navbar({ projectName }: NavbarProps) {
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-muted border border-border" data-testid="emoji-project">
+          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#0c0c14] border border-[rgba(255,255,255,0.07)]" data-testid="emoji-project">
             {getProjectEmoji(projectName)}
           </div>
-          <span className="text-sm font-semibold truncate" data-testid="text-project-name">
+          <span className="text-[13px] font-semibold tracking-[-0.02em] truncate" data-testid="text-project-name">
             {projectName}
           </span>
           {frameworkLabel && (
             <>
-              <span className="text-muted-foreground/40 shrink-0">·</span>
-              <span className="text-[11px] text-muted-foreground/60 shrink-0">{frameworkLabel}</span>
+              <span className="text-[#2e2e42] shrink-0">·</span>
+              <span className="text-[11px] text-[#8888a8] shrink-0">{frameworkLabel}</span>
             </>
           )}
         </div>
-      </div>
-
-      {/* Center — layout toggle */}
-      <div className="flex items-center rounded-lg border border-border bg-muted p-[3px] gap-[2px]">
-        <button
-          className={cn(
-            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md [transition:var(--transition-fast)]",
-            layoutMode === "code"
-              ? "bg-muted-foreground/20 text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          onClick={() => setLayoutMode("code")}
-          title="Code layout"
-          data-testid="button-layout-code"
-        >
-          <Code2 className="w-3.5 h-3.5" />
-        </button>
-        <button
-          className={cn(
-            "flex items-center gap-1 px-2.5 h-[22px] text-xs rounded-md [transition:var(--transition-fast)]",
-            layoutMode === "preview"
-              ? "bg-muted-foreground/20 text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          onClick={() => setLayoutMode("preview")}
-          title="Preview layout"
-          data-testid="button-layout-preview"
-        >
-          <Monitor className="w-3.5 h-3.5" />
-        </button>
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-2 flex-1 justify-end">
         <button
           className={cn(
-            "flex items-center justify-center w-7 h-7 rounded-md border border-border [transition:var(--transition-fast)]",
+            "flex items-center justify-center w-7 h-7 rounded-md border [transition:var(--transition-fast)]",
             !codeVisible
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              ? "bg-[rgba(79,130,255,0.10)] border-[rgba(79,130,255,0.20)] text-[#4f82ff]"
+              : "bg-[#0c0c14] border-[rgba(255,255,255,0.07)] text-[#8888a8] hover:text-[#eeeef6] hover:bg-[#14141e]"
           )}
           onClick={toggleCodeVisible}
           title={codeVisible ? "Hide code" : "Show code"}
@@ -303,7 +271,7 @@ export function Navbar({ projectName }: NavbarProps) {
           {codeVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
         </button>
         <Select value={themeId} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-auto h-7 text-xs px-2 min-w-[80px]" data-testid="select-theme">
+          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-[#0c0c14] border-[rgba(255,255,255,0.07)] text-[#8888a8]" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -317,7 +285,7 @@ export function Navbar({ projectName }: NavbarProps) {
         <LangToggle />
         <Button
           size="sm"
-          className="gap-1.5 h-[30px] bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white disabled:opacity-60 shadow-[0_1px_3px_rgba(37,99,235,0.4)]"
+          className="gap-1.5 h-[27px] bg-gradient-to-br from-[#5585ff] to-[#2a5ce0] hover:from-[#6693ff] hover:to-[#3b6de8] text-white disabled:opacity-60 shadow-[0_1px_10px_rgba(79,130,255,0.42),inset_0_1px_0_rgba(255,255,255,0.13)] tracking-[0.01em]"
           data-testid="button-run"
           disabled={isRunning}
           onClick={handleRun}
