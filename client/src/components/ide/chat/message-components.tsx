@@ -424,26 +424,29 @@ export function BuildCompletionCard({
 
   return (
     <div
-      className="mx-3 mt-2 mb-1 rounded-lg border border-green-900/40 bg-[#0d1a0f] overflow-hidden"
+      className="mx-3 mt-2 mb-1 rounded-lg border border-[rgba(52,214,138,0.10)] bg-[#0a150e] overflow-hidden"
       style={{ animation: "fade-up 150ms ease" }}
       data-testid="build-completion-card"
     >
-      <div className="px-3 py-3 border-b border-green-900/30">
+      <div className="px-3 py-3 border-b border-[rgba(52,214,138,0.08)]">
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-[22px] h-[22px] rounded-full bg-green-600 flex items-center justify-center shrink-0">
+          <div
+            className="w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0"
+            style={{ background: "#1a6640", border: "1px solid rgba(52,214,138,0.25)" }}
+          >
             <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <polyline points="2,5.5 4.5,8 9,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="2,5.5 4.5,8 9,2.5" stroke="#5fe8a0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <span
-            className="text-[14px] font-semibold text-green-400 leading-snug"
+            className="text-[14px] font-semibold text-[#5fe8a0] tracking-[-0.01em] leading-snug"
             data-testid="completion-headline"
           >
             Done
           </span>
         </div>
         {summary && (
-          <p className="text-[13px] text-slate-300 leading-relaxed">
+          <p className="text-[13px] text-[#8888a8] leading-relaxed">
             {summary}
           </p>
         )}
@@ -455,7 +458,7 @@ export function BuildCompletionCard({
             {parsed.fileChanges.map((change, i) => (
               <span
                 key={i}
-                className="bg-[#0f2415] border border-green-900/40 rounded px-2 py-0.5 text-[11px] font-mono text-green-400"
+                className="bg-[rgba(52,214,138,0.06)] border border-[rgba(52,214,138,0.12)] rounded px-2 py-0.5 text-[11px] font-mono text-[#4ade80]"
                 data-testid={`file-change-${i}`}
               >
                 {change}
@@ -466,12 +469,12 @@ export function BuildCompletionCard({
       )}
 
       {changedFiles.length > 0 && (
-        <div className="px-3 py-2 border-t border-green-900/20">
+        <div className="px-3 py-2 border-t border-[rgba(52,214,138,0.06)]">
           <div className="flex flex-wrap gap-1.5">
             {changedFiles.map((f, i) => (
               <span
                 key={i}
-                className="bg-[#0f2415] border border-green-900/40 rounded px-2 py-0.5 text-[11px] font-mono text-green-400"
+                className="bg-[rgba(52,214,138,0.06)] border border-[rgba(52,214,138,0.12)] rounded px-2 py-0.5 text-[11px] font-mono text-[#4ade80]"
                 data-testid={`changed-file-${i}`}
               >
                 {f.split("/").pop() || f}
@@ -482,7 +485,7 @@ export function BuildCompletionCard({
       )}
 
       <div className="px-3 py-2 border-t border-green-900/20">
-        <p className="text-[12px] text-muted-foreground">What should we build next?</p>
+        <p className="text-[12px] text-[#484860]">What should we build next?</p>
       </div>
     </div>
   );
