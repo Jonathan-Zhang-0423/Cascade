@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink } from "lucide-react";
+import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
@@ -110,6 +110,8 @@ export function PreviewPanel() {
     customDeviceHeight,
     setCustomDeviceDimensions,
     projectId,
+    isConsoleOpen,
+    toggleConsole,
   } = useIDEStore();
   const { projects } = useProjectStore();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -333,7 +335,7 @@ export function PreviewPanel() {
 
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
-      <div className="flex items-center gap-1.5 px-2 h-[38px] border-b border-border shrink-0 flex-wrap">
+      <div className="flex items-center gap-1.5 px-2 h-[38px] border-b border-[rgba(255,255,255,0.07)] bg-[#101018] shrink-0 flex-wrap">
         <span
           className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
           data-testid="badge-framework"
@@ -341,13 +343,13 @@ export function PreviewPanel() {
           {getFrameworkLabel(framework)}
         </span>
 
-        <div className="flex items-center bg-muted border border-border rounded-lg p-[3px] gap-[1px]">
+        <div className="flex items-center bg-[#14141e] border border-[rgba(255,255,255,0.07)] rounded-lg p-[3px] gap-[1px]">
           <button
             className={cn(
               "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "ios"
-                ? "bg-muted-foreground/20 text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[rgba(255,255,255,0.08)] text-[#eeeef6]"
+                : "text-[#484860] hover:text-[#8888a8]"
             )}
             onClick={() => handlePlatformChange("ios")}
             data-testid="button-platform-ios"
@@ -358,8 +360,8 @@ export function PreviewPanel() {
             className={cn(
               "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "android"
-                ? "bg-muted-foreground/20 text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[rgba(255,255,255,0.08)] text-[#eeeef6]"
+                : "text-[#484860] hover:text-[#8888a8]"
             )}
             onClick={() => handlePlatformChange("android")}
             data-testid="button-platform-android"
@@ -419,7 +421,7 @@ export function PreviewPanel() {
         )}
 
         <button
-          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
+          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
           onClick={() =>
             setDeviceOrientation(
               deviceOrientation === "portrait" ? "landscape" : "portrait"
@@ -432,7 +434,7 @@ export function PreviewPanel() {
         </button>
 
         <button
-          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
+          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
           onClick={() =>
             setDeviceFrameStyle(deviceFrameStyle === "dark" ? "light" : "dark")
           }
@@ -451,7 +453,7 @@ export function PreviewPanel() {
         <Popover>
           <PopoverTrigger asChild>
             <button
-              className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
+              className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
               onClick={handleQrOpen}
               aria-label="QR Preview"
               data-testid="button-qr-preview"
@@ -525,12 +527,26 @@ export function PreviewPanel() {
         </Popover>
 
         <button
-          className="h-[26px] w-7 rounded-md bg-muted border border-border hover:bg-muted/80 hover:border-border/80 transition-colors shrink-0 flex items-center justify-center"
+          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
           onClick={handleRefresh}
           aria-label={t("preview.refresh")}
           data-testid="button-refresh-preview"
         >
           <RefreshCw className="w-3 h-3" />
+        </button>
+
+        <button
+          className={cn(
+            "h-[26px] w-7 rounded-md border transition-colors shrink-0 flex items-center justify-center",
+            isConsoleOpen
+              ? "bg-[rgba(79,130,255,0.10)] border-[rgba(79,130,255,0.20)] text-[#4f82ff]"
+              : "bg-[#14141e] border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] text-[#484860] hover:text-[#8888a8]"
+          )}
+          onClick={toggleConsole}
+          title={isConsoleOpen ? "Hide terminal" : "Show terminal"}
+          data-testid="button-toggle-console"
+        >
+          <Terminal className="w-3.5 h-3.5" />
         </button>
       </div>
 
