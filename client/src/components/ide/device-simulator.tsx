@@ -128,8 +128,8 @@ function IOSHomeIndicator({ isDark }: { isDark: boolean }) {
         style={{
           width: 134,
           height: 5,
-          borderRadius: 3,
-          backgroundColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+          borderRadius: 2,
+          background: isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.15)",
         }}
       />
     </div>
@@ -163,8 +163,8 @@ function getDeviceVariant(spec: DeviceSpec, isIOS: boolean): DeviceVariant {
 }
 
 function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: number; isIOS: boolean }) {
-  const btnColor = isDark ? "#3a3a3e" : "#b0b0b4";
-  const btnBorder = isDark ? "#3a3a3c" : "#9a9a9e";
+  const btnColor = isDark ? "#38383e" : "#b0b0b4";
+  const btnBorder = isDark ? "#38383e" : "#9a9a9e";
   if (!isIOS) return null;
 
   return (
@@ -176,7 +176,7 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
           top: height * 0.18,
           width: 2,
           height: 70,
-          backgroundColor: btnColor,
+          background: btnColor,
           borderRadius: "0 2px 2px 0",
           border: `0.5px solid ${btnBorder}`,
           borderLeft: "none",
@@ -189,7 +189,7 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
           top: height * 0.16,
           width: 2,
           height: 32,
-          backgroundColor: btnColor,
+          background: btnColor,
           borderRadius: "2px 0 0 2px",
           border: `0.5px solid ${btnBorder}`,
           borderRight: "none",
@@ -202,7 +202,7 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
           top: height * 0.24,
           width: 2,
           height: 52,
-          backgroundColor: btnColor,
+          background: btnColor,
           borderRadius: "2px 0 0 2px",
           border: `0.5px solid ${btnBorder}`,
           borderRight: "none",
@@ -215,7 +215,7 @@ function SideButtons({ isDark, height, isIOS }: { isDark: boolean; height: numbe
           top: height * 0.32,
           width: 2,
           height: 52,
-          backgroundColor: btnColor,
+          background: btnColor,
           borderRadius: "2px 0 0 2px",
           border: `0.5px solid ${btnBorder}`,
           borderRight: "none",
@@ -278,8 +278,8 @@ export function DeviceSimulator({
   }, [computeScale]);
 
   const frameBg = isDark ? undefined : "#e0e0e4";
-  const frameGradient = isDark ? "linear-gradient(160deg, #2a2a2e, #111114)" : undefined;
-  const frameEdge = isDark ? "#2c2c2e" : "#bbbbc0";
+  const frameGradient = isDark ? "linear-gradient(160deg, #2a2a30, #0d0d10)" : undefined;
+  const frameEdge = isDark ? "#383840" : "#bbbbc0";
 
   return (
     <div
@@ -306,9 +306,9 @@ export function DeviceSimulator({
             height: totalH,
             borderRadius: outerRadius,
             background: frameGradient || frameBg,
-            border: `2.5px solid ${frameEdge}`,
+            border: isDark ? "1.5px solid #383840" : `2.5px solid ${frameEdge}`,
             boxShadow: isDark
-              ? `0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06), 0 30px 90px rgba(0,0,0,0.95), 0 8px 30px rgba(0,0,0,0.7), inset 0 -0.5px 0 rgba(0,0,0,0.3)`
+              ? `0 4px 24px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.06)`
               : `0 2px 12px rgba(0,0,0,0.15), 0 30px 90px rgba(0,0,0,0.2), 0 8px 30px rgba(0,0,0,0.1), inset 0 0.5px 0 rgba(255,255,255,0.9), inset 0 -0.5px 0 rgba(0,0,0,0.05)`,
             transition: "width 0.35s cubic-bezier(0.4, 0, 0.2, 1), height 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.35s ease",
           }}
