@@ -1,6 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
-import { FolderClosed, Sparkles, Terminal, Radio, History, Code2 } from "lucide-react";
+import { FolderClosed, Sparkles, Radio, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -23,10 +23,10 @@ function DockButton({
         "relative flex items-center justify-center w-10 h-10 rounded-lg",
         "[transition:var(--transition-fast)]",
         isActive
-          ? "bg-[#1e2940] ring-1 ring-primary/20 opacity-100"
-          : "opacity-25 hover:opacity-70"
+          ? "bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
+          : "opacity-[0.18] hover:opacity-55"
       )}
-      style={isActive ? { filter: "drop-shadow(0 0 4px rgba(59,130,246,0.5))" } : undefined}
+      style={isActive ? { filter: "drop-shadow(0 0 5px rgba(79,130,255,0.40))" } : undefined}
       onClick={onClick}
       aria-label={label}
       data-testid={testId}
@@ -37,7 +37,7 @@ function DockButton({
 }
 
 export function ToolsDock() {
-  const { activeTool, setActiveTool, isConsoleOpen, toggleConsole, codeVisible, toggleCodeVisible } = useIDEStore();
+  const { activeTool, setActiveTool } = useIDEStore();
   const isMonitorOpen = useIDEStore((s) => s.isLLMMonitorOpen);
   const toggleMonitor = useIDEStore((s) => s.toggleLLMMonitor);
   const monitorEventCount = useLLMMonitorStore((s) => s.eventCount);
@@ -45,7 +45,7 @@ export function ToolsDock() {
 
   return (
     <div
-      className="flex flex-col items-center justify-between w-11 py-2 bg-[#0f0f12] shrink-0"
+      className="flex flex-col items-center justify-between w-11 py-2 bg-[#080810] border-r border-[rgba(255,255,255,0.04)] shrink-0"
       data-testid="tools-dock"
     >
       <div className="flex flex-col items-center gap-1">
@@ -64,20 +64,6 @@ export function ToolsDock() {
           testId="dock-chat"
         />
         <DockButton
-          icon={<Code2 className="w-[18px] h-[18px]" />}
-          label={t("dock.editor")}
-          isActive={codeVisible}
-          onClick={toggleCodeVisible}
-          testId="dock-editor"
-        />
-        <DockButton
-          icon={<Terminal className="w-[18px] h-[18px]" />}
-          label={t("dock.console")}
-          isActive={isConsoleOpen}
-          onClick={toggleConsole}
-          testId="dock-console"
-        />
-        <DockButton
           icon={<History className="w-[18px] h-[18px]" />}
           label={t("dock.history")}
           isActive={activeTool === "history"}
@@ -91,10 +77,10 @@ export function ToolsDock() {
           className={cn(
             "relative flex items-center justify-center w-10 h-10 rounded-lg [transition:var(--transition-fast)]",
             isMonitorOpen
-              ? "bg-[#1e2940] ring-1 ring-primary/20 opacity-100"
-              : "opacity-25 hover:opacity-70"
+              ? "bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
+              : "opacity-[0.18] hover:opacity-55"
           )}
-          style={isMonitorOpen ? { filter: "drop-shadow(0 0 4px rgba(59,130,246,0.5))" } : undefined}
+          style={isMonitorOpen ? { filter: "drop-shadow(0 0 5px rgba(79,130,255,0.40))" } : undefined}
           onClick={toggleMonitor}
           aria-label="LLM Monitor"
           data-testid="dock-llm-monitor"
