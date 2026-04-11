@@ -114,7 +114,7 @@ export function ChatInputArea({
           }, 0);
         }}
         className={cn(
-          "rounded-xl border bg-background overflow-hidden transition-[border-color,box-shadow]",
+          "rounded-xl border bg-[#0c0c14] overflow-hidden transition-[border-color,box-shadow]",
           inputFocused
             ? "border-[#4f82ff] ring-2 ring-[rgba(79,130,255,0.25)]"
             : "border-[rgba(255,255,255,0.07)]",
@@ -144,7 +144,7 @@ export function ChatInputArea({
         />
         <div className="flex items-center gap-1 px-2 pb-2">
           <button
-            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors group"
+            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] transition-colors group"
             onClick={onToggleMode}
             data-testid="toggle-plan-mode"
             title={
@@ -158,14 +158,14 @@ export function ChatInputArea({
                 "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0",
                 chatMode === "manager"
                   ? "bg-primary border-primary"
-                  : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
+                  : "border-[#484860] group-hover:border-[#8888a8]",
               )}
             >
               {chatMode === "manager" && (
                 <Check className="w-2.5 h-2.5 text-primary-foreground" />
               )}
             </div>
-            <span className="text-[11px] text-muted-foreground font-medium group-hover:text-foreground transition-colors">
+            <span className="text-[11px] text-[#8888a8] font-medium group-hover:text-foreground transition-colors">
               {tGlobal("chat.planMode")}
             </span>
           </button>
@@ -175,7 +175,7 @@ export function ChatInputArea({
             data-testid="select-model-provider"
           >
             <SelectTrigger
-              className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[10px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
+              className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[10px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-[rgba(255,255,255,0.06)] text-[#8888a8] hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
               data-testid="select-model-provider"
             >
               <SelectValue>
@@ -183,12 +183,12 @@ export function ChatInputArea({
                   className={cn(
                     "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
                     selectedProvider === "kimi"
-                      ? "bg-violet-100 dark:bg-violet-900/40 border-violet-400 dark:border-violet-500 text-violet-700 dark:text-violet-300"
+                      ? "bg-violet-900/40 border-violet-500 text-violet-300"
                       : selectedProvider === "minimax"
-                        ? "bg-emerald-100 dark:bg-emerald-900/40 border-emerald-400 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300"
+                        ? "bg-emerald-900/40 border-emerald-500 text-emerald-300"
                         : selectedProvider === "glm"
-                          ? "bg-sky-100 dark:bg-sky-900/40 border-sky-400 dark:border-sky-500 text-sky-700 dark:text-sky-300"
-                          : "bg-muted/60 border-muted-foreground/20 text-muted-foreground",
+                          ? "bg-sky-900/40 border-sky-500 text-sky-300"
+                          : "bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.12)] text-[#8888a8]",
                   )}
                 >
                   {selectedProvider === "kimi"

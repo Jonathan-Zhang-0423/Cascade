@@ -204,7 +204,7 @@ export function CollapsedThinking({ text }: { text: string }) {
       data-testid="collapsed-thinking"
     >
       <button
-        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-blue-400/70 hover:bg-muted/30 transition-colors text-left"
+        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-blue-400/70 hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left"
         onClick={() => setExpanded((e) => !e)}
         data-testid="button-expand-thinking"
       >
@@ -269,7 +269,7 @@ function GroupedActionRow({ group }: { group: ActionGroup }) {
     <div className="border border-border/20 rounded-md overflow-hidden" style={{ animation: "fade-up 150ms ease" }}>
       <button
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
           color,
         )}
         onClick={() => setExpanded((e) => !e)}
@@ -371,7 +371,7 @@ export function ActionLogChip({
     >
       <button
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
           color,
         )}
         onClick={() => hasDetail && setExpanded((e) => !e)}
@@ -470,7 +470,7 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
     >
       <button
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/30 transition-colors text-left",
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
           color,
         )}
         onClick={() => setExpanded((e) => !e)}

@@ -440,7 +440,7 @@ export function TaskPlanCard({
               </p>
               <button
                 onClick={() => setModalOpen(true)}
-                className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
                 title={t(lang, "viewPlanDoc")}
                 data-testid="button-view-plan-doc"
               >
@@ -567,7 +567,7 @@ export function TaskPlanCard({
                   {relevantFiles.map((f, i) => (
                     <span
                       key={i}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 text-[10px] text-muted-foreground font-mono"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)] text-[10px] text-[#8888a8] font-mono"
                       data-testid={`file-badge-${i}`}
                     >
                       <FileCode className="w-2.5 h-2.5 shrink-0" />
@@ -586,7 +586,7 @@ export function TaskPlanCard({
               </p>
               <button
                 onClick={() => setModalOpen(true)}
-                className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
                 title={t(lang, "viewPlanDoc")}
                 data-testid="button-view-plan-doc-preexec"
               >
@@ -652,7 +652,7 @@ export function TaskPlanCard({
                 </p>
                 <button
                   onClick={() => setModalOpen(true)}
-                  className="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground shrink-0"
+                  className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
                   title={t(lang, "viewPlanDoc")}
                   data-testid="button-view-plan-doc-completed"
                 >
@@ -811,7 +811,7 @@ export function TaskPlanCard({
                 }
               }}
               placeholder={t(lang, "inputPlaceholder")}
-              className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-muted/30 border-border/30"
+              className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)]"
               rows={1}
               data-testid="input-confirmation"
             />
@@ -974,8 +974,8 @@ export function TaskPlanCard({
               <div className="space-y-3">
                 {steps.map((step) => (
                   <div key={step.step} className="flex items-start gap-3">
-                    <div className="w-5 h-5 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground font-medium">
+                    <div className="w-5 h-5 rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[10px] text-[#8888a8] font-medium">
                         {step.step}
                       </span>
                     </div>
@@ -1072,7 +1072,7 @@ export function ManagerMessageBubble({
   if (message.role === "user") {
     return (
       <div className="flex justify-end px-3">
-        <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+        <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-[#1a1a2e] text-foreground max-w-[85%]">
           {message.content}
         </div>
       </div>

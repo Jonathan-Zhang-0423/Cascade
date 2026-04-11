@@ -9,6 +9,7 @@ import { getThemeConfig, THEMES } from "@/lib/themes";
 import { useT } from "@/lib/i18n";
 
 let themesRegistered = false;
+let monacoTsConfigured = false;
 
 function registerCustomThemes(monaco: Monaco) {
   if (themesRegistered) return;
@@ -20,6 +21,39 @@ function registerCustomThemes(monaco: Monaco) {
   }
 }
 
+function configureTypeScript(monaco: Monaco) {
+  if (monacoTsConfigured) return;
+  monacoTsConfigured = true;
+
+  const compilerOptions = {
+    target: monaco.languages.typescript.ScriptTarget.ES2020,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.Bundler,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+    lib: ["ES2020", "DOM", "DOM.Iterable"],
+    strict: false,
+    allowSyntheticDefaultImports: true,
+    esModuleInterop: true,
+    skipLibCheck: true,
+    noEmit: true,
+    allowJs: true,
+    resolveJsonModule: true,
+  };
+
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions as any);
+  monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions as any);
+
+  // Suppress "cannot find module" errors — we don't have node_modules in the browser
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,  // no node_modules in browser → all semantic errors are false positives
+    noSyntaxValidation: false,   // keep syntax error highlighting
+  });
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false,
+  });
+}
+
 export function CodeEditor() {
   const { activeFile, openFiles, files, setActiveFile, closeFile, updateFileContent } =
     useIDEStore();
@@ -28,6 +62,7 @@ export function CodeEditor() {
 
   const handleBeforeMount = useCallback((monaco: Monaco) => {
     registerCustomThemes(monaco);
+    configureTypeScript(monaco);
   }, []);
 
   const openCommandPalette = () => {
@@ -51,7 +86,7 @@ export function CodeEditor() {
       {openFiles.length > 0 ? (
         <>
           <div
-            className="flex items-center border-b border-border/50 shrink-0 overflow-x-auto h-9"
+            className="flex items-center border-b border-[rgba(255,255,255,0.07)] shrink-0 overflow-x-auto h-9"
             role="tablist"
             aria-label={t("editor.openFiles")}
           >
@@ -62,10 +97,10 @@ export function CodeEditor() {
                 aria-selected={filePath === activeFile}
                 tabIndex={filePath === activeFile ? 0 : -1}
                 className={cn(
-                  "group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-r border-border/30 transition-colors min-w-fit",
+                  "group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-r border-[rgba(255,255,255,0.05)] transition-colors min-w-fit",
                   filePath === activeFile
-                    ? "bg-background text-foreground"
-                    : "bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    ? "bg-[#0c0c14] text-foreground"
+                    : "bg-[rgba(255,255,255,0.02)] text-[#8888a8] hover:text-foreground hover:bg-[rgba(255,255,255,0.05)]"
                 )}
                 onClick={() => setActiveFile(filePath)}
                 onKeyDown={(e) => {
@@ -78,7 +113,7 @@ export function CodeEditor() {
                 <FileCode className="w-3.5 h-3.5 shrink-0" />
                 <span>{getFileName(filePath)}</span>
                 <button
-                  className="ml-1 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-muted p-0.5 transition-opacity"
+                  className="ml-1 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-[rgba(255,255,255,0.08)] p-0.5 transition-opacity"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeFile(filePath);
@@ -91,7 +126,7 @@ export function CodeEditor() {
               </div>
             ))}
             <button
-              className="flex items-center justify-center h-full px-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              className="flex items-center justify-center h-full px-2 text-[#8888a8] hover:text-foreground hover:bg-[rgba(255,255,255,0.05)] transition-colors"
               onClick={openCommandPalette}
               aria-label={t("editor.openFile")}
               data-testid="button-open-file-palette"
@@ -114,7 +149,7 @@ export function CodeEditor() {
               }}
               options={{
                 fontSize: 14,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                fontFamily: "'Geist Mono', 'JetBrains Mono', monospace",
                 fontLigatures: true,
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
@@ -135,12 +170,12 @@ export function CodeEditor() {
       ) : (
         <div className="flex-1 flex items-center justify-center" data-testid="editor-empty">
           <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto">
-              <FileCode className="w-7 h-7 text-muted-foreground/50" />
+            <div className="w-14 h-14 rounded-2xl bg-[rgba(255,255,255,0.04)] flex items-center justify-center mx-auto">
+              <FileCode className="w-7 h-7 text-[#484860]" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">{t("editor.noFileOpen")}</p>
-              <p className="text-xs text-muted-foreground/50">
+              <p className="text-sm text-[#8888a8]">{t("editor.noFileOpen")}</p>
+              <p className="text-xs text-[#484860]">
                 {t("editor.selectFile")}
               </p>
             </div>

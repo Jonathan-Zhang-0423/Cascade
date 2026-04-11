@@ -402,7 +402,7 @@ export function PreviewPanel() {
               className="w-14 h-6 text-xs px-1 text-center"
               data-testid="input-custom-width"
             />
-            <span className="text-xs text-muted-foreground">x</span>
+            <span className="text-xs text-[#8888a8]">x</span>
             <Input
               type="number"
               min={100}
@@ -469,8 +469,8 @@ export function PreviewPanel() {
             <div className="flex flex-col items-center gap-3">
               <p className="text-xs font-medium text-foreground">Scan to preview on phone</p>
               {qrLoading ? (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-muted/30 rounded-md">
-                  <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-[rgba(255,255,255,0.04)] rounded-md">
+                  <RefreshCw className="w-5 h-5 animate-spin text-[#8888a8]" />
                 </div>
               ) : previewUrl ? (
                 <div className="bg-white p-3 rounded-lg" data-testid="qr-code-container">
@@ -482,8 +482,8 @@ export function PreviewPanel() {
                   />
                 </div>
               ) : (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-muted/30 rounded-md">
-                  <p className="text-xs text-muted-foreground text-center px-4">
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-[rgba(255,255,255,0.04)] rounded-md">
+                  <p className="text-xs text-[#8888a8] text-center px-4">
                     Click to generate preview URL
                   </p>
                 </div>
@@ -491,7 +491,7 @@ export function PreviewPanel() {
               {previewUrl && (
                 <div className="w-full flex flex-col gap-2">
                   <div className="flex items-center gap-1 w-full">
-                    <div className="flex-1 text-[10px] font-mono text-muted-foreground truncate bg-muted/30 rounded px-2 py-1" data-testid="text-preview-url">
+                    <div className="flex-1 text-[10px] font-mono text-[#8888a8] truncate bg-[rgba(255,255,255,0.04)] rounded px-2 py-1" data-testid="text-preview-url">
                       {previewUrl}
                     </div>
                     <Button
@@ -517,7 +517,7 @@ export function PreviewPanel() {
                       <ExternalLink className="w-3 h-3" />
                     </Button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground text-center">
+                  <p className="text-[10px] text-[#8888a8] text-center">
                     Live reload enabled — changes sync automatically
                   </p>
                 </div>
@@ -590,14 +590,14 @@ export function PreviewPanel() {
             <>
               {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background"
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#080810]"
                   style={{ animation: "fade-up 150ms ease" }}
                 >
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-muted-foreground/20">
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-[#484860]">
                     <rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" />
                     <path d="M11 10l7 4-7 4V10z" fill="currentColor" />
                   </svg>
-                  <p className="text-[12px] text-muted-foreground/40">Run your project to see the preview</p>
+                  <p className="text-[12px] text-[#484860]">Run your project to see the preview</p>
                 </div>
               ) : (
                 <iframe

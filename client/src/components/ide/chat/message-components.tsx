@@ -95,7 +95,7 @@ export function CodeBlockView({
       data-testid={`code-block-${block.filePath}`}
     >
       <div
-        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-muted/40 to-muted/20 cursor-pointer select-none hover:from-muted/60 hover:to-muted/40 transition-all text-[11px] text-muted-foreground font-medium"
+        className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-[rgba(255,255,255,0.05)] to-[rgba(255,255,255,0.02)] cursor-pointer select-none hover:from-[rgba(255,255,255,0.08)] hover:to-[rgba(255,255,255,0.04)] transition-all text-[11px] text-[#8888a8] font-medium"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
@@ -107,7 +107,7 @@ export function CodeBlockView({
           )}
           <FileCode className="w-3 h-3 shrink-0" />
           <span className="truncate text-foreground/80">{fileName}</span>
-          <span className="shrink-0 text-muted-foreground/50">
+          <span className="shrink-0 text-[#484860]">
             {lineCount}L
           </span>
         </div>
@@ -329,7 +329,7 @@ export function MessageBubble({
       className="flex justify-end px-3"
       data-testid={`chat-message-${message.id}`}
     >
-      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-muted text-foreground max-w-[85%]">
+      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-[#1a1a2e] text-foreground max-w-[85%]">
         <MessageContent content={message.content} />
       </div>
     </div>
@@ -357,7 +357,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
     <div
       className={cn(
         "px-3 flex items-center gap-1.5 text-[11px]",
-        isAvailable ? "text-muted-foreground/60" : "text-muted-foreground/30",
+        isAvailable ? "text-[#8888a8]/60" : "text-[#484860]/50",
       )}
       data-testid={`checkpoint-${message.checkpointId}`}
     >
@@ -401,8 +401,8 @@ export function TypingIndicator({ text }: { text?: string }) {
       className="px-3 flex items-center gap-1.5"
       data-testid="typing-indicator"
     >
-      <CodestartLoader className="text-muted-foreground" />
-      <span className="text-xs text-muted-foreground">
+      <CodestartLoader className="text-[#8888a8]" />
+      <span className="text-xs text-[#8888a8]">
         {text || t(lang, "thinking")}
       </span>
     </div>
