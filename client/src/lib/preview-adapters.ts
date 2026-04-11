@@ -1,13 +1,13 @@
-export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview" | "kotlin-wasm" | "swift-wasm";
+export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview" | "kotlin-wasm" | "swift-wasm" | "rn-web" | "flutter-web";
 
 export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin";
 
 export function getPreviewMode(framework: Framework | string | undefined): PreviewMode {
   switch (framework) {
     case "rn-expo":
-      return "expo-snack";
+      return "rn-web";
     case "flutter":
-      return "dartpad";
+      return "flutter-web";
     case "kotlin":
       return "kotlin-wasm";
     case "swiftui":
@@ -117,19 +117,24 @@ export function buildExpoSnackFiles(
   return snackFiles;
 }
 
+// Expo Snack embedded iframe has a ~6KB practical URL limit before it silently fails.
+const SNACK_URL_MAX_LENGTH = 6000;
+
 export function buildExpoSnackUrl(
   files: Array<{ path: string; content: string }>,
   name?: string
-): string {
+): string | null {
   const snackFiles = buildExpoSnackFiles(files);
   const params = new URLSearchParams();
-  params.set("platform", "web");
+  params.set("platform", "ios");
   params.set("name", name || "CodeStart Preview");
   params.set("theme", "dark");
   params.set("preview", "true");
   params.set("supportedPlatforms", "ios,android,web");
   params.set("files", JSON.stringify(snackFiles));
-  return `https://snack.expo.dev/embedded?${params.toString()}`;
+  const url = `https://snack.expo.dev/embedded?${params.toString()}`;
+  if (url.length > SNACK_URL_MAX_LENGTH) return null;
+  return url;
 }
 
 export function buildDartPadUrl(mainDartContent: string): string {

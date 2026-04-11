@@ -11,6 +11,8 @@ const SWIFT_WASM_SDK_ID = process.env.SWIFT_WASM_SDK_ID || "wasm32-unknown-wasi"
 const TEMPLATE_DIR = resolve(process.cwd(), "server", "compile-templates", "swift-wasm");
 const COMPILE_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+// Stable build dir — SPM reuses .build/ between compiles, cutting cold time significantly
+const SWIFT_PERSISTENT_BUILD_DIR = join(tmpdir(), "swift-wasm-persistent-build");
 
 interface CompilationResult {
   success: boolean;
@@ -263,10 +265,24 @@ async function doCompile(
 ): Promise<CompilationResult> {
   activeCompiles++;
   const buildId = `swift-${sourceHash}-${randomBytes(4).toString("hex")}`;
-  const workDir = join(tmpdir(), `swift-wasm-${buildId}`);
+  // Use a stable work dir so SPM can reuse .build/ between compiles
+  const workDir = SWIFT_PERSISTENT_BUILD_DIR;
 
   try {
-    await cp(TEMPLATE_DIR, workDir, { recursive: true });
+    // Only copy template if the work dir doesn't exist yet (first run)
+    if (!existsSync(workDir)) {
+      await cp(TEMPLATE_DIR, workDir, { recursive: true });
+    } else {
+      // Refresh Package.swift and index.html from template, but leave .build/ intact
+      const templateFiles = ["Package.swift", "index.html", "Package.resolved"];
+      for (const f of templateFiles) {
+        const src = join(TEMPLATE_DIR, f);
+        const dst = join(workDir, f);
+        if (existsSync(src)) {
+          await cp(src, dst);
+        }
+      }
+    }
 
     const appSrcDir = join(workDir, "Sources", "App");
     await mkdir(appSrcDir, { recursive: true });
@@ -496,14 +512,14 @@ if (instance.exports._start) {
       createdAt: Date.now(),
     });
 
-    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    // Don't delete workDir — keep .build/ for incremental recompilation
 
     return {
       success: true,
       buildId,
     };
   } catch (err: any) {
-    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    // Don't delete workDir on error either — .build/ may still be useful
     return {
       success: false,
       buildId,

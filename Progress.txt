@@ -25,9 +25,35 @@ AI Providers (unchanged):
   - GLM-5 (Zhipu AI)
 
 ============================================================
+CURRENT FOCUS
+============================================================
+Priority: Get the React Native browser preview simulator working end-to-end.
+After RN is solid, implement Flutter, then Kotlin/Compose, then SwiftUI.
+SwiftUI via Tokamak WASM is shelved until RN/Flutter/Kotlin are stable.
+
+Parallel priority (added 2026-04-08): MP-14 UI/UX competitive improvements.
+Informed by analysis of Bolt.new, Lovable, Replit Agent, v0.
+Key gap: backend logic (checkpoints, diffs, layout state) is done — need UI.
+  - 14-A: Checkpoint History panel (undo UI) — P0
+  - 14-B: Diff view tab (Code | Diff) — P1
+  - 14-C: Preview-first layout toggle — P2
+  - 14-D: Inline step progress polish — P3
+  - 14-E: Hide code toggle — P3
+
+Preview simulator strategy (decided 2026-04-07):
+  - React Native  → Babel → react-native-web → iframe (fix bugs in current impl)
+  - Flutter       → DartPad embed (instant fallback) + flutter build web (when SDK installed)
+  - Kotlin        → Kotlin/Wasm + Compose Multiplatform → Skia canvas (replace current broken Gradle impl)
+  - SwiftUI       → SHELVED. Web framework, code view only for now.
+  - Web           → Direct iframe (already working)
+
+Deployment target: Self-hosted VPS (full toolchain control)
+AI code generation: Always generate real production code; preview handles compatibility.
+
+============================================================
 MP-1: MOBILE DEVICE SIMULATOR PREVIEW
 ============================================================
-Status: NOT STARTED
+Status: IN PROGRESS
 Priority: HIGH (foundational — everything depends on this)
 Depends on: nothing
 
@@ -35,44 +61,48 @@ Replace the current iframe-based HTML preview with a mobile
 device simulator that renders apps inside realistic phone and
 tablet device frames.
 
-  [ ] Device frame component (DeviceSimulator)
+  [x] Device frame component (DeviceSimulator) — device-simulator.tsx
       - Realistic bezels and notch/Dynamic Island for iPhones
       - Pill-style navigation bar for Android devices
       - Status bar mockup (time, battery, signal)
       - Home indicator / navigation buttons
-  [ ] Device selector dropdown
-      - iPhone SE (375×667)
-      - iPhone 15 (390×844)
-      - iPhone 15 Pro Max (430×932)
-      - iPad (810×1080)
-      - Pixel 7 (412×915)
-      - Pixel Fold (884×1104)
-      - Samsung Galaxy S24 (360×780)
-      - Custom dimensions input
-  [ ] Orientation toggle (portrait / landscape)
-  [ ] Platform toggle (iOS / Android)
+  [x] Device selector dropdown — device-specs.ts
+      - iPhone SE, 15, 15 Pro Max, 16, 16 Pro, 16 Pro Max, 17
+      - Samsung Galaxy S23, S24, Pixel 7, Pixel 9, etc.
+      - Custom dimensions input (100–2000px)
+  [x] Orientation toggle (portrait / landscape)
+  [x] Platform toggle (iOS / Android)
       - Adjusts device frame chrome accordingly
       - Swaps status bar style (iOS vs Android)
-  [ ] Dark/light device frame option
-  [ ] Responsive scaling — frame scales to fit panel
-  [ ] Content area renders preview
-      - Phase 1: Web content via iframe (existing behavior inside device frame)
-      - Phase 2: Expo Web preview for React Native projects
-      - Phase 3: Framework-specific preview URLs
-  [ ] Touch interaction hints (cursor → finger icon inside simulator)
-  [ ] Replace or extend preview-panel.tsx
-  [ ] Update ide.tsx layout to accommodate device simulator
-  [ ] Add device state to ide-store.ts (selectedDevice, orientation, platform)
+  [x] Dark/light device frame option
+  [x] Responsive scaling — frame scales to fit panel
+  [x] Content area renders preview (framework-aware)
+  [x] Replace or extend preview-panel.tsx — done
+  [x] Add device state to ide-store.ts (selectedDevice, orientation, platform)
+
+  Preview content per framework (current state):
+  [x] Web → direct iframe (working)
+  [ ] React Native → Babel → react-native-web → iframe (BROKEN — vendor bundle & module stubs)
+  [ ] Flutter → DartPad fallback + flutter build web when SDK installed (BROKEN — SDK not installed, no DartPad fallback)
+  [ ] Kotlin → Kotlin/Wasm + Compose Multiplatform (BROKEN — wrong Gradle pipeline)
+  [~] SwiftUI → SHELVED. Shows code view only.
+
+  React Native specific broken items (next task):
+  [ ] @babel/plugin-transform-modules-commonjs missing from package.json
+  [ ] rn-vendor-entry.js does not expose ReactNavigation, SafeAreaContext,
+      GestureHandler on the __RNW__ global (stubs reference them but they're undefined)
+  [ ] Module require() shim in HTML shell has gaps for common packages
 
 Acceptance:
   - Users see their app inside a phone frame, not a raw iframe
   - Device can be switched without reloading the project
   - Orientation toggle works and re-renders correctly
+  - React Native preview renders correctly in the simulator
 
 ============================================================
 MP-2: MULTI-FRAMEWORK PROJECT SCAFFOLDING
 ============================================================
-Status: NOT STARTED
+Status: LARGELY COMPLETE
 Priority: HIGH (enables framework-specific development)
 Depends on: nothing
 
@@ -80,66 +110,44 @@ Create a project scaffolding system that supports multiple
 mobile frameworks with proper templates, configs, and directory
 structures. Preserve existing web project templates.
 
-  [ ] Framework selection in project creation dialog
+  [x] Framework selection in project creation dialog
       - React Native (Expo)
       - Flutter
       - SwiftUI (iOS-only)
       - Kotlin / Jetpack Compose (Android-only)
       - Web (HTML/CSS/JS) — preserved for backwards compatibility
-  [ ] React Native / Expo template
-      - App.tsx with functional component
-      - app.json with Expo configuration
-      - package.json with expo, react-native, react-navigation deps
-      - babel.config.js
-      - tsconfig.json
-      - assets/ directory (icon.png, splash.png, adaptive-icon.png)
-      - Navigation scaffold (React Navigation with stack/tab)
-      - Example screen with SafeAreaView, View, Text, StyleSheet
-  [ ] Flutter template
-      - lib/main.dart with MaterialApp scaffold
-      - lib/screens/ with home_screen.dart
-      - pubspec.yaml with dependencies
-      - analysis_options.yaml
-      - assets/ directory
-      - Platform-specific: android/, ios/ directory stubs
-  [ ] SwiftUI template (iOS-only)
-      - ContentView.swift
-      - [ProjectName]App.swift
-      - Info.plist
-      - Assets.xcassets structure
-      - Example view with NavigationStack
-  [ ] Kotlin / Jetpack Compose template (Android-only)
-      - MainActivity.kt with ComponentActivity
-      - Theme.kt (Material Design 3)
-      - build.gradle.kts (app and project level)
-      - AndroidManifest.xml
-      - Example composable with Scaffold, TopAppBar
-  [ ] Update shared/schema.ts
-      - Add framework field to projects table
-      - Add language field
-      - Add targetPlatform field (ios, android, both)
-  [ ] Update server/routes.ts
+  [x] React Native / Expo template — rn-expo-template.ts
+  [x] Flutter template
+  [x] SwiftUI template (iOS-only)
+  [x] Kotlin / Jetpack Compose template (Android-only)
+  [x] Update shared/schema.ts
+      - framework field added to projects table
+      - language field added
+      - targetPlatform field added (ios, android, both)
+  [x] Update server/routes.ts
       - Project creation accepts framework parameter
       - Returns scaffolded files based on framework
-  [ ] Update skill-loader.ts
+  [x] Update skill-loader.ts
       - Detect framework from project files
       - Map to correct skill files
-  [ ] Update dashboard project creation UI
+  [x] Update dashboard project creation UI
       - Framework selector with icons
       - Platform badge on project cards
       - Language indicator
-  [ ] Template gallery with preview screenshots
+  [ ] Fix: client project-store.ts was overwriting server template files with
+      blank web files on project creation for non-web frameworks (Task #136 — fixed?)
+      - Verify fix is confirmed merged
 
 Acceptance:
-  - Creating a new project offers all supported frameworks
-  - Each template compiles/renders correctly in the simulator
-  - Existing web projects still work unchanged
-  - Framework is persisted with the project metadata
+  - Creating a new project offers all supported frameworks ✓
+  - Each template compiles/renders correctly in the simulator — PENDING (MP-1 in progress)
+  - Existing web projects still work unchanged ✓
+  - Framework is persisted with the project metadata ✓
 
 ============================================================
 MP-3: MOBILE DEVELOPMENT AGENT PROMPTS & SKILLS
 ============================================================
-Status: NOT STARTED
+Status: PARTIALLY COMPLETE
 Priority: HIGH (AI must understand mobile development)
 Depends on: MP-2
 
@@ -147,65 +155,31 @@ Rewrite agent prompts for mobile-aware development while
 preserving existing web prompts. Create a mobile skills
 library covering each supported framework.
 
-  [ ] Dynamic prompt selection based on project framework
-      - Detect framework from project metadata and files
-      - Load web or mobile prompt variant accordingly
-  [ ] Mobile Manager prompt (server/manager-mobile-prompt.ts)
-      - Understands screens vs pages, navigation stacks
-      - Knows native API patterns (camera, GPS, push notifications)
-      - Plans mobile-specific architecture (navigation, state, platform handling)
-      - Handles platform differences (iOS vs Android)
-  [ ] Mobile Editor prompt (server/editor-mobile-prompt.ts)
-      - React Native: View, Text, FlatList, TouchableOpacity, Platform.OS
-      - Flutter: Widget tree, StatelessWidget, StatefulWidget, MaterialApp
-      - SwiftUI: @State, @Binding, NavigationStack, List
-      - Kotlin/Compose: @Composable, remember, LaunchedEffect, Scaffold
-      - Navigation patterns for each framework
-      - Platform-specific code patterns
-  [ ] Mobile Verifier prompt (server/verifier-mobile-prompt.ts)
-      - Safe area / notch handling
-      - Accessibility labels (accessibilityLabel, semanticsLabel, etc.)
-      - Touch target sizes (minimum 44pt iOS / 48dp Android)
-      - Keyboard avoidance patterns
-      - Platform.OS handling where needed
-      - Permission declarations
-      - App lifecycle awareness
-  [ ] Mobile Mentor prompt (server/mentor-mobile-prompt.ts)
-      - Teaches mobile concepts (screens, gestures, app lifecycle)
-      - Explains navigation patterns
-      - Covers permissions model
-      - Responsive mobile design principles
-  [ ] Communicator Agent evaluation
-      - Assess whether to keep, refactor, or deprecate
-      - Update vocabulary: "screens" not "pages," "tap" not "click"
-      - If kept: update for mobile terminology
-  [ ] Mobile skills library (server/skills/)
+  [x] Dynamic prompt selection based on project framework
+  [x] Mobile Manager prompt — getMobilePromptSupplement() in server/mobile-prompt-supplements.ts
+  [x] Mobile Editor prompt — framework-aware context injected into editor agent
+  [x] Mobile Verifier prompt — mobile checks integrated
+  [x] Mobile skills library (server/skills/)
       - react-native-expo/SKILL.md
       - flutter/SKILL.md
       - swiftui/SKILL.md
       - kotlin-compose/SKILL.md
-      - mobile-common/SKILL.md (push notifications, deep links,
-        local storage, camera, location, permissions)
-      - mobile-ui-patterns/SKILL.md (tab bars, drawers, modals,
-        pull-to-refresh, infinite scroll, gestures)
-  [ ] Preserve existing web prompts
-      - server/manager-prompt.ts (unchanged, used for web projects)
-      - server/editor-prompt.ts (unchanged)
-      - server/verifier-prompt.ts (unchanged)
-      - server/mentor-prompt.ts (unchanged)
+  [x] Preserve existing web prompts (unchanged)
+  [ ] Mobile Mentor prompt (Coding Notebook mobile content)
+  [ ] Terminology updates: "screens" not "pages," "tap" not "click" — partially done
 
 Acceptance:
-  - AI generates correct code for each framework
-  - Mobile-specific issues caught by Verifier
-  - Skill loader detects framework and injects correct skills
-  - Web projects continue using web prompts unchanged
+  - AI generates correct code for each framework ✓ (mostly)
+  - Mobile-specific issues caught by Verifier ✓
+  - Skill loader detects framework and injects correct skills ✓
+  - Web projects continue using web prompts unchanged ✓
 
 ============================================================
 MP-4: CLOUD BUILD PIPELINE
 ============================================================
 Status: NOT STARTED
 Priority: MEDIUM (needed for device testing)
-Depends on: MP-2
+Depends on: MP-2 ✓
 
 Integrate cloud build services so users can compile their
 mobile apps into installable binaries (.ipa, .apk, .aab)
@@ -689,6 +663,248 @@ FRAMEWORK COMPARISON
 | Hot reload          | Yes               | Yes         | Preview     | Preview        |
 | Ecosystem           | npm (huge)        | pub.dev     | Apple only  | JetPack        |
 | Recommended for     | Beginners, cross  | Cross-plat  | iOS devs    | Android devs   |
+
+============================================================
+============================================================
+MOBILE PIVOT — COMPLETED WORK (POST-PIVOT RECORD)
+============================================================
+============================================================
+
+====================================
+MOBILE PHASE 1: Framework Scaffolding & Schema
+====================================
+Status: COMPLETE (Tasks #100–#110 range)
+
+  [x] Added framework / language / targetPlatform fields to shared/schema.ts
+  [x] Server templates system (server/templates/)
+      - rn-expo-template.ts — full React Native/Expo scaffold
+      - flutter-template.ts — lib/main.dart + pubspec.yaml
+      - swiftui-template.ts — ContentView.swift + App.swift
+      - kotlin-template.ts — MainActivity.kt + build.gradle.kts
+  [x] Framework detection (server/framework-detector.ts)
+  [x] Skill loader updated to dispatch by framework
+  [x] Mobile prompt supplements (server/mobile-prompt-supplements.ts)
+  [x] Dashboard project creation updated with framework picker
+  [x] preview-adapters.ts maps frameworks → preview modes
+  [x] device-specs.ts defines all supported device presets
+  [x] i18n system (client/src/lib/i18n.ts) — EN + ZH language toggle
+
+====================================
+MOBILE PHASE 2: Device Simulator UI
+====================================
+Status: COMPLETE
+
+  [x] DeviceSimulator component (device-simulator.tsx)
+      - iOS: Dynamic Island, notch, status bar, home indicator
+      - Android: status bar, nav bar, pill navigation
+      - Responsive scaling to fit the preview panel
+  [x] Platform selector (iOS / Android toggle)
+  [x] Device dropdown with all presets + custom dimensions
+  [x] Orientation toggle (portrait / landscape)
+  [x] Dark / light frame style toggle
+  [x] Device state persisted in ide-store.ts
+
+====================================
+MOBILE PHASE 3: Preview Compilers (Server-Side)
+====================================
+Status: IMPLEMENTED BUT BROKEN IN PRACTICE
+
+  [x] server/rn-web-compiler.ts
+      - Babel (TypeScript + JSX) → CommonJS module registry
+      - esbuild vendor bundle (react-native-web + react-navigation)
+      - Self-contained index.html artifact
+      - Artifact cache (50 entries, 30 min TTL)
+      - Max 4 concurrent compiles
+      STATUS: Vendor bundle build likely failing; module stubs incomplete
+
+  [x] server/flutter-compiler.ts
+      - Spawns flutter build web --release
+      - Artifact cache + pub cache persistence
+      - Max 1 concurrent compile, 5 min timeout
+      STATUS: Flutter SDK not installed → 503 → falls back to code view only
+              DartPad fallback not yet implemented
+
+  [x] server/swift-wasm-compiler.ts
+      - Swift → wasm32-unknown-wasi (WRONG approach for SwiftUI UI)
+      STATUS: SHELVED. SwiftUI WASM does not render UI.
+
+  [x] server/kotlin-wasm-compiler.ts
+      - Gradle → wasm32-unknown-wasi (WRONG pipeline for Compose UI)
+      STATUS: Needs replacement with Kotlin/Wasm + Compose Multiplatform
+
+  [x] Artifact serving route (/api/compile/artifacts/:buildId/*)
+  [x] COEP/COOP headers for WASM builds (not applied to RN/Flutter)
+
+====================================
+MOBILE PHASE 4: Preview Frontend Components
+====================================
+Status: IMPLEMENTED BUT BROKEN IN PRACTICE
+
+  [x] RnWebPreview component (rn-web-preview.tsx)
+      - Polls /api/compile/rn-web, shows iframe on success
+      - 500ms debounce, abort controller on stale builds
+      - Error state with "Ask AI to Fix" button
+      STATUS: Broken — vendor bundle missing exports, Babel plugin missing
+
+  [x] FlutterWebPreview component (flutter-web-preview.tsx)
+      - Polls /api/compile/flutter-web, shows iframe on success
+      - 3000ms debounce, elapsed timer during compile
+      STATUS: Broken — no Flutter SDK, no DartPad fallback
+
+  [x] WasmPreview component (wasm-preview.tsx)
+      - Handles swift-wasm and kotlin-wasm
+      STATUS: Shelved for SwiftUI; Kotlin needs new pipeline
+
+  [x] PreviewPanel coordinator (preview-panel.tsx)
+      - Routes to correct preview component by framework
+      - QR code live preview (preview-server.ts)
+      - Console interception from iframe
+
+====================================
+MOBILE PHASE 5: Build Pipeline & Session Management
+====================================
+Status: COMPLETE (Tasks #134–#138)
+
+  [x] Task #134: Build session reconnection — survive server restarts
+  [x] Task #135: Manager session reconnection — survive navigation
+  [x] Task #136: Fix rn-expo project creation overwriting template files
+      - Stopped client from sending BLANK_FILES for non-web frameworks
+      - Framework-aware file selection on loadProject
+  [x] Task #137: Fix slow manager response / blocked sends
+      - handleManagerSend returns success/failure boolean
+      - pendingPrompt not cleared on blocked send
+      - Safety timeout for isManagerResponding (120s)
+  [x] Task #138: Fix plan/build session survival on navigation
+      - Done session retention increased from 5 min → 30 min
+      - Completed plan persisted to project DB record (lastPlan field)
+      - Build results persisted to project DB record (lastBuildResult field)
+      - isReconnecting flag separate from isManagerResponding
+      - File sync triggered on build reconnect
+
+====================================
+MOBILE PHASE 6: Competitive UI/UX Improvements
+====================================
+Status: NOT STARTED (planned 2026-04-08)
+Source: Competitive analysis of Bolt.new, Lovable, Replit Agent, v0
+
+Key insight: All backend logic exists. This is pure UI work.
+  - Checkpoint store: ide-store.ts createCheckpoint/restoreCheckpoint ✅
+  - Checkpoint created on build complete: useBuildStream.ts:721 ✅
+  - Action log streaming: liveActionLog in both stream hooks ✅
+  - Layout state: needs to be added to ide-store ❌
+
+  [x] Task #139: Checkpoint History Panel (14-A) ✅ 2026-04-09
+      - CheckpointPanel.tsx — list in reverse order, label, timestamp, file count, restore with confirm
+      - "Before build" checkpoint added in handleExecutePlan (in addition to "Build complete")
+      - History icon added to tools-dock; panel opens as side panel
+      - Wired to existing restoreCheckpoint() / checkpoints[] in ide-store
+
+  [x] Task #140: Diff View (14-B) ✅ 2026-04-09
+      - Added `diff` npm package (diffLines)
+      - InlineDiffView.tsx — unified diff, colored +/- lines, max-h scrollable
+      - GitCompare icon on file_write ActionLogChip entries — click to expand inline diff
+      - Captures old file content before applyCodeBlock in useBuildStream.ts
+      - Stores in lastBuildFileDiffs in ide-store (cleared on new build)
+
+  [x] Task #141: Preview-First Layout Toggle (14-C) ✅ 2026-04-09
+      - layoutMode: "preview" | "code" added to ide-store.ts (persisted)
+      - Code/Monitor toggle buttons in navbar.tsx
+      - Preview mode: editor 35% / simulator 65%; Code mode: 50/50
+      - Persisted in localStorage per project
+
+  [x] Task #142: Inline Step Progress Polish + rAF streaming (14-D) ✅ 2026-04-09
+      - Icons already correct per type (FilePlus, Terminal, Brain, etc.)
+      - animate-in fade-in duration-200 added to ActionLogLiveRow and ActionLogChip
+      - Replaced setTimeout(r, 16) with requestAnimationFrame yield in useBuildStream.ts
+        (thinking_token and narration_token handlers) — aligns renders to screen refresh
+
+  [x] Task #143: Hide Code Toggle (14-E) ✅ 2026-04-09
+      - codeVisible: boolean added to ide-store.ts (persisted)
+      - EyeOff/Eye toggle button in navbar.tsx
+      - Editor column conditionally rendered in ide.tsx; simulator fills full width when hidden
+
+====================================
+MOBILE PHASE 7: Chat UI/UX & Agent Narration
+====================================
+Status: IN PROGRESS (2026-04-10)
+
+  [x] Task #144: Branded CodestartLoader animation ✅ 2026-04-10
+      - New CodestartLoader.tsx — three vertical bars matching the CodeStart logo
+      - Drop-in/drop-out animation (2.2s loop, staggered 80ms per bar)
+      - Replaced all Loader2 spinners in TypingIndicator and "Preparing plan…" chips
+      - Uses currentColor — inherits text color, works in all themes
+
+  [x] Task #145: Chat UI action-log improvements ✅ 2026-04-10
+      - GroupedActionRow and CollapsedGroupedRow now show multi-icon strip (up to 3 icons)
+        instead of single icon + count badge — matches reference screenshot pattern
+      - >_ text glyph for terminal_command entries (removed Terminal lucide import)
+      - CollapsedGroupedRow: same multi-icon strip treatment applied (was missed previously)
+
+  [x] Task #146: Plan card elapsed time + validation row ✅ 2026-04-10
+      - TaskPlanCard tracks execution start with useRef; computes elapsed on completion
+      - "Worked for N minutes" (or N seconds) shown above Completed button
+      - Validation failed summary row: when reviewPhase === "review_failed", shows
+        "× Validation failed · N% matched · N issues" full-width badge above bug list
+
+  [x] Task #147: Planning elapsed timer in chat panel ✅ 2026-04-10
+      - chat-panel.tsx: 1-second interval timer while isManagerResponding is true
+      - Elapsed seconds shown as monospace suffix (e.g. "14s") on all planning/
+        preparing-plan indicators
+      - Consistent across ActionLogLive container and standalone planning bubbles
+
+  [x] Task #148: Agent narration language overhaul ✅ 2026-04-10
+      - editor-prompt.ts: pre-tool-call narration now follows causal pattern
+        "[What I found.] Let me [next action]." — not just "Writing script.js"
+      - communicator-prompt.ts step_starting: now includes step N of M + why it matters
+      - communicator-prompt.ts step_completed: now includes what it enables
+      - communicator-prompt.ts all_complete: new structured format —
+          [HEADLINE] "I have successfully completed [task]. [root cause / approach]"
+          [FILE_CHANGE_N] **Bold feature name** — user-benefit description (not file name)
+          [SPECIAL_NOTES] observed verification result, not a user tip
+
+  [x] Task #149: Fix disappearing chat message bug ✅ 2026-04-10
+      - Root cause: useManagerStream.ts tracked communicator typing bubble by array INDEX
+        (commNarrationMsgIndex). When manager_done fired, removeTypingBubble() deleted
+        the bubble and shifted all subsequent messages down by one. Post-stream
+        finalization then wrote to the wrong index — corrupting or deleting the next message.
+      - Fix: added commNarrationMsgId (string | null) alongside the index. Bubble ID is
+        captured at insertion time and post-stream block now uses findIndex by ID —
+        immune to index shifts. Also added typing: false on the final content write.
+
+====================================
+MOBILE PHASE 8: Agent Stream Survival & Message Ordering
+====================================
+Status: COMPLETE ✅ (2026-04-11)
+
+  [x] Task #150: AgentStreamProvider — agent streams survive navigation ✅ 2026-04-11
+      - Root cause: useManagerStream and useBuildStream lived inside IDEPage/ChatPanel,
+        which unmounts on navigation (wouter Switch causes full unmount). SSE connections
+        were being aborted client-side even though server sessions stay alive for 30 min.
+      - Fix: New AgentStreamProvider.tsx — singleton React context at App root that
+        instantiates both hooks once. ChatPanel now consumes from context via useAgentStream().
+        Hooks never unmount on navigation. useEditorStream excluded (short-lived, no session).
+      - Files: AgentStreamProvider.tsx (new), App.tsx, chat-panel.tsx
+
+  [x] Task #151: Monotonic seq counter for message ordering ✅ 2026-04-11
+      - Root cause: chatMessages and managerMessages are merged by sort() in ChatMessageList.
+        Timestamp collisions (multiple messages within same millisecond) caused random ordering.
+        Old tiebreaker logic (mgr/build arrays) was also broken.
+      - Fix: Added _nextSeq: number to IDEState (starts at 1). Every addChatMessage and
+        addManagerMessage assigns and increments _nextSeq. ChatMessageList sorts by seq.
+      - Completed:
+          [x] seq: number added to ChatMessage and ManagerMessage interfaces
+          [x] _nextSeq: number added to IDEState and initial store state
+          [x] addChatMessage / addManagerMessage assign seq and increment _nextSeq
+          [x] createCheckpoint: extracts seq before inserting messages (consecutive values)
+          [x] Welcome message gets seq: 0
+          [x] ChatMessageList.tsx: inline checkpoint object passes seq: msg.seq
+          [x] Step 7 — loadProject migration: backfill seq on old persisted messages by
+              timestamp order; compute finalNextSeq from backfilled messages
+          [x] Step 8 — saveBuildResult: plan message keeps original seq (correct position)
+          [x] Step 9 — ChatMessageList sort: a.msg.seq - b.msg.seq (fallback a.order - b.order)
+          [x] Step 10 — persistState saves _nextSeq; loadProject restores it
+          [x] Fix seq:0 placeholders in useManagerStream.ts wrong-project localStorage paths
+              (now reads saved._nextSeq and increments before writing)
 
 ============================================================
 ============================================================

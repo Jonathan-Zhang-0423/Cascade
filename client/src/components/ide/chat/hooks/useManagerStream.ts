@@ -9,7 +9,7 @@ import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-stor
 import { useLanguageStore } from "@/stores/language-store";
 import { tr } from "@/lib/i18n";
 import type { ManagerPlan } from "@/stores/ide-store";
-import type { ActionLogEntry, ManagerSseEvent, ManagerPlanPayload, NormalizedStep } from "../chat-types";
+import type { ActionLogEntry, ManagerSseEvent } from "../chat-types";
 import {
   KNOWN_MGR_EVENT_TYPES,
   MGR_SOURCE_MAP,
@@ -74,6 +74,8 @@ export function useManagerStream() {
   }, [setManagerResponding]);
 
   useEffect(() => {
+    // Reset unmounting flag on each mount so the finally blocks work correctly
+    isUnmountingRef.current = false;
     return () => {
       isUnmountingRef.current = true;
       if (mgrInactivityTimerRef.current) {
@@ -110,7 +112,7 @@ export function useManagerStream() {
         clearTimeout(mgrLiveClearTimerRef.current);
         mgrLiveClearTimerRef.current = null;
       }
-      mgrSessionIdRef.current = null;
+      // Don't null mgrSessionIdRef here — remount needs it to reconnect
       mgrReconnectRetryRef.current = 0;
     };
   }, []);
@@ -125,14 +127,33 @@ export function useManagerStream() {
     }, delay);
   }, []);
 
-  const removeTypingBubble = useCallback(() => {
+  const removeTypingBubble = useCallback((excludeId?: string | null) => {
     const msgs = useIDEStore.getState().managerMessages;
-    const typingIdx = msgs.findIndex((m) => m.typing === true);
+    const typingIdx = msgs.findIndex(
+      (m) => m.typing === true && (!excludeId || m.id !== excludeId),
+    );
     if (typingIdx !== -1) {
       useIDEStore.setState({
         managerMessages: msgs.filter((_, i) => i !== typingIdx),
       });
     }
+  }, []);
+
+  // Strips metadata marker lines from communicator output (plan summary metadata, etc.)
+  const filterCommContent = useCallback((raw: string): string => {
+    return raw
+      .split("\n")
+      .filter(
+        (l) =>
+          !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) &&
+          !l.trim().match(/^\[STEP[_ ]\d+\]/i) &&
+          !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) &&
+          !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) &&
+          !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i),
+      )
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join("\n");
   }, []);
 
   const handleManagerSend = useCallback(
@@ -172,8 +193,6 @@ export function useManagerStream() {
       let managerAccumulated = "";
       let managerThinkingAccumulated = "";
       let commAccumulated = "";
-      let commInserted = false;
-      let commNarrationMsgIndex = -1;
       let planEmitted = false;
 
       let lastMgrSnapshotFlush = 0;
@@ -288,29 +307,14 @@ export function useManagerStream() {
                 );
               }
             } else if (evType === "communicator_narration_starting") {
-              commInserted = false;
+              // Reset accumulator — live display is handled by mgrLiveNarrationText
+              // in chat-panel.tsx. No typing bubble is inserted into the store here.
               commAccumulated = "";
-              commNarrationMsgIndex = -1;
-              if (isCurrentProject) {
-                addManagerMessage({
-                  role: "assistant",
-                  content: "",
-                  source: "communicator",
-                  typing: true,
-                });
-                commNarrationMsgIndex =
-                  useIDEStore.getState().managerMessages.length - 1;
-              }
             } else if (evType === "communicator_token") {
-              if (!commInserted && isCurrentProject) {
-                commInserted = true;
-              }
               commAccumulated += ev.token || "";
               if (isCurrentProject) {
                 setMgrLiveNarrationText(commAccumulated);
               }
-            } else if (evType === "communicator_error") {
-              commInserted = false;
             } else if (evType === "action_log") {
               const actionEntry: ActionLogEntry = {
                 type: ev.actionType || "tool_call",
@@ -328,7 +332,22 @@ export function useManagerStream() {
               planEmitted = true;
               if (isCurrentProject) {
                 setMgrPreparingPlan(false);
+                // Remove any stale typing bubbles (e.g. from reconnect path)
                 removeTypingBubble();
+
+                // Write the comm narration as a static message BEFORE the plan card,
+                // so it appears above it in seq order.
+                if (commAccumulated) {
+                  const friendlyComm = filterCommContent(commAccumulated);
+                  if (friendlyComm) {
+                    addManagerMessage({
+                      role: "assistant",
+                      content: friendlyComm,
+                      source: "communicator",
+                    });
+                  }
+                  commAccumulated = ""; // consumed — don't write again in post-stream
+                }
 
                 const plan = ev.plan;
                 clearManagerPlan();
@@ -376,6 +395,8 @@ export function useManagerStream() {
                     const plan = ev.plan;
                     let msgs: ManagerMessage[] = saved.managerMessages || [];
                     msgs = msgs.filter((m: ManagerMessage) => !m.typing);
+                    const seq = typeof saved._nextSeq === "number" ? saved._nextSeq : 1;
+                    saved._nextSeq = seq + 1;
                     msgs.push({
                       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-plan`,
                       role: "assistant",
@@ -383,6 +404,7 @@ export function useManagerStream() {
                       plan,
                       thinking: managerThinkingAccumulated || undefined,
                       timestamp: Date.now(),
+                      seq,
                     });
                     saved.managerMessages = msgs;
                     saved.managerPlan = plan;
@@ -440,6 +462,19 @@ export function useManagerStream() {
                   } catch {}
                 }
                 if (plan) {
+                  // Late plan (arrived via manager_done instead of plan_ready)
+                  // Write comm narration first, then the plan card
+                  if (commAccumulated) {
+                    const friendlyComm = filterCommContent(commAccumulated);
+                    if (friendlyComm) {
+                      addManagerMessage({
+                        role: "assistant",
+                        content: friendlyComm,
+                        source: "communicator",
+                      });
+                    }
+                    commAccumulated = "";
+                  }
                   clearManagerPlan();
                   const steps = normalizeSteps(plan);
                   for (const step of steps) {
@@ -452,11 +487,20 @@ export function useManagerStream() {
                     plan,
                     thinking: managerThinkingAccumulated || undefined,
                   });
+                } else if (commAccumulated) {
+                  // Conversational response — write the communicator message
+                  const friendlyComm = filterCommContent(commAccumulated);
+                  if (friendlyComm) {
+                    addManagerMessage({
+                      role: "assistant",
+                      content: friendlyComm,
+                      source: "communicator",
+                    });
+                  }
+                  commAccumulated = "";
                 } else if (managerAccumulated) {
-                  const stripped =
-                    stripProjectNameMarker(managerAccumulated);
+                  const stripped = stripProjectNameMarker(managerAccumulated);
                   if (stripped.trim()) {
-                    removeTypingBubble();
                     addManagerMessage({
                       role: "assistant",
                       content: stripped,
@@ -512,6 +556,8 @@ export function useManagerStream() {
                   if (saved) {
                     let msgs: ManagerMessage[] = saved.managerMessages || [];
                     msgs = msgs.filter((m: ManagerMessage) => !m.typing);
+                    const seq = typeof saved._nextSeq === "number" ? saved._nextSeq : 1;
+                    saved._nextSeq = seq + 1;
                     msgs.push({
                       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-err`,
                       role: "assistant",
@@ -521,6 +567,7 @@ export function useManagerStream() {
                       ),
                       source: "communicator",
                       timestamp: Date.now(),
+                      seq,
                     });
                     saved.managerMessages = msgs;
                     saved.streamingSnapshot = null;
@@ -535,46 +582,26 @@ export function useManagerStream() {
           },
         });
 
+        // Post-stream: if a plan was emitted but commAccumulated still has content
+        // (i.e. plan_ready handler didn't consume it — shouldn't happen normally),
+        // write the comm message now. This is a safety net only.
         if (
           useIDEStore.getState().projectId === projectId &&
-          commInserted &&
-          commAccumulated &&
-          commNarrationMsgIndex >= 0
+          commAccumulated
         ) {
-          const friendlyLines = commAccumulated
-            .split("\n")
-            .filter(
-              (l) =>
-                !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) &&
-                !l.trim().match(/^\[STEP[_ ]\d+\]/i) &&
-                !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) &&
-                !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) &&
-                !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i),
-            )
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .join("\n");
-          const msgs = useIDEStore.getState().managerMessages;
-          if (commNarrationMsgIndex < msgs.length) {
-            const target = msgs[commNarrationMsgIndex];
-            if (target?.role === "assistant" && !target.plan) {
-              const updated = [...msgs];
-              if (friendlyLines) {
-                updated[commNarrationMsgIndex] = {
-                  ...target,
-                  content: friendlyLines,
-                };
-              } else {
-                updated.splice(commNarrationMsgIndex, 1);
-              }
-              useIDEStore.setState({ managerMessages: updated });
-            }
+          const friendlyComm = filterCommContent(commAccumulated);
+          if (friendlyComm) {
+            addManagerMessage({
+              role: "assistant",
+              content: friendlyComm,
+              source: "communicator",
+            });
           }
+          commAccumulated = "";
         }
 
         if (
           useIDEStore.getState().projectId === projectId &&
-          !commInserted &&
           managerAccumulated
         ) {
           const nameFromMarker = managerAccumulated
@@ -659,11 +686,12 @@ export function useManagerStream() {
         return false;
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
+        // Clean up any stale typing bubbles (e.g. from reconnect path)
+        removeTypingBubble();
         if (
           !mgrSessionIdRef.current &&
           useIDEStore.getState().projectId === projectId
         ) {
-          removeTypingBubble();
           setMgrPreparingPlan(false);
           clearMgrLive();
           setManagerResponding(false);
@@ -986,9 +1014,15 @@ export function useManagerStream() {
       if (sessionIdToReconnect) {
         const resumeEventId =
           snapshot?.type === "manager" &&
+          snapshot.sessionId === sessionIdToReconnect &&
           typeof snapshot.lastEventId === "number"
             ? snapshot.lastEventId
-            : -1;
+            : (() => {
+                try {
+                  const saved = localStorage.getItem(`codestart-mgr-session-${projectId}`);
+                  return saved === sessionIdToReconnect ? mgrLastEventIdRef.current : -1;
+                } catch { return -1; }
+              })();
         setIsMgrReconnecting(true);
         fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
           .then((r) => (r.ok ? r.json() : null))
@@ -1036,11 +1070,29 @@ export function useManagerStream() {
 
     if (mgrSessionIdRef.current) {
       const staleSessionId = mgrSessionIdRef.current;
+      const snapshot = useIDEStore.getState().streamingSnapshot;
+      const resumeEventId =
+        snapshot?.type === "manager" &&
+        snapshot.sessionId === staleSessionId &&
+        typeof snapshot.lastEventId === "number"
+          ? snapshot.lastEventId
+          : mgrLastEventIdRef.current;
+
       fetch(`/api/manager-chat/${staleSessionId}/status`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (cancelled) return;
-          if (!data?.active) {
+          const staleProjectId = data?.projectId;
+          const wrongProject = staleProjectId && staleProjectId !== projectId;
+          if (data?.active && !wrongProject) {
+            // Session is still running for this project — reconnect directly
+            setManagerResponding(true);
+            connectToMgrStream(staleSessionId, resumeEventId);
+          } else if (data?.done && !wrongProject) {
+            // Session finished while we were away — replay to get final state
+            connectToMgrStream(staleSessionId, resumeEventId);
+          } else {
+            // Session gone or belongs to another project
             mgrSessionIdRef.current = null;
             const snap = useIDEStore.getState().streamingSnapshot;
             if (snap?.sessionId === staleSessionId) {
@@ -1049,12 +1101,6 @@ export function useManagerStream() {
             setManagerResponding(false);
             setMgrLiveThinkingText("");
             setMgrLiveNarrationText("");
-          }
-          const staleProjectId = data?.projectId;
-          if (
-            !data?.active ||
-            (staleProjectId && staleProjectId !== projectId)
-          ) {
             attemptManagerReconnect();
           }
         })

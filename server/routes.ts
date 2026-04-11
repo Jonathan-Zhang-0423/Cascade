@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
+import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { randomBytes } from "crypto";
@@ -31,11 +32,6 @@ import {
   VERIFIER_AGENT_SYSTEM_PROMPT,
   buildHolisticVerifierMessage,
 } from "./verifier-prompt";
-import {
-  COMMUNICATOR_AGENT_SYSTEM_PROMPT,
-  buildCommunicatorMessage,
-} from "./communicator-prompt";
-import type { CommunicatorEvent } from "./communicator-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./build-orchestrator";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
@@ -45,6 +41,8 @@ import { getAIClient, type AIProvider } from "./kimi-client";
 import { setupPreviewServer } from "./preview-server";
 import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "./kotlin-wasm-compiler";
 import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
+import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "./rn-web-compiler";
+import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "./flutter-compiler";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -280,15 +278,6 @@ function detectUserLanguage(
   return "English";
 }
 
-function normalizeStepsList(plan: any): Array<{ step: number; title: string }> {
-  const raw = plan?.steps ?? plan?.sub_tasks;
-  if (!Array.isArray(raw)) return [];
-  return raw.map((t: any, i: number) => ({
-    step: t.step ?? i + 1,
-    title: t.title ?? t.description?.slice(0, 50) ?? `Step ${i + 1}`,
-  }));
-}
-
 // Run execution timeout (10 s) applied to every script/binary execution phase.
 // Compiled languages use an additional compile-phase timeout before this.
 // Output is capped at MAX_OUTPUT_BYTES; processes exceeding either limit are killed.
@@ -474,6 +463,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   checkCompilerOnStartup();
   checkSwiftCompilerOnStartup();
+  checkFlutterOnStartup();
 
   app.get("/api/providers", (_req, res) => {
     res.json({
@@ -859,53 +849,19 @@ export async function registerRoutes(
 
           emit({ type: "plan_preparing" });
 
-          const userLang = detectUserLanguage(messages);
-          const steps = normalizeStepsList(plan);
-          const commPrompt = buildCommunicatorMessage({
-            event: "plan_created",
-            userLanguage: userLang,
-            planSummary: typeof plan.summary === "string" ? plan.summary : "",
-            totalSteps: steps.length,
-            stepTitles: steps.map((s) => s.title),
-            whatAndWhy: typeof plan.what_and_why === "string" ? plan.what_and_why : "",
-            doneLooksLike: typeof plan.done_looks_like === "string" ? plan.done_looks_like : "",
-            outOfScope: typeof plan.out_of_scope === "string" ? plan.out_of_scope : "",
-            relevantFiles: Array.isArray(plan.relevant_files) ? plan.relevant_files as string[] : [],
-          } as CommunicatorEvent);
-
+          // Build narration from plan fields directly — no extra LLM call needed.
+          // The manager already produces what_and_why/done_looks_like/out_of_scope in the user's language.
           emit({ type: "communicator_narration_starting" });
-          try {
-            const commStream = await withRetry(
-              "communicator narration stream",
-              () =>
-                activeAIClient.chat.completions.create(
-                  {
-                    model: activeAIModel,
-                    messages: [
-                      { role: "system", content: (() => { const fw = resolvedManagerFramework; if (fw && fw !== "web") { const s = getMobilePromptSupplement("communicator", fw); if (s) return `${COMMUNICATOR_AGENT_SYSTEM_PROMPT}\n${s}`; } return COMMUNICATOR_AGENT_SYSTEM_PROMPT; })() },
-                      { role: "user", content: commPrompt },
-                    ],
-                    stream: true,
-                    max_tokens: 16384,
-                  },
-                  { timeout: 30_000 },
-                ),
-            );
-
-            for await (const chunk of commStream) {
-              const token = chunk.choices[0]?.delta?.content;
-              if (token) {
-                emit({ type: "communicator_token", token });
-                await new Promise<void>(r => setTimeout(r, 0));
-              }
-            }
-          } catch (commErr: unknown) {
-            const commMsg = commErr instanceof Error ? commErr.message : String(commErr);
-            console.error("Communicator stream error:", commMsg);
-            emit({ type: "communicator_error", message: "Communicator narration unavailable" });
+          const narratedLines: string[] = [];
+          if (plan.what_and_why) narratedLines.push(String(plan.what_and_why));
+          if (plan.done_looks_like) narratedLines.push(String(plan.done_looks_like));
+          if (plan.out_of_scope) narratedLines.push(String(plan.out_of_scope));
+          const narratedText = narratedLines.filter(Boolean).join("\n\n");
+          if (narratedText) {
+            emit({ type: "communicator_token", token: narratedText });
           }
 
-          emit({ type: "plan_ready", plan, project_name: projectName });
+          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: true });
 
           if (mgrSession.projectId) {
             storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});
@@ -1249,90 +1205,6 @@ export async function registerRoutes(
       res
         .status(500)
         .json({ error: error?.message || "Failed to get fix plan" });
-    }
-  });
-
-  app.post("/api/communicator-chat", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
-        return;
-      }
-
-      const { event, framework: commFramework } = req.body as { event: CommunicatorEvent; framework?: Framework };
-
-      if (!event || !event.event) {
-        res
-          .status(400)
-          .json({ error: "event object with event type is required" });
-        return;
-      }
-
-      const contextMessage = buildCommunicatorMessage(event);
-
-      let commSystemPrompt = COMMUNICATOR_AGENT_SYSTEM_PROMPT;
-      if (commFramework) {
-        const mobileSupplement = getMobilePromptSupplement("communicator", commFramework);
-        if (mobileSupplement) {
-          commSystemPrompt = `${commSystemPrompt}\n${mobileSupplement}`;
-        }
-      }
-
-      const messages: Array<{ role: "system" | "user"; content: string }> = [
-        { role: "system", content: commSystemPrompt },
-        { role: "user", content: contextMessage },
-      ];
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-      res.flushHeaders();
-      res.socket?.setNoDelay(true);
-
-      const emitComm = (data: Record<string, unknown>) => {
-        try {
-          res.write(`data: ${JSON.stringify(data)}\n\n`);
-          (res as any).flush?.();
-        } catch {}
-      };
-
-      const maxTokens = 16384;
-
-      const stream = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages,
-        stream: true,
-        max_tokens: maxTokens,
-      });
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          emitComm({ content });
-        }
-      }
-
-      res.write("data: [DONE]\n\n");
-      (res as any).flush?.();
-      res.end();
-    } catch (error: any) {
-      console.error("Communicator chat API error:", error?.message || error);
-      if (!res.headersSent) {
-        res
-          .status(500)
-          .json({
-            error: error?.message || "Failed to get Communicator response",
-          });
-      } else {
-        try {
-          res.write(
-            `data: ${JSON.stringify({ error: error?.message || "Stream error" })}\n\n`,
-          );
-          (res as any).flush?.();
-        } catch {}
-        res.end();
-      }
     }
   });
 
@@ -1978,6 +1850,12 @@ Generate the codestart.md content for this project based on both the plan and th
       exs:  ["elixir"],
     };
 
+    // TSX/JSX files that import React are browser code — can't run in Node.js
+    if ((ext === "tsx" || ext === "jsx") && /from\s+['"]react['"]|require\(['"]react['"]\)/.test(content)) {
+      res.json({ cannotRun: true, reason: "react" });
+      return;
+    }
+
     const tmpId = randomBytes(8).toString("hex");
     const tmpBase = join(tmpdir(), `codestart_${tmpId}`);
     await mkdir(tmpBase, { recursive: true });
@@ -2209,7 +2087,7 @@ Generate the codestart.md content for this project based on both the plan and th
       const buildId = subPath.slice(0, slashIdx);
       const requestedFile = subPath.slice(slashIdx + 1);
 
-      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId);
+      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId) || getRnArtifactPath(buildId) || getFlutterArtifactPath(buildId);
       if (!artifactDir) {
         res.status(404).json({ error: "Build artifacts not found or expired" });
         return;
@@ -2240,8 +2118,18 @@ Generate the codestart.md content for this project based on both the plan and th
 
       res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
       res.setHeader("Cache-Control", "public, max-age=3600");
-      res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+
+      // COEP/COOP are required for WASM builds (SharedArrayBuffer).
+      // Do NOT set them for RN/Flutter artifacts — COEP on the embedded document
+      // blocks the iframe from loading when the parent page lacks COEP.
+      const isWasmBuild = !!getArtifactPath(buildId) || !!getSwiftArtifactPath(buildId);
+      if (isWasmBuild) {
+        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      } else {
+        res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+      }
+
       res.sendFile(filePath);
     } catch (error: any) {
       console.error("Artifact serve error:", error?.message || error);
@@ -2255,7 +2143,79 @@ Generate the codestart.md content for this project based on both the plan and th
     res.json({
       kotlinWasm: isCompilerAvailable(),
       swiftWasm: isSwiftWasmAvailable(),
+      flutterWeb: isFlutterAvailable(),
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // React Native Web compile
+  // -------------------------------------------------------------------------
+
+  const rnWebFilesSchema = z.object({
+    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(30),
+    name: z.string().optional(),
+  });
+
+  app.post("/api/compile/rn-web", async (req, res) => {
+    try {
+      const parsed = rnWebFilesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      const result = await compileRnWeb(parsed.data.files, parsed.data.name);
+      res.json(result);
+    } catch (error: any) {
+      console.error("RN/Web compile error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Compilation failed" });
+    }
+  });
+
+  // Serve the pre-built react-native-web vendor bundle
+  app.get("/api/compile/rn-vendor/rn-vendor.js", (_req, res) => {
+    const vendorPath = getVendorPath();
+    if (!existsSync(vendorPath)) {
+      res.status(503).json({ error: "Vendor bundle not ready yet" });
+      return;
+    }
+    res.setHeader("Content-Type", "application/javascript");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.sendFile(vendorPath);
+  });
+
+  // Kick off vendor bundle build at startup (non-blocking)
+  ensureVendorBundle().catch((err) => {
+    console.warn("[rn-web] Vendor bundle build failed at startup:", err?.message);
+  });
+
+  // -------------------------------------------------------------------------
+  // Flutter Web compile
+  // -------------------------------------------------------------------------
+
+  const flutterFilesSchema = z.object({
+    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(50),
+  });
+
+  app.post("/api/compile/flutter-web", async (req, res) => {
+    try {
+      if (!isFlutterAvailable()) {
+        res.status(503).json({
+          success: false,
+          error: "Flutter SDK not available on this server. Install Flutter and set FLUTTER_PATH.",
+        });
+        return;
+      }
+      const parsed = flutterFilesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      const result = await compileFlutterWeb(parsed.data.files);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Flutter/Web compile error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Compilation failed" });
+    }
   });
 
   setupPreviewServer(httpServer, app);

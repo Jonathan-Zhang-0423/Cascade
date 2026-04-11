@@ -67,7 +67,7 @@ export function ChatMessageList({
       order: idx,
     })),
   ].sort(
-    (a, b) => a.msg.timestamp - b.msg.timestamp || a.order - b.order,
+    (a, b) => a.msg.seq - b.msg.seq || a.order - b.order,
   );
 
   const seenCheckpointIds = new Set<string>();
@@ -109,6 +109,7 @@ export function ChatMessageList({
                   role: "checkpoint",
                   content: msg.content,
                   timestamp: msg.timestamp,
+                  seq: msg.seq,
                   checkpointId: msg.checkpointId,
                 }}
               />

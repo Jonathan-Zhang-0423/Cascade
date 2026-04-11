@@ -366,7 +366,7 @@ fun main() {
 
     const result = await spawnCompile(
       GRADLE_PATH,
-      ["wasmJsBrowserDistribution", "--no-daemon", "--no-build-cache", "-q"],
+      ["wasmJsBrowserDistribution", "--daemon", "--build-cache", "-q"],
       workDir
     );
 

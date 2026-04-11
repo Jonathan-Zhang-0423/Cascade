@@ -14,6 +14,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "checkpoint";
   content: string;
   timestamp: number;
+  seq: number;
   checkpointId?: string;
   hidden?: boolean;
 }
@@ -25,7 +26,7 @@ export interface ConsoleEntry {
   timestamp: number;
 }
 
-export type ToolPanel = "files" | "chat" | null;
+export type ToolPanel = "files" | "chat" | "history" | null;
 export type ChatMode = "build" | "manager";
 export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
 
@@ -100,6 +101,7 @@ export interface ManagerMessage {
   content: string;
   plan?: ManagerPlan;
   timestamp: number;
+  seq: number;
   source?: "communicator" | "manager_raw" | "manager";
   typing?: boolean;
   hidden?: boolean;
@@ -247,6 +249,7 @@ function reconstructCheckpointFiles(checkpoints: Checkpoint[], targetId: string)
 
 interface IDEState {
   projectId: string | null;
+  projectFramework: string;
   files: FileNode[];
   activeFile: string | null;
   openFiles: string[];
@@ -260,12 +263,22 @@ interface IDEState {
   theme: string;
   previewFile: string;
   previewRefreshKey: number;
+  previewOverrideHtml: string | null;
   pendingPrompt: string | null;
   checkpoints: Checkpoint[];
+  lastBuildFileDiffs: Record<string, { old: string; new: string }>;
+  setLastBuildFileDiff: (filePath: string, old: string, newContent: string) => void;
+  clearLastBuildFileDiffs: () => void;
+
+  layoutMode: "preview" | "code";
+  setLayoutMode: (mode: "preview" | "code") => void;
+  codeVisible: boolean;
+  toggleCodeVisible: () => void;
 
   chatMode: ChatMode;
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
+  _nextSeq: number;
   streamingSnapshot: StreamingSnapshot | null;
   executingTaskIndex: number | null;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -306,7 +319,7 @@ interface IDEState {
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
-  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
+  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp" | "seq">) => void;
   updateLastAssistantMessage: (content: string) => void;
   addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
   clearConsole: () => void;
@@ -319,13 +332,14 @@ interface IDEState {
   renameFile: (oldPath: string, newName: string) => void;
   deleteFile: (path: string) => void;
   setPreviewFile: (path: string) => void;
+  setPreviewOverrideHtml: (html: string | null) => void;
   refreshPreview: () => void;
   createCheckpoint: (label: string, options?: { includeManagerThread?: boolean }) => void;
   restoreCheckpoint: (id: string) => void;
 
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
-  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp">) => void;
+  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
@@ -453,6 +467,7 @@ function persistState(state: IDEState) {
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
     chatMode: state.chatMode,
+    _nextSeq: state._nextSeq,
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
       : state.managerMessages,
@@ -464,6 +479,8 @@ function persistState(state: IDEState) {
     deviceFrameStyle: state.deviceFrameStyle,
     customDeviceWidth: state.customDeviceWidth,
     customDeviceHeight: state.customDeviceHeight,
+    layoutMode: state.layoutMode,
+    codeVisible: state.codeVisible,
   };
   localStorage.setItem(
     `codestart-project-${state.projectId}`,
@@ -551,6 +568,7 @@ function persistCheckpoints(projectId: string, checkpoints: Checkpoint[]) {
 
 export const useIDEStore = create<IDEState>((set, get) => ({
   projectId: null,
+  projectFramework: "web",
   files: defaultFiles,
   activeFile: "/project/index.html",
   openFiles: ["/project/index.html"],
@@ -561,6 +579,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       content:
         "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
       timestamp: Date.now(),
+      seq: 0,
     },
   ],
   consoleEntries: [],
@@ -572,12 +591,23 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   theme: "vs-dark",
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
+  previewOverrideHtml: null,
   pendingPrompt: null,
   checkpoints: [],
+  lastBuildFileDiffs: {},
+  setLastBuildFileDiff: (filePath, old, newContent) =>
+    set((s) => ({ lastBuildFileDiffs: { ...s.lastBuildFileDiffs, [filePath]: { old, new: newContent } } })),
+  clearLastBuildFileDiffs: () => set({ lastBuildFileDiffs: {} }),
+
+  layoutMode: "code",
+  setLayoutMode: (mode) => { set({ layoutMode: mode }); debouncedPersist(get()); },
+  codeVisible: true,
+  toggleCodeVisible: () => { set((s) => ({ codeVisible: !s.codeVisible })); debouncedPersist(get()); },
 
   chatMode: "build",
   managerPlan: null,
   managerMessages: [],
+  _nextSeq: 1,
   streamingSnapshot: null,
   executingTaskIndex: null,
   taskStatuses: {},
@@ -652,17 +682,61 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         role: "assistant" as const,
         content:
           "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+        seq: 1,
         timestamp: Date.now(),
       },
     ];
 
+    const isNonWeb = framework && framework !== "web";
+
+    // Backfill seq on old persisted messages that lack it.
+    // Sort by timestamp, assign monotonically from seqStart upward.
+    const backfillSeq = <T extends { seq?: number; timestamp: number }>(msgs: T[], seqStart: number): { msgs: T[]; nextSeq: number } => {
+      const needsSeq = msgs.filter((m) => typeof m.seq !== "number");
+      if (needsSeq.length === 0) return { msgs, nextSeq: seqStart };
+      let counter = seqStart;
+      // Assign in timestamp order so older messages get lower seqs
+      const sorted = [...msgs].sort((a, b) => a.timestamp - b.timestamp);
+      const seqMap = new Map<string, number>();
+      for (const m of sorted) {
+        if (typeof (m as any).seq !== "number") {
+          seqMap.set((m as any).id, counter++);
+        }
+      }
+      return {
+        msgs: msgs.map((m) => typeof (m as any).seq === "number" ? m : { ...m, seq: seqMap.get((m as any).id) ?? counter++ }),
+        nextSeq: counter,
+      };
+    };
+
+    let chatMsgsWithSeq: ChatMessage[] = defaultChat;
+    let mgrMsgsWithSeq: ManagerMessage[] = [];
+    let finalNextSeq = 2;
+
+    if (saved) {
+      const rawChatMsgs: ChatMessage[] = saved.chatMessages || defaultChat;
+      const rawMgrMsgs: ManagerMessage[] = saved.managerMessages || [];
+      const computedNextSeq = (() => {
+        if (typeof saved._nextSeq === "number" && saved._nextSeq > 1) return saved._nextSeq;
+        const allMsgs = [...rawChatMsgs, ...rawMgrMsgs];
+        const maxSeq = allMsgs.reduce((m: number, msg: any) => Math.max(m, typeof msg.seq === "number" ? msg.seq : 0), 0);
+        return maxSeq + 1;
+      })();
+      const backfilledChat = backfillSeq(rawChatMsgs, computedNextSeq);
+      chatMsgsWithSeq = backfilledChat.msgs;
+      const backfilledMgr = backfillSeq(rawMgrMsgs, backfilledChat.nextSeq);
+      mgrMsgsWithSeq = backfilledMgr.msgs;
+      finalNextSeq = backfilledMgr.nextSeq;
+    }
+
     const baseState = saved ? {
       projectId: id,
-      files: saved.files || defaultFiles,
+      projectFramework: framework || "web",
+      files: saved.files || (isNonWeb ? [] : defaultFiles),
       openFiles: saved.openFiles || ["/project/index.html"],
       activeFile: saved.activeFile || "/project/index.html",
       previewFile: saved.previewFile || "/project/index.html",
-      chatMessages: saved.chatMessages || defaultChat,
+      chatMessages: chatMsgsWithSeq,
       pendingPrompt: saved.pendingPrompt || null,
       checkpoints: savedCheckpoints,
       consoleEntries: [],
@@ -672,7 +746,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isChatOpen: true,
       isSidebarOpen: false,
       chatMode: (saved.chatMode === "manager" ? "manager" : "build") as ChatMode,
-      managerMessages: saved.managerMessages || [],
+      managerMessages: mgrMsgsWithSeq,
+      _nextSeq: finalNextSeq,
       streamingSnapshot: saved.streamingSnapshot || null,
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
@@ -691,8 +766,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       deviceFrameStyle: (saved.deviceFrameStyle || "dark") as "light" | "dark",
       customDeviceWidth: saved.customDeviceWidth || 390,
       customDeviceHeight: saved.customDeviceHeight || 844,
+      layoutMode: (saved.layoutMode || "code") as "preview" | "code",
+      codeVisible: saved.codeVisible !== undefined ? saved.codeVisible : true,
     } : {
       projectId: id,
+      projectFramework: framework || "web",
       files: defaultFiles,
       openFiles: ["/project/index.html"],
       activeFile: "/project/index.html",
@@ -708,6 +786,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isSidebarOpen: false,
       chatMode: "build" as ChatMode,
       managerMessages: [],
+      _nextSeq: 2,
       streamingSnapshot: null,
       managerPlan: null,
       executingTaskIndex: null,
@@ -726,6 +805,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       deviceFrameStyle: "dark" as "light" | "dark",
       customDeviceWidth: 390,
       customDeviceHeight: 844,
+      layoutMode: "code" as "preview" | "code",
+      codeVisible: true,
     };
 
     set(baseState);
@@ -817,11 +898,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     const updatedCheckpoints = [...oldCheckpoints, newCheckpoint];
 
+    const seq = state._nextSeq;
     const checkpointMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "checkpoint",
       content: label,
       timestamp: now,
+      seq,
       checkpointId,
     };
 
@@ -831,12 +914,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
           role: "checkpoint" as const,
           content: label,
           timestamp: now,
+          seq: seq + 1,
           checkpointId,
         } satisfies ManagerMessage]
       : state.managerMessages;
 
     const next = {
       ...state,
+      _nextSeq: options?.includeManagerThread ? seq + 2 : seq + 1,
       checkpoints: updatedCheckpoints,
       chatMessages: [...state.chatMessages, checkpointMessage],
       managerMessages: nextManagerMessages,
@@ -883,6 +968,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const next = {
         ...state,
         activeFile: path,
+        previewOverrideHtml: null,
         openFiles: state.openFiles.includes(path)
           ? state.openFiles
           : [...state.openFiles, path],
@@ -934,14 +1020,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addChatMessage: (message) =>
     set((state) => {
+      const seq = state._nextSeq;
       const next = {
         ...state,
+        _nextSeq: seq + 1,
         chatMessages: [
           ...state.chatMessages,
           {
             ...message,
             id: crypto.randomUUID(),
             timestamp: Date.now(),
+            seq,
           },
         ],
       };
@@ -1079,6 +1168,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       return next;
     }),
 
+  setPreviewOverrideHtml: (html) => set({ previewOverrideHtml: html }),
+
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
 
   setChatMode: (mode) =>
@@ -1092,14 +1183,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addManagerMessage: (message) =>
     set((state) => {
+      const seq = state._nextSeq;
       const next = {
         ...state,
+        _nextSeq: seq + 1,
         managerMessages: [
           ...state.managerMessages,
           {
             ...message,
             id: crypto.randomUUID(),
             timestamp: Date.now(),
+            seq,
           },
         ],
       };

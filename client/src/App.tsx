@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import { lazy, Suspense } from "react";
+import { AgentStreamProvider } from "@/components/ide/AgentStreamProvider";
 
 const ABTestPage = lazy(() => import("@/pages/ab-test"));
 
@@ -32,7 +33,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <AgentStreamProvider>
+            <Router />
+          </AgentStreamProvider>
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

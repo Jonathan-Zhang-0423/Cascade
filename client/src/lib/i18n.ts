@@ -28,7 +28,7 @@ const zh: Dict = {
   "dashboard.bulkDeleteDesc": "这将永久删除所选的 {n} 个项目及其所有文件，此操作无法撤销。",
   "dashboard.selectedCount": "已选 {n} 个",
 
-  "navbar.run": "运行",
+  "navbar.refresh": "刷新",
 
   "files.title": "文件",
   "files.newFile": "新建文件",
@@ -50,7 +50,17 @@ const zh: Dict = {
 
   "dock.files": "文件",
   "dock.chat": "AI 对话",
+  "dock.editor": "代码编辑器",
   "dock.console": "控制台",
+  "dock.history": "历史记录",
+
+  "checkpoint.title": "历史记录",
+  "checkpoint.count": "个版本",
+  "checkpoint.empty": "暂无检查点。完成一次构建后将自动创建。",
+  "checkpoint.noChanges": "无文件变更",
+  "checkpoint.filesChanged": "{count} 个文件变更",
+  "checkpoint.cancel": "取消",
+  "checkpoint.confirm": "确认还原",
 
   "console.title": "控制台",
   "console.empty": "暂无控制台输出。运行代码后结果将显示在这里。",
@@ -123,7 +133,7 @@ const en: Dict = {
   "dashboard.bulkDeleteDesc": "This will permanently delete the {n} selected projects and all their files. This action cannot be undone.",
   "dashboard.selectedCount": "{n} selected",
 
-  "navbar.run": "Run",
+  "navbar.refresh": "Refresh",
 
   "files.title": "Files",
   "files.newFile": "New File",
@@ -145,7 +155,17 @@ const en: Dict = {
 
   "dock.files": "Files",
   "dock.chat": "AI Chat",
+  "dock.editor": "Code Editor",
   "dock.console": "Console",
+  "dock.history": "History",
+
+  "checkpoint.title": "History",
+  "checkpoint.count": "checkpoints",
+  "checkpoint.empty": "No checkpoints yet. One will be created automatically after each build.",
+  "checkpoint.noChanges": "no file changes",
+  "checkpoint.filesChanged": "{count} files changed",
+  "checkpoint.cancel": "Cancel",
+  "checkpoint.confirm": "Confirm restore",
 
   "console.title": "Console",
   "console.empty": "No console output yet. Run your code to see results here.",

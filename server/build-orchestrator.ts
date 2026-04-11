@@ -1,5 +1,6 @@
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
+import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "./communicator-prompt";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { getAIClient, type AIProvider } from "./kimi-client";
@@ -353,7 +354,28 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       .filter(f => !beforeMap.has(f.path) || beforeMap.get(f.path) !== f.content)
       .map(f => f.path);
 
-    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "" });
+    // Generate completion summary server-side so the client doesn't need a second fetch
+    let summaryText = "";
+    try {
+      const commPrompt = buildCommunicatorMessage({
+        event: "all_complete",
+        userLanguage: session.userLang || "English",
+        changedFiles,
+        planSummary: plan.summary ?? "",
+      } as CommunicatorEvent);
+      const summaryCompletion = await aiClient.chat.completions.create({
+        model: aiModel,
+        messages: [
+          { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+          { role: "user", content: commPrompt },
+        ],
+        stream: false,
+        max_tokens: 1024,
+      });
+      summaryText = summaryCompletion.choices[0]?.message?.content || "";
+    } catch {}
+
+    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText });
 
     if (session.projectId) {
       storage.updateProjectBuildResult(session.projectId, {

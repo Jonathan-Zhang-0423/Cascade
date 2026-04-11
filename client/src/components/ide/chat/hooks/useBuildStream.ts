@@ -30,6 +30,8 @@ export function useBuildStream() {
     refreshPreview,
     createCheckpoint,
     projectId,
+    setLastBuildFileDiff,
+    clearLastBuildFileDiffs,
   } = useIDEStore();
 
   const [buildPhase, setBuildPhase] = useState<BuildPhase>(null);
@@ -56,6 +58,8 @@ export function useBuildStream() {
   >(null);
 
   useEffect(() => {
+    // Reset unmounting flag on each mount so finally blocks work correctly
+    isUnmountingRef.current = false;
     return () => {
       isUnmountingRef.current = true;
       const currentProjectId = useIDEStore.getState().projectId;
@@ -96,7 +100,7 @@ export function useBuildStream() {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
       }
-      isReconnectingRef.current = false;
+      // Don't reset isReconnectingRef — remount will handle reconnection
     };
   }, []);
 
@@ -244,7 +248,7 @@ export function useBuildStream() {
           ctx.flushThinkingToStore();
           ctx.flushSnapshot();
           setLiveThinkingText(ctx.thinkingAccumulated.value);
-          await new Promise<void>((r) => setTimeout(r, 16));
+          await new Promise<void>((r) => requestAnimationFrame(() => r()));
         }
         setBuildPhase("thinking");
       } else if (type === "action_log") {
@@ -315,7 +319,7 @@ export function useBuildStream() {
         ctx.flushSnapshot();
         setLiveNarrationText(ctx.commAccumulated.value);
         setBuildPhase("working");
-        await new Promise<void>((r) => setTimeout(r, 16));
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
       } else if (type === "editor_token") {
         ctx.editorAccumulated.value += ev.token || "";
         setBuildPhase("working");
@@ -348,9 +352,14 @@ export function useBuildStream() {
       if (type === "step_starting") {
         updateTaskStatus(String(ev.stepNumber), "running");
       } else if (type === "code_applied") {
+        const filePath = ev.filePath || "";
+        const newCode = ev.code || "";
+        const oldContent = flattenFiles(useIDEStore.getState().files)
+          .find((n) => n.path === filePath)?.content ?? "";
+        setLastBuildFileDiff(filePath, oldContent, newCode);
         await applyCodeBlock({
-          filePath: ev.filePath || "",
-          code: ev.code || "",
+          filePath,
+          code: newCode,
           language: "",
         });
         refreshPreview();
@@ -593,6 +602,9 @@ export function useBuildStream() {
     setFixCycle(0);
     setHolisticReview(null);
 
+    createCheckpoint("Before build");
+    clearLastBuildFileDiffs();
+
     const normalizedSteps2 = normalizeSteps(plan);
     const firstUserMsg = useIDEStore
       .getState()
@@ -720,70 +732,30 @@ export function useBuildStream() {
               });
             }
             const changedFiles = ev.changedFiles || [];
-            const planSummary = ev.summary || "";
             const finalLog = [...actionLogRef.current];
             saveBuildResult(finalLog, changedFiles, userLang);
 
             const targetMsgId = buildResultMsgIdRef.current;
-            (async () => {
-              if (!targetMsgId) return;
-              try {
-                const response2 = await fetch("/api/communicator-chat", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    event: {
-                      event: "all_complete",
-                      userLanguage: userLang,
-                      changedFiles,
-                      planSummary,
-                    },
-                  }),
-                });
-                if (!response2.ok) return;
-                const reader2 = response2.body?.getReader();
-                if (!reader2) return;
-                await parseSseStream(reader2, {
-                  onEvent: async (parsed2) => {
-                    if (parsed2.content) {
-                      useLLMMonitorStore
-                        .getState()
-                        .addEvent(
-                          "communicator",
-                          "communicator_summary",
-                          String(parsed2.content || ""),
-                        );
-                      const curMsgs2 =
-                        useIDEStore.getState().managerMessages;
-                      if (
-                        !curMsgs2.some((m) => m.id === targetMsgId)
-                      )
-                        return;
-                      const updated2 = curMsgs2.map((m) =>
-                        m.id === targetMsgId && m.buildResult
-                          ? {
-                              ...m,
-                              buildResult: {
-                                ...m.buildResult,
-                                completionData: {
-                                  ...m.buildResult.completionData,
-                                  summary:
-                                    (m.buildResult.completionData
-                                      .summary || "") +
-                                    String(parsed2.content || ""),
-                                },
-                              },
-                            }
-                          : m,
-                      );
-                      useIDEStore.setState({
-                        managerMessages: updated2,
-                      });
+            // Use summaryText from the event (generated server-side) instead of a second fetch
+            const summaryText = (ev as any).summaryText || "";
+            if (summaryText && targetMsgId) {
+              const curMsgs = useIDEStore.getState().managerMessages;
+              const updated = curMsgs.map((m) =>
+                m.id === targetMsgId && m.buildResult
+                  ? {
+                      ...m,
+                      buildResult: {
+                        ...m.buildResult,
+                        completionData: {
+                          ...m.buildResult.completionData,
+                          summary: summaryText,
+                        },
+                      },
                     }
-                  },
-                });
-              } catch {}
-            })();
+                  : m,
+              );
+              useIDEStore.setState({ managerMessages: updated });
+            }
           }
 
           if (type === "done") {
@@ -910,7 +882,10 @@ export function useBuildStream() {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
       }
-      if (!isReconnectingRef.current && !isUnmountingRef.current) {
+      // Always clear reconnecting flag — stream has ended one way or another
+      isReconnectingRef.current = false;
+      setIsReconnecting(false);
+      if (!isUnmountingRef.current) {
         helpers.flushNarrationToStore();
         useIDEStore.getState().setStreamingSnapshot(null);
         buildSessionIdRef.current = null;
@@ -1317,7 +1292,10 @@ export function useBuildStream() {
           clearTimeout(heartbeatWatchdogRef.current);
           heartbeatWatchdogRef.current = null;
         }
-        if (!isReconnectingRef.current && !isUnmountingRef.current) {
+        // Always clear reconnecting flag — stream has ended one way or another
+        isReconnectingRef.current = false;
+        setIsReconnecting(false);
+        if (!isUnmountingRef.current) {
           helpers.flushNarrationToStore();
           useIDEStore.getState().setStreamingSnapshot(null);
           buildSessionIdRef.current = null;
@@ -1382,7 +1360,6 @@ export function useBuildStream() {
 
   useEffect(() => {
     if (!projectId) return;
-    if (buildSessionIdRef.current) return;
 
     let cancelled = false;
 
@@ -1423,6 +1400,65 @@ export function useBuildStream() {
         })
         .catch(() => {});
     };
+
+    // If we still have a session ref (navigated away and back), reconnect directly
+    if (buildSessionIdRef.current) {
+      const existingSessionId = buildSessionIdRef.current;
+      const snapshot = useIDEStore.getState().streamingSnapshot;
+      const resumeEventId =
+        snapshot?.type === "build" &&
+        snapshot.sessionId === existingSessionId &&
+        typeof snapshot.lastEventId === "number"
+          ? snapshot.lastEventId
+          : lastReceivedEventIdRef.current;
+
+      isReconnectingRef.current = true;
+      setIsReconnecting(true);
+
+      fetch(`/api/build-session/${existingSessionId}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (cancelled) { setIsReconnecting(false); isReconnectingRef.current = false; return; }
+          if (data?.active) {
+            // Still running — reconnect to live stream
+            setExecutingTaskIndex(0);
+            setChatMode("build");
+            setReviewPhase("building");
+            setBuildPhase("thinking");
+            connectToBuildStream(existingSessionId, resumeEventId).catch(() => {});
+          } else if (data?.done) {
+            // Finished while we were away — restore result, don't re-stream
+            buildSessionIdRef.current = null;
+            isReconnectingRef.current = false;
+            setIsReconnecting(false);
+            setAiResponding(false);
+            setExecutingTaskIndex(null);
+            setBuildPhase(null);
+            restoreBuildResultFromDB();
+          } else {
+            // Session gone — fall through to normal restore
+            buildSessionIdRef.current = null;
+            isReconnectingRef.current = false;
+            setIsReconnecting(false);
+            setAiResponding(false);
+            setExecutingTaskIndex(null);
+            setBuildPhase(null);
+            restoreBuildResultFromDB();
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          buildSessionIdRef.current = null;
+          isReconnectingRef.current = false;
+          setIsReconnecting(false);
+          setAiResponding(false);
+          setExecutingTaskIndex(null);
+          setBuildPhase(null);
+          restoreBuildResultFromDB();
+        });
+
+      return () => { cancelled = true; };
+    }
 
     const savedSessionId = (() => {
       try {
