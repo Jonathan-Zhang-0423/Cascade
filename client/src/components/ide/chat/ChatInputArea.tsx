@@ -18,7 +18,7 @@ import {
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BuildPhaseIndicator, type BuildPhase } from "./BuildPhaseIndicator";
+import { AgentStatusLine, type AgentStatus } from "./AgentStatusLine";
 
 interface ProviderFlags {
   doubao: boolean;
@@ -32,8 +32,8 @@ interface ChatInputAreaProps {
   setInput: (v: string) => void;
   isBusy: boolean;
   isExecuting: boolean;
-  isReconnecting: boolean;
-  buildPhase: BuildPhase;
+  agentStatus: AgentStatus;
+  elapsed?: number;
   providers: ProviderFlags;
   smartResponseLoading: boolean;
   onSend: () => void;
@@ -47,8 +47,8 @@ export function ChatInputArea({
   setInput,
   isBusy,
   isExecuting,
-  isReconnecting,
-  buildPhase,
+  agentStatus,
+  elapsed,
   providers,
   smartResponseLoading,
   onSend,
@@ -87,21 +87,8 @@ export function ChatInputArea({
 
   return (
     <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
-      {isReconnecting && (
-        <div
-          className="flex items-center gap-1.5 px-1 pb-1.5"
-          data-testid="reconnecting-indicator"
-        >
-          <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-          <span className="text-[11px] text-amber-500">
-            Reconnecting to build...
-          </span>
-        </div>
-      )}
-      {(isBusy || isExecuting) && buildPhase && !isReconnecting && (
-        <div className="flex items-center gap-1.5 px-1 pb-1.5">
-          <BuildPhaseIndicator phase={buildPhase} />
-        </div>
+      {agentStatus && (
+        <AgentStatusLine status={agentStatus} elapsed={elapsed} />
       )}
       <div
         ref={inputBoxRef}

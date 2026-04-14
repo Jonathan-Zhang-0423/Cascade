@@ -364,9 +364,21 @@ export function useBuildStream() {
         });
         refreshPreview();
       } else if (type === "step_completed") {
-        updateTaskStatus(String(ev.stepNumber), "done");
+        // Resolve the canonical key: prefer numeric step number, but fall back
+        // to matching sub_task_id when the server sends a string ID.
+        const rawNum = ev.stepNumber;
+        const parsedNum = typeof rawNum === "number" ? rawNum : parseInt(String(rawNum), 10);
+        let resolvedKey: string;
+        if (!isNaN(parsedNum)) {
+          resolvedKey = String(parsedNum);
+        } else {
+          // Sub-task ID string — find the matching step by sub_task_id
+          const matched = ctx.normalizedSteps.find((s) => s.sub_task_id === String(rawNum));
+          resolvedKey = matched ? String(matched.step) : String(rawNum);
+        }
+        updateTaskStatus(resolvedKey, "done");
 
-        const stepNum = ev.stepNumber ?? 0;
+        const stepNum = !isNaN(parsedNum) ? parsedNum : (ctx.normalizedSteps.find((s) => s.sub_task_id === String(rawNum))?.step ?? 0);
         const lastStep =
           ctx.normalizedSteps[ctx.normalizedSteps.length - 1];
         const isLastStep =
@@ -421,6 +433,7 @@ export function useBuildStream() {
         });
       } else if (type === "all_complete") {
         setReviewPhase("review_passed");
+        setBuildPhase(null);
         ctx.normalizedSteps.forEach((step) => {
           const key = String(step.step);
           const s = useIDEStore.getState().taskStatuses[key];

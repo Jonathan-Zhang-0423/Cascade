@@ -145,10 +145,21 @@ export function buildBuilderTools(
       const stepId = args.step_id as string;
       const summary = args.summary as string;
       const stepNum = parseInt(stepId, 10);
-      emit({ type: "step_completed", stepNumber: isNaN(stepNum) ? stepId : stepNum });
 
-      if (!isNaN(stepNum) && totalSteps > 0) {
-        const nextStep = stepByNum.get(stepNum + 1);
+      // Resolve a canonical numeric step number.
+      // If the model passed a non-numeric ID (e.g. "T001-01"), look it up by sub_task_id.
+      let resolvedNum: number | string = isNaN(stepNum) ? stepId : stepNum;
+      if (isNaN(stepNum) && planSteps) {
+        const matched = planSteps.find((s) => s.sub_task_id === stepId);
+        if (matched) resolvedNum = matched.step;
+      }
+
+      emit({ type: "step_completed", stepNumber: resolvedNum });
+
+      // Advance to the next step
+      const numericCompleted = typeof resolvedNum === "number" ? resolvedNum : NaN;
+      if (!isNaN(numericCompleted) && totalSteps > 0) {
+        const nextStep = stepByNum.get(numericCompleted + 1);
         if (nextStep) {
           emit({ type: "step_starting", stepNumber: nextStep.step, stepTitle: nextStep.title, totalSteps });
         }

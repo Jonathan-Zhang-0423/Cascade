@@ -2,6 +2,15 @@ import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { withRetry } from "./retry";
 import type { SseEmit } from "./build-orchestrator";
 import type OpenAI from "openai";
+import {
+  createPart,
+  emitPart,
+  updateToolState,
+  generatePartId,
+  type Part,
+  type ToolPart,
+  type PartEmitContext,
+} from "./parts";
 
 export type ToolHandler = (args: Record<string, unknown>, emit: SseEmit) => Promise<string>;
 export type ToolHandlers = Record<string, ToolHandler>;
@@ -33,19 +42,35 @@ interface PendingToolCall {
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
+export interface AgentLoopOpts {
+  maxIterations?: number;
+  exitTools?: string[];
+  client?: OpenAI;
+  model?: string;
+  disableThinking?: boolean;
+  /** Part-based emission context. When provided, the loop emits structured
+   *  Parts instead of raw SSE events directly. */
+  partCtx?: PartEmitContext;
+  /** Session ID for part creation. Required when partCtx is provided. */
+  sessionId?: string;
+}
+
 export async function runAgentLoop(
   systemPrompt: string,
   initialMessages: Array<{ role: "user" | "assistant"; content: string }>,
   tools: ToolSchema[],
   handlers: ToolHandlers,
   emit: SseEmit,
-  opts: { maxIterations?: number; exitTools?: string[]; client?: OpenAI; model?: string; disableThinking?: boolean } = {},
+  opts: AgentLoopOpts = {},
 ): Promise<AgentLoopResult> {
   const maxIterations = opts.maxIterations ?? 30;
   const exitTools = new Set(opts.exitTools ?? []);
 
   const activeClient = opts.client ?? doubaoClient;
   const activeModel = opts.model ?? DOUBAO_MODEL;
+
+  const partCtx = opts.partCtx;
+  const sessionId = opts.sessionId ?? "default";
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -77,6 +102,15 @@ export async function runAgentLoop(
   const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // Each iteration is a "message" from the AI perspective
+    const messageId = generatePartId();
+
+    // ── Step Start ──────────────────────────────────────────────────
+    if (partCtx) {
+      const stepStart = createPart("step-start", sessionId, messageId, { step: iteration + 1 });
+      emitPart(partCtx, emit, stepStart);
+    }
+
     const response = await withRetry(
       `runAgentLoop iteration ${iteration + 1}`,
       () =>
@@ -99,6 +133,10 @@ export async function runAgentLoop(
     let reasoningContent = "";
     const toolCallsMap: Record<string, PendingToolCall> = {};
 
+    // Track Parts for this iteration (for in-place updates)
+    let textPart: Part | undefined;
+    let reasoningPart: Part | undefined;
+
     for await (const chunk of response) {
       const choice = chunk.choices[0];
       if (!choice) continue;
@@ -108,16 +146,28 @@ export async function runAgentLoop(
         reasoning_details?: Array<{ type?: string; text?: string }>;
       };
 
-      // Doubao / Kimi: reasoning_content field
+      // ── Reasoning tokens ────────────────────────────────────────
       if (delta.reasoning_content) {
         if (!reasoningContent) {
           console.log(`[agent-loop] first thinking_token from ${activeModel}, iteration=${iteration + 1}`);
         }
         reasoningContent += delta.reasoning_content;
-        emit({ type: "thinking_token", token: delta.reasoning_content });
+
+        if (partCtx) {
+          if (!reasoningPart) {
+            reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
+            emitPart(partCtx, emit, reasoningPart, delta.reasoning_content);
+          } else {
+            (reasoningPart as any).text = reasoningContent;
+            // Delta-only emit (part already in array)
+            emit({ type: "thinking_token", token: delta.reasoning_content });
+          }
+        } else {
+          emit({ type: "thinking_token", token: delta.reasoning_content });
+        }
       }
 
-      // MiniMax: reasoning_details array (when reasoning_split=true)
+      // MiniMax reasoning_details
       if (delta.reasoning_details && delta.reasoning_details.length > 0) {
         for (const rd of delta.reasoning_details) {
           if (rd.text) {
@@ -125,19 +175,43 @@ export async function runAgentLoop(
               console.log(`[agent-loop] first thinking_token (minimax) from ${activeModel}, iteration=${iteration + 1}`);
             }
             reasoningContent += rd.text;
-            emit({ type: "thinking_token", token: rd.text });
+
+            if (partCtx) {
+              if (!reasoningPart) {
+                reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
+                emitPart(partCtx, emit, reasoningPart, rd.text);
+              } else {
+                (reasoningPart as any).text = reasoningContent;
+                emit({ type: "thinking_token", token: rd.text });
+              }
+            } else {
+              emit({ type: "thinking_token", token: rd.text });
+            }
           }
         }
       }
 
+      // ── Text tokens ─────────────────────────────────────────────
       if (delta.content) {
         if (!assistantText) {
           console.log(`[agent-loop] first narration_token from ${activeModel}, iteration=${iteration + 1}`);
         }
         assistantText += delta.content;
-        emit({ type: "narration_token", token: delta.content });
+
+        if (partCtx) {
+          if (!textPart) {
+            textPart = createPart("text", sessionId, messageId, { text: assistantText });
+            emitPart(partCtx, emit, textPart, delta.content);
+          } else {
+            (textPart as any).text = assistantText;
+            emit({ type: "narration_token", token: delta.content });
+          }
+        } else {
+          emit({ type: "narration_token", token: delta.content });
+        }
       }
 
+      // ── Tool calls (accumulate) ─────────────────────────────────
       if (delta.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = String(tc.index ?? 0);
@@ -158,10 +232,19 @@ export async function runAgentLoop(
     const toolCalls = Object.values(toolCallsMap);
 
     if (toolCalls.length === 0) {
+      // ── Step Finish (no tool calls → stop) ──────────────────────
       finalText = assistantText;
+      if (partCtx) {
+        const stepFinish = createPart("step-finish", sessionId, messageId, {
+          step: iteration + 1,
+          reason: "stop",
+        });
+        emitPart(partCtx, emit, stepFinish);
+      }
       break;
     }
 
+    // Push assistant message with tool calls to context
     const assistantMsg = {
       role: "assistant" as const,
       content: assistantText || null,
@@ -176,6 +259,7 @@ export async function runAgentLoop(
 
     let shouldExit = false;
 
+    // ── Execute tool calls with state machine ──────────────────────
     for (const tc of toolCalls) {
       let args: Record<string, unknown> = {};
       try {
@@ -184,10 +268,31 @@ export async function runAgentLoop(
         args = {};
       }
 
-      const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "request_review", "report_issue", "submit_verdict"]);
-      if (!toolsWithOwnLogs.has(tc.name)) {
-        const argsPreview = JSON.stringify(args).slice(0, 120);
-        emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
+      // Create ToolPart in pending state
+      let toolPart: ToolPart | undefined;
+      if (partCtx) {
+        toolPart = createPart("tool", sessionId, messageId, {
+          tool: tc.name,
+          callId: tc.id,
+          state: { status: "pending", input: args },
+        });
+        emitPart(partCtx, emit, toolPart);
+      } else {
+        // Legacy: emit action_log directly for tools that don't have their own logs
+        const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "request_review", "report_issue", "submit_verdict"]);
+        if (!toolsWithOwnLogs.has(tc.name)) {
+          const argsPreview = JSON.stringify(args).slice(0, 120);
+          emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
+        }
+      }
+
+      // Transition to running
+      if (toolPart && partCtx) {
+        updateToolState(partCtx, emit, toolPart, {
+          status: "running",
+          input: args,
+          startedAt: Date.now(),
+        });
       }
 
       let result = "";
@@ -195,12 +300,40 @@ export async function runAgentLoop(
 
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
+        if (toolPart && partCtx) {
+          updateToolState(partCtx, emit, toolPart, {
+            status: "error",
+            input: args,
+            error: result,
+            startedAt: (toolPart.state as any).startedAt ?? Date.now(),
+            completedAt: Date.now(),
+          });
+        }
       } else {
         try {
           result = await handler(args, emit);
+          // Transition to completed
+          if (toolPart && partCtx) {
+            updateToolState(partCtx, emit, toolPart, {
+              status: "completed",
+              input: args,
+              output: result,
+              startedAt: (toolPart.state as any).startedAt ?? Date.now(),
+              completedAt: Date.now(),
+            });
+          }
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           result = `Error executing tool "${tc.name}": ${message}`;
+          if (toolPart && partCtx) {
+            updateToolState(partCtx, emit, toolPart, {
+              status: "error",
+              input: args,
+              error: result,
+              startedAt: (toolPart.state as any).startedAt ?? Date.now(),
+              completedAt: Date.now(),
+            });
+          }
         }
       }
 
@@ -216,6 +349,15 @@ export async function runAgentLoop(
         exitTool = tc.name;
         exitArgs = args;
       }
+    }
+
+    // ── Step Finish (tool calls processed) ──────────────────────────
+    if (partCtx) {
+      const stepFinish = createPart("step-finish", sessionId, messageId, {
+        step: iteration + 1,
+        reason: shouldExit ? "exit_tool" : "tool_calls",
+      });
+      emitPart(partCtx, emit, stepFinish);
     }
 
     if (shouldExit) break;

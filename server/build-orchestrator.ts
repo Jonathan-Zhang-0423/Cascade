@@ -13,6 +13,7 @@ import {
 } from "./agent-tools";
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
 import { detectFramework, type Framework } from "./framework-detector";
+import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
 
 export interface BuildFile {
   path: string;
@@ -57,6 +58,10 @@ export interface BuildSessionState {
   done: boolean;
   doneAt?: number;
   sseWriters: Set<(data: string) => void>;
+  /** Structured Part history — mirrors OpenCode's part-based message model */
+  parts: Part[];
+  /** Session status — mirrors OpenCode's idle | busy pattern */
+  status: SessionStatus;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -199,6 +204,10 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
   const { client: aiClient, model: aiModel } = getAIClient(session.provider ?? "doubao");
 
+  // Part-based emission context — all agent loops feed into this
+  const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
+  session.status = { type: "busy", agent: "editor" };
+
   if (!session.skillContent) {
     const frameworkSkill = session.framework ? getSkillForFramework(session.framework) : null;
     let detectedSkill = frameworkSkill;
@@ -231,7 +240,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       builderTools.schemas,
       builderTools.handlers,
       emit,
-      { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel },
+      { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -257,6 +266,8 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     const feedback = session.userConfirmation;
     if (session.userConfirmation) session.userConfirmation = undefined;
 
+    session.status = { type: "busy", agent: "verifier" };
+
     const verifierInitialMessage = buildVerifierInitialMessage(
       session,
       currentPlanSteps,
@@ -272,7 +283,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         verifierTools.schemas,
         verifierTools.handlers,
         emit,
-        { exitTools: ["submit_verdict"], maxIterations: 30, client: aiClient, model: aiModel },
+        { exitTools: ["submit_verdict"], maxIterations: 30, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -323,6 +334,8 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
       emit({ type: "fixing", fixCycle: currentCycle });
 
+      session.status = { type: "busy", agent: "fixer" };
+
       const issuesSummary = verifierState.issues.map(i => `- [${i.type}]${i.affected_file ? ` ${i.affected_file}` : ""}: ${i.description}`).join("\n");
 
       const fixerSystemPrompt = buildBuilderSystemPrompt(session);
@@ -336,7 +349,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
           fixerTools.schemas,
           fixerTools.handlers,
           emit,
-          { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel },
+          { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -386,5 +399,6 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     }
   }
 
+  session.status = { type: "idle" };
   emit({ type: "done" });
 }

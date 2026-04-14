@@ -529,6 +529,8 @@ export async function registerRoutes(
         nextEventId: 0,
         done: false,
         sseWriters: new Set(),
+        parts: [],
+        status: { type: "idle" },
       };
       buildSessions.set(sessionId, session);
 
@@ -778,12 +780,21 @@ export async function registerRoutes(
 
       const detectedSkill = (resolvedFramework ? getSkillForFramework(resolvedFramework) : null) || detectedSkillRaw;
 
-      let systemPrompt = MANAGER_AGENT_SYSTEM_PROMPT;
+      // Detect user language and inject a strong language prefix so Chinese
+      // LLMs respond in the user's language instead of defaulting to English.
+      const detectedLang = detectUserLanguage(messages);
+      const langLabel = detectedLang === "Chinese" ? "Chinese (中文)" : detectedLang;
+      const isEnglish = detectedLang === "English";
+      const langPrefix = isEnglish
+        ? ""
+        : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
+
+      let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
-        systemPrompt = `${MANAGER_AGENT_SYSTEM_PROMPT}\n\n${contextMsg}`;
+        systemPrompt = `${systemPrompt}\n\n${contextMsg}`;
       } else {
-        systemPrompt = `${MANAGER_AGENT_SYSTEM_PROMPT}\n\nThe project currently has no files.`;
+        systemPrompt = `${systemPrompt}\n\nThe project currently has no files.`;
       }
 
       if (detectedSkill) {
@@ -805,13 +816,17 @@ export async function registerRoutes(
       const managerTools = buildManagerTools(managerState);
 
       const userMsgCount = processedMessages.filter(m => m.role === "user").length;
-      const lastUserMsg = processedMessages.filter(m => m.role === "user").pop()?.content || "";
-      const confirmPattern = /^(?:(?:yes|ok|go|confirm|sure|do it|proceed|let'?s go|sounds good)\b|没问题|好的|确认|可以|就这样|开始吧|行)/i;
-      const isConversational = userMsgCount <= 2 && !confirmPattern.test(lastUserMsg.trim());
+      // The manager prompt has its own 3-stage flow (Explore → Confirm → Plan)
+      // that controls when the model uses tools. The model natively understands
+      // whether the user is confirming, asking questions, or making a new request
+      // — no hardcoded keyword list needed. We only use message count as a light
+      // heuristic to save tokens on the very first turn (disable extended thinking,
+      // limit to 1 iteration) since the first turn is almost always exploratory.
+      const isFirstTurn = userMsgCount <= 1;
 
-      const activeTools = isConversational ? [] : managerTools.schemas;
-      const activeHandlers = isConversational ? {} : managerTools.handlers;
-      const activeExitTools = isConversational ? [] : ["submit_plan"];
+      const activeTools = managerTools.schemas;
+      const activeHandlers = managerTools.handlers;
+      const activeExitTools = ["submit_plan"];
 
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
@@ -832,10 +847,10 @@ export async function registerRoutes(
           emitRawToken,
           {
             exitTools: activeExitTools,
-            maxIterations: isConversational ? 1 : 10,
+            maxIterations: isFirstTurn ? 1 : 10,
             client: activeAIClient,
             model: activeAIModel,
-            disableThinking: isConversational,
+            disableThinking: isFirstTurn,
           },
         );
 
@@ -861,7 +876,7 @@ export async function registerRoutes(
             emit({ type: "communicator_token", token: narratedText });
           }
 
-          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: true });
+          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false });
 
           if (mgrSession.projectId) {
             storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});

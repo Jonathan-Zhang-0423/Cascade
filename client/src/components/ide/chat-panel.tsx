@@ -4,13 +4,13 @@ import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Sparkles, X } from "lucide-react";
-import { CodestartLoader } from "./chat/CodestartLoader";
 
-import { normalizeSteps, t, usePlanCardLang } from "./chat/chat-utils";
+import { normalizeSteps } from "./chat/chat-utils";
 import { ActionLogLive } from "./chat/action-log";
 import { TypingIndicator } from "./chat/message-components";
 import { ChatMessageList } from "./chat/ChatMessageList";
 import { ChatInputArea } from "./chat/ChatInputArea";
+import { type AgentStatus } from "./chat/AgentStatusLine";
 import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { useAgentStream } from "@/components/ide/AgentStreamProvider";
 import { useEditorStream } from "./chat/hooks/useEditorStream";
@@ -53,7 +53,6 @@ export function ChatPanel() {
     fixCycle,
   } = useIDEStore();
 
-  const planCardLang = usePlanCardLang();
   const tGlobal = useT();
   const { toast } = useToast();
 
@@ -198,6 +197,19 @@ export function ChatPanel() {
 
   const isExecuting = executingTaskIndex !== null;
 
+  // Derive a single AgentStatus from all the boolean flags — highest priority wins
+  const agentStatus: AgentStatus = (() => {
+    if (isReconnecting) return "reconnecting";
+    if (mgrPreparingPlan) return "preparing";
+    if (isManagerResponding) return "planning";
+    if (buildPhase === "thinking") return "thinking";
+    if (buildPhase === "working") return "working";
+    if (buildPhase === "verifying") return "verifying";
+    if (buildPhase === "fixing") return "fixing";
+    if (isExecuting) return "working";
+    return null;
+  })();
+
   const handleStop = useCallback(() => {
     if (isExecuting) handleStopExecution();
     if (mgrAbortRef.current) { mgrAbortRef.current.abort(); mgrAbortRef.current = null; }
@@ -292,34 +304,7 @@ export function ChatPanel() {
               thinkingText={mgrLiveThinkingText || undefined}
               narrationText={mgrLiveNarrationText || undefined}
             />
-            {mgrPreparingPlan && (
-              <div className="px-3 py-1.5 border-t border-border/20 flex items-center gap-1.5">
-                <CodestartLoader className="text-blue-400/80" />
-                <span className="text-[11px] text-muted-foreground/80 font-medium">Preparing plan…</span>
-                {planningElapsed > 0 && (
-                  <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
-                )}
-              </div>
-            )}
           </div>
-        ) : isManagerResponding ? (
-          mgrPreparingPlan ? (
-            <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
-              <CodestartLoader className="text-blue-400/80" />
-              <span className="text-[12px] text-muted-foreground/90 font-medium">Preparing plan…</span>
-              {planningElapsed > 0 && (
-                <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
-              )}
-            </div>
-          ) : (
-            <div className="mx-3 px-3 py-2 rounded-lg border border-border/30 bg-card/30 flex items-center gap-1.5">
-              <CodestartLoader className="text-blue-400/80" />
-              <span className="text-[12px] text-muted-foreground/90 font-medium">{t(planCardLang, "planning")}</span>
-              {planningElapsed > 0 && (
-                <span className="ml-auto text-[10px] text-muted-foreground/40 font-mono shrink-0">{planningElapsed}s</span>
-              )}
-            </div>
-          )
         ) : null)}
         {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
@@ -336,8 +321,8 @@ export function ChatPanel() {
         setInput={setInput}
         isBusy={isBusy}
         isExecuting={isExecuting}
-        isReconnecting={isReconnecting}
-        buildPhase={buildPhase}
+        agentStatus={agentStatus}
+        elapsed={planningElapsed > 0 ? planningElapsed : undefined}
         providers={providers}
         smartResponseLoading={smartResponseLoading}
         onSend={handleCurrentSend}
