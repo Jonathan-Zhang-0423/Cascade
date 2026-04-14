@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import OpenAI from "openai";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync } from "fs";
@@ -457,6 +458,42 @@ function attachSseWriter(session: BuildSessionState, res: any, lastEventId: numb
 
 type SseEmit = (data: Record<string, unknown>) => void;
 
+type UserIntent = "build" | "question" | "fix" | "refine";
+
+async function classifyIntent(
+  messages: Array<{ role: string; content: string }>,
+  client: OpenAI,
+  model: string,
+): Promise<UserIntent> {
+  const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  try {
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `You are an intent classifier. Classify the user's message into exactly one category:
+- "build": user wants to create, add, change, or fix code/features
+- "question": user is asking a question about code, concepts, or what something does
+- "fix": user reports a bug or asks to fix a specific error
+- "refine": user wants to modify or improve a previously described plan
+
+Respond with ONLY valid JSON: {"intent": "build"|"question"|"fix"|"refine"}`,
+        },
+        { role: "user", content: lastUserMsg },
+      ],
+      stream: false,
+      max_tokens: 20,
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+    const parsed = JSON.parse(raw) as { intent: UserIntent };
+    if (["build", "question", "fix", "refine"].includes(parsed.intent)) {
+      return parsed.intent;
+    }
+  } catch {}
+  return "build"; // safe default
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
@@ -814,6 +851,43 @@ export async function registerRoutes(
 
       const managerState: ManagerSessionState = {};
       const managerTools = buildManagerTools(managerState);
+
+      // Fast intent classification — use MiniMax if available (fastest), else active provider
+      const fastClientForIntent = process.env.MINIMAX_API_KEY
+        ? getAIClient("minimax")
+        : { client: activeAIClient, model: activeAIModel };
+      const intent = await classifyIntent(processedMessages, fastClientForIntent.client, fastClientForIntent.model);
+
+      // Question intent: answer directly without the full manager agent loop
+      if (intent === "question") {
+        try {
+          const questionSystemPrompt = `${langPrefix}You are a helpful coding assistant. Answer the user's question clearly and concisely. Do not generate a plan or suggest building anything unless explicitly asked.`;
+          const stream = await activeAIClient.chat.completions.create({
+            model: activeAIModel,
+            messages: [
+              { role: "system", content: questionSystemPrompt },
+              ...processedMessages,
+            ],
+            stream: true,
+            max_tokens: 1024,
+          });
+          for await (const chunk of stream) {
+            const token = chunk.choices[0]?.delta?.content;
+            if (token) emit({ type: "raw_token", token });
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("[Manager] Question answer error:", errMsg);
+        }
+        clearInterval(heartbeat);
+        emit({ type: "manager_done" });
+        mgrSession.done = true;
+        mgrSession.doneAt = Date.now();
+        const doneLine = "data: [DONE]\n\n";
+        Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
+        if (!clientDisconnected) { try { res.end(); } catch {} }
+        return;
+      }
 
       const userMsgCount = processedMessages.filter(m => m.role === "user").length;
       // The manager prompt has its own 3-stage flow (Explore → Confirm → Plan)
