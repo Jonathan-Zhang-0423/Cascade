@@ -44,6 +44,7 @@ import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerO
 import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
 import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "./rn-web-compiler";
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "./flutter-compiler";
+import { runExploreAgent } from "./explore-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -847,6 +848,21 @@ export async function registerRoutes(
         if (mobileSupplement) {
           systemPrompt = `${systemPrompt}\n${mobileSupplement}`;
         }
+      }
+
+      // Explore agent: parallel codebase scan — only for sessions with existing files
+      // Fires concurrently; result injected into system prompt before planning.
+      // Non-blocking: if it doesn't complete within 8s, planning proceeds without it.
+      let exploreContext = "";
+      if (files && files.length > 0) {
+        const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0]?.content ?? "";
+        const explorePromise = runExploreAgent(files, lastUserMsg);
+        const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
+        exploreContext = await Promise.race([explorePromise, timeoutPromise]);
+      }
+
+      if (exploreContext) {
+        systemPrompt = `${systemPrompt}\n\n## Existing Codebase Context (from fast scan)\n${exploreContext}`;
       }
 
       const managerState: ManagerSessionState = {};
