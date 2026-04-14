@@ -3,7 +3,7 @@ import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "./communicator-prompt";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
-import { getAIClient, type AIProvider } from "./kimi-client";
+import { buildFallbackChain, withFallback, type AIProvider } from "./kimi-client";
 import { storage } from "./storage";
 import {
   buildBuilderTools,
@@ -202,7 +202,9 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
-  const { client: aiClient, model: aiModel } = getAIClient(session.provider ?? "doubao");
+  const providerChainEditor = buildFallbackChain("editor", session.provider ?? "doubao");
+  const providerChainVerifier = buildFallbackChain("verifier", session.provider ?? "doubao");
+  const providerChainFixer = buildFallbackChain("fixer", session.provider ?? "doubao");
 
   // Part-based emission context — all agent loops feed into this
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
@@ -234,14 +236,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const builderTools = buildBuilderTools(session, normalizedSteps);
 
   try {
-    await runAgentLoop(
-      builderSystemPrompt,
-      [{ role: "user", content: builderInitialMessage }],
-      builderTools.schemas,
-      builderTools.handlers,
-      emit,
-      { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
-    );
+    await withFallback(providerChainEditor, async (client, model) => {
+      await runAgentLoop(
+        builderSystemPrompt,
+        [{ role: "user", content: builderInitialMessage }],
+        builderTools.schemas,
+        builderTools.handlers,
+        emit,
+        { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+      );
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     emit({ type: "build_error", message });
@@ -277,14 +281,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     const verifierTools = buildVerifierTools(session, verifierState);
 
     try {
-      await runAgentLoop(
-        verifierSystemPrompt,
-        [{ role: "user", content: verifierInitialMessage }],
-        verifierTools.schemas,
-        verifierTools.handlers,
-        emit,
-        { exitTools: ["submit_verdict"], maxIterations: 30, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
-      );
+      await withFallback(providerChainVerifier, async (client, model) => {
+        await runAgentLoop(
+          verifierSystemPrompt,
+          [{ role: "user", content: verifierInitialMessage }],
+          verifierTools.schemas,
+          verifierTools.handlers,
+          emit,
+          { exitTools: ["submit_verdict"], maxIterations: 30, client, model, partCtx, sessionId: session.id },
+        );
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[VerifierAgent] Error:", message);
@@ -343,14 +349,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       const fixerTools = buildFixerTools(session, currentPlanSteps);
 
       try {
-        await runAgentLoop(
-          fixerSystemPrompt,
-          [{ role: "user", content: fixerInitialMessage }],
-          fixerTools.schemas,
-          fixerTools.handlers,
-          emit,
-          { exitTools: ["request_review"], maxIterations: 50, client: aiClient, model: aiModel, partCtx, sessionId: session.id },
-        );
+        await withFallback(providerChainFixer, async (client, model) => {
+          await runAgentLoop(
+            fixerSystemPrompt,
+            [{ role: "user", content: fixerInitialMessage }],
+            fixerTools.schemas,
+            fixerTools.handlers,
+            emit,
+            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+          );
+        });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("[FixerAgent] Error:", message);
@@ -376,15 +384,17 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         changedFiles,
         planSummary: plan.summary ?? "",
       } as CommunicatorEvent);
-      const summaryCompletion = await aiClient.chat.completions.create({
-        model: aiModel,
-        messages: [
-          { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-          { role: "user", content: commPrompt },
-        ],
-        stream: false,
-        max_tokens: 1024,
-      });
+      const summaryCompletion = await withFallback(providerChainEditor, async (client, model) =>
+        client.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+            { role: "user", content: commPrompt },
+          ],
+          stream: false,
+          max_tokens: 1024,
+        })
+      );
       summaryText = summaryCompletion.choices[0]?.message?.content || "";
     } catch {}
 
