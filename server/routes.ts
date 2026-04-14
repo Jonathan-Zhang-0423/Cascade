@@ -38,7 +38,7 @@ import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./b
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
-import { getAIClient, type AIProvider } from "./kimi-client";
+import { getAIClient, getOptimalClient, type AIProvider } from "./kimi-client";
 import { setupPreviewServer } from "./preview-server";
 import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "./kotlin-wasm-compiler";
 import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
@@ -734,7 +734,7 @@ export async function registerRoutes(
         projectId?: string;
       };
       const activeProvider: AIProvider = provider || "doubao";
-      const { client: activeAIClient, model: activeAIModel } = getAIClient(activeProvider);
+      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });

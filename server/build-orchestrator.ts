@@ -202,9 +202,13 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
-  const providerChainEditor = buildFallbackChain("editor", session.provider ?? "doubao");
-  const providerChainVerifier = buildFallbackChain("verifier", session.provider ?? "doubao");
-  const providerChainFixer = buildFallbackChain("fixer", session.provider ?? "doubao");
+  const userProvider = session.provider ?? "doubao";
+
+  // Per-phase optimal provider selection — respects user preference, optimizes by phase
+  // Each chain: [user's provider first if available, then system defaults for that phase]
+  const providerChainEditor = buildFallbackChain("editor", userProvider);
+  const providerChainVerifier = buildFallbackChain("verifier", userProvider);
+  const providerChainFixer = buildFallbackChain("fixer", userProvider);
 
   // Part-based emission context — all agent loops feed into this
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };

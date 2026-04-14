@@ -14,6 +14,8 @@ export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
 
 export type AgentRole = "manager" | "editor" | "verifier" | "fixer";
 
+export type BuildPhase = "planning" | "editing" | "verifying" | "fixing";
+
 const SYSTEM_FALLBACK_DEFAULTS: Record<AgentRole, AIProvider[]> = {
   manager:   ["kimi", "doubao", "glm"],
   editor:    ["doubao", "kimi", "minimax"],
@@ -74,4 +76,40 @@ export function getAIClient(provider: AIProvider): { client: OpenAI; model: stri
     return { client: glmClient, model: GLM_MODEL };
   }
   return { client: doubaoClient, model: DOUBAO_MODEL };
+}
+
+// Phase-to-provider preference order — used by getOptimalClient
+const PHASE_PROVIDER_PREFERENCE: Record<BuildPhase, AIProvider[]> = {
+  planning:  ["kimi", "glm", "doubao"],
+  editing:   ["doubao", "kimi", "minimax"],
+  verifying: ["minimax", "doubao", "kimi"],
+  fixing:    ["doubao", "kimi", "minimax"],
+};
+
+/**
+ * Returns the best available AI client for a given build phase.
+ * User's selected provider always wins if it's configured; otherwise
+ * falls through the phase-specific preference list.
+ * Provider availability is determined by env vars at runtime.
+ */
+export function getOptimalClient(
+  phase: BuildPhase,
+  userPreferredProvider: AIProvider,
+): { client: OpenAI; model: string } {
+  // Check which providers are actually configured
+  const configured = new Set<AIProvider>(["doubao"]); // doubao is always the fallback
+  if (process.env.KIMI_API_KEY)    configured.add("kimi");
+  if (process.env.MINIMAX_API_KEY) configured.add("minimax");
+  if (process.env.GLM_API_KEY)     configured.add("glm");
+
+  // User's choice first
+  if (configured.has(userPreferredProvider)) {
+    return getAIClient(userPreferredProvider);
+  }
+  // Fall through phase preference list
+  for (const p of PHASE_PROVIDER_PREFERENCE[phase]) {
+    if (configured.has(p)) return getAIClient(p);
+  }
+  // Last resort
+  return getAIClient("doubao");
 }
