@@ -8,9 +8,12 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@ast-grep/napi": "^0.42.1",
     "@babel/core": "^7.29.0",
     "@babel/plugin-transform-modules-commonjs": "^7.28.0",
     "@babel/preset-react": "^7.28.5",
@@ -52,6 +55,7 @@
     "@tanstack/react-virtual": "^3.13.23",
     "@types/archiver": "^7.0.0",
     "@types/diff": "^7.0.2",
+    "@types/dockerode": "^4.0.1",
     "@types/prismjs": "^1.26.6",
     "@webcontainer/api": "^1.6.1",
     "archiver": "^7.0.1",
@@ -62,6 +66,7 @@
     "connect-pg-simple": "^10.0.0",
     "date-fns": "^3.6.0",
     "diff": "^8.0.4",
+    "dockerode": "^4.0.10",
     "dotenv": "^17.4.0",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
@@ -95,7 +100,9 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.5",
+    "typescript-language-server": "^5.1.3",
     "vaul": "^1.1.2",
+    "vscode-languageserver-protocol": "^3.17.5",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
@@ -125,7 +132,8 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "vitest": "^4.1.4"
   },
   "overrides": {
     "drizzle-kit": {
