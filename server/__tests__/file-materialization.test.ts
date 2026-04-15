@@ -61,6 +61,8 @@ describe("write_file handler — disk mirror", () => {
     await expect(
       handlers.write_file({ path: "/project/app.ts", content: "hello" }, noopEmit)
     ).resolves.toContain("File written successfully");
+    // In-memory map is still updated even without a sessionDir
+    expect(session.files.get("/project/app.ts")).toBe("hello");
   });
 
   it("creates nested directories for deep paths", async () => {
