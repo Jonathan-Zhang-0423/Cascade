@@ -171,7 +171,26 @@ export function buildBuilderTools(
         lspManager.notifyFileChange(session.id, path_, content).catch(() => {});
       }
 
-      return `File written successfully: ${path_} (${content.length} chars)`;
+      // Inline LSP diagnostics for TypeScript files
+      let diagSuffix = "";
+      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
+        try {
+          const diags = await lspManager.getDiagnostics(session.id, path_);
+          if (diags.length > 0) {
+            const lines = diags.map(d => {
+              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
+              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
+            });
+            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
+          } else {
+            diagSuffix = "\n\nLSP: no errors.";
+          }
+        } catch {
+          // LSP not available — silent, don't break the write
+        }
+      }
+
+      return `File written successfully: ${path_} (${content.length} chars)${diagSuffix}`;
     },
 
     patch_file: async (args, emit) => {
@@ -205,7 +224,26 @@ export function buildBuilderTools(
         lspManager.notifyFileChange(session.id, path_, patched).catch(() => {});
       }
 
-      return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)`;
+      // Inline LSP diagnostics for TypeScript files
+      let diagSuffix = "";
+      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
+        try {
+          const diags = await lspManager.getDiagnostics(session.id, path_);
+          if (diags.length > 0) {
+            const lines = diags.map(d => {
+              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
+              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
+            });
+            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
+          } else {
+            diagSuffix = "\n\nLSP: no errors.";
+          }
+        } catch {
+          // LSP not available — silent, don't break the patch
+        }
+      }
+
+      return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
     },
 
     read_file: async (args, emit) => {

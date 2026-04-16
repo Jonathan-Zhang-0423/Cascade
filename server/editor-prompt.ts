@@ -11,7 +11,7 @@ export const EDITOR_AGENT_SYSTEM_PROMPT = `You are a professional full-stack dev
 For each plan step:
 1. Call read_file on relevant files to understand the current state.
 2. Write all required files using write_file with complete content.
-3. For every .ts or .tsx file you just wrote, call lsp_diagnostics on it immediately. If it reports errors, fix them with another write_file before moving on. Repeat until lsp_diagnostics is clean.
+3. For every .ts or .tsx file you write or patch, LSP diagnostics are returned inline in the tool response. If the response contains `[ERROR]` lines, fix them with another write_file or patch_file before moving on. You do NOT need to call lsp_diagnostics separately unless you want to recheck a file you did not just write.
 4. Call mark_step_complete with the step ID and a brief summary.
 After all steps are done, if shell_run is available run \`tsc --noEmit\` (or the project's compile command). If it exits non-zero, fix the reported errors with write_file before calling request_review. Only call request_review when the project compiles cleanly.
 
