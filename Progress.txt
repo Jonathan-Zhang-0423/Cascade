@@ -1263,10 +1263,17 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
       instead of re-running the full editor with the entire plan, construct a
       minimal fix plan containing ONLY the steps that touch the failing files.
       Pass the specific error context (file, line, message) directly.
+    Status: COMPLETE (commit 6b9317b)
+      - extractFileFromIssue() parses verifier issues to extract affected files
+      - getAffectedSteps() identifies plan steps touching buggy files + dependents
+      - buildTargetedFixPlan() renumbers steps and injects bug context
+      - 10 comprehensive test cases, all passing
+      - Fix cycle logic in runBuildSession() now uses targeted plan
     Why: Current fixer re-runs the entire build plan. This is wasteful and can
          re-introduce regressions in previously-passing files.
          OmO's Sisyphus retries the specific failing edit with exact context.
-    Files: server/build-orchestrator.ts (fix cycle logic)
+    Files: server/build-orchestrator.ts (new helpers + fix cycle update),
+           server/__tests__/targeted-fix-plan.test.ts (10 test cases)
     Effort: 6–8 hours
 
 [ ] AG-9: Integrate OmO / OpenCode as the execution backend
