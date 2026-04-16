@@ -1237,17 +1237,25 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
          for modifications to existing files. LLM only reproduces the changed
          section, not 500 lines. Estimated 3–4× accuracy improvement for edits.
     Files: server/agent-tools.ts (new handler), server/editor-prompt.ts (new tool schema + instructions)
+    Status: [x] Implementation complete (commit e7d9cad)
+            [x] Comprehensive test suite added (commit 68c5b5d - 8 test cases, all passing)
     Effort: 3–4 hours
 
-[ ] AG-7: Inline LSP feedback loop in editor (auto-fix on diagnostic error)
+[x] AG-7: Inline LSP feedback loop in editor (auto-fix on diagnostic error)
     What: In agent-tools.ts write_file handler, after writing a .ts/.tsx file,
       automatically call lspManager.getDiagnostics() and if errors found,
       append them to the tool result:
         "File written. LSP diagnostics: [ERROR] Line 5: Type 'string' not assignable..."
       This gives the agent inline feedback without requiring a separate tool call.
+    Status: COMPLETE (commit cc187f8)
+      - Both write_file and patch_file handlers augmented with inline LSP diagnostics
+      - Diagnostics appear in tool response for .ts/.tsx files when sessionDir is set
+      - Agent can fix errors immediately without extra tool call
+      - Editor prompt updated to reflect automatic inline diagnostics
+      - All 35 tests passing, no regressions
     Why: Removes the need for AG-1 (which relies on the model remembering to call lsp_diagnostics).
          Makes self-correction automatic and guaranteed at the infrastructure level.
-    Files: server/agent-tools.ts (write_file handler), server/lsp-manager.ts
+    Files: server/agent-tools.ts (write_file and patch_file handlers), server/editor-prompt.ts
     Effort: 4–6 hours
 
 [ ] AG-8: Sisyphus-style contextual retry for failed steps
