@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildLspTools } from "../lsp-tools";
 import type { BuildSessionState } from "../build-orchestrator";
 
@@ -11,6 +11,9 @@ vi.mock("../lsp-manager", () => ({
 }));
 
 import { lspManager } from "../lsp-manager";
+import { mkdtemp, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
 
 function makeSession(): BuildSessionState {
   return {
@@ -149,4 +152,43 @@ describe("lsp_goto_definition", () => {
 
     expect(result).toBe("Definition not found.");
   });
+});
+
+describe("lsp_diagnostics — real typescript-language-server (integration)", () => {
+  let sessionDir: string;
+  const sessionId = "lsp-integration-test";
+
+  afterEach(async () => {
+    if (sessionDir) await rm(sessionDir, { recursive: true, force: true });
+    const realMod = await vi.importActual<typeof import("../lsp-manager")>("../lsp-manager");
+    (realMod.lspManager as any).stop?.(sessionId);
+  });
+
+  it(
+    "returns diagnostics array for a file with a deliberate type error",
+    async () => {
+      sessionDir = await mkdtemp(path.join(tmpdir(), "lsp-integ-"));
+      await writeFile(
+        path.join(sessionDir, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { strict: true, noEmit: true } }),
+      );
+      await writeFile(path.join(sessionDir, "app.ts"), `const x: number = "this is a string";\n`);
+
+      const realMod = await vi.importActual<typeof import("../lsp-manager")>("../lsp-manager");
+      const realLspManager = realMod.lspManager as any;
+
+      await realLspManager.start(sessionId, sessionDir, "typescript");
+      // LSP pushes diagnostics asynchronously — give it time to start and publish
+      await new Promise((resolve) => setTimeout(resolve, 7000));
+
+      const diagnostics = await realLspManager.getDiagnostics(sessionId, "/app.ts");
+      expect(Array.isArray(diagnostics)).toBe(true);
+      if (diagnostics.length > 0) {
+        const diag = diagnostics[0];
+        expect(diag).toHaveProperty("message");
+        expect(diag).toHaveProperty("range");
+      }
+    },
+    20000,
+  );
 });

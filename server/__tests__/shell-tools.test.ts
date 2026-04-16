@@ -9,6 +9,10 @@ vi.mock("../shell-manager", () => ({
 }));
 
 import { shellManager } from "../shell-manager";
+import { execSync } from "child_process";
+import { mkdtemp, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
 
 function makeSession(): BuildSessionState {
   return {

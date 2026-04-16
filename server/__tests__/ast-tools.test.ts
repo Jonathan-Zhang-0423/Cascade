@@ -157,3 +157,22 @@ describe("ast_replace", () => {
     expect(typeof result).toBe("string");
   });
 });
+
+describe("ast_search — real @ast-grep/napi (integration)", () => {
+  it("finds actual TypeScript pattern matches using the real binary", async () => {
+    const realSg = await vi.importActual<typeof import("@ast-grep/napi")>("@ast-grep/napi");
+    const src = `const x = 1;\nconsole.log(x);\nconsole.log("hello");`;
+    const tree = (realSg as any).parse("typescript", src);
+    const matches = tree.root().findAll("console.log($ARG)");
+    expect(matches.length).toBe(2);
+    expect(matches[0].text()).toContain("console.log");
+  });
+
+  it("returns no matches when the pattern is absent", async () => {
+    const realSg = await vi.importActual<typeof import("@ast-grep/napi")>("@ast-grep/napi");
+    const src = `const x = 1;\nconst y = 2;`;
+    const tree = (realSg as any).parse("typescript", src);
+    const matches = tree.root().findAll("console.log($ARG)");
+    expect(matches.length).toBe(0);
+  });
+});
