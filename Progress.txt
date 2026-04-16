@@ -1156,3 +1156,222 @@ Task #7 - My Coding Notebook — Mentor Agent & Learner Space (MERGED):
   [x] Added notebook state to IDE store (ide-store.ts)
       - activeSpace, notebookContent, isNotebookLoading, notebookError
       - Persisted to localStorage with project data
+
+============================================================
+MP-16: AGENT QUALITY IMPROVEMENTS (vs OmO/OpenCode)
+============================================================
+Status: NOT STARTED
+Priority: HIGH (directly impacts output quality for every build)
+Analysis date: 2026-04-16
+Reference: memory/agent_comparison.md
+
+Core gap: OmO's Hephaestus agent uses hash-anchored diffs achieving ~68% file edit
+accuracy. CodeStart's full-file-rewrite approach achieves ~6–10%. All items below
+close specific gaps identified by comparing our pipeline to OmO's architecture.
+
+Ordered by 2x2 matrix: IMPORTANCE (rows) × COMPLEXITY (cols)
+  Q1 = Important + Easy  → Do first
+  Q2 = Important + Hard  → Do second
+  Q3 = Less important + Easy  → Do third
+  Q4 = Less important + Hard  → Do last
+
+------------------------------------------------------------
+Q1 — IMPORTANT & EASY (high impact, low implementation cost)
+------------------------------------------------------------
+
+[x] AG-1: Force LSP diagnostics after every TypeScript write (PROMPT CHANGE ONLY)
+    What: Add one instruction to EDITOR_AGENT_SYSTEM_PROMPT:
+      "After writing any .ts or .tsx file, immediately call lsp_diagnostics on it.
+       If errors are found, fix them before calling mark_step_complete."
+    Why: Editor already has lsp_diagnostics tool but rarely uses it proactively.
+         Turns editor into self-correcting loop with zero architecture change.
+    Files: server/editor-prompt.ts
+    Effort: 30 minutes
+
+[x] AG-2: Force tsc --noEmit before request_review (PROMPT CHANGE ONLY)
+    What: Add to EDITOR_AGENT_SYSTEM_PROMPT:
+      "Before calling request_review, call shell_run('tsc --noEmit').
+       If it exits non-zero, fix all errors first."
+    Why: Catches compile errors the per-file LSP check misses (cross-file type errors).
+         Eliminates entire fixer cycles caused by compile errors the verifier catches.
+    Files: server/editor-prompt.ts
+    Effort: 30 minutes
+
+[x] AG-3: Force tsc --noEmit in verifier before verdict (PROMPT CHANGE ONLY)
+    What: Add to VERIFIER_AGENT_SYSTEM_PROMPT:
+      "Run shell_run('tsc --noEmit') as part of every review. Treat non-zero exit as a bug."
+    Why: Verifier already can run shell_run but prompt doesn't mandate it.
+         Makes every verification cycle deterministic — compile errors always caught.
+    Files: server/verifier-prompt.ts
+    Effort: 30 minutes
+
+[x] AG-4: Pre-execution plan validation pass (PROMPT CHANGE ONLY)
+    What: Add Momus-style review step to manager prompt:
+      After generating a plan, manager should self-review:
+      "Check each step's acceptance_criteria — can it be verified programmatically?
+       Ensure required_files lists every file that will be created or modified."
+    Why: OmO's Momus reviews the plan before Hephaestus starts. Catching plan
+         misunderstandings before code is written prevents cascading errors.
+    Files: server/manager-prompt.ts
+    Effort: 1 hour
+
+[ ] AG-5: Increase MAX_FIX_CYCLES from 3 to 5
+    What: Change the constant in server/build-orchestrator.ts line 203.
+    Why: Complex projects frequently exhaust 3 cycles without converging.
+         5 cycles costs a bit more but significantly improves completion rate.
+         NOTE: Skipped — real fix is AG-8 (targeted fixer) which makes cycle count irrelevant.
+    Files: server/build-orchestrator.ts
+    Effort: 5 minutes
+
+------------------------------------------------------------
+Q2 — IMPORTANT & HARD (high impact, significant implementation)
+------------------------------------------------------------
+
+[ ] AG-6: Add patch_file tool (diff-based edit primitive)
+    What: New tool alongside write_file:
+      patch_file(path, old_content, new_content)
+      - Verify old_content exists verbatim in file (or reject with error)
+      - Replace ONLY that section with new_content
+      - Write result back to disk
+    Why: Step toward hash-anchored edits. Eliminates full-rewrite hallucinations
+         for modifications to existing files. LLM only reproduces the changed
+         section, not 500 lines. Estimated 3–4× accuracy improvement for edits.
+    Files: server/agent-tools.ts (new handler), server/editor-prompt.ts (new tool schema + instructions)
+    Effort: 3–4 hours
+
+[ ] AG-7: Inline LSP feedback loop in editor (auto-fix on diagnostic error)
+    What: In agent-tools.ts write_file handler, after writing a .ts/.tsx file,
+      automatically call lspManager.getDiagnostics() and if errors found,
+      append them to the tool result:
+        "File written. LSP diagnostics: [ERROR] Line 5: Type 'string' not assignable..."
+      This gives the agent inline feedback without requiring a separate tool call.
+    Why: Removes the need for AG-1 (which relies on the model remembering to call lsp_diagnostics).
+         Makes self-correction automatic and guaranteed at the infrastructure level.
+    Files: server/agent-tools.ts (write_file handler), server/lsp-manager.ts
+    Effort: 4–6 hours
+
+[ ] AG-8: Sisyphus-style contextual retry for failed steps
+    What: In build-orchestrator.ts, when verifier finds bugs in specific files,
+      instead of re-running the full editor with the entire plan, construct a
+      minimal fix plan containing ONLY the steps that touch the failing files.
+      Pass the specific error context (file, line, message) directly.
+    Why: Current fixer re-runs the entire build plan. This is wasteful and can
+         re-introduce regressions in previously-passing files.
+         OmO's Sisyphus retries the specific failing edit with exact context.
+    Files: server/build-orchestrator.ts (fix cycle logic)
+    Effort: 6–8 hours
+
+[ ] AG-9: Integrate OmO / OpenCode as the execution backend
+    What: Replace runBuildSession()'s custom agent pipeline with:
+      1. server/opencode-manager.ts — singleton opencode serve subprocess
+      2. server/opencode-session.ts — per-session tmpdir + event translator
+      3. Rewrite runBuildSession() to: write tmpdir → opencode client → promptAsync
+         → subscribe to events → translate to CodeStart SSE → read files back
+    Why: Delegates to OmO's hash-anchored Hephaestus, Momus inline verification,
+         and Sisyphus retry — solving AG-6, AG-7, AG-8 in one integration.
+         The Part infrastructure is already built. The remaining work is ~200 lines.
+    Files: server/opencode-manager.ts (new), server/opencode-session.ts (new),
+           server/build-orchestrator.ts (rewrite runBuildSession),
+           server/index.ts (startOpencodeServer at boot),
+           package.json (add @opencode-ai/sdk, oh-my-opencode)
+    Effort: 2–3 days
+    Dependency: Requires opencode CLI installed on server
+
+[ ] AG-10: Parallel step execution for independent plan steps
+    What: In build-orchestrator.ts, analyze plan step dependencies
+      (steps that don't share required_files can run concurrently).
+      Use Promise.all() to run independent steps simultaneously.
+    Why: A 5-step plan where steps 1–3 create different files currently runs
+         sequentially. Parallelizing independent steps could cut build time by 40–60%.
+    Files: server/build-orchestrator.ts, server/agent-tools.ts
+    Effort: 8–12 hours (concurrency bugs risk)
+
+------------------------------------------------------------
+Q3 — LESS IMPORTANT & EASY (low impact, low cost)
+------------------------------------------------------------
+
+[ ] AG-11: Add shell_run auto-check for non-TypeScript frameworks
+    What: Extend AG-2/AG-3 to run framework-specific checks:
+      - Flutter: shell_run('flutter analyze')
+      - Python: shell_run('python -m py_compile <files>')
+      - Java/Kotlin: shell_run('kotlinc <files> -include-runtime -d app.jar')
+    Why: Currently only TypeScript gets tsc compile-check. Other frameworks
+         skip static analysis and go straight to verifier review.
+    Files: server/editor-prompt.ts, server/mobile-prompt-supplements.ts
+    Effort: 1–2 hours
+
+[ ] AG-12: Smarter skill detection (semantic vs keyword)
+    What: Replace keyword scoring in skill-loader.ts with an LLM classification
+      call (small model, 1 API call) that reads the user request and returns
+      the best-matching skill. Fallback to keyword if LLM call fails.
+    Why: Current keyword matching misses indirect skill indicators
+         ("I want to build a game" doesn't mention "React" or "canvas").
+    Files: server/skill-loader.ts
+    Effort: 2–3 hours
+
+[ ] AG-13: Multi-skill injection
+    What: Allow skill-loader to return and inject multiple matching skills
+      (e.g., react + node-express for a full-stack project).
+    Why: Currently returns only the single highest-scoring skill.
+         Full-stack projects that need both frontend and backend guidance get only one.
+    Files: server/skill-loader.ts, server/build-orchestrator.ts
+    Effort: 1–2 hours
+
+[ ] AG-14: Reduce verifier max_iterations from 30 to 15
+    What: The verifier's job is simpler than the editor's — read files, report issues,
+      submit verdict. 30 iterations is overkill and allows stuck loops to run long.
+    Files: server/build-orchestrator.ts (maxIterations in verifier call)
+    Effort: 5 minutes
+
+------------------------------------------------------------
+Q4 — LESS IMPORTANT & HARD (low impact, high cost)
+------------------------------------------------------------
+
+[ ] AG-15: TDD loop integration
+    What: Manager can generate a plan that includes "write tests first" steps.
+      Add a test_runner tool that runs the project's test suite and returns
+      pass/fail output. Editor uses test output as feedback to iterate.
+    Why: True TDD loop like Devin. Best accuracy for algorithmic code.
+         Complex to implement correctly without infinite loops.
+    Files: server/agent-tools.ts, server/editor-prompt.ts, server/manager-prompt.ts
+    Effort: 1–2 days
+
+[ ] AG-16: Hash-anchored verified diff tool (standalone, without OmO)
+    What: If AG-9 (OmO integration) is not pursued, implement hash-anchored
+      edits independently:
+        hash_patch_file(path, region_hash, new_content)
+        - Read file, hash each paragraph/function block
+        - Find block matching region_hash
+        - Replace with new_content (reject if hash not found — no silent failures)
+      This is Hephaestus's core primitive without the full OmO dependency.
+    Why: Achieves the 68% accuracy improvement without requiring OpenCode infrastructure.
+    Files: server/agent-tools.ts (new tool), server/editor-prompt.ts
+    Effort: 1–2 days
+    Note: Only implement if AG-9 is NOT chosen
+
+[ ] AG-17: Agent telemetry and accuracy tracking
+    What: Log per-session metrics:
+      - Build success rate (verifier pass on first attempt)
+      - Fix cycles used (0, 1, 2, 3)
+      - Files written vs files that triggered fixer
+      - Time per phase (plan, build, verify, fix)
+    Why: Can't improve what you don't measure. Needed to validate AG-1 through AG-9.
+    Files: server/routes.ts or new server/telemetry.ts, storage layer
+    Effort: 1 day
+
+------------------------------------------------------------
+RECOMMENDED EXECUTION ORDER
+------------------------------------------------------------
+  Week 1: AG-1, AG-2, AG-3, AG-4, AG-5 (all prompt changes — ship fast)
+  Week 2: AG-6 (patch_file tool), AG-7 (inline LSP feedback)
+  Week 3: AG-8 (contextual retry), AG-11, AG-12, AG-13
+  Month 2: AG-9 (OmO integration) if infrastructure allows, else AG-16
+  Ongoing: AG-17 (telemetry) to measure impact of each change
+
+------------------------------------------------------------
+SUCCESS METRICS
+------------------------------------------------------------
+  - Verifier pass rate on first build attempt: target >60% (baseline unknown)
+  - Average fix cycles per build: target <1.5 (reduce from current ~2)
+  - TypeScript build compile errors reaching verifier: target 0 (caught by editor)
+  - Build time for 5-step plan: target <90s (from current ~120–180s)
