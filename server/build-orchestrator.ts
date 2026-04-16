@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "./communicator-prompt";
@@ -14,6 +16,8 @@ import {
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
 import { detectFramework, type Framework } from "./framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
+import { lspManager } from "./lsp-manager";
+import { shellManager } from "./shell-manager";
 
 export interface BuildFile {
   path: string;
@@ -62,6 +66,8 @@ export interface BuildSessionState {
   parts: Part[];
   /** Session status — mirrors OpenCode's idle | busy pattern */
   status: SessionStatus;
+  /** Absolute path to the session's temp directory on disk — set at build start */
+  sessionDir?: string;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -196,6 +202,70 @@ Use read_file to examine each file, then report any issues with report_issue, an
 
 const MAX_FIX_CYCLES = 3;
 
+/**
+ * Extract the file path from a verifier issue (best-effort parsing).
+ * Looks for patterns like "in /project/src/App.tsx" or just "/project/src/App.tsx"
+ */
+function extractFileFromIssue(issue: { affected_file?: string; description: string }): string | null {
+  if (issue.affected_file) {
+    return issue.affected_file;
+  }
+  // Try to find a /project/... file path in the description
+  const match = issue.description.match(/(\/?project\/[^\s:]+)/);
+  if (match) return match[1];
+  return null;
+}
+
+/**
+ * Given a bug report (list of issues) and the original plan, identify which
+ * plan steps need to be re-run. Returns all steps that touch the buggy files,
+ * plus all subsequent steps (since they may depend on the fix).
+ */
+function getAffectedSteps(issues: Array<{ affected_file?: string; description: string }>, plan: BuildStep[]): BuildStep[] {
+  const affectedFiles = new Set<string>();
+  for (const issue of issues) {
+    const file = extractFileFromIssue(issue);
+    if (file) {
+      affectedFiles.add(file);
+    }
+  }
+
+  if (affectedFiles.size === 0) {
+    // No specific files identified — re-run all steps (conservative fallback)
+    return plan;
+  }
+
+  // Find all steps that touch any affected file
+  const touchingSteps = plan.filter(step => {
+    if (!step.required_files) return false;
+    return step.required_files.some(f => affectedFiles.has(f));
+  });
+
+  if (touchingSteps.length === 0) {
+    // No matching steps found — re-run all (conservative fallback)
+    return plan;
+  }
+
+  // Include all steps from the first affected step onward
+  // (subsequent steps may depend on the fix)
+  const minAffectedStepNum = Math.min(...touchingSteps.map(s => s.step));
+  return plan.filter(s => s.step >= minAffectedStepNum);
+}
+
+/**
+ * Build a targeted fix plan: re-number steps and inject bug context into descriptions.
+ */
+function buildTargetedFixPlan(
+  affectedSteps: BuildStep[],
+  issuesSummary: string,
+): BuildStep[] {
+  return affectedSteps.map((step, idx) => ({
+    ...step,
+    step: idx + 1, // Renumber for the fixer session (1, 2, 3, ...)
+    description: `${step.description}\n\n**Fix context from verifier:** ${issuesSummary}`,
+  }));
+}
+
 export async function runBuildSession(session: BuildSessionState, emit: SseEmit): Promise<void> {
   const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
@@ -203,6 +273,27 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const initialFiles = filesMapToArray(session.files);
 
   const userProvider = session.provider ?? "doubao";
+
+  // Create session directory and seed existing files onto disk
+  const sessionDir = `/tmp/codestart-sessions/${session.id}`;
+  try {
+    await mkdir(sessionDir, { recursive: true });
+    session.sessionDir = sessionDir;
+    for (const [filePath, content] of Array.from(session.files)) {
+      const abs = path.join(sessionDir, filePath.replace(/^\/+/, ""));
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, content, "utf-8");
+    }
+    // Start LSP servers in the background (non-blocking — won't crash build if unavailable)
+    lspManager.start(session.id, sessionDir, "typescript").catch(() => {});
+    if (session.framework === "flutter") {
+      lspManager.start(session.id, sessionDir, "dart").catch(() => {});
+    }
+    // Register shell session (actual containers are created per-command)
+    shellManager.createShell(session.id, sessionDir, session.framework).catch(() => {});
+  } catch (err) {
+    console.warn("[BuildSession] Failed to create session directory:", err instanceof Error ? err.message : err);
+  }
 
   // Per-phase optimal provider selection — respects user preference, optimizes by phase
   // Each chain: [user's provider first if available, then system defaults for that phase]
@@ -348,9 +439,13 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
       const issuesSummary = verifierState.issues.map(i => `- [${i.type}]${i.affected_file ? ` ${i.affected_file}` : ""}: ${i.description}`).join("\n");
 
+      // AG-8: Build a targeted fix plan instead of re-running the full plan
+      const affectedSteps = getAffectedSteps(verifierState.issues, currentPlanSteps);
+      const targetedPlanSteps = buildTargetedFixPlan(affectedSteps, issuesSummary);
+
       const fixerSystemPrompt = buildBuilderSystemPrompt(session);
-      const fixerInitialMessage = buildBuilderInitialMessage(session, currentPlanSteps, "fix", issuesSummary);
-      const fixerTools = buildFixerTools(session, currentPlanSteps);
+      const fixerInitialMessage = buildBuilderInitialMessage(session, targetedPlanSteps, "fix", issuesSummary);
+      const fixerTools = buildFixerTools(session, targetedPlanSteps);
 
       try {
         await withFallback(providerChainFixer, async (client, model) => {
