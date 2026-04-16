@@ -1,0 +1,37 @@
+VERDICT: REJECTED
+
+The diff partially addresses session survivability but misses a core requirement: completed build results are persisted server-side but never restored client-side when the build session has been pruned.
+
+Critical findings:
+- ✅ **Done-session retention** was increased to 30 minutes (`doneRetention` now `30 * 60 * 1000`), satisfying the retention change.
+- ✅ **Plan persistence** is implemented: server stores `plan_ready` into `projects.last_plan`; client fallback (`restorePlanVERDICT: REJECTED
+FromDB`) fetches `/api/projects/:id/plan` and restores plan/message state.
+- ✅ **Buil
+d completion persistence (server-side)** is implemented: `all_The diff partially addresses session survivability but misses a core requirement: completed build results are persisted server-side but never restored client-side when the build session has been pruned.
+complete` writes to `projects.last_build_result`
+; route `/api/projects/:id/build-result` added.
+Critical findings:
+- ❌ **Build completion restore (client-side) is missing**: - ✅ **Done-session retention** was increased to 30 minutes (`doneRetention` now `30 * 60 * 1000`), satisfying the retention change.
+`useBuildStream.ts` never calls `/api/projects/:id/build-result` - ✅ **Plan persistence** is implemented: server stores `plan_ready` into `projects.last_plan`; client fallback (`restorePlanFromDB`) fetches `/api/projects/:id/plan` and restores plan/message state.
+and does not reconstruct build-result UI state (plan card stat- ✅ **Build completion persistence (server-side)** is implemented: `all_complete` writes to `projects.last_build_result`; route `/api/projects/:id/build-result` added.
+uses/completion summary) after session pruning. This fails a primary task requirement and the “Done looks like” expectation.
+- ⚠️ Manager reconnect no longer sets `isManagerResponding=true` synchronously before status check (good), but there is still no dedicated manager reconnect flag implementation as requested.
+- ✅ Build file sync-on-return is implemented by refetching project files on `done` and reloading project when still on the same project.
+- ❌ AI-slop/type-quality issue in new code: newly introduced `any` casts in `restorePlanFromDB` (`(s: any...)`, `(m: any...)`). Per review policy, introducing `any` to bypass typing is not acceptable.
+
+Security: none observed (no serious auth/injection/secrets regression in this diff).
+
+Next actions:
+1. Implement client fallback restoration from `/api/projects/:id/build-result` in `useBuildStream` when reconnect/status checks fail or session is gone, and reconstruct build result message + completion summary/task status updates.
+2. Add a dedicated manager reconnect state (parallel to build `isReconnecting`) and use it for UI reconnect indication without blocking send.
+3. Replace newly added `any` casts in `useManagerStream` with concrete typed plan/message shapes.- ❌ **Build completion restore (client-side) is missing**: `useBuildStream.ts` never calls `/api/projects/:id/build-result` and does not reconstruct build-result UI state (plan card statuses/completion summary) after session pruning. This fails a primary task requirement and the “Done looks like” expectation.
+- ⚠️ Manager reconnect no longer sets `isManagerResponding=true` synchronously before status check (good), but there is still no dedicated manager reconnect flag implementation as requested.
+- ✅ Build file sync-on-return is implemented by refetching project files on `done` and reloading project when still on the same project.
+- ❌ AI-slop/type-quality issue in new code: newly introduced `any` casts in `restorePlanFromDB` (`(s: any...)`, `(m: any...)`). Per review policy, introducing `any` to bypass typing is not acceptable.
+
+Security: none observed (no serious auth/injection/secrets regression in this diff).
+
+Next actions:
+1. Implement client fallback restoration from `/api/projects/:id/build-result` in `useBuildStream` when reconnect/status checks fail or session is gone, and reconstruct build result message + completion summary/task status updates.
+2. Add a dedicated manager reconnect state (parallel to build `isReconnecting`) and use it for UI reconnect indication without blocking send.
+3. Replace newly added `any` casts in `useManagerStream` with concrete typed plan/message shapes.

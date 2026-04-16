@@ -1,0 +1,165 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K[kotlin-wasm] WARNING: Gradle not found at /home/runner/.gradle-sdk/gradle-8.10/bin/gradle. Kotlin/Wasm preview will be unavailable. Run: bash scripts/setup-gradle.sh
+[swift-wasm] WARNING: Swift toolchain not found at /home/runner/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift. SwiftUI/WASM preview will be unavailable. Run: bash scripts/setup-swift-wasm.sh
+11:19:55 AM [express] serving on port 5000
+11:20:06 AM [express] POST /api/projects 200 in 30ms :: {"project":{"id":"test_1775215206281_te0c2c","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:20:06.320Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+11:20:17 AM [express] POST /api/manager-chat 200 in 11608ms
+11:20:17 AM [express] DELETE /api/projects/test_1775215206281_te0c2c 200 in 14ms :: {"ok":true}
+11:20:50 AM [express] POST /api/projects 200 in 84ms :: {"project":{"id":"test_1775215250304_spd9fk","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:20:50.342Z"}}
+11:20:50 AM [express] POST /api/projects 200 in 31ms :: {"project":{"id":"test_1775215250359_s4vyw2","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:20:50.385Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+11:21:02 AM [express] POST /api/manager-chat 200 in 11860ms
+11:21:02 AM [express] DELETE /api/projects/test_1775215250359_s4vyw2 200 in 17ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+11:21:20 AM [express] DELETE /api/projects/test_1775215250304_spd9fk 200 in 14ms :: {"ok":true}
+11:26:59 AM [express] POST /api/projects 200 in 52ms :: {"project":{"id":"test_1775215619768_gvcdul","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:26:59.791Z"}}
+11:26:59 AM [express] POST /api/projects 200 in 10ms :: {"project":{"id":"test_1775215619866_bxksmq","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:26:59.881Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+11:27:05 AM [express] POST /api/manager-chat 200 in 5572ms
+11:27:05 AM [express] DELETE /api/projects/test_1775215619866_bxksmq 200 in 5ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+11:27:37 AM [express] DELETE /api/projects/test_1775215619768_gvcdul 200 in 15ms :: {"ok":true}
+11:31:56 AM [express] POST /api/projects 200 in 63ms :: {"project":{"id":"test_1775215916459_mz4rb7","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:31:56.488Z"}}
+11:31:56 AM [express] POST /api/projects 200 in 31ms :: {"project":{"id":"test_1775215916496_nuc8m8","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T11:31:56.517Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+11:32:12 AM [express] POST /api/manager-chat 200 in 16270ms
+11:32:12 AM [express] DELETE /api/projects/test_1775215916459_mz4rb7 200 in 17ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+11:33:00 AM [express] DELETE /api/projects/test_1775215916496_nuc8m8 200 in 15ms :: {"ok":true}
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+12:08:10 PM [express] GET /api/projects 304 in 11ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:08:50 PM [express] GET /api/projects 304 in 11ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:08:58 PM [express] GET /api/projects/diag_1775213838199/files 200 in 3ms :: {"files":[{"id":1080,"projectId":"diag_1775213838199","path":"/project/index.html","content":"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>My Project</title>\n  <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n  <div id=\"app\">\n    <h1>Welcome!</h1>\n    <p>Start building your project here.</p>\n  </div>\n  <script src=\"script.js\"></script>\n</body>\n</html>"},{"id":1081,"projectId":"diag_1775213838199","path":"/project/style.css","content":"* {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n\nbody {\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  min-height: 100vh;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n#app {\n  background: white;\n  padding: 40px;\n  border-radius: 8px;\n  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);\n  text-align: center;\n  max-width: 500px;\n}\n\nh1 {\n  color: #333;\n  margin-bottom: 20px;\n  font-size: 2.5em;\n}\n\np {\n  color: #666;\n  font-size: 1.1em;\n  line-height: 1.6;\n}"},{"id":1082,"projectId":"diag_1775213838199","path":"/project/script.js","content":"console.log('Welcome to your web project!');\n\n// You can start coding here\nconst app = document.getElementById('app');\n\nfunction greet() {\n  console.log('Hello from your web app!');\n}\n\n// Call on load\nwindow.addEventListener('load', greet);"}]}
+12:08:58 PM [express] GET /api/providers 304 in 1ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}
+12:08:58 PM [express] GET /api/build-session/active/diag_1775213838199 404 in 1ms :: {"error":"No active build session for this project"}
+12:09:00 PM [express] GET /api/projects 304 in 2ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:09:01 PM [express] GET /api/projects/ltehf8vhmnil5l9r/files 304 in 2ms :: {"files":[{"id":1054,"projectId":"ltehf8vhmnil5l9r","path":"/project/app.json","content":"{\n  \"expo\": {\n    \"name\": \"My App\",\n    \"slug\": \"my-app\",\n    \"version\": \"1.0.0\",\n    \"orientation\": \"portrait\",\n    \"icon\": \"./assets/icon.png\",\n    \"userInterfaceStyle\": \"light\",\n    \"splash\": {\n      \"image\": \"./assets/splash.png\",\n      \"resizeMode\": \"contain\",\n      \"backgroundColor\": \"#ffffff\"\n    },\n    \"ios\": {\n      \"supportsTabletMode\": true\n    },\n    \"android\": {\n      \"adaptiveIcon\": {\n        \"foregroundImage\": \"./assets/adaptive-icon.png\",\n        \"backgroundColor\": \"#ffffff\"\n      }\n    },\n    \"web\": {\n      \"favicon\": \"./assets/favicon.png\"\n    }\n  }\n}"},{"id":1055,"projectId":"ltehf8vhmnil5l9r","path":"/project/package.json","content":"{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\",\n  \"main\": \"node_modules/expo/AppEntry.js\",\n  \"scripts\": {\n    \"start\": \"expo start\",\n    \"android\": \"expo start --android\",\n    \"ios\": \"expo start --ios\",\n    \"web\": \"expo start --web\",\n    \"eject\": \"expo eject\"\n  },\n  \"dependencies\": {\n    \"react\": \"18.2.0\",\n    \"react-native\": \"0.73.0\",\n    \"expo\": \"^49.0.0\",\n    \"expo-constants\": \"~14.4.0\",\n    \"react-native-screens\": \"~3.22.0\",\n    \"react-native-safe-area-context\": \"4.6.0\",\n    \"@react-navigation/native\": \"^6.1.8\",\n    \"@react-navigation/bottom-tabs\": \"^6.5.8\",\n    \"@react-navigation/stack\": \"^6.3.17\"\n  },\n  \"devDependencies\": {\n    \"@types/react\": \"~18.2.14\",\n    \"typescript\": \"^5.1.3\"\n  },\n  \"private\": true\n}"},{"id":1056,"projectId":"ltehf8vhmnil5l9r","path":"/project/App.tsx","content":"import React from 'react';\nimport { View, Text, StyleSheet } from 'react-native';\n\nexport default function App() {\n  return (\n    <View style={styles.container}>\n      <Text style={styles.title}>Welcome to React Native!</Text>\n      <Text style={styles.subtitle}>Start editing your app here</Text>\n    </View>\n  );\n}\n\nconst styles = StyleSheet.create({\n  container: {\n    flex: 1,\n    backgroundColor: '#fff',\n    alignItems: 'center',\n    justifyContent: 'center',\n    padding: 20,\n  },\n  title: {\n    fontSize: 28,\n    fontWeight: 'bold',\n    marginBottom: 10,\n    color: '#333',\n  },\n  subtitle: {\n    fontSize: 16,\n    color: '#666',\n    textAlign: 'center',\n  },\n});"},{"id":1057,"projectId":"ltehf8vhmnil5l9r","path":"/project/tsconfig.json","content":"{\n  \"compilerOptions\": {\n    \"target\": \"ES2020\",\n    \"useDefineForClassFields\": true,\n    \"lib\": [\"ES2020\", \"DOM\", \"DOM.Iterable\"],\n    \"module\": \"ESNext\",\n    \"skipLibCheck\": true,\n    \"esModuleInterop\": true,\n    \"allowSyntheticDefaultImports\": true,\n    \"strict\": true,\n    \"moduleResolution\": \"bundler\",\n    \"allowImportingTsExtensions\": true,\n    \"resolveJsonModule\": true,\n    \"isolatedModules\": true,\n    \"types\": [\"expo\", \"react\", \"react-native\"]\n  },\n  \"include\": [\"**/*.ts\", \"**/*.tsx\"],\n  \"exclude\": [\"node_modules\"]\n}"},{"id":1058,"projectId":"ltehf8vhmnil5l9r","path":"/project/babel.config.js","content":"module.exports = function(api) {\n  api.cache(true);\n  return {\n    presets: ['babel-preset-expo'],\n    plugins: [\n      'react-native-reanimated/plugin',\n    ],\n  };\n};"}]}
+12:09:01 PM [express] GET /api/build-session/active/ltehf8vhmnil5l9r 404 in 2ms :: {"error":"No active build session for this project"}
+12:09:01 PM [express] GET /api/providers 304 in 1ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}
+12:09:05 PM [express] GET /api/projects 304 in 1ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:09:06 PM [express] GET /api/projects/d207ozdbmnikq9xa/files 304 in 2ms :: {"files":[{"id":1020,"projectId":"d207ozdbmnikq9xa","path":"/project/app.json","content":"{\n  \"expo\": {\n    \"name\": \"My App\",\n    \"slug\": \"my-app\",\n    \"version\": \"1.0.0\",\n    \"orientation\": \"portrait\",\n    \"icon\": \"./assets/icon.png\",\n    \"userInterfaceStyle\": \"light\",\n    \"splash\": {\n      \"image\": \"./assets/splash.png\",\n      \"resizeMode\": \"contain\",\n      \"backgroundColor\": \"#ffffff\"\n    },\n    \"ios\": {\n      \"supportsTabletMode\": true\n    },\n    \"android\": {\n      \"adaptiveIcon\": {\n        \"foregroundImage\": \"./assets/adaptive-icon.png\",\n        \"backgroundColor\": \"#ffffff\"\n      }\n    },\n    \"web\": {\n      \"favicon\": \"./assets/favicon.png\"\n    }\n  }\n}"},{"id":1021,"projectId":"d207ozdbmnikq9xa","path":"/project/package.json","content":"{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\",\n  \"main\": \"node_modules/expo/AppEntry.js\",\n  \"scripts\": {\n    \"start\": \"expo start\",\n    \"android\": \"expo start --android\",\n    \"ios\": \"expo start --ios\",\n    \"web\": \"expo start --web\",\n    \"eject\": \"expo eject\"\n  },\n  \"dependencies\": {\n    \"react\": \"18.2.0\",\n    \"react-native\": \"0.73.0\",\n    \"expo\": \"^49.0.0\",\n    \"expo-constants\": \"~14.4.0\",\n    \"react-native-screens\": \"~3.22.0\",\n    \"react-native-safe-area-context\": \"4.6.0\",\n    \"@react-navigation/native\": \"^6.1.8\",\n    \"@react-navigation/bottom-tabs\": \"^6.5.8\",\n    \"@react-navigation/stack\": \"^6.3.17\"\n  },\n  \"devDependencies\": {\n    \"@types/react\": \"~18.2.14\",\n    \"typescript\": \"^5.1.3\"\n  },\n  \"private\": true\n}"},{"id":1022,"projectId":"d207ozdbmnikq9xa","path":"/project/App.tsx","content":"import React from 'react';\nimport { View, Text, StyleSheet } from 'react-native';\n\nexport default function App() {\n  return (\n    <View style={styles.container}>\n      <Text style={styles.title}>Welcome to React Native!</Text>\n      <Text style={styles.subtitle}>Start editing your app here</Text>\n    </View>\n  );\n}\n\nconst styles = StyleSheet.create({\n  container: {\n    flex: 1,\n    backgroundColor: '#fff',\n    alignItems: 'center',\n    justifyContent: 'center',\n    padding: 20,\n  },\n  title: {\n    fontSize: 28,\n    fontWeight: 'bold',\n    marginBottom: 10,\n    color: '#333',\n  },\n  subtitle: {\n    fontSize: 16,\n    color: '#666',\n    textAlign: 'center',\n  },\n});"},{"id":1023,"projectId":"d207ozdbmnikq9xa","path":"/project/tsconfig.json","content":"{\n  \"compilerOptions\": {\n    \"target\": \"ES2020\",\n    \"useDefineForClassFields\": true,\n    \"lib\": [\"ES2020\", \"DOM\", \"DOM.Iterable\"],\n    \"module\": \"ESNext\",\n    \"skipLibCheck\": true,\n    \"esModuleInterop\": true,\n    \"allowSyntheticDefaultImports\": true,\n    \"strict\": true,\n    \"moduleResolution\": \"bundler\",\n    \"allowImportingTsExtensions\": true,\n    \"resolveJsonModule\": true,\n    \"isolatedModules\": true,\n    \"types\": [\"expo\", \"react\", \"react-native\"]\n  },\n  \"include\": [\"**/*.ts\", \"**/*.tsx\"],\n  \"exclude\": [\"node_modules\"]\n}"},{"id":1024,"projectId":"d207ozdbmnikq9xa","path":"/project/babel.config.js","content":"module.exports = function(api) {\n  api.cache(true);\n  return {\n    presets: ['babel-preset-expo'],\n    plugins: [\n      'react-native-reanimated/plugin',\n    ],\n  };\n};"}]}
+12:09:06 PM [express] GET /api/build-session/active/d207ozdbmnikq9xa 404 in 0ms :: {"error":"No active build session for this project"}
+12:09:06 PM [express] GET /api/providers 304 in 0ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:12:13 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m
+12:12:15 PM [express] GET /api/build-session/active/d207ozdbmnikq9xa 404 in 1ms :: {"error":"No active build session for this project"}
+12:12:15 PM [express] GET /api/providers 304 in 1ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:13:15 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x2)[39m
+12:13:17 PM [express] GET /api/build-session/active/d207ozdbmnikq9xa 404 in 1ms :: {"error":"No active build session for this project"}
+12:13:17 PM [express] GET /api/providers 304 in 0ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:13:21 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x3)[39m
+12:13:23 PM [express] GET /api/build-session/active/d207ozdbmnikq9xa 404 in 0ms :: {"error":"No active build session for this project"}
+12:13:23 PM [express] GET /api/providers 304 in 0ms :: {"doubao":true,"kimi":true,"minimax":true,"glm":true}

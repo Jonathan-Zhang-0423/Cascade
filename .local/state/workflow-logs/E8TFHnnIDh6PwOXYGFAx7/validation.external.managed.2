@@ -1,0 +1,33 @@
+VERDICT: REJECTED
+
+The diff addresses major pieces (30-minute retention, DB persistence endpoints/columns, and reconnect fallbacks), but it does not fully satisfy core task requirements and leaves functional gaps in recovery behavior.
+
+Critical findiVERDICT: REJECTED
+ngs:
+1) **Task #5 not actually implemented (localStorage plan fallback):** `u
+seManagerStream` adds `restorePlanFromDB()` but no explicit fallback to The diff addresses major pieces (30-minute retention, DB persistence endpoints/columns, and reconnect fallbacks), but it does not fully satisfy core task requirements and leaves functional gaps in recovery behavior.
+persisted `saved.managerPlan` when reconnect fails. `ide-s
+tore.loadProject()` still derives `managerPlan` only froCritical findings:
+m `managerMessages` (line ~676) and ignores `saved.managerPlan`, even though `plan_ready` writes `saved.managerPlan` when user is away. This misses the specified recovery path.
+
+2) **Build summary restoration is incomplete:** Server now stores `lastBuildResult` with `summary`, but `restoreBuildResultFromDB()` constructs `buildResult.completionData` with only `changedFiles` + empty `userLang`; it drops `summary` in the common `planMsg` path. That undermines the requirement that build completion summary be restored/visible after session pruning.
+
+3) **Manager reconnect flag requirement is only partially met:** The change correctly removes the premature synchronous `setManagerResponding(true)`, but introduces `isMgrReconnectingRef` without integrating a true reconnect state signal (ref is effectively not consumed). Functional impact is smaller than #1/#2, but this is not a clean completion of the dedicated reconnect-state requirement.
+
+Security: none observed (no serious auth/injection/secret-handling regressions introduced by this diff).
+
+Next actions:
+1) Implement explicit localStorage fallback for plan recovery on reconnect failure: prefer `saved.managerPlan` (or equivalent persisted plan payload) before/alongside DB fallback.
+2) Preserve and surface build summary during DB restore by populating `buildResult.completionData.summary` (and ensuring renderer uses it when attached to plan message).
+3) Replace manager reconnect ref with an actual reconnect state flow (store or hook state) and ensure `isManagerResponding` is only true for active stream, not status probing.1) **Task #5 not actually implemented (localStorage plan fallback):** `useManagerStream` adds `restorePlanFromDB()` but no explicit fallback to persisted `saved.managerPlan` when reconnect fails. `ide-store.loadProject()` still derives `managerPlan` only from `managerMessages` (line ~676) and ignores `saved.managerPlan`, even though `plan_ready` writes `saved.managerPlan` when user is away. This misses the specified recovery path.
+
+2) **Build summary restoration is incomplete:** Server now stores `lastBuildResult` with `summary`, but `restoreBuildResultFromDB()` constructs `buildResult.completionData` with only `changedFiles` + empty `userLang`; it drops `summary` in the common `planMsg` path. That undermines the requirement that build completion summary be restored/visible after session pruning.
+
+3) **Manager reconnect flag requirement is only partially met:** The change correctly removes the premature synchronous `setManagerResponding(true)`, but introduces `isMgrReconnectingRef` without integrating a true reconnect state signal (ref is effectively not consumed). Functional impact is smaller than #1/#2, but this is not a clean completion of the dedicated reconnect-state requirement.
+
+Security: none observed (no serious auth/injection/secret-handling regressions introduced by this diff).
+
+Next actions:
+1) Implement explicit localStorage fallback for plan recovery on reconnect failure: prefer `saved.managerPlan` (or equivalent persisted plan payload) before/alongside DB fallback.
+2) Preserve and surface build summary during DB restore by populating `buildResult.completionData.summary` (and ensuring renderer uses it when attached to plan message).
+3) Replace manager reconnect ref with an actual reconnect state flow (store or hook state) and ensure `isManagerResponding` is only true for active stream, not status probing.

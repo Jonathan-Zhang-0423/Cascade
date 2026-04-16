@@ -1,0 +1,234 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K[kotlin-wasm] WARNING: Gradle not found at /home/runner/.gradle-sdk/gradle-8.10/bin/gradle. Kotlin/Wasm preview will be unavailable. Run: bash scripts/setup-gradle.sh
+[swift-wasm] WARNING: Swift toolchain not found at /home/runner/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift. SwiftUI/WASM preview will be unavailable. Run: bash scripts/setup-swift-wasm.sh
+12:27:22 PM [express] serving on port 5000
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+12:27:29 PM [express] GET /api/projects 304 in 17ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:27:44 PM [express] POST /api/projects 200 in 54ms :: {"project":{"id":"test_1775219264241_lblpv0","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:27:44.271Z"}}
+12:27:44 PM [express] POST /api/projects 200 in 11ms :: {"project":{"id":"test_1775219264303_ovxjgb","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:27:44.314Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:27:53 PM [express] POST /api/manager-chat 200 in 9152ms
+12:27:53 PM [express] DELETE /api/projects/test_1775219264241_lblpv0 200 in 5ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:28:39 PM [express] DELETE /api/projects/test_1775219264303_ovxjgb 200 in 14ms :: {"ok":true}
+12:28:51 PM [express] DELETE /api/projects/ltehf8vhmnil5l9r 200 in 47ms :: {"ok":true}
+12:28:51 PM [express] DELETE /api/projects/test_1775213463062_tk7pdg 200 in 43ms :: {"ok":true}
+12:28:51 PM [express] DELETE /api/projects/diag_1775213838199 200 in 41ms :: {"ok":true}
+12:29:29 PM [express] POST /api/projects 200 in 21ms :: {"project":{"id":"test_1775219369193_o98xxf","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:29:29.214Z"}}
+12:29:29 PM [express] POST /api/projects 200 in 9ms :: {"project":{"id":"test_1775219369248_3l3cpw","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:29:29.258Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:29:36 PM [express] POST /api/manager-chat 200 in 7357ms
+12:29:36 PM [express] DELETE /api/projects/test_1775219369193_o98xxf 200 in 4ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:30:24 PM [express] DELETE /api/projects/test_1775219369248_3l3cpw 200 in 13ms :: {"ok":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:30:53 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:31:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:31:13 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x3)[39m
+12:31:23 PM [express] POST /api/projects 200 in 133ms :: {"project":{"id":"test_1775219483844_5bcwrt","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:31:23.867Z"}}
+12:31:24 PM [express] POST /api/projects 200 in 94ms :: {"project":{"id":"test_1775219483897_jukxa7","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:31:23.916Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:31:37 PM [express] POST /api/manager-chat 200 in 13332ms
+12:31:37 PM [express] DELETE /api/projects/test_1775219483844_5bcwrt 200 in 13ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:32:27 PM [express] DELETE /api/projects/test_1775219483897_jukxa7 200 in 14ms :: {"ok":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:33:13 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x4)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:33:27 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/ide.tsx, /src/components/ide/navbar.tsx, /src/components/ide/tools-dock.tsx, /src/components/ide/console-panel.tsx, /src/components/ide/code-editor.tsx, /src/components/ide/chat-panel.tsx, /src/components/ide/file-tree.tsx, /src/components/ide/llm-monitor.tsx, /src/components/ide/command-palette.tsx, /src/components/ide/preview-panel.tsx, /src/components/ide/chat/ChatInputArea.tsx, /src/components/ide/chat/action-log.tsx, /src/components/ide/chat/message-components.tsx, /src/components/ide/chat/plan-components.tsx, /src/components/ide/code-preview.tsx, /src/components/ide/wasm-preview.tsx[22m
+12:33:35 PM [express] POST /api/projects 200 in 51ms :: {"project":{"id":"test_1775219615019_tnc3iu","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:33:35.042Z"}}
+12:33:35 PM [express] POST /api/projects 200 in 22ms :: {"project":{"id":"test_1775219615071_31xtf5","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:33:35.094Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:33:56 PM [express] POST /api/manager-chat 200 in 21254ms
+12:33:56 PM [express] DELETE /api/projects/test_1775219615019_tnc3iu 200 in 15ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:34:58 PM [express] DELETE /api/projects/test_1775219615071_31xtf5 200 in 42ms :: {"ok":true}
+12:35:35 PM [express] POST /api/projects 200 in 17ms :: {"project":{"id":"test_1775219735079_ncgvfl","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:35:35.101Z"}}
+12:35:35 PM [express] POST /api/projects 200 in 11ms :: {"project":{"id":"test_1775219735131_3etlw3","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:35:35.143Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:35:59 PM [express] POST /api/manager-chat 200 in 24774ms
+12:35:59 PM [express] DELETE /api/projects/test_1775219735079_ncgvfl 200 in 15ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:38:03 PM [express] DELETE /api/projects/test_1775219735131_3etlw3 200 in 42ms :: {"ok":true}
+2:05:11 PM [express] GET /api/projects 200 in 11ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:20:13.588Z"}]}
+2:07:17 PM [express] GET /api/projects 304 in 11ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:20:13.588Z"}]}
+2:11:13 PM [express] GET /api/projects 304 in 11ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:20:13.588Z"}]}

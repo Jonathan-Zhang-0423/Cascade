@@ -1,0 +1,807 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region
+    - generic [ref=e3]:
+      - link "Skip to content" [ref=e4] [cursor=pointer]:
+        - /url: "#start-of-content"
+      - banner [ref=e6]:
+        - heading "Navigation Menu" [level=2] [ref=e7]
+        - generic [ref=e8]:
+          - link "Homepage" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - img [ref=e11]
+          - generic [ref=e13]:
+            - navigation "Global" [ref=e16]:
+              - list [ref=e17]:
+                - listitem [ref=e18]:
+                  - button "Platform" [ref=e20] [cursor=pointer]:
+                    - text: Platform
+                    - img [ref=e21]
+                - listitem [ref=e23]:
+                  - button "Solutions" [ref=e25] [cursor=pointer]:
+                    - text: Solutions
+                    - img [ref=e26]
+                - listitem [ref=e28]:
+                  - button "Resources" [ref=e30] [cursor=pointer]:
+                    - text: Resources
+                    - img [ref=e31]
+                - listitem [ref=e33]:
+                  - button "Open Source" [ref=e35] [cursor=pointer]:
+                    - text: Open Source
+                    - img [ref=e36]
+                - listitem [ref=e38]:
+                  - button "Enterprise" [ref=e40] [cursor=pointer]:
+                    - text: Enterprise
+                    - img [ref=e41]
+                - listitem [ref=e43]:
+                  - link "Pricing" [ref=e44] [cursor=pointer]:
+                    - /url: https://github.com/pricing
+                    - generic [ref=e45]: Pricing
+            - generic [ref=e46]:
+              - button "Search or jump to…" [ref=e49] [cursor=pointer]:
+                - img [ref=e51]
+              - link "Sign in" [ref=e54] [cursor=pointer]:
+                - /url: /login?return_to=https%3A%2F%2Fgithub.com%2Fstackblitz-labs%2Fbolt.diy%2Ftree%2Fmain%2Fapp%2Fcomponents%2Fworkbench
+              - link "Sign up" [ref=e55] [cursor=pointer]:
+                - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E%2Ffiles%2Fdisambiguate&source=header-repo&source_repo=stackblitz-labs%2Fbolt.diy
+              - button "Appearance settings" [ref=e58] [cursor=pointer]:
+                - img
+    - main [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - img [ref=e67]
+              - link "stackblitz-labs" [ref=e70] [cursor=pointer]:
+                - /url: /stackblitz-labs
+              - generic [ref=e71]: /
+              - strong [ref=e72]:
+                - link "bolt.diy" [ref=e73] [cursor=pointer]:
+                  - /url: /stackblitz-labs/bolt.diy
+              - generic [ref=e74]: Public template
+            - generic [ref=e75]:
+              - text: forked from
+              - link "stackblitz/bolt.new" [ref=e76] [cursor=pointer]:
+                - /url: /stackblitz/bolt.new
+          - generic [ref=e77]:
+            - list:
+              - listitem [ref=e78]:
+                - link "You must be signed in to change notification settings" [ref=e79] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                  - img [ref=e80]
+                  - text: Notifications
+              - listitem [ref=e82]:
+                - link "Fork 10.4k" [ref=e83] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                  - img [ref=e84]
+                  - text: Fork
+                  - generic "10,386" [ref=e86]: 10.4k
+              - listitem [ref=e87]:
+                - link "You must be signed in to star a repository" [ref=e89] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                  - img [ref=e90]
+                  - text: Star
+                  - generic "19232 users starred this repository" [ref=e92]: 19.2k
+        - navigation "Repository" [ref=e93]:
+          - list [ref=e94]:
+            - listitem [ref=e95]:
+              - link "Code" [ref=e96] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy
+                - img [ref=e97]
+                - generic [ref=e99]: Code
+            - listitem [ref=e100]:
+              - link "Issues 66" [ref=e101] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/issues
+                - img [ref=e102]
+                - generic [ref=e105]: Issues
+                - generic "66" [ref=e106]
+            - listitem [ref=e107]:
+              - link "Pull requests 31" [ref=e108] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/pulls
+                - img [ref=e109]
+                - generic [ref=e111]: Pull requests
+                - generic "31" [ref=e112]
+            - listitem [ref=e113]:
+              - link "Actions" [ref=e114] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/actions
+                - img [ref=e115]
+                - generic [ref=e117]: Actions
+            - listitem [ref=e118]:
+              - link "Projects" [ref=e119] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/projects
+                - img [ref=e120]
+                - generic [ref=e122]: Projects
+            - listitem [ref=e123]:
+              - link "Security and quality" [ref=e124] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/security
+                - img [ref=e125]
+                - generic [ref=e127]: Security and quality
+            - listitem [ref=e128]:
+              - link "Insights" [ref=e129] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/pulse
+                - img [ref=e130]
+                - generic [ref=e132]: Insights
+      - generic [ref=e140]:
+        - generic [ref=e142]:
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - generic [ref=e147]:
+                - heading "Collapse file tree" [level=2] [ref=e148]:
+                  - button "Collapse file tree" [expanded] [ref=e149] [cursor=pointer]:
+                    - img [ref=e150]
+                - heading "Files" [level=2] [ref=e153]
+              - generic [ref=e154]:
+                - button "main branch" [ref=e156] [cursor=pointer]:
+                  - generic [ref=e157]:
+                    - generic [ref=e159]:
+                      - img [ref=e161]
+                      - generic [ref=e164]: main
+                    - generic:
+                      - img
+                - button "Search this repository (forward slash)" [ref=e166] [cursor=pointer]:
+                  - img [ref=e167]
+            - generic [ref=e170]:
+              - img [ref=e172]
+              - combobox "Go to file" [ref=e174]
+            - navigation "File Tree Navigation" [ref=e180]:
+              - tree "Files" [ref=e182]:
+                - treeitem ".github" [level=1] [ref=e183]:
+                  - generic [ref=e184] [cursor=pointer]:
+                    - img [ref=e186]
+                    - generic [ref=e188]:
+                      - img [ref=e192]
+                      - generic [ref=e194]: .github
+                - treeitem ".husky" [level=1] [ref=e195]:
+                  - generic [ref=e196] [cursor=pointer]:
+                    - img [ref=e198]
+                    - generic [ref=e200]:
+                      - img [ref=e204]
+                      - generic [ref=e206]: .husky
+                - treeitem "app" [expanded] [level=1] [ref=e207]:
+                  - generic [ref=e208] [cursor=pointer]:
+                    - img [ref=e210]
+                    - generic [ref=e212]:
+                      - img [ref=e216]
+                      - generic [ref=e218]: app
+                  - group "app" [ref=e219]:
+                    - treeitem "components" [expanded] [level=2] [ref=e220]:
+                      - generic [ref=e221] [cursor=pointer]:
+                        - img [ref=e226]
+                        - generic [ref=e228]:
+                          - img [ref=e232]
+                          - generic [ref=e234]: components
+                      - group "components" [ref=e235]:
+                        - treeitem "@settings" [level=3] [ref=e236]:
+                          - generic [ref=e237] [cursor=pointer]:
+                            - img [ref=e243]
+                            - generic [ref=e245]:
+                              - img [ref=e249]
+                              - generic [ref=e251]: "@settings"
+                        - treeitem "chat" [level=3] [ref=e252]:
+                          - generic [ref=e253] [cursor=pointer]:
+                            - img [ref=e259]
+                            - generic [ref=e261]:
+                              - img [ref=e265]
+                              - generic [ref=e267]: chat
+                        - treeitem "deploy" [level=3] [ref=e268]:
+                          - generic [ref=e269] [cursor=pointer]:
+                            - img [ref=e275]
+                            - generic [ref=e277]:
+                              - img [ref=e281]
+                              - generic [ref=e283]: deploy
+                        - treeitem "editor" [level=3] [ref=e284]:
+                          - generic [ref=e285] [cursor=pointer]:
+                            - img [ref=e291]
+                            - generic [ref=e293]:
+                              - img [ref=e297]
+                              - generic [ref=e299]: editor
+                        - treeitem "git" [level=3] [ref=e300]:
+                          - generic [ref=e301] [cursor=pointer]:
+                            - img [ref=e307]
+                            - generic [ref=e309]:
+                              - img [ref=e313]
+                              - generic [ref=e315]: git
+                        - treeitem "header" [level=3] [ref=e316]:
+                          - generic [ref=e317] [cursor=pointer]:
+                            - img [ref=e323]
+                            - generic [ref=e325]:
+                              - img [ref=e329]
+                              - generic [ref=e331]: header
+                        - treeitem "sidebar" [level=3] [ref=e332]:
+                          - generic [ref=e333] [cursor=pointer]:
+                            - img [ref=e339]
+                            - generic [ref=e341]:
+                              - img [ref=e345]
+                              - generic [ref=e347]: sidebar
+                        - treeitem "ui" [level=3] [ref=e348]:
+                          - generic [ref=e349] [cursor=pointer]:
+                            - img [ref=e355]
+                            - generic [ref=e357]:
+                              - img [ref=e361]
+                              - generic [ref=e363]: ui
+                        - treeitem "workbench" [expanded] [level=3] [ref=e364]:
+                          - generic [ref=e365] [cursor=pointer]:
+                            - img [ref=e371]
+                            - generic [ref=e373]:
+                              - img [ref=e377]
+                              - generic [ref=e379]: workbench
+                          - group "workbench" [ref=e380]:
+                            - treeitem "terminal" [level=4] [ref=e381]:
+                              - generic [ref=e382] [cursor=pointer]:
+                                - img [ref=e389]
+                                - generic [ref=e391]:
+                                  - img [ref=e395]
+                                  - generic [ref=e397]: terminal
+                            - treeitem "DiffView.tsx" [level=4] [ref=e398]:
+                              - generic [ref=e405] [cursor=pointer]:
+                                - img [ref=e408]
+                                - generic [ref=e410]: DiffView.tsx
+                            - treeitem "EditorPanel.tsx" [level=4] [ref=e411]:
+                              - generic [ref=e418] [cursor=pointer]:
+                                - img [ref=e421]
+                                - generic [ref=e423]: EditorPanel.tsx
+                            - treeitem "ExpoQrModal.tsx" [level=4] [ref=e424]:
+                              - generic [ref=e431] [cursor=pointer]:
+                                - img [ref=e434]
+                                - generic [ref=e436]: ExpoQrModal.tsx
+                            - treeitem "FileBreadcrumb.tsx" [level=4] [ref=e437]:
+                              - generic [ref=e444] [cursor=pointer]:
+                                - img [ref=e447]
+                                - generic [ref=e449]: FileBreadcrumb.tsx
+                            - treeitem "FileTree.tsx" [level=4] [ref=e450]:
+                              - generic [ref=e457] [cursor=pointer]:
+                                - img [ref=e460]
+                                - generic [ref=e462]: FileTree.tsx
+                            - treeitem "Inspector.tsx" [level=4] [ref=e463]:
+                              - generic [ref=e470] [cursor=pointer]:
+                                - img [ref=e473]
+                                - generic [ref=e475]: Inspector.tsx
+                            - treeitem "InspectorPanel.tsx" [level=4] [ref=e476]:
+                              - generic [ref=e483] [cursor=pointer]:
+                                - img [ref=e486]
+                                - generic [ref=e488]: InspectorPanel.tsx
+                            - treeitem "LockManager.tsx" [level=4] [ref=e489]:
+                              - generic [ref=e496] [cursor=pointer]:
+                                - img [ref=e499]
+                                - generic [ref=e501]: LockManager.tsx
+                            - treeitem "PortDropdown.tsx" [level=4] [ref=e502]:
+                              - generic [ref=e509] [cursor=pointer]:
+                                - img [ref=e512]
+                                - generic [ref=e514]: PortDropdown.tsx
+                            - treeitem "Preview.tsx" [level=4] [ref=e515]:
+                              - generic [ref=e522] [cursor=pointer]:
+                                - img [ref=e525]
+                                - generic [ref=e527]: Preview.tsx
+                            - treeitem "ScreenshotSelector.tsx" [level=4] [ref=e528]:
+                              - generic [ref=e535] [cursor=pointer]:
+                                - img [ref=e538]
+                                - generic [ref=e540]: ScreenshotSelector.tsx
+                            - treeitem "Search.tsx" [level=4] [ref=e541]:
+                              - generic [ref=e548] [cursor=pointer]:
+                                - img [ref=e551]
+                                - generic [ref=e553]: Search.tsx
+                            - treeitem "Workbench.client.tsx" [level=4] [ref=e554]:
+                              - generic [ref=e561] [cursor=pointer]:
+                                - img [ref=e564]
+                                - generic [ref=e566]: Workbench.client.tsx
+                    - treeitem "lib" [level=2] [ref=e567]:
+                      - generic [ref=e568] [cursor=pointer]:
+                        - img [ref=e573]
+                        - generic [ref=e575]:
+                          - img [ref=e579]
+                          - generic [ref=e581]: lib
+                    - treeitem "routes" [level=2] [ref=e582]:
+                      - generic [ref=e583] [cursor=pointer]:
+                        - img [ref=e588]
+                        - generic [ref=e590]:
+                          - img [ref=e594]
+                          - generic [ref=e596]: routes
+                    - treeitem "styles" [level=2] [ref=e597]:
+                      - generic [ref=e598] [cursor=pointer]:
+                        - img [ref=e603]
+                        - generic [ref=e605]:
+                          - img [ref=e609]
+                          - generic [ref=e611]: styles
+                    - treeitem "types" [level=2] [ref=e612]:
+                      - generic [ref=e613] [cursor=pointer]:
+                        - img [ref=e618]
+                        - generic [ref=e620]:
+                          - img [ref=e624]
+                          - generic [ref=e626]: types
+                    - treeitem "utils" [level=2] [ref=e627]:
+                      - generic [ref=e628] [cursor=pointer]:
+                        - img [ref=e633]
+                        - generic [ref=e635]:
+                          - img [ref=e639]
+                          - generic [ref=e641]: utils
+                    - treeitem "entry.client.tsx" [level=2] [ref=e642]:
+                      - generic [ref=e647] [cursor=pointer]:
+                        - img [ref=e650]
+                        - generic [ref=e652]: entry.client.tsx
+                    - treeitem "entry.server.tsx" [level=2] [ref=e653]:
+                      - generic [ref=e658] [cursor=pointer]:
+                        - img [ref=e661]
+                        - generic [ref=e663]: entry.server.tsx
+                    - treeitem "root.tsx" [level=2] [ref=e664]:
+                      - generic [ref=e669] [cursor=pointer]:
+                        - img [ref=e672]
+                        - generic [ref=e674]: root.tsx
+                    - treeitem "vite-env.d.ts" [level=2] [ref=e675]:
+                      - generic [ref=e680] [cursor=pointer]:
+                        - img [ref=e683]
+                        - generic [ref=e685]: vite-env.d.ts
+                - treeitem "assets" [level=1] [ref=e686]:
+                  - generic [ref=e687] [cursor=pointer]:
+                    - img [ref=e689]
+                    - generic [ref=e691]:
+                      - img [ref=e695]
+                      - generic [ref=e697]: assets
+                - treeitem "docs" [level=1] [ref=e698]:
+                  - generic [ref=e699] [cursor=pointer]:
+                    - img [ref=e701]
+                    - generic [ref=e703]:
+                      - img [ref=e707]
+                      - generic [ref=e709]: docs
+                - treeitem "electron" [level=1] [ref=e710]:
+                  - generic [ref=e711] [cursor=pointer]:
+                    - img [ref=e713]
+                    - generic [ref=e715]:
+                      - img [ref=e719]
+                      - generic [ref=e721]: electron
+                - treeitem "functions" [level=1] [ref=e722]:
+                  - generic [ref=e723] [cursor=pointer]:
+                    - img [ref=e725]
+                    - generic [ref=e727]:
+                      - img [ref=e731]
+                      - generic [ref=e733]: functions
+                - treeitem "icons" [level=1] [ref=e734]:
+                  - generic [ref=e735] [cursor=pointer]:
+                    - img [ref=e737]
+                    - generic [ref=e739]:
+                      - img [ref=e743]
+                      - generic [ref=e745]: icons
+                - treeitem "public" [level=1] [ref=e746]:
+                  - generic [ref=e747] [cursor=pointer]:
+                    - img [ref=e749]
+                    - generic [ref=e751]:
+                      - img [ref=e755]
+                      - generic [ref=e757]: public
+                - treeitem "scripts" [level=1] [ref=e758]:
+                  - generic [ref=e759] [cursor=pointer]:
+                    - img [ref=e761]
+                    - generic [ref=e763]:
+                      - img [ref=e767]
+                      - generic [ref=e769]: scripts
+                - treeitem "types" [level=1] [ref=e770]:
+                  - generic [ref=e771] [cursor=pointer]:
+                    - img [ref=e773]
+                    - generic [ref=e775]:
+                      - img [ref=e779]
+                      - generic [ref=e781]: types
+                - treeitem ".depcheckrc.json" [level=1] [ref=e782]:
+                  - generic [ref=e784] [cursor=pointer]:
+                    - img [ref=e787]
+                    - generic [ref=e789]: .depcheckrc.json
+                - treeitem ".dockerignore" [level=1] [ref=e790]:
+                  - generic [ref=e792] [cursor=pointer]:
+                    - img [ref=e795]
+                    - generic [ref=e797]: .dockerignore
+                - treeitem ".editorconfig" [level=1] [ref=e798]:
+                  - generic [ref=e800] [cursor=pointer]:
+                    - img [ref=e803]
+                    - generic [ref=e805]: .editorconfig
+                - treeitem ".env.example" [level=1] [ref=e806]:
+                  - generic [ref=e808] [cursor=pointer]:
+                    - img [ref=e811]
+                    - generic [ref=e813]: .env.example
+                - treeitem ".env.production" [level=1] [ref=e814]:
+                  - generic [ref=e816] [cursor=pointer]:
+                    - img [ref=e819]
+                    - generic [ref=e821]: .env.production
+                - treeitem ".gitignore" [level=1] [ref=e822]:
+                  - generic [ref=e824] [cursor=pointer]:
+                    - img [ref=e827]
+                    - generic [ref=e829]: .gitignore
+                - treeitem ".lighthouserc.json" [level=1] [ref=e830]:
+                  - generic [ref=e832] [cursor=pointer]:
+                    - img [ref=e835]
+                    - generic [ref=e837]: .lighthouserc.json
+                - treeitem ".prettierignore" [level=1] [ref=e838]:
+                  - generic [ref=e840] [cursor=pointer]:
+                    - img [ref=e843]
+                    - generic [ref=e845]: .prettierignore
+                - treeitem ".prettierrc" [level=1] [ref=e846]:
+                  - generic [ref=e848] [cursor=pointer]:
+                    - img [ref=e851]
+                    - generic [ref=e853]: .prettierrc
+                - treeitem "CHANGES.md" [level=1] [ref=e854]:
+                  - generic [ref=e856] [cursor=pointer]:
+                    - img [ref=e859]
+                    - generic [ref=e861]: CHANGES.md
+                - treeitem "CONTRIBUTING.md" [level=1] [ref=e862]:
+                  - generic [ref=e864] [cursor=pointer]:
+                    - img [ref=e867]
+                    - generic [ref=e869]: CONTRIBUTING.md
+                - treeitem "Dockerfile" [level=1] [ref=e870]:
+                  - generic [ref=e872] [cursor=pointer]:
+                    - img [ref=e875]
+                    - generic [ref=e877]: Dockerfile
+                - treeitem "FAQ.md" [level=1] [ref=e878]:
+                  - generic [ref=e880] [cursor=pointer]:
+                    - img [ref=e883]
+                    - generic [ref=e885]: FAQ.md
+                - treeitem "LICENSE" [level=1] [ref=e886]:
+                  - generic [ref=e888] [cursor=pointer]:
+                    - img [ref=e891]
+                    - generic [ref=e893]: LICENSE
+                - treeitem "PROJECT.md" [level=1] [ref=e894]:
+                  - generic [ref=e896] [cursor=pointer]:
+                    - img [ref=e899]
+                    - generic [ref=e901]: PROJECT.md
+                - treeitem "README.md" [level=1] [ref=e902]:
+                  - generic [ref=e904] [cursor=pointer]:
+                    - img [ref=e907]
+                    - generic [ref=e909]: README.md
+                - treeitem "bindings.sh" [level=1] [ref=e910]:
+                  - generic [ref=e912] [cursor=pointer]:
+                    - img [ref=e915]
+                    - generic [ref=e917]: bindings.sh
+                - treeitem "changelog.md" [level=1] [ref=e918]:
+                  - generic [ref=e920] [cursor=pointer]:
+                    - img [ref=e923]
+                    - generic [ref=e925]: changelog.md
+                - treeitem "docker-compose.yaml" [level=1] [ref=e926]:
+                  - generic [ref=e928] [cursor=pointer]:
+                    - img [ref=e931]
+                    - generic [ref=e933]: docker-compose.yaml
+                - treeitem "electron-builder.yml" [level=1] [ref=e934]:
+                  - generic [ref=e936] [cursor=pointer]:
+                    - img [ref=e939]
+                    - generic [ref=e941]: electron-builder.yml
+                - treeitem "electron-update.yml" [level=1] [ref=e942]:
+                  - generic [ref=e944] [cursor=pointer]:
+                    - img [ref=e947]
+                    - generic [ref=e949]: electron-update.yml
+                - treeitem "eslint.config.mjs" [level=1] [ref=e950]:
+                  - generic [ref=e952] [cursor=pointer]:
+                    - img [ref=e955]
+                    - generic [ref=e957]: eslint.config.mjs
+                - treeitem "load-context.ts" [level=1] [ref=e958]:
+                  - generic [ref=e960] [cursor=pointer]:
+                    - img [ref=e963]
+                    - generic [ref=e965]: load-context.ts
+                - treeitem "notarize.cjs" [level=1] [ref=e966]:
+                  - generic [ref=e968] [cursor=pointer]:
+                    - img [ref=e971]
+                    - generic [ref=e973]: notarize.cjs
+                - treeitem "package.json" [level=1] [ref=e974]:
+                  - generic [ref=e976] [cursor=pointer]:
+                    - img [ref=e979]
+                    - generic [ref=e981]: package.json
+                - treeitem "playwright.config.preview.ts" [level=1] [ref=e982]:
+                  - generic [ref=e984] [cursor=pointer]:
+                    - img [ref=e987]
+                    - generic [ref=e989]: playwright.config.preview.ts
+                - treeitem "pnpm-lock.yaml" [level=1] [ref=e990]:
+                  - generic [ref=e992] [cursor=pointer]:
+                    - img [ref=e995]
+                    - generic [ref=e997]: pnpm-lock.yaml
+                - treeitem "pre-start.cjs" [level=1] [ref=e998]:
+                  - generic [ref=e1000] [cursor=pointer]:
+                    - img [ref=e1003]
+                    - generic [ref=e1005]: pre-start.cjs
+                - treeitem "test-workflows.sh" [level=1] [ref=e1006]:
+                  - generic [ref=e1008] [cursor=pointer]:
+                    - img [ref=e1011]
+                    - generic [ref=e1013]: test-workflows.sh
+                - treeitem "tsconfig.json" [level=1] [ref=e1014]:
+                  - generic [ref=e1016] [cursor=pointer]:
+                    - img [ref=e1019]
+                    - generic [ref=e1021]: tsconfig.json
+                - treeitem "uno.config.ts" [level=1] [ref=e1022]:
+                  - generic [ref=e1024] [cursor=pointer]:
+                    - img [ref=e1027]
+                    - generic [ref=e1029]: uno.config.ts
+                - treeitem "vite-electron.config.ts" [level=1] [ref=e1030]:
+                  - generic [ref=e1032] [cursor=pointer]:
+                    - img [ref=e1035]
+                    - generic [ref=e1037]: vite-electron.config.ts
+                - treeitem "vite.config.ts" [level=1] [ref=e1038]:
+                  - generic [ref=e1040] [cursor=pointer]:
+                    - img [ref=e1043]
+                    - generic [ref=e1045]: vite.config.ts
+                - treeitem "vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs" [level=1] [ref=e1046]:
+                  - generic [ref=e1048] [cursor=pointer]:
+                    - img [ref=e1051]
+                    - generic [ref=e1053]: vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs
+                - treeitem "worker-configuration.d.ts" [level=1] [ref=e1054]:
+                  - generic [ref=e1056] [cursor=pointer]:
+                    - img [ref=e1059]
+                    - generic [ref=e1061]: worker-configuration.d.ts
+                - treeitem "wrangler.toml" [level=1] [ref=e1062]:
+                  - generic [ref=e1064] [cursor=pointer]:
+                    - img [ref=e1067]
+                    - generic [ref=e1069]: wrangler.toml
+          - slider "Draggable pane splitter" [ref=e1071]
+        - generic [ref=e1074]:
+          - generic [ref=e1078]:
+            - generic [ref=e1080]:
+              - navigation "Breadcrumbs" [ref=e1081]:
+                - heading "Breadcrumbs" [level=2] [ref=e1082]
+                - list [ref=e1083]:
+                  - listitem [ref=e1084]:
+                    - link "bolt.diy" [ref=e1085] [cursor=pointer]:
+                      - /url: /stackblitz-labs/bolt.diy/tree/main
+                  - listitem [ref=e1086]:
+                    - text: /
+                    - link "app" [ref=e1087] [cursor=pointer]:
+                      - /url: /stackblitz-labs/bolt.diy/tree/main/app
+                  - listitem [ref=e1088]:
+                    - text: /
+                    - link "components" [ref=e1089] [cursor=pointer]:
+                      - /url: /stackblitz-labs/bolt.diy/tree/main/app/components
+              - generic [ref=e1090]:
+                - text: /
+                - heading "workbench" [level=1] [ref=e1091]
+                - text: /
+              - button "Copy path" [ref=e1092] [cursor=pointer]:
+                - img [ref=e1093]
+            - generic [ref=e1098]:
+              - heading "Directory actions" [level=2] [ref=e1099]
+              - heading "More options" [level=2] [ref=e1100]
+              - button "More options" [ref=e1101] [cursor=pointer]:
+                - img [ref=e1102]
+          - generic [ref=e1104]:
+            - generic [ref=e1106]:
+              - heading "Latest commit" [level=2] [ref=e1107]
+              - generic [ref=e1108]:
+                - generic [ref=e1109]:
+                  - generic [ref=e1111]:
+                    - img "Stijnus" [ref=e1112]
+                    - img "claude" [ref=e1113]
+                  - link "commits by Stijnus" [ref=e1115] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/commits?author=Stijnus
+                    - text: Stijnus
+                  - generic [ref=e1116]: and
+                  - link "commits by claude" [ref=e1118] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/commits?author=claude
+                    - text: claude
+                - generic [ref=e1119]:
+                  - 'link "feat: comprehensive service integration refactor with enhanced tabs a…" [ref=e1122] [cursor=pointer]':
+                    - /url: /stackblitz-labs/bolt.diy/commit/4ca535b9d19dd5f47904ffd65469bfc3d8bc1c7d
+                  - button "Open commit details" [ref=e1123] [cursor=pointer]:
+                    - img [ref=e1124]
+                  - button "success" [ref=e1126] [cursor=pointer]:
+                    - img [ref=e1127]
+              - generic [ref=e1129]:
+                - generic [ref=e1131]:
+                  - link "Commit 4ca535b" [ref=e1132] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/commit/4ca535b9d19dd5f47904ffd65469bfc3d8bc1c7d
+                    - text: 4ca535b
+                  - text: ·
+                  - generic "Sep 9, 2025, 1:29 AM GMT+8" [ref=e1133]: Sep 9, 20257 months ago
+                - generic [ref=e1134]:
+                  - heading "History" [level=2] [ref=e1135]
+                  - link "History" [ref=e1136] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/commits/main/app/components/workbench
+                    - generic [ref=e1137]:
+                      - generic:
+                        - img
+                      - generic [ref=e1138]: History
+            - generic [ref=e1139]:
+              - generic [ref=e1140]:
+                - text: This branch is
+                - link "1530 commits ahead of" [ref=e1141] [cursor=pointer]:
+                  - /url: /stackblitz-labs/bolt.diy/compare/stackblitz%3Abolt.new%3Amain...main
+                - text: and
+                - link "2 commits behind" [ref=e1142] [cursor=pointer]:
+                  - /url: /stackblitz-labs/bolt.diy/compare/main...stackblitz%3Abolt.new%3Amain
+                - generic [ref=e1143]: stackblitz/bolt.new:main
+                - text: .
+              - link "#2152" [ref=e1145] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/pull/2152
+                - img [ref=e1146]
+                - text: "#2152"
+            - generic [ref=e1149]:
+              - heading "Folders and files" [level=2] [ref=e1150]
+              - table "Folders and files" [ref=e1151]:
+                - rowgroup [ref=e1152]:
+                  - row "Name Last commit message Last commit date" [ref=e1153]:
+                    - columnheader "Name" [ref=e1154]
+                    - columnheader "Last commit message" [ref=e1155]:
+                      - generic "Last commit message" [ref=e1156]
+                    - columnheader "Last commit date" [ref=e1157]:
+                      - generic "Last commit date" [ref=e1158]
+                - rowgroup [ref=e1159]:
+                  - row "parent directory Parent directory" [ref=e1160]:
+                    - cell "parent directory Parent directory" [ref=e1161]:
+                      - heading "parent directory" [level=3] [ref=e1162]
+                      - link "Parent directory" [ref=e1163] [cursor=pointer]:
+                        - /url: /stackblitz-labs/bolt.diy/tree/main/app/components
+                        - generic [ref=e1164]:
+                          - img [ref=e1165]
+                          - text: ..
+                  - 'row "terminal, (Directory) feat: comprehensive service integration refactor with enhanced tabs a… Sep 9, 20257 months ago" [ref=e1167]':
+                    - cell "terminal, (Directory)" [ref=e1168]:
+                      - generic [ref=e1169]:
+                        - img [ref=e1170]
+                        - link "terminal, (Directory)" [ref=e1175] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/app/components/workbench/terminal
+                          - text: terminal
+                    - 'cell "feat: comprehensive service integration refactor with enhanced tabs a…" [ref=e1176]':
+                      - 'link "feat: comprehensive service integration refactor with enhanced tabs a…" [ref=e1179] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/4ca535b9d19dd5f47904ffd65469bfc3d8bc1c7d
+                    - cell "Sep 9, 20257 months ago" [ref=e1180]:
+                      - generic [ref=e1181]: Sep 9, 20257 months ago
+                  - 'row "DiffView.tsx, (File) feat: add terminal detachment functionality Jul 1, 202510 months ago" [ref=e1182]':
+                    - cell "DiffView.tsx, (File)" [ref=e1183]:
+                      - generic [ref=e1184]:
+                        - img [ref=e1185]
+                        - link "DiffView.tsx, (File)" [ref=e1190] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/DiffView.tsx
+                          - text: DiffView.tsx
+                    - 'cell "feat: add terminal detachment functionality" [ref=e1191]':
+                      - 'link "feat: add terminal detachment functionality" [ref=e1194] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/7ce263e0f59a8ba0d813fe160fc19275d84520a2
+                    - cell "Jul 1, 202510 months ago" [ref=e1195]:
+                      - generic [ref=e1196]: Jul 1, 202510 months ago
+                  - 'row "EditorPanel.tsx, (File) feat: lock files (#1681) May 8, 202511 months ago" [ref=e1197]':
+                    - cell "EditorPanel.tsx, (File)" [ref=e1198]:
+                      - generic [ref=e1199]:
+                        - img [ref=e1200]
+                        - link "EditorPanel.tsx, (File)" [ref=e1205] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/EditorPanel.tsx
+                          - text: EditorPanel.tsx
+                    - 'cell "feat: lock files (#1681)" [ref=e1206]':
+                      - generic [ref=e1208]:
+                        - 'link "feat: lock files (" [ref=e1209] [cursor=pointer]':
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                        - link "#1681" [ref=e1210] [cursor=pointer]:
+                          - /url: https://github.com/stackblitz-labs/bolt.diy/pull/1681
+                        - link ")" [ref=e1211] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                    - cell "May 8, 202511 months ago" [ref=e1212]:
+                      - generic [ref=e1213]: May 8, 202511 months ago
+                  - 'row "ExpoQrModal.tsx, (File) refactor(qr-code): replace react-qr-code with react-qrcode-logo Apr 23, 2025last year" [ref=e1214]':
+                    - cell "ExpoQrModal.tsx, (File)" [ref=e1215]:
+                      - generic [ref=e1216]:
+                        - img [ref=e1217]
+                        - link "ExpoQrModal.tsx, (File)" [ref=e1222] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/ExpoQrModal.tsx
+                          - text: ExpoQrModal.tsx
+                    - 'cell "refactor(qr-code): replace react-qr-code with react-qrcode-logo" [ref=e1223]':
+                      - 'link "refactor(qr-code): replace react-qr-code with react-qrcode-logo" [ref=e1226] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/02401b90aa67a62cb67b01e4e2566cd50a6ed5ca
+                    - cell "Apr 23, 2025last year" [ref=e1227]:
+                      - generic [ref=e1228]: Apr 23, 2025last year
+                  - row "FileBreadcrumb.tsx, (File) UI fixes Jan 24, 2025last year" [ref=e1229]:
+                    - cell "FileBreadcrumb.tsx, (File)" [ref=e1230]:
+                      - generic [ref=e1231]:
+                        - img [ref=e1232]
+                        - link "FileBreadcrumb.tsx, (File)" [ref=e1237] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/FileBreadcrumb.tsx
+                          - text: FileBreadcrumb.tsx
+                    - cell "UI fixes" [ref=e1238]:
+                      - link "UI fixes" [ref=e1241] [cursor=pointer]:
+                        - /url: /stackblitz-labs/bolt.diy/commit/27eab591a9647e4a341da364e80af4d4c2b45f71
+                    - cell "Jan 24, 2025last year" [ref=e1242]:
+                      - generic [ref=e1243]: Jan 24, 2025last year
+                  - 'row "FileTree.tsx, (File) feat: lock files (#1681) May 8, 202511 months ago" [ref=e1244]':
+                    - cell "FileTree.tsx, (File)" [ref=e1245]:
+                      - generic [ref=e1246]:
+                        - img [ref=e1247]
+                        - link "FileTree.tsx, (File)" [ref=e1252] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/FileTree.tsx
+                          - text: FileTree.tsx
+                    - 'cell "feat: lock files (#1681)" [ref=e1253]':
+                      - generic [ref=e1255]:
+                        - 'link "feat: lock files (" [ref=e1256] [cursor=pointer]':
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                        - link "#1681" [ref=e1257] [cursor=pointer]:
+                          - /url: https://github.com/stackblitz-labs/bolt.diy/pull/1681
+                        - link ")" [ref=e1258] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                    - cell "May 8, 202511 months ago" [ref=e1259]:
+                      - generic [ref=e1260]: May 8, 202511 months ago
+                  - 'row "Inspector.tsx, (File) feat: add element inspector with chat integration May 30, 202511 months ago" [ref=e1261]':
+                    - cell "Inspector.tsx, (File)" [ref=e1262]:
+                      - generic [ref=e1263]:
+                        - img [ref=e1264]
+                        - link "Inspector.tsx, (File)" [ref=e1269] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/Inspector.tsx
+                          - text: Inspector.tsx
+                    - 'cell "feat: add element inspector with chat integration" [ref=e1270]':
+                      - 'link "feat: add element inspector with chat integration" [ref=e1273] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/5838d7121afc6fe547de0ba0f94389f1d5be68e8
+                    - cell "May 30, 202511 months ago" [ref=e1274]:
+                      - generic [ref=e1275]: May 30, 202511 months ago
+                  - 'row "InspectorPanel.tsx, (File) feat: add element inspector with chat integration May 30, 202511 months ago" [ref=e1276]':
+                    - cell "InspectorPanel.tsx, (File)" [ref=e1277]:
+                      - generic [ref=e1278]:
+                        - img [ref=e1279]
+                        - link "InspectorPanel.tsx, (File)" [ref=e1284] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/InspectorPanel.tsx
+                          - text: InspectorPanel.tsx
+                    - 'cell "feat: add element inspector with chat integration" [ref=e1285]':
+                      - 'link "feat: add element inspector with chat integration" [ref=e1288] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/5838d7121afc6fe547de0ba0f94389f1d5be68e8
+                    - cell "May 30, 202511 months ago" [ref=e1289]:
+                      - generic [ref=e1290]: May 30, 202511 months ago
+                  - 'row "LockManager.tsx, (File) feat: lock files (#1681) May 8, 202511 months ago" [ref=e1291]':
+                    - cell "LockManager.tsx, (File)" [ref=e1292]:
+                      - generic [ref=e1293]:
+                        - img [ref=e1294]
+                        - link "LockManager.tsx, (File)" [ref=e1299] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/LockManager.tsx
+                          - text: LockManager.tsx
+                    - 'cell "feat: lock files (#1681)" [ref=e1300]':
+                      - generic [ref=e1302]:
+                        - 'link "feat: lock files (" [ref=e1303] [cursor=pointer]':
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                        - link "#1681" [ref=e1304] [cursor=pointer]:
+                          - /url: https://github.com/stackblitz-labs/bolt.diy/pull/1681
+                        - link ")" [ref=e1305] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/commit/9a5076d8c6ce4ecf58e97b413788996790a2031c
+                    - cell "May 8, 202511 months ago" [ref=e1306]:
+                      - generic [ref=e1307]: May 8, 202511 months ago
+                  - 'row "PortDropdown.tsx, (File) refactor(workbench): simplify URL handling and improve PortDropdown UI Apr 19, 2025last year" [ref=e1308]':
+                    - cell "PortDropdown.tsx, (File)" [ref=e1309]:
+                      - generic [ref=e1310]:
+                        - img [ref=e1311]
+                        - link "PortDropdown.tsx, (File)" [ref=e1316] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/PortDropdown.tsx
+                          - text: PortDropdown.tsx
+                    - 'cell "refactor(workbench): simplify URL handling and improve PortDropdown UI" [ref=e1317]':
+                      - 'link "refactor(workbench): simplify URL handling and improve PortDropdown UI" [ref=e1320] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/9b4736921f8015a7555f7598c69975a564a61d85
+                    - cell "Apr 19, 2025last year" [ref=e1321]:
+                      - generic [ref=e1322]: Apr 19, 2025last year
+                  - 'row "Preview.tsx, (File) feat: add element inspector with chat integration May 30, 202511 months ago" [ref=e1323]':
+                    - cell "Preview.tsx, (File)" [ref=e1324]:
+                      - generic [ref=e1325]:
+                        - img [ref=e1326]
+                        - link "Preview.tsx, (File)" [ref=e1331] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/Preview.tsx
+                          - text: Preview.tsx
+                    - 'cell "feat: add element inspector with chat integration" [ref=e1332]':
+                      - 'link "feat: add element inspector with chat integration" [ref=e1335] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/5838d7121afc6fe547de0ba0f94389f1d5be68e8
+                    - cell "May 30, 202511 months ago" [ref=e1336]:
+                      - generic [ref=e1337]: May 30, 202511 months ago
+                  - row "ScreenshotSelector.tsx, (File) merge main into image Dec 14, 20242 years ago" [ref=e1338]:
+                    - cell "ScreenshotSelector.tsx, (File)" [ref=e1339]:
+                      - generic [ref=e1340]:
+                        - img [ref=e1341]
+                        - link "ScreenshotSelector.tsx, (File)" [ref=e1346] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/ScreenshotSelector.tsx
+                          - text: ScreenshotSelector.tsx
+                    - cell "merge main into image" [ref=e1347]:
+                      - link "merge main into image" [ref=e1350] [cursor=pointer]:
+                        - /url: /stackblitz-labs/bolt.diy/commit/6ffcdd8b3c54e2560b327ca1b4f4eb33ba54c0db
+                    - cell "Dec 14, 20242 years ago" [ref=e1351]:
+                      - generic [ref=e1352]: Dec 14, 20242 years ago
+                  - row "Search.tsx, (File) Fix invalid line number error in search functionality May 4, 2025last year" [ref=e1353]:
+                    - cell "Search.tsx, (File)" [ref=e1354]:
+                      - generic [ref=e1355]:
+                        - img [ref=e1356]
+                        - link "Search.tsx, (File)" [ref=e1361] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/Search.tsx
+                          - text: Search.tsx
+                    - cell "Fix invalid line number error in search functionality" [ref=e1362]:
+                      - link "Fix invalid line number error in search functionality" [ref=e1365] [cursor=pointer]:
+                        - /url: /stackblitz-labs/bolt.diy/commit/15a84f2e246ac12c78088777164febd0e53086e7
+                    - cell "May 4, 2025last year" [ref=e1366]:
+                      - generic [ref=e1367]: May 4, 2025last year
+                  - 'row "Workbench.client.tsx, (File) Revert \"fix: resolve chat conversation hanging and stream interruptio… Sep 7, 20257 months ago" [ref=e1368]':
+                    - cell "Workbench.client.tsx, (File)" [ref=e1369]:
+                      - generic [ref=e1370]:
+                        - img [ref=e1371]
+                        - link "Workbench.client.tsx, (File)" [ref=e1376] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/app/components/workbench/Workbench.client.tsx
+                          - text: Workbench.client.tsx
+                    - 'cell "Revert \"fix: resolve chat conversation hanging and stream interruptio…" [ref=e1377]':
+                      - 'link "Revert \"fix: resolve chat conversation hanging and stream interruptio…" [ref=e1380] [cursor=pointer]':
+                        - /url: /stackblitz-labs/bolt.diy/commit/37217a5c7bdcfd7a6ac8100146ea5bdcef82dfe7
+                    - cell "Sep 7, 20257 months ago" [ref=e1381]:
+                      - generic [ref=e1382]: Sep 7, 20257 months ago
+  - alert [ref=e1386]

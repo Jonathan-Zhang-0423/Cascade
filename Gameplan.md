@@ -163,6 +163,19 @@ All 5 subtasks shipped. See Progress.txt Tasks #139–#148 for details.
 
 ---
 
+## MP-16: AGENT QUALITY IMPROVEMENTS (vs OmO/OpenCode)
+============================================================
+Status: NOT STARTED (analysis complete 2026-04-16)
+Priority: HIGH — directly impacts output quality for every build
+Reference: Progress.txt MP-16 for full ordered task list
+
+Key finding: OmO's hash-anchored diffs achieve ~68% file edit accuracy vs our ~6–10% with full rewrites.
+17 actionable items ordered by importance × complexity (Q1→Q2→Q3→Q4).
+Quick wins (prompt-only, ship in week 1): AG-1 through AG-5.
+Biggest impact (implementation work): AG-6 patch_file tool, AG-9 OmO integration.
+
+---
+
 ## MP-15: AGENT STREAM SURVIVAL & MESSAGE ORDERING
 ============================================================
 Status: COMPLETE ✅ (2026-04-11)

@@ -1,0 +1,45 @@
+VERDICT: APPROVED_WITH_COMMENTS
+
+The diff largely satisfies the task objective: session retention is increased to 30 minutes, completed plans/build results are persisted to project DB fields and restored via new endpoints, manager reconnect no longer bVERDICT: APPROVED_WITH_COMMENTS
+locks input by setting `isManagerResponding` during async status checks, local 
+persisted plan restoration is improved (`saved.managerPlan` fallback), and build completion now triggers a file refresh path after stream completion.
+
+Critical findings:
+- **Task requirements are implemented end-to-end** across server + client for plan/build survival after navigation and pruned sessions.
+- **Manager reconnect behavior is materially improved**: the previous immediate `setManagerResponding(true)` during reconnect probing is removed; `setManagerResponding(true)` now only occurs when session is confirmed active.
+- **DB persistence paths are present**:
+  - Plan persisted on `plan_ready` (`updateProjectPlan`) and retrievable at `GET /api/projects/:id/plan`.
+  - Build result persisted on `all_complete` (`updateProjectBuildResult`) and retrievable at `GET /api/projects/:id/build-result`.
+- **Build return sync** is covered by post-`done` file reload logic.
+
+Comments (non-blocking but important):
+1. In `server/routes.ts` outer manager-chat error handler (`if (mgrSessionId && managerChatSessions.has(mgrSessionId))`), session is marked `done = true` but **`doneAt` is not set**. With the new pruning logic requiring `doneAt`, such errored sessions may never prune. Add `doneAt = Date.now()` there.
+2. The new `isMgrReconnectingRef` is set/reset but not otherwise used; if not needed, remove for clarity (or wire it into logic/UI).
+3. New DB columns were added in schema; ensure corresponding DB migration/deployment step exists in the main task flow.
+
+Security: none observed (no serious authz/injection/secrets regressions introduced by this diff).
+
+Next actions:
+1. Patch manager outer error path to set `doneAt` when marking session done.
+2. Verify migration rollout for `projects.last_plan` and `projects.last_build_result` in deployment.
+3. (Optional) clean up or utilize `isMgrReconnectingRef` to avoid dead state tracking.The diff largely satisfies the task objective: session retention is increased to 30 minutes, completed plans/build results are persisted to project DB fields and restored via new endpoints, manager reconnect no longer blocks input by setting `isManagerResponding` during async status checks, local persisted plan restoration is improved (`saved.managerPlan` fallback), and build completion now triggers a file refresh path after stream completion.
+
+Critical findings:
+- **Task requirements are implemented end-to-end** across server + client for plan/build survival after navigation and pruned sessions.
+- **Manager reconnect behavior is materially improved**: the previous immediate `setManagerResponding(true)` during reconnect probing is removed; `setManagerResponding(true)` now only occurs when session is confirmed active.
+- **DB persistence paths are present**:
+  - Plan persisted on `plan_ready` (`updateProjectPlan`) and retrievable at `GET /api/projects/:id/plan`.
+  - Build result persisted on `all_complete` (`updateProjectBuildResult`) and retrievable at `GET /api/projects/:id/build-result`.
+- **Build return sync** is covered by post-`done` file reload logic.
+
+Comments (non-blocking but important):
+1. In `server/routes.ts` outer manager-chat error handler (`if (mgrSessionId && managerChatSessions.has(mgrSessionId))`), session is marked `done = true` but **`doneAt` is not set**. With the new pruning logic requiring `doneAt`, such errored sessions may never prune. Add `doneAt = Date.now()` there.
+2. The new `isMgrReconnectingRef` is set/reset but not otherwise used; if not needed, remove for clarity (or wire it into logic/UI).
+3. New DB columns were added in schema; ensure corresponding DB migration/deployment step exists in the main task flow.
+
+Security: none observed (no serious authz/injection/secrets regressions introduced by this diff).
+
+Next actions:
+1. Patch manager outer error path to set `doneAt` when marking session done.
+2. Verify migration rollout for `projects.last_plan` and `projects.last_build_result` in deployment.
+3. (Optional) clean up or utilize `isMgrReconnectingRef` to avoid dead state tracking.

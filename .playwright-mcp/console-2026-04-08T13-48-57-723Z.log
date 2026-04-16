@@ -1,0 +1,6 @@
+[    5306ms] [WARNING] {scope: client.o11y} {} Sentry not initialized! Child span Bolt WebContainer boot started will not be reported. @ https://bolt.new/assets/index-BWjffR8K.js:514
+[    6519ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://bolt.new/api/secrets:0
+[    6752ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://bolt.new/api/secrets:0
+[   11466ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://pixel-config.reddit.com/pixels/a2_ghqj0ktog57o/config:0
+[   13851ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://alb.reddit.com/rp.gif?ts=1775656148769&id=a2_ghqj0ktog57o&event=PageVisit&m.value=&m.transactionId=&m.customEventName=&m.products=&m.conversionId=&uuid=e92cf546-2656-4c7a-8e58-dc3ac22351b1&aaid=&external_id=&idfa=&integration=gtm&partner=&partner_version=&opt_out=0&sh=1920&sw=1080&v=rdt_f3936046&dpm=&dpcc=&dprc=:0
+[   15424ms] [WARNING] The resource https://w-credentialless-staticblitz.com/fetch.worker.4c73681d.js was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://stackblitz.com/headless?coep=credentialless&version=1.6.4-internal.3:0

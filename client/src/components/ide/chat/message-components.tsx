@@ -13,7 +13,7 @@ import {
   History,
   RotateCcw,
 } from "lucide-react";
-import { CodestartLoader } from "./CodestartLoader";
+import { CascadeLoader } from "./CascadeLoader";
 import { cn } from "@/lib/utils";
 import type { CodeBlock } from "./chat-types";
 import { THEME_COLORS } from "./chat-types";
@@ -401,7 +401,7 @@ export function TypingIndicator({ text }: { text?: string }) {
       className="px-3 flex items-center gap-1.5"
       data-testid="typing-indicator"
     >
-      <CodestartLoader className="text-[#8888a8]" />
+      <CascadeLoader className="text-[#8888a8]" />
       <span className="text-xs text-[#8888a8]">
         {text || t(lang, "thinking")}
       </span>

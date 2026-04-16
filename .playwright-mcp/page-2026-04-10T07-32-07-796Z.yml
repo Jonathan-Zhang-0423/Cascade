@@ -1,0 +1,116 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "Superpowers Brainstorming" [level=1] [ref=e3]:
+      - link "Superpowers Brainstorming" [ref=e4] [cursor=pointer]:
+        - /url: https://github.com/obra/superpowers
+    - generic [ref=e5]: Connected
+  - generic [ref=e7]:
+    - 'heading "Design Section 5 of 5: Micro-animations & Final Polish" [level=2] [ref=e8]'
+    - paragraph [ref=e9]: The last layer — motion and timing that makes the whole thing feel alive. Does this direction feel right?
+    - generic [ref=e10]:
+      - heading "5A — Transition Tokens" [level=3] [ref=e11]
+      - paragraph [ref=e12]:
+        - text: New CSS variables added to
+        - code [ref=e13]: index.css
+        - text: . All existing components opt in by replacing hardcoded
+        - code [ref=e14]: transition-*
+        - text: classes.
+      - generic [ref=e15]:
+        - text: "--transition-fast: 100ms ease;/* hover states, icon swaps */"
+        - text: "--transition-base: 150ms ease;/* button presses, tab switches */"
+        - text: "--transition-slow: 250ms ease;/* panel reveals, card expansions */"
+        - text: "--transition-spring: 200ms cubic-bezier(0.34,1.56,0.64,1);/* step completion pop */"
+      - paragraph [ref=e16]:
+        - text: These replace ad-hoc
+        - code [ref=e17]: duration-200
+        - text: /
+        - code [ref=e18]: transition-all
+        - text: scattered across components. One source of truth for all timing.
+    - generic [ref=e19]:
+      - heading "5B — Step Completion Animation" [level=3] [ref=e20]
+      - paragraph [ref=e21]: "When a plan step transitions from running → done, it currently just swaps the icon. Proposed: a brief pop + color shift."
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]: State sequence
+          - generic [ref=e25]:
+            - generic [ref=e26]:
+              - generic [ref=e29]:
+                - generic [ref=e30]: Add auth state management
+                - generic [ref=e31]: Running...
+              - generic [ref=e32]: 1. running
+            - generic [ref=e33]:
+              - img [ref=e35]
+              - generic [ref=e37]:
+                - generic [ref=e38]: Add auth state management
+                - generic [ref=e39]: Done
+              - generic [ref=e40]: 2. pop (spring, 200ms)
+            - generic [ref=e41]:
+              - img [ref=e43]
+              - generic [ref=e45]: Add auth state management
+              - generic [ref=e46]: 3. settled (fade, 250ms)
+        - generic [ref=e47]:
+          - strong [ref=e48]: "Implementation:"
+          - code [ref=e49]: "@keyframes step-complete"
+          - generic [ref=e50]:
+            - text: "0% { transform: scale(1); }"
+            - text: "40% { transform: scale(1.25); box-shadow: 0 0 0 6px #16a34a20; }"
+            - text: "100% { transform: scale(1); box-shadow: none; }"
+          - paragraph [ref=e51]:
+            - text: "Duration: 200ms spring. Triggers once when"
+            - code [ref=e52]: status
+            - text: changes to
+            - code [ref=e53]: "\"done\""
+            - text: . No loop.
+    - generic [ref=e54]:
+      - heading "5C — File Write Flash" [level=3] [ref=e55]
+      - paragraph [ref=e56]: When a file is written in the action log, the row briefly highlights blue then fades. Draws the eye to what changed without being distracting.
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - img [ref=e59]
+          - generic [ref=e62]: LoginScreen.tsx
+          - generic [ref=e63]: created
+        - generic [ref=e64]:
+          - img [ref=e65]
+          - generic [ref=e68]: auth/store.ts
+          - generic [ref=e69]: writing...
+      - generic [ref=e70]:
+        - text: "@keyframes file-flash {"
+        - text: "0% { background: #0d1829; border-left-color: #3b82f6; }"
+        - text: "100% { background: #0d1f12; border-left-color: #22c55e; }"
+        - text: "}"
+        - text: "/* duration: 600ms ease-out, runs once on mount */"
+    - generic [ref=e71]:
+      - heading "5D — Build Phase Fade-In" [level=3] [ref=e72]
+      - paragraph [ref=e73]: Each new plan step and action log entry fades up from 4px below. Keeps the stream feeling live without jarring jumps.
+      - generic [ref=e74]:
+        - text: "@keyframes fade-up {"
+        - text: "from { opacity: 0; transform: translateY(4px); }"
+        - text: "to { opacity: 1; transform: none; }"
+        - text: "}"
+        - text: "/* Applied to: new ActionLogLiveRow, new StepItem, BuildCompletionCard */"
+        - text: "/* Duration: 150ms ease — fast enough not to feel slow */"
+      - paragraph [ref=e75]:
+        - text: Only runs on
+        - emphasis [ref=e76]: newly added
+        - text: rows, not on re-renders. Triggered by mount, not by data changes.
+    - generic [ref=e77]:
+      - heading "5E — Hover & Focus States" [level=3] [ref=e78]
+      - paragraph [ref=e79]: "Audit of interactive elements that currently have no hover feedback. Uniform treatment applied:"
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - generic [ref=e82]: Dock buttons
+          - generic [ref=e83]:
+            - img [ref=e85]
+            - img [ref=e88]
+          - generic [ref=e90]: Idle (25% opacity) → Hover (70% opacity, 100ms)
+        - generic [ref=e91]:
+          - generic [ref=e92]: Toolbar icon buttons
+          - generic [ref=e93]:
+            - img [ref=e95]
+            - img [ref=e98]
+          - generic [ref=e100]: "Idle → Hover: bg lightens, border brightens (100ms)"
+    - paragraph [ref=e101]:
+      - text: Only touches
+      - code [ref=e102]: index.css
+      - text: and isolated component class additions. No logic changes. Does this final section look right?
+  - generic [ref=e103]: Click an option above, then return to the terminal

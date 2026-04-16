@@ -1,0 +1,164 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "Superpowers Brainstorming" [level=1] [ref=e3]:
+      - link "Superpowers Brainstorming" [ref=e4] [cursor=pointer]:
+        - /url: https://github.com/obra/superpowers
+    - generic [ref=e5]: Connected
+  - generic [ref=e7]:
+    - 'heading "Design Section 3 of 5: Chat & Agent Interface" [level=2] [ref=e8]'
+    - paragraph [ref=e9]: The highest-traffic surface — plan cards, build messages, action log, completion cards. Does this direction feel right?
+    - generic [ref=e10]:
+      - heading "3A — Plan Card Redesign" [level=3] [ref=e11]
+      - paragraph [ref=e12]: "Current plan cards show step rows with small status circles. Proposed: cleaner step list with clearer hierarchy and status treatments."
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]: BEFORE
+          - generic [ref=e16]:
+            - generic [ref=e17]:
+              - generic [ref=e18]: PLAN
+              - generic [ref=e19]: Add user authentication flow
+            - generic [ref=e20]:
+              - generic [ref=e24]: Create login component
+              - generic [ref=e28]: Add auth state management
+              - generic [ref=e31]: Connect to backend API
+              - generic [ref=e34]: Write tests
+        - generic [ref=e35]:
+          - generic [ref=e36]: AFTER
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]:
+                - generic [ref=e40]: Plan · 1 of 4
+                - generic [ref=e41]: 25%
+              - generic [ref=e42]: Add user authentication flow
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - img [ref=e49]
+                - generic [ref=e52]: Create login component
+              - generic [ref=e58]:
+                - generic [ref=e59]: Add auth state management
+                - generic [ref=e60]: Writing store.ts...
+              - generic [ref=e65]: Connect to backend API
+              - generic [ref=e69]: Write tests
+      - list [ref=e70]:
+        - listitem [ref=e71]: Progress bar at top — gives an immediate sense of where you are
+        - listitem [ref=e72]: Active step gets a tinted row highlight (blue-tinted bg) + inline status text
+        - listitem [ref=e73]: Connector line between steps creates a visual track
+        - listitem [ref=e74]: Pending steps are truly muted — they don't compete for attention
+        - listitem [ref=e75]: Done steps fade out gracefully (muted color, no strikethrough)
+    - generic [ref=e76]:
+      - heading "3B — Chat Message Bubbles" [level=3] [ref=e77]
+      - paragraph [ref=e78]: "User messages and AI narration bubbles. Current: flat, low contrast, small type. Proposed: clear separation, readable type, structured assistant voice."
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - generic [ref=e81]: BEFORE
+          - generic [ref=e82]:
+            - generic [ref=e85]: Add a login screen to the app
+            - generic [ref=e86]:
+              - generic [ref=e88]: AI
+              - generic [ref=e89]: I'll create a new login screen with email/password fields and connect it to the auth state. Starting with the UI component...
+        - generic [ref=e90]:
+          - generic [ref=e91]: AFTER
+          - generic [ref=e92]:
+            - generic [ref=e95]: Add a login screen to the app
+            - generic [ref=e96]:
+              - img [ref=e98]
+              - generic [ref=e101]: I'll create a new login screen with email and password fields, then wire it to the auth state. Starting with the UI component...
+      - list [ref=e102]:
+        - listitem [ref=e103]: "User bubble: richer blue, asymmetric radius (tail on sending corner)"
+        - listitem [ref=e104]: "AI bubble: on card background, bordered, asymmetric tail on opposite corner"
+        - listitem [ref=e105]:
+          - text: Font size up
+          - strong [ref=e106]: 11px → 13px
+          - text: for all message text
+        - listitem [ref=e107]: "AI avatar: small star/spark SVG icon (no text, no emoji)"
+        - listitem [ref=e108]:
+          - text: Line height
+          - strong [ref=e109]: "1.65"
+          - text: for comfortable reading at 13px
+    - generic [ref=e110]:
+      - heading "3C — Action Log Redesign" [level=3] [ref=e111]
+      - paragraph [ref=e112]: "Currently noisy — every tool call gets equal visual weight. Goal: compress noise, surface what matters."
+      - generic [ref=e113]:
+        - generic [ref=e114]:
+          - generic [ref=e115]: BEFORE (live)
+          - generic [ref=e116]:
+            - generic [ref=e119]: Thinking...
+            - generic [ref=e122]: "Read: src/App.tsx"
+            - generic [ref=e125]: "Read: src/routes.ts"
+            - generic [ref=e128]: "Write: src/LoginScreen.tsx"
+            - generic [ref=e131]: "Write: src/auth/store.ts"
+        - generic [ref=e132]:
+          - generic [ref=e133]: AFTER (live)
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - img [ref=e136]
+              - generic [ref=e138]: Thinking
+            - generic [ref=e143]:
+              - img [ref=e144]
+              - generic [ref=e146]: Read 2 files
+              - generic [ref=e147]: App.tsx, routes.ts
+            - generic [ref=e148]:
+              - img [ref=e149]
+              - generic [ref=e152]: LoginScreen.tsx
+              - generic [ref=e153]: created
+            - generic [ref=e154]:
+              - img [ref=e155]
+              - generic [ref=e158]: auth/store.ts
+              - generic [ref=e159]: created
+      - list [ref=e160]:
+        - listitem [ref=e161]: Consecutive reads collapsed into a single "Read N files" row with filenames dimmed below
+        - listitem [ref=e162]:
+          - text: File writes get a
+          - strong [ref=e163]: green left border
+          - text: accent — immediately scannable
+        - listitem [ref=e164]: Thinking row gets a distinct indigo treatment, not the same dot as file ops
+        - listitem [ref=e165]: All SVG icons (no emoji), monochrome, sized 12px
+        - listitem [ref=e166]:
+          - text: Type up to
+          - strong [ref=e167]: 12px
+          - text: ", line rows have"
+          - strong [ref=e168]: 5px vertical padding
+          - text: (from 4px)
+    - generic [ref=e169]:
+      - heading "3D — Build Completion Card" [level=3] [ref=e170]
+      - paragraph [ref=e171]: "Current completion card is functional but dense. Proposed: cleaner hierarchy, muted celebration, clear next-step affordance."
+      - generic [ref=e172]:
+        - generic [ref=e173]:
+          - generic [ref=e174]: BEFORE
+          - generic [ref=e175]:
+            - generic [ref=e177]:
+              - generic [ref=e178]: ✓
+              - generic [ref=e179]: Build Complete
+            - generic [ref=e180]:
+              - generic [ref=e181]: FILES CHANGED
+              - generic [ref=e182]: 3 files created · 1 file modified
+        - generic [ref=e183]:
+          - generic [ref=e184]: AFTER
+          - generic [ref=e185]:
+            - generic [ref=e186]:
+              - generic [ref=e187]:
+                - img [ref=e189]
+                - generic [ref=e191]: Done
+              - generic [ref=e192]: Login screen created with email/password fields and connected to auth state.
+            - generic [ref=e193]:
+              - generic [ref=e194]: LoginScreen.tsx
+              - generic [ref=e195]: auth/store.ts
+              - generic [ref=e196]: App.tsx edited
+            - generic [ref=e198]: What should we build next?
+      - list [ref=e199]:
+        - listitem [ref=e200]: Summary sentence above file list — gives context, not just raw data
+        - listitem [ref=e201]:
+          - text: Files shown as small
+          - strong [ref=e202]: pill chips
+          - text: with monospace labels, created vs edited differentiated
+        - listitem [ref=e203]: Subtle "What should we build next?" prompt at the bottom — guides the flow
+        - listitem [ref=e204]: No emoji checkmarks — SVG checkmark inside filled circle
+    - paragraph [ref=e205]:
+      - text: Touches
+      - code [ref=e206]: plan-components.tsx
+      - text: ","
+      - code [ref=e207]: message-components.tsx
+      - text: ","
+      - code [ref=e208]: action-log.tsx
+      - text: . Does Section 3 look right?
+  - generic [ref=e209]: Click an option above, then return to the terminal

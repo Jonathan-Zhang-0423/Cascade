@@ -1,0 +1,25 @@
+[1G[0K⠙[1G[0K=== Plan-mode /api/manager-chat streaming (server-side) ===
+
+[1] Creating blank project (no files = plan mode)...
+    Project: test_1775218639150_lpjnc0
+
+[2] Streaming /api/manager-chat (AI latency to Beijing: 5-18s)...
+    First thinking:    5671ms
+    First raw_token:   7120ms
+    Last  token:       8622ms
+    Thinking tokens:   94
+    Narration tokens:  80
+    Total duration:    8623ms
+    manager_done:      true
+
+[3] Assertions:
+  PASS: First event (thinking or narration) within 30s — 5671ms
+  PASS: Progressive streaming (≥5 tokens including thinking) — 174 tokens (94 thinking + 80 narration)
+  PASS: Token span ≥500ms (not all-at-once) — 2951ms
+  PASS: Completes within 60s — 8623ms
+  PASS: manager_done event received — yes
+
+Cleanup: test project deleted.
+
+=== All checks passed ===
+[1G[0K⠙[1G[0K

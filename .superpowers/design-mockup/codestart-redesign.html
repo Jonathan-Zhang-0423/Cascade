@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeStart Redesign Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base:     #080809;
+    --bg-1:        #0d0d10;
+    --bg-2:        #111116;
+    --bg-3:        #16161c;
+    --bg-4:        #1c1c24;
+    --bg-5:        #23232d;
+    --border-1:    rgba(255,255,255,0.05);
+    --border-2:    rgba(255,255,255,0.08);
+    --border-3:    rgba(255,255,255,0.12);
+    --text-1:      #f0f0f8;
+    --text-2:      #9898b0;
+    --text-3:      #55556a;
+    --text-4:      #35354a;
+    --blue:        #4f7fff;
+    --blue-dim:    rgba(79,127,255,0.12);
+    --blue-glow:   rgba(79,127,255,0.25);
+    --green:       #3dd68c;
+    --green-dim:   rgba(61,214,140,0.10);
+    --indigo:      #818cf8;
+    --indigo-dim:  rgba(129,140,248,0.10);
+    --amber:       #f59e0b;
+    --red:         #f87171;
+    --radius-sm:   4px;
+    --radius-md:   7px;
+    --radius-lg:   10px;
+    --radius-xl:   14px;
+    --font-ui:     'Geist', system-ui, sans-serif;
+    --font-mono:   'Geist Mono', 'JetBrains Mono', monospace;
+  }
+
+  body {
+    background: #050507;
+    font-family: var(--font-ui);
+    color: var(--text-1);
+    min-height: 100vh;
+    padding: 48px 32px 80px;
+  }
+
+  /* ── HEADER ────────────────────────────────────────────── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .page-header h1 {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 14px;
+  }
+  .page-header h2 {
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--text-1);
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+  }
+  .page-header p {
+    font-size: 15px;
+    color: var(--text-2);
+    max-width: 560px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  /* ── SECTION HEADINGS ───────────────────────────────────── */
+  .section {
+    margin-bottom: 60px;
+  }
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .section-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--blue);
+    background: var(--blue-dim);
+    border: 1px solid rgba(79,127,255,0.2);
+    border-radius: var(--radius-sm);
+    padding: 2px 7px;
+  }
+  .section-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-1);
+    letter-spacing: -0.01em;
+  }
+  .section-desc {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-top: 4px;
+    line-height: 1.6;
+    max-width: 640px;
+  }
+
+  /* ── CARD ────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+  .before-after {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border-1);
+  }
+  .ba-pane {
+    background: var(--bg-1);
+    padding: 20px;
+  }
+  .ba-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .ba-label.before { color: var(--text-3); }
+  .ba-label.after  { color: var(--blue); }
+
+  /* ── 1. NAVBAR ────────────────────────────────────────────── */
+  .navbar-demo {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    gap: 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-2);
+  }
+  .navbar-old { background: #1c1c20; }
+  .navbar-new { background: #09090e; border-color: rgba(255,255,255,0.06); }
+
+  .nb-left, .nb-right { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .nb-right { justify-content: flex-end; }
+  .nb-center { display: flex; align-items: center; gap: 4px; }
+
+  .nb-back-old {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.06);
+    color: #888;
+    font-size: 14px;
+  }
+  .nb-back-new {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-2);
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  .nb-project-old { display: flex; align-items: center; gap: 6px; }
+  .nb-project-new { display: flex; align-items: center; gap: 7px; }
+  .nb-emoji-old {
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .nb-emoji-new {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-2);
+    font-size: 13px;
+  }
+  .nb-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+  .nb-fw   { font-size: 11px; color: var(--text-3); }
+  .nb-dot  { font-size: 11px; color: var(--text-4); }
+
+  .nb-run-old {
+    height: 28px; padding: 0 12px;
+    background: #2563eb;
+    border-radius: 5px;
+    font-size: 12px; font-weight: 500; color: #fff;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .nb-run-new {
+    height: 28px; padding: 0 12px;
+    background: linear-gradient(135deg, #3b7aff, #2563eb);
+    border-radius: 5px;
+    font-size: 12px; font-weight: 500; color: #fff;
+    display: flex; align-items: center; gap: 5px;
+    box-shadow: 0 1px 8px rgba(59,122,255,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+
+  .nb-eye-old, .nb-eye-new {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    font-size: 13px;
+  }
+  .nb-eye-old { background: rgba(255,255,255,0.06); color: #888; }
+  .nb-eye-new {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-2);
+    color: var(--text-2);
+  }
+
+  .nb-theme-old {
+    height: 26px; padding: 0 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 5px;
+    font-size: 11px; color: #888;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .nb-theme-new {
+    height: 26px; padding: 0 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-2);
+    border-radius: 5px;
+    font-size: 11px; color: var(--text-2);
+    display: flex; align-items: center; gap: 4px;
+  }
+
+  /* ── 2. TOOLS DOCK ────────────────────────────────────────── */
+  .dock-compare {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .dock-demo {
+    width: 44px;
+    padding: 8px 0;
+    border-radius: var(--radius-md);
+    display: flex; flex-direction: column;
+    align-items: center; gap: 4px;
+  }
+  .dock-old { background: #1c1c20; border: 1px solid rgba(255,255,255,0.07); }
+  .dock-new { background: #09090e; border: 1px solid var(--border-1); }
+
+  .dock-btn-old {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px;
+    color: #555;
+    font-size: 16px;
+    position: relative;
+  }
+  .dock-btn-old.active {
+    color: var(--blue);
+    background: rgba(59,130,246,0.1);
+  }
+  .dock-btn-old.active::before {
+    content: '';
+    position: absolute;
+    left: -1px; top: 50%;
+    transform: translateY(-50%);
+    width: 2px; height: 18px;
+    background: var(--blue);
+    border-radius: 1px;
+  }
+
+  .dock-btn-new {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px;
+    font-size: 16px;
+    opacity: 0.22;
+  }
+  .dock-btn-new.active {
+    background: #192038;
+    border: 1px solid rgba(79,127,255,0.18);
+    opacity: 1;
+    filter: drop-shadow(0 0 5px rgba(79,127,255,0.4));
+  }
+  .dock-divider { width: 20px; height: 1px; background: var(--border-1); margin: 4px 0; }
+
+  .dock-desc {
+    flex: 1;
+    padding-top: 8px;
+  }
+  .dock-desc h4 {
+    font-size: 12px; font-weight: 600; color: var(--text-1);
+    margin-bottom: 10px;
+  }
+  .dock-change {
+    font-size: 12px; color: var(--text-2);
+    margin-bottom: 6px;
+    padding-left: 12px;
+    border-left: 2px solid var(--border-3);
+    line-height: 1.5;
+  }
+  .dock-change span { color: var(--blue); }
+
+  /* ── 3. PLAN CARD ─────────────────────────────────────────── */
+  .plan-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    font-family: var(--font-ui);
+  }
+  .plan-header {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border-1);
+  }
+  .plan-progress-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .plan-label {
+    font-size: 11px; font-weight: 600;
+    color: var(--blue);
+    text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .plan-pct { font-size: 11px; color: var(--text-3); }
+  .plan-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--text-1); margin-bottom: 10px;
+    letter-spacing: -0.01em;
+  }
+  .plan-bar-track {
+    height: 2px; background: var(--border-2); border-radius: 2px;
+    overflow: hidden;
+  }
+  .plan-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), var(--indigo));
+    border-radius: 2px;
+  }
+
+  .plan-steps { padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 0; }
+  .step-row { display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; }
+  .step-row.running {
+    background: #121a2e;
+    border-radius: 7px;
+    margin: 0 -8px; padding: 6px 8px;
+  }
+  .step-left {
+    display: flex; flex-direction: column; align-items: center;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .step-dot-done {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #1a6640;
+    border: 1px solid #2a8c56;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-dot-done svg { width: 8px; height: 8px; }
+  .step-dot-running {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--blue);
+    background: #0d1422;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-dot-inner { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+  .step-dot-pending {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1px solid var(--border-2);
+    background: transparent; flex-shrink: 0;
+  }
+  .step-connector { width: 1px; height: 18px; background: var(--border-2); margin-top: 3px; }
+  .step-text { font-size: 12px; line-height: 1.5; padding-top: 1px; }
+  .step-text.done    { color: var(--text-3); }
+  .step-text.running { color: var(--text-1); font-weight: 500; }
+  .step-text.pending { color: var(--text-4); }
+  .step-sub { font-size: 11px; color: var(--blue); margin-top: 2px; }
+
+  /* ── 4. ACTION LOG ────────────────────────────────────────── */
+  .alog {
+    background: var(--bg-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    padding: 12px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .alog-thinking {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: rgba(129,140,248,0.06);
+    border: 1px solid rgba(129,140,248,0.12);
+    border-radius: var(--radius-md);
+  }
+  .alog-thinking-dots {
+    display: flex; gap: 3px; margin-left: auto;
+  }
+  .alog-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--indigo); }
+  .alog-read {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+  }
+  .alog-write {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px;
+    background: rgba(61,214,140,0.04);
+    border-left: 2px solid var(--green);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .alog-icon { width: 12px; height: 12px; flex-shrink: 0; }
+  .alog-text-write { font-size: 12px; color: #5fe8a0; font-weight: 500; flex: 1; font-family: var(--font-mono); }
+  .alog-text-read  { font-size: 12px; color: var(--text-3); flex: 1; }
+  .alog-text-think { font-size: 12px; color: var(--indigo); font-weight: 500; }
+  .alog-status { font-size: 11px; color: #2a8c56; margin-left: auto; }
+  .alog-files  { font-size: 11px; color: var(--text-4); margin-left: auto; }
+
+  /* ── 5. BUILD COMPLETE ────────────────────────────────────── */
+  .build-complete {
+    background: #0a150e;
+    border: 1px solid rgba(61,214,140,0.1);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .bc-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(61,214,140,0.08);
+  }
+  .bc-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bc-check {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #1a6640;
+    border: 1px solid rgba(61,214,140,0.25);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .bc-title { font-size: 14px; font-weight: 600; color: #5fe8a0; letter-spacing: -0.01em; }
+  .bc-summary { font-size: 13px; color: #8899b4; line-height: 1.6; }
+  .bc-files { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .bc-pill {
+    background: rgba(61,214,140,0.06);
+    border: 1px solid rgba(61,214,140,0.12);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    font-size: 11px; font-family: var(--font-mono);
+    color: #4ade80;
+  }
+  .bc-pill.edited { color: var(--text-3); }
+  .bc-footer {
+    padding: 10px 16px;
+    border-top: 1px solid rgba(61,214,140,0.06);
+    font-size: 12px; color: var(--text-3);
+  }
+
+  /* ── 6. PREVIEW TOOLBAR ───────────────────────────────────── */
+  .preview-toolbar {
+    height: 38px;
+    display: flex; align-items: center;
+    padding: 0 10px;
+    gap: 6px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-2);
+    background: var(--bg-2);
+  }
+  .pt-badge {
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    font-size: 11px; font-weight: 500;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.2);
+    color: #56c8f5;
+  }
+  .pt-divider { width: 1px; height: 14px; background: var(--border-2); }
+  .pt-platform {
+    display: flex; align-items: center;
+    background: var(--bg-3);
+    border: 1px solid var(--border-2);
+    border-radius: 6px; padding: 2px;
+    gap: 1px;
+  }
+  .pt-platform-btn {
+    padding: 2px 9px; border-radius: 4px;
+    font-size: 11px; font-weight: 500;
+    cursor: pointer;
+  }
+  .pt-platform-btn.active { background: rgba(255,255,255,0.1); color: var(--text-1); }
+  .pt-platform-btn.inactive { color: var(--text-3); }
+  .pt-spacer { flex: 1; }
+  .pt-device {
+    display: flex; align-items: center;
+    background: var(--bg-3); border: 1px solid var(--border-2);
+    border-radius: 6px; padding: 3px 9px;
+    font-size: 11px; color: var(--text-2);
+    gap: 4px;
+  }
+  .pt-caret { color: var(--text-4); font-size: 9px; }
+  .pt-icon-btn {
+    width: 28px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-3); border: 1px solid var(--border-2);
+    border-radius: 6px; color: var(--text-3);
+    font-size: 13px; flex-shrink: 0;
+  }
+  .pt-icon-btn.active { background: rgba(79,127,255,0.1); border-color: rgba(79,127,255,0.2); color: var(--blue); }
+
+  /* ── 7. DEVICE FRAME ──────────────────────────────────────── */
+  .device-compare { display: flex; gap: 40px; align-items: flex-start; padding: 20px; }
+  .device-frame-old {
+    width: 90px;
+    background: #1a1a1a;
+    border: 2px solid #333;
+    border-radius: 24px;
+    padding: 10px 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .device-frame-new {
+    width: 90px;
+    background: linear-gradient(160deg, #2a2a30, #0d0d10);
+    border: 1.5px solid #383840;
+    border-radius: 24px;
+    padding: 8px 6px 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .device-island {
+    display: flex; justify-content: center; margin-bottom: 4px;
+  }
+  .island { width: 24px; height: 8px; background: #000; border-radius: 6px; }
+  .device-statusbar {
+    background: #000;
+    padding: 2px 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .device-screen {
+    background: #0d0d12;
+    height: 110px; border-radius: 0 0 4px 4px;
+  }
+  .device-screen-old { background: #111; height: 110px; border-radius: 0 0 4px 4px; }
+  .device-homebar { display: flex; justify-content: center; padding: 6px 0 2px; }
+  .home-bar-old { width: 36px; height: 3px; background: #444; border-radius: 2px; }
+  .home-bar-new { width: 36px; height: 3px; background: rgba(255,255,255,0.14); border-radius: 2px; }
+  .side-btn-old {
+    position: absolute; right: -3px; top: 30%; width: 3px; height: 22px;
+    background: #2a2a2a; border-radius: 0 2px 2px 0;
+  }
+  .side-btn-new {
+    position: absolute; right: -2px; top: 30%; width: 2px; height: 22px;
+    background: #38383e; border-radius: 0 2px 2px 0;
+  }
+  .dt {
+    font-size: 7px; color: #fff; font-weight: 600;
+    font-family: var(--font-ui);
+  }
+  .battery {
+    width: 6px; height: 4px;
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 1px;
+  }
+
+  .device-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .device-notes {
+    flex: 1; padding-top: 8px;
+  }
+  .device-note { font-size: 12px; color: var(--text-2); margin-bottom: 8px; padding-left: 12px; border-left: 2px solid var(--border-3); line-height: 1.5; }
+  .device-note span { color: var(--green); }
+
+  /* ── 8. CHAT INPUT ────────────────────────────────────────── */
+  .chat-input-area {
+    background: var(--bg-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    padding: 12px;
+  }
+  .chat-input-old {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    font-size: 13px; color: var(--text-3);
+    font-family: var(--font-ui);
+  }
+  .chat-input-new {
+    background: transparent;
+    padding: 8px 0 10px;
+    font-size: 14px; color: var(--text-2);
+    font-family: var(--font-ui);
+    border-bottom: 1px solid var(--border-1);
+    margin-bottom: 10px;
+  }
+  .chat-toolbar { display: flex; align-items: center; gap: 6px; }
+  .chat-tool-btn {
+    height: 26px; padding: 0 8px;
+    background: var(--bg-3); border: 1px solid var(--border-2);
+    border-radius: var(--radius-sm);
+    font-size: 11px; color: var(--text-3);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .chat-send-old {
+    margin-left: auto; height: 28px; padding: 0 12px;
+    background: var(--blue); border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 500; color: #fff;
+  }
+  .chat-send-new {
+    margin-left: auto; height: 28px; padding: 0 12px;
+    background: linear-gradient(135deg, #4f7fff, #2a5ce0);
+    border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 500; color: #fff;
+    box-shadow: 0 1px 6px rgba(79,127,255,0.3), inset 0 1px 0 rgba(255,255,255,0.12);
+    border: none;
+  }
+
+  /* ── COLOR TOKENS ─────────────────────────────────────────── */
+  .tokens-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .token-swatch {
+    border-radius: var(--radius-md); overflow: hidden;
+    border: 1px solid var(--border-1);
+  }
+  .swatch-color { height: 48px; }
+  .swatch-info { padding: 8px 10px; background: var(--bg-2); }
+  .swatch-name { font-size: 11px; font-weight: 500; color: var(--text-2); margin-bottom: 2px; }
+  .swatch-val  { font-size: 10px; color: var(--text-3); font-family: var(--font-mono); }
+
+  /* ── TYPOGRAPHY ───────────────────────────────────────────── */
+  .type-demo {
+    background: var(--bg-2); border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg); padding: 24px;
+  }
+  .type-row { display: flex; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border-1); }
+  .type-row:last-child { border-bottom: none; }
+  .type-meta { font-size: 10px; color: var(--text-4); font-family: var(--font-mono); width: 140px; flex-shrink: 0; }
+
+  /* ── FULL IDE MOCKUP ──────────────────────────────────────── */
+  .ide-mockup {
+    background: var(--bg-base);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    width: 100%;
+    height: 520px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7), 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .ide-nav {
+    height: 44px; background: #09090e;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; flex-shrink: 0;
+  }
+  .ide-body { flex: 1; display: flex; min-height: 0; }
+  .ide-dock {
+    width: 44px; background: #08080c;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: space-between;
+    padding: 10px 0; flex-shrink: 0;
+  }
+  .ide-dock-top, .ide-dock-bot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .ide-dock-btn {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px; opacity: 0.2; font-size: 14px;
+  }
+  .ide-dock-btn.on {
+    background: #182036;
+    border: 1px solid rgba(79,127,255,0.15);
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(79,127,255,0.35));
+  }
+
+  .ide-workspace { flex: 1; display: flex; gap: 6px; padding: 6px; min-width: 0; }
+  .ide-chat-panel {
+    width: 220px; flex-shrink: 0;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-lg);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ide-chat-header {
+    height: 36px; padding: 0 12px;
+    display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--border-1);
+    font-size: 12px; font-weight: 500; color: var(--text-2);
+    flex-shrink: 0;
+  }
+  .ide-chat-body { flex: 1; padding: 10px; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+  .ide-chat-input-wrap {
+    flex-shrink: 0;
+    padding: 8px;
+    border-top: 1px solid var(--border-1);
+  }
+  .ide-chat-input {
+    width: 100%;
+    background: var(--bg-3);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    padding: 6px 8px;
+    font-size: 12px; color: var(--text-3);
+    font-family: var(--font-ui);
+  }
+
+  .ide-right { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ide-editor-preview { flex: 1; display: flex; gap: 6px; min-height: 0; }
+  .ide-editor {
+    flex: 1;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .ide-editor-tabs {
+    height: 34px; background: var(--bg-2);
+    border-bottom: 1px solid var(--border-1);
+    display: flex; align-items: flex-end; padding: 0 8px; gap: 2px;
+    flex-shrink: 0;
+  }
+  .ide-tab {
+    height: 28px; padding: 0 10px;
+    display: flex; align-items: center;
+    font-size: 11px; font-family: var(--font-mono);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border-top: 1px solid transparent;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    gap: 5px;
+  }
+  .ide-tab.active {
+    background: var(--bg-1);
+    border-color: var(--border-2);
+    color: var(--text-1);
+  }
+  .ide-tab.inactive { color: var(--text-3); }
+  .ide-tab-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); opacity: 0.7; }
+
+  .ide-code-body { flex: 1; padding: 10px 0; overflow: hidden; }
+  .ide-line { display: flex; font-size: 11px; font-family: var(--font-mono); line-height: 1.7; }
+  .ide-ln { width: 32px; text-align: right; padding-right: 12px; color: var(--text-4); flex-shrink: 0; }
+  .ide-code { color: var(--text-2); }
+  .kw  { color: #7aa2f7; }
+  .fn  { color: #82aaff; }
+  .str { color: #9ece6a; }
+  .cm  { color: var(--text-4); }
+  .type-c { color: #ff9e64; }
+
+  .ide-preview {
+    width: 180px; flex-shrink: 0;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .ide-preview-toolbar {
+    height: 36px; padding: 0 8px;
+    display: flex; align-items: center; gap: 5px;
+    border-bottom: 1px solid var(--border-1);
+    flex-shrink: 0;
+  }
+  .pt-sm-badge {
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 10px; font-weight: 500;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.18);
+    color: #56c8f5;
+  }
+  .pt-sm-pill {
+    display: flex; align-items: center;
+    background: var(--bg-3); border: 1px solid var(--border-2);
+    border-radius: 5px; padding: 1px;
+    gap: 1px; margin-left: auto;
+  }
+  .pt-sm-btn { padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+  .pt-sm-btn.on { background: rgba(255,255,255,0.08); color: var(--text-1); }
+  .pt-sm-btn.off { color: var(--text-4); }
+  .pt-sm-icon {
+    width: 20px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-3); border: 1px solid var(--border-2);
+    border-radius: 4px; color: var(--text-3); font-size: 10px;
+  }
+  .pt-sm-icon.active-term { background: rgba(79,127,255,0.1); border-color: rgba(79,127,255,0.2); color: var(--blue); }
+
+  .ide-preview-body { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .mini-phone {
+    width: 60px;
+    background: linear-gradient(160deg, #242428, #0e0e12);
+    border: 1.5px solid #35353a;
+    border-radius: 16px; padding: 5px 4px;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+  }
+  .mini-island { display: flex; justify-content: center; margin-bottom: 3px; }
+  .mini-island-pill { width: 16px; height: 5px; background: #000; border-radius: 4px; }
+  .mini-statusbar { background: #000; padding: 1px 5px; display: flex; justify-content: space-between; }
+  .mini-st { font-size: 5px; color: #fff; font-weight: 700; font-family: var(--font-ui); }
+  .mini-screen { background: #1a1a22; height: 66px; border-radius: 0 0 3px 3px; overflow: hidden; position: relative; }
+  .mini-app-header { background: #2a2a35; padding: 5px 6px; font-size: 7px; color: #fff; font-weight: 600; font-family: var(--font-ui); }
+  .mini-list-item { padding: 4px 6px; display: flex; align-items: center; gap: 4px; }
+  .mini-avatar { width: 8px; height: 8px; border-radius: 50%; }
+  .mini-text { width: 28px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); }
+  .mini-text-sm { width: 18px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.07); margin-top: 2px; }
+  .mini-homebar { display: flex; justify-content: center; padding: 4px 0 2px; }
+  .mini-hb { width: 22px; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; }
+  .mini-side { position: absolute; right: -1.5px; top: 28%; width: 1.5px; height: 16px; background: #35353a; border-radius: 0 1px 1px 0; }
+
+  .ide-console {
+    height: 80px; flex-shrink: 0;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .ide-console-header {
+    height: 30px; padding: 0 12px;
+    display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--border-1);
+    font-size: 11px; color: var(--text-3);
+    flex-shrink: 0;
+  }
+  .ide-console-body { flex: 1; padding: 6px 12px; overflow: hidden; }
+  .console-line { font-size: 10px; font-family: var(--font-mono); line-height: 1.7; color: var(--text-3); }
+  .console-line.ok { color: #3dd68c; }
+  .console-line.info { color: var(--blue); }
+
+  /* message bubbles */
+  .msg-user {
+    align-self: flex-end;
+    max-width: 85%;
+    background: #1a2540;
+    border: 1px solid rgba(79,127,255,0.12);
+    border-radius: var(--radius-md) var(--radius-md) 2px var(--radius-md);
+    padding: 6px 9px;
+    font-size: 11px; color: var(--text-1); line-height: 1.5;
+  }
+  .msg-ai {
+    font-size: 11px; color: var(--text-2); line-height: 1.65; max-width: 95%;
+  }
+
+  /* mini plan card */
+  .mini-plan {
+    background: var(--bg-3);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    font-size: 10px;
+  }
+  .mini-plan-header {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-1);
+  }
+  .mini-plan-prow { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .mini-plan-label { font-size: 9px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; }
+  .mini-plan-pct { font-size: 9px; color: var(--text-4); }
+  .mini-plan-title { font-size: 10px; font-weight: 500; color: var(--text-2); margin-bottom: 5px; }
+  .mini-bar-track { height: 1.5px; background: var(--border-2); border-radius: 2px; overflow: hidden; }
+  .mini-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--indigo)); width: 40%; }
+  .mini-plan-steps { padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .mini-step { display: flex; align-items: flex-start; gap: 5px; }
+  .mini-dot-done { width: 8px; height: 8px; border-radius: 50%; background: #1a6640; flex-shrink: 0; margin-top: 1px; }
+  .mini-dot-run  { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--blue); flex-shrink: 0; margin-top: 1px; }
+  .mini-dot-pend { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border-2); flex-shrink: 0; margin-top: 1px; }
+  .mini-step-text { font-size: 9px; line-height: 1.4; }
+  .mini-step-text.done    { color: var(--text-4); }
+  .mini-step-text.running { color: var(--text-1); font-weight: 500; }
+  .mini-step-text.pending { color: var(--text-4); }
+
+  /* ── CHANGES SUMMARY ────────────────────────────────────── */
+  .change-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .change-card {
+    background: var(--bg-2); border: 1px solid var(--border-1);
+    border-radius: var(--radius-lg); padding: 16px;
+  }
+  .change-card h4 { font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 8px; }
+  .change-item {
+    font-size: 11px; color: var(--text-2); margin-bottom: 5px;
+    padding-left: 10px; border-left: 2px solid var(--border-3);
+    line-height: 1.5;
+  }
+  .change-item .tag {
+    display: inline-block; padding: 1px 4px;
+    border-radius: 3px; font-size: 10px; font-family: var(--font-mono);
+    background: var(--blue-dim); color: var(--blue);
+    margin-right: 4px;
+  }
+
+  hr.section-hr { border: none; border-top: 1px solid var(--border-1); margin: 40px 0; }
+
+  svg { display: block; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>CodeStart UI/UX Redesign Proposal</h1>
+  <h2>Concrete Design Plan</h2>
+  <p>A systematic visual upgrade — every surface, every component. Dark premium aesthetic inspired by Linear, Vercel, and Raycast.</p>
+</div>
+
+<!-- ── FULL IDE MOCKUP ──────────────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">00</span>
+    <div>
+      <div class="section-title">Full IDE — Target State</div>
+      <div class="section-desc">How the complete IDE will look with all changes applied. This is the north star.</div>
+    </div>
+  </div>
+
+  <div class="ide-mockup">
+    <!-- Navbar -->
+    <div class="ide-nav">
+      <div class="nb-left">
+        <div class="nb-back-new">‹</div>
+        <div class="nb-emoji-new">🚀</div>
+        <span class="nb-name" style="font-size:13px;">TaskMaster</span>
+        <span class="nb-dot">·</span>
+        <span class="nb-fw">React Native</span>
+      </div>
+      <div class="nb-right">
+        <div class="nb-eye-new">👁</div>
+        <div class="nb-theme-new">Dark <span style="color:var(--text-4);margin-left:3px;">▾</span></div>
+        <div class="nb-run-new">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 3-6 3V2z" fill="white"/></svg>
+          Run
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="ide-body">
+      <!-- Dock -->
+      <div class="ide-dock">
+        <div class="ide-dock-top">
+          <div class="ide-dock-btn">📁</div>
+          <div class="ide-dock-btn on">✦</div>
+          <div class="ide-dock-btn">⏱</div>
+        </div>
+        <div class="ide-dock-bot">
+          <div class="ide-dock-btn" style="position:relative;">
+            📡
+            <span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#22c55e;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workspace -->
+      <div class="ide-workspace">
+        <!-- Chat Panel -->
+        <div class="ide-chat-panel">
+          <div class="ide-chat-header">
+            <span style="color:var(--blue);">✦</span>
+            Chat
+          </div>
+          <div class="ide-chat-body">
+            <div class="msg-user">Add a login screen</div>
+            <div class="msg-ai">I'll create a login screen with email and password fields, then connect it to the auth store.</div>
+            <!-- Mini plan -->
+            <div class="mini-plan">
+              <div class="mini-plan-header">
+                <div class="mini-plan-prow">
+                  <span class="mini-plan-label">Plan · 2 of 4</span>
+                  <span class="mini-plan-pct">50%</span>
+                </div>
+                <div class="mini-plan-title">Add login screen</div>
+                <div class="mini-bar-track"><div class="mini-bar-fill"></div></div>
+              </div>
+              <div class="mini-plan-steps">
+                <div class="mini-step"><div class="mini-dot-done"></div><span class="mini-step-text done">Create component</span></div>
+                <div class="mini-step" style="background:rgba(79,127,255,0.05);border-radius:4px;padding:2px 3px;margin:0 -3px;"><div class="mini-dot-run"></div><span class="mini-step-text running">Write auth store</span></div>
+                <div class="mini-step"><div class="mini-dot-pend"></div><span class="mini-step-text pending">Connect to API</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="ide-chat-input-wrap">
+            <div class="ide-chat-input">Ask anything...</div>
+          </div>
+        </div>
+
+        <div class="ide-right">
+          <div class="ide-editor-preview">
+            <!-- Editor -->
+            <div class="ide-editor">
+              <div class="ide-editor-tabs">
+                <div class="ide-tab active">
+                  <span>LoginScreen.tsx</span>
+                  <div class="ide-tab-dot"></div>
+                </div>
+                <div class="ide-tab inactive">auth/store.ts</div>
+              </div>
+              <div class="ide-code-body">
+                <div class="ide-line"><span class="ide-ln">1</span><span class="ide-code"><span class="kw">import</span> <span class="type-c">React</span> <span class="kw">from</span> <span class="str">'react'</span></span></div>
+                <div class="ide-line"><span class="ide-ln">2</span><span class="ide-code"><span class="kw">import</span> { <span class="type-c">View</span>, <span class="type-c">Text</span>, <span class="type-c">TextInput</span> } <span class="kw">from</span> <span class="str">'react-native'</span></span></div>
+                <div class="ide-line"><span class="ide-ln">3</span><span class="ide-code"></span></div>
+                <div class="ide-line"><span class="ide-ln">4</span><span class="ide-code"><span class="kw">export</span> <span class="kw">default</span> <span class="kw">function</span> <span class="fn">LoginScreen</span>() {</span></div>
+                <div class="ide-line"><span class="ide-ln">5</span><span class="ide-code">  <span class="kw">return</span> (</span></div>
+                <div class="ide-line"><span class="ide-ln">6</span><span class="ide-code">    &lt;<span class="type-c">View</span> style={styles.container}&gt;</span></div>
+                <div class="ide-line"><span class="ide-ln">7</span><span class="ide-code">      &lt;<span class="type-c">Text</span> style={styles.title}&gt;<span class="str">Sign In</span>&lt;/<span class="type-c">Text</span>&gt;</span></div>
+                <div class="ide-line"><span class="ide-ln">8</span><span class="ide-code">      &lt;<span class="type-c">TextInput</span></span></div>
+                <div class="ide-line"><span class="ide-ln">9</span><span class="ide-code">        placeholder=<span class="str">"Email"</span></span></div>
+                <div class="ide-line"><span class="ide-ln">10</span><span class="ide-code">        style={styles.input} /&gt;</span></div>
+                <div class="ide-line"><span class="ide-ln">11</span><span class="ide-code cm">      {/* password field... */}</span></div>
+              </div>
+            </div>
+
+            <!-- Preview -->
+            <div class="ide-preview">
+              <div class="ide-preview-toolbar">
+                <span class="pt-sm-badge">RN</span>
+                <div class="pt-sm-pill">
+                  <span class="pt-sm-btn on">iOS</span>
+                  <span class="pt-sm-btn off">Android</span>
+                </div>
+                <div class="pt-sm-icon">⟳</div>
+                <div class="pt-sm-icon active-term">⌨</div>
+              </div>
+              <div class="ide-preview-body">
+                <div class="mini-phone">
+                  <div class="mini-island"><div class="mini-island-pill"></div></div>
+                  <div class="mini-statusbar">
+                    <span class="mini-st">9:41</span>
+                    <div class="battery" style="width:7px;height:4px;border:1px solid rgba(255,255,255,0.7);border-radius:1px;"></div>
+                  </div>
+                  <div class="mini-screen">
+                    <div class="mini-app-header">Sign In</div>
+                    <div style="padding:4px 6px;display:flex;flex-direction:column;gap:4px;">
+                      <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:3px;border:1px solid rgba(255,255,255,0.1);"></div>
+                      <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:3px;border:1px solid rgba(255,255,255,0.1);"></div>
+                      <div style="height:10px;background:#2a5ce0;border-radius:3px;display:flex;align-items:center;justify-content:center;">
+                        <div style="width:16px;height:3px;background:rgba(255,255,255,0.9);border-radius:2px;"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mini-homebar"><div class="mini-hb"></div></div>
+                  <div class="mini-side"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Console -->
+          <div class="ide-console">
+            <div class="ide-console-header">
+              ⌨ Terminal
+              <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:#22c55e;opacity:0.8;"></div>
+            </div>
+            <div class="ide-console-body">
+              <div class="console-line info">$ npm start</div>
+              <div class="console-line ok">✓ Metro bundler ready on port 8081</div>
+              <div class="console-line">› Press a to open Android, i for iOS</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="section-hr">
+
+<!-- ── SECTION 1: NAVBAR ──────────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">01</span>
+    <div>
+      <div class="section-title">Navbar</div>
+      <div class="section-desc">Darker background, tighter back button, project icon badge, framework label, gradient Run button with glow.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="before-after">
+      <div class="ba-pane">
+        <div class="ba-label before">Before</div>
+        <div class="navbar-demo navbar-old">
+          <div class="nb-left">
+            <div class="nb-back-old">‹</div>
+            <div class="nb-project-old">
+              <div class="nb-emoji-old">🚀</div>
+              <span class="nb-name" style="font-size:13px;">TaskMaster</span>
+            </div>
+          </div>
+          <div class="nb-right">
+            <div class="nb-eye-old">👁</div>
+            <div class="nb-theme-old">Dracula <span style="color:#555;margin-left:3px;">▾</span></div>
+            <div class="nb-run-old">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 3-6 3V2z" fill="white"/></svg>
+              Run
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ba-pane">
+        <div class="ba-label after">After</div>
+        <div class="navbar-demo navbar-new">
+          <div class="nb-left">
+            <div class="nb-back-new">‹</div>
+            <div class="nb-project-new">
+              <div class="nb-emoji-new">🚀</div>
+              <span class="nb-name" style="font-size:13px;">TaskMaster</span>
+              <span class="nb-dot">·</span>
+              <span class="nb-fw">React Native</span>
+            </div>
+          </div>
+          <div class="nb-right">
+            <div class="nb-eye-new">👁</div>
+            <div class="nb-theme-new">Dracula <span style="color:var(--text-4);margin-left:3px;">▾</span></div>
+            <div class="nb-run-new">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 3-6 3V2z" fill="white"/></svg>
+              Run
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 2: TOOLS DOCK ──────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">02</span>
+    <div>
+      <div class="section-title">Tools Dock</div>
+      <div class="section-desc">Deeper background, blue-glow active state replacing the left-border strip, opacity-based inactive treatment.</div>
+    </div>
+  </div>
+  <div class="card" style="padding: 24px;">
+    <div class="dock-compare">
+      <div>
+        <div class="ba-label before" style="margin-bottom:10px;">Before</div>
+        <div class="dock-demo dock-old">
+          <div class="dock-btn-old active">📁</div>
+          <div class="dock-btn-old">✦</div>
+          <div class="dock-btn-old">⏱</div>
+          <div class="dock-divider"></div>
+          <div class="dock-btn-old">📡</div>
+        </div>
+      </div>
+      <div>
+        <div class="ba-label after" style="margin-bottom:10px;">After</div>
+        <div class="dock-demo dock-new">
+          <div class="dock-btn-new active">📁</div>
+          <div class="dock-btn-new">✦</div>
+          <div class="dock-btn-new">⏱</div>
+          <div class="dock-divider" style="background:var(--border-1);"></div>
+          <div class="dock-btn-new">📡</div>
+        </div>
+      </div>
+      <div class="dock-desc">
+        <h4>Changes</h4>
+        <div class="dock-change"><span>bg-[#0f0f12]</span> → <span>bg-[#08080c]</span> — deeper black creates more contrast against workspace</div>
+        <div class="dock-change">Active: left-border strip → <span>bg-[#182036] + ring + drop-shadow(blue glow)</span></div>
+        <div class="dock-change">Inactive: <span>opacity-[0.22]</span>, hover: <span>opacity-70</span></div>
+        <div class="dock-change">No border-right — background contrast alone provides separation</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 3: PLAN CARD ───────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">03</span>
+    <div>
+      <div class="section-title">Plan Card</div>
+      <div class="section-desc">Progress bar header, connector lines, 16px status dots, running row highlight, spring animation on completion.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="before-after">
+      <div class="ba-pane">
+        <div class="ba-label before">Before</div>
+        <div style="background:#1c1c20;border:1px solid rgba(255,255,255,0.07);border-radius:8px;overflow:hidden;">
+          <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div style="font-size:10px;color:#555;margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;">PLAN</div>
+            <div style="font-size:13px;font-weight:600;color:#e2e8f0;">Add login screen</div>
+          </div>
+          <div style="padding:8px 14px;display:flex;flex-direction:column;gap:7px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:14px;height:14px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>
+              <span style="font-size:12px;color:#555;text-decoration:line-through;">Create login component</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:14px;height:14px;border-radius:50%;border:2px solid #3b82f6;flex-shrink:0;"></div>
+              <span style="font-size:12px;color:#e2e8f0;">Write auth store</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:14px;height:14px;border-radius:50%;border:2px solid #333;flex-shrink:0;"></div>
+              <span style="font-size:12px;color:#444;">Connect to API</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ba-pane">
+        <div class="ba-label after">After</div>
+        <div class="plan-card">
+          <div class="plan-header">
+            <div class="plan-progress-row">
+              <span class="plan-label">Plan · 1 of 3</span>
+              <span class="plan-pct">33%</span>
+            </div>
+            <div class="plan-title">Add login screen</div>
+            <div class="plan-bar-track">
+              <div class="plan-bar-fill" style="width:33%;"></div>
+            </div>
+          </div>
+          <div class="plan-steps">
+            <div class="step-row">
+              <div class="step-left">
+                <div class="step-dot-done">
+                  <svg viewBox="0 0 8 8" fill="none"><polyline points="1.5,4 3,5.5 6.5,2" stroke="#5fe8a0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="step-connector"></div>
+              </div>
+              <span class="step-text done">Create login component</span>
+            </div>
+            <div class="step-row running">
+              <div class="step-left">
+                <div class="step-dot-running"><div class="step-dot-inner"></div></div>
+                <div class="step-connector" style="background:rgba(79,127,255,0.1);"></div>
+              </div>
+              <div>
+                <span class="step-text running">Write auth store</span>
+                <div class="step-sub">Writing store.ts...</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="step-left">
+                <div class="step-dot-pending"></div>
+              </div>
+              <span class="step-text pending">Connect to API</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 4: ACTION LOG ──────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">04</span>
+    <div>
+      <div class="section-title">Action Log</div>
+      <div class="section-desc">Green left-border on file writes, indigo thinking row, collapsed reads, fade-up entrance + file-flash animation.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="before-after">
+      <div class="ba-pane">
+        <div class="ba-label before">Before</div>
+        <div style="background:#1c1c20;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:5px;">
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#1a1a1e;border-radius:4px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#6366f1;"></div>
+            <span style="font-size:11px;color:#666;">Thinking...</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#3b82f6;"></div>
+            <span style="font-size:11px;color:#888;">Read: App.tsx</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#3b82f6;"></div>
+            <span style="font-size:11px;color:#888;">Read: routes.ts</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#22c55e;"></div>
+            <span style="font-size:11px;color:#888;">Write: LoginScreen.tsx</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#22c55e;"></div>
+            <span style="font-size:11px;color:#888;">Write: auth/store.ts</span>
+          </div>
+        </div>
+      </div>
+      <div class="ba-pane">
+        <div class="ba-label after">After</div>
+        <div class="alog">
+          <div class="alog-thinking">
+            <svg class="alog-icon" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="#818cf8" stroke-width="1.2"/><path d="M4 5c0-1.1.9-2 2-2s2 .9 2 2c0 .8-.4 1.4-1 1.8V6" stroke="#818cf8" stroke-width="1" stroke-linecap="round"/></svg>
+            <span class="alog-text-think">Thinking</span>
+            <div class="alog-thinking-dots">
+              <div class="alog-dot" style="opacity:0.35;"></div>
+              <div class="alog-dot" style="opacity:0.65;"></div>
+              <div class="alog-dot" style="opacity:1;"></div>
+            </div>
+          </div>
+          <div class="alog-read">
+            <svg class="alog-icon" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="8" height="10" rx="1" stroke="#55556a" stroke-width="1.1" fill="none"/><line x1="4" y1="4" x2="8" y2="4" stroke="#55556a" stroke-width="1" stroke-linecap="round"/><line x1="4" y1="6" x2="8" y2="6" stroke="#55556a" stroke-width="1" stroke-linecap="round"/></svg>
+            <span class="alog-text-read">Read 2 files</span>
+            <span class="alog-files">App.tsx, routes.ts</span>
+          </div>
+          <div class="alog-write">
+            <svg class="alog-icon" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="8" height="10" rx="1" stroke="#3dd68c" stroke-width="1.2" fill="none"/><path d="M4 7l1.5 1.5L8 5" stroke="#3dd68c" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
+            <span class="alog-text-write">LoginScreen.tsx</span>
+            <span class="alog-status">written</span>
+          </div>
+          <div class="alog-write">
+            <svg class="alog-icon" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="8" height="10" rx="1" stroke="#3dd68c" stroke-width="1.2" fill="none"/><path d="M4 7l1.5 1.5L8 5" stroke="#3dd68c" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
+            <span class="alog-text-write">auth/store.ts</span>
+            <span class="alog-status">written</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 5: BUILD COMPLETE ─────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">05</span>
+    <div>
+      <div class="section-title">Build Completion Card</div>
+      <div class="section-desc">SVG checkmark in filled green circle, summary sentence, file pill chips, "What next?" footer. No emoji.</div>
+    </div>
+  </div>
+  <div style="max-width:400px;">
+    <div class="build-complete">
+      <div class="bc-header">
+        <div class="bc-title-row">
+          <div class="bc-check">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><polyline points="2,5.5 4.5,8 9,2.5" stroke="#5fe8a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span class="bc-title">Done</span>
+        </div>
+        <div class="bc-summary">Login screen created with email/password fields and connected to the auth store.</div>
+      </div>
+      <div class="bc-files">
+        <span class="bc-pill">LoginScreen.tsx</span>
+        <span class="bc-pill">auth/store.ts</span>
+        <span class="bc-pill edited">App.tsx <span style="color:var(--text-4);font-size:10px;">edited</span></span>
+      </div>
+      <div class="bc-footer">What should we build next?</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 6: PREVIEW TOOLBAR ────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">06</span>
+    <div>
+      <div class="section-title">Preview Toolbar</div>
+      <div class="section-desc">Three logical groups, unified 28×26px icon buttons, pill platform toggle, Terminal button at far right.</div>
+    </div>
+  </div>
+  <div class="card" style="padding:24px;">
+    <div class="ba-label after" style="margin-bottom:12px;">After</div>
+    <div class="preview-toolbar">
+      <!-- Left: Framework + Platform -->
+      <span class="pt-badge">React Native</span>
+      <div class="pt-divider"></div>
+      <div class="pt-platform">
+        <span class="pt-platform-btn active">iOS</span>
+        <span class="pt-platform-btn inactive">Android</span>
+      </div>
+
+      <div class="pt-spacer"></div>
+
+      <!-- Center: Device + Orientation -->
+      <div class="pt-device">
+        iPhone 14 <span class="pt-caret">▾</span>
+      </div>
+      <div class="pt-icon-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="8" height="10" rx="1.5" stroke="currentColor" stroke-width="1.1"/></svg>
+      </div>
+
+      <div class="pt-divider"></div>
+
+      <!-- Right: Frame + Actions + Terminal -->
+      <div class="pt-icon-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.1"/><line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" stroke-width="1.1"/></svg>
+      </div>
+      <div class="pt-icon-btn">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1"/><rect x="6" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1"/><rect x="1" y="6" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1"/><rect x="6" y="6" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1"/></svg>
+      </div>
+      <div class="pt-icon-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9l6 0M2 3l3 2.5L2 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="pt-icon-btn" style="background:rgba(79,127,255,0.1);border-color:rgba(79,127,255,0.2);color:var(--blue);">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="2" width="9" height="8" rx="1.5" stroke="currentColor" stroke-width="1.1"/><path d="M3 5l2 2-2 2M6.5 9h2.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 7: DEVICE FRAME ────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">07</span>
+    <div>
+      <div class="section-title">Device Frame</div>
+      <div class="section-desc">Gradient body, thinner side buttons, top-edge inset highlight, translucent home bar.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="device-compare">
+      <div>
+        <div class="device-label">Before</div>
+        <div class="device-frame-old">
+          <div class="device-statusbar">
+            <span class="dt">9:41</span>
+            <div class="battery"></div>
+          </div>
+          <div class="device-screen-old"></div>
+          <div class="device-homebar"><div class="home-bar-old"></div></div>
+          <div class="side-btn-old"></div>
+        </div>
+      </div>
+      <div>
+        <div class="device-label" style="color:var(--blue);">After</div>
+        <div class="device-frame-new">
+          <div class="device-island"><div class="island"></div></div>
+          <div class="device-statusbar">
+            <span class="dt">9:41</span>
+            <div class="battery" style="border-color:rgba(255,255,255,0.7);"></div>
+          </div>
+          <div class="device-screen"></div>
+          <div class="device-homebar"><div class="home-bar-new"></div></div>
+          <div class="side-btn-new"></div>
+        </div>
+      </div>
+      <div class="device-notes">
+        <div class="device-note">Frame: <span>linear-gradient(160deg, #2a2a30, #0d0d10)</span></div>
+        <div class="device-note">Top edge: <span>inset 0 1px 0 rgba(255,255,255,0.06)</span></div>
+        <div class="device-note">Shadow: <span>0 4px 24px rgba(0,0,0,0.75)</span></div>
+        <div class="device-note">Side buttons: 3px → <span>2px</span>, color #38383e</div>
+        <div class="device-note">Home bar: #444 → <span>rgba(255,255,255,0.14)</span></div>
+        <div class="device-note">Dynamic Island on all iPhone 14+ presets</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 8: CHAT INPUT ──────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">08</span>
+    <div>
+      <div class="section-title">Chat Input Area</div>
+      <div class="section-desc">Frameless textarea with bottom rule instead of bordered box. Contextual toolbar. Gradient send button.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="before-after">
+      <div class="ba-pane">
+        <div class="ba-label before">Before</div>
+        <div class="chat-input-area">
+          <div class="chat-input-old">Add a login screen to the app...</div>
+        </div>
+      </div>
+      <div class="ba-pane">
+        <div class="ba-label after">After</div>
+        <div class="chat-input-area">
+          <div class="chat-input-new">Add a login screen to the app...</div>
+          <div class="chat-toolbar">
+            <div class="chat-tool-btn">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              Attach
+            </div>
+            <div class="chat-send-new">Send</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 9: TYPOGRAPHY & COLOR TOKENS ───────────────────── -->
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">09</span>
+    <div>
+      <div class="section-title">Typography Scale</div>
+      <div class="section-desc">Geist UI + Geist Mono. No text below 11px. Clear 4-level hierarchy.</div>
+    </div>
+  </div>
+  <div class="type-demo">
+    <div class="type-row">
+      <span class="type-meta">14px / semibold</span>
+      <span style="font-size:14px;font-weight:600;color:var(--text-1);">Chat message · UI inputs</span>
+    </div>
+    <div class="type-row">
+      <span class="type-meta">13px / regular</span>
+      <span style="font-size:13px;color:var(--text-1);">AI narration · Primary content · leading-[1.65]</span>
+    </div>
+    <div class="type-row">
+      <span class="type-meta">12px / regular</span>
+      <span style="font-size:12px;color:var(--text-2);">Action log entries · Step titles · Secondary UI text</span>
+    </div>
+    <div class="type-row">
+      <span class="type-meta">11px / medium</span>
+      <span style="font-size:11px;color:var(--text-3);">Metadata · Labels · Timestamps · Framework badges</span>
+    </div>
+    <div class="type-row">
+      <span class="type-meta">10px mono / regular</span>
+      <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3);">Line numbers · Step counts · Token values</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">10</span>
+    <div>
+      <div class="section-title">Color Tokens</div>
+      <div class="section-desc">Richer near-black palette with intentional blue-shifted background tones. Status colors stay vivid against deep backgrounds.</div>
+    </div>
+  </div>
+  <div class="tokens-grid">
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#08080c;"></div>
+      <div class="swatch-info"><div class="swatch-name">Dock BG</div><div class="swatch-val">#08080c</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#09090e;"></div>
+      <div class="swatch-info"><div class="swatch-name">Navbar BG</div><div class="swatch-val">#09090e</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#0d0d10;"></div>
+      <div class="swatch-info"><div class="swatch-name">Panel BG</div><div class="swatch-val">#0d0d10</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#111116;"></div>
+      <div class="swatch-info"><div class="swatch-name">Card BG</div><div class="swatch-val">#111116</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#4f7fff;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary Blue</div><div class="swatch-val">#4f7fff</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#3dd68c;"></div>
+      <div class="swatch-info"><div class="swatch-name">Success Green</div><div class="swatch-val">#3dd68c</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#818cf8;"></div>
+      <div class="swatch-info"><div class="swatch-name">Thinking Indigo</div><div class="swatch-val">#818cf8</div></div>
+    </div>
+    <div class="token-swatch">
+      <div class="swatch-color" style="background:#f87171;"></div>
+      <div class="swatch-info"><div class="swatch-name">Error Red</div><div class="swatch-val">#f87171</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── IMPLEMENTATION PLAN ────────────────────────────────────── -->
+<hr class="section-hr">
+<div class="section">
+  <div class="section-label">
+    <span class="section-num">✦</span>
+    <div>
+      <div class="section-title">Implementation Plan — 8 Tasks</div>
+      <div class="section-desc">What gets changed in which files. Pure visual/CSS changes — no logic or store modifications.</div>
+    </div>
+  </div>
+  <div class="change-grid">
+    <div class="change-card">
+      <h4>Task 1 — CSS Foundation</h4>
+      <div class="change-item"><span class="tag">index.css</span>Deepen bg tokens: #0f0f12 → #08080c dock, #111114 → #09090e navbar</div>
+      <div class="change-item"><span class="tag">index.css</span>Update --primary blue to #4f7fff, --green to #3dd68c</div>
+      <div class="change-item"><span class="tag">index.css</span>Add Geist font-face imports</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 2 — Navbar</h4>
+      <div class="change-item">bg-[#111114] → bg-[#09090e]</div>
+      <div class="change-item">Run button: deeper gradient + stronger glow shadow</div>
+      <div class="change-item">Back button, eye button: refined border treatment</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 3 — Tools Dock</h4>
+      <div class="change-item">bg-[#0f0f12] → bg-[#08080c]</div>
+      <div class="change-item">Active: bg-[#1e2940] → bg-[#182036] + stronger glow</div>
+      <div class="change-item">Inactive opacity: 0.25 → 0.22</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 4 — Plan Card</h4>
+      <div class="change-item">Already implemented — verify progress bar, connector lines, step dots</div>
+      <div class="change-item">Running row: bg-[#1e2940] → bg-[#121a2e]</div>
+      <div class="change-item">Done dot: bg-green-600 → bg-[#1a6640] + border</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 5 — Action Log</h4>
+      <div class="change-item">Already implemented — verify write row, thinking row, read collapse</div>
+      <div class="change-item">Green: #22c55e → #3dd68c for richer contrast</div>
+      <div class="change-item">File write bg: #0d1f12 → rgba(61,214,140,0.04)</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 6 — Build Card + Chat</h4>
+      <div class="change-item">Already implemented — verify pill chips, summary, footer</div>
+      <div class="change-item">Chat input: bordered box → frameless with bottom rule</div>
+      <div class="change-item">Send button: flat blue → gradient + glow</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 7 — Preview Panel</h4>
+      <div class="change-item">Already implemented — verify toolbar groups, Terminal button</div>
+      <div class="change-item">Toolbar: h-[38px] stays, icon buttons get consistent border treatment</div>
+    </div>
+    <div class="change-card">
+      <h4>Task 8 — Device Frame</h4>
+      <div class="change-item">Already implemented — verify gradient, side buttons, home bar</div>
+      <div class="change-item">Frame gradient: deepen from-color to #2a2a30</div>
+      <div class="change-item">Glow shadow: 0 4px 20px → 0 4px 24px rgba(0,0,0,0.75)</div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:60px;padding:32px;background:var(--bg-2);border:1px solid var(--border-1);border-radius:var(--radius-xl);">
+  <div style="font-size:11px;color:var(--text-4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Ready to implement</div>
+  <div style="font-size:22px;font-weight:600;color:var(--text-1);letter-spacing:-0.02em;">8 tasks · ~9 files · 0 logic changes</div>
+  <div style="font-size:13px;color:var(--text-3);margin-top:8px;">Pure visual upgrade. Every component, every surface.</div>
+</div>
+
+</body>
+</html>

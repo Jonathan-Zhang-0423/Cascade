@@ -1,0 +1,67 @@
+<h2>SVG Trace — from reference image</h2>
+<p class="subtitle">Three bars of equal height, cascading diagonally. <code>currentColor</code>, no background.</p>
+
+<div class="split" style="gap:32px;margin:24px 0;">
+
+  <div class="mockup">
+    <div class="mockup-header">Light theme</div>
+    <div class="mockup-body" style="background:#ffffff;display:flex;align-items:center;justify-content:center;padding:40px;min-height:180px;color:#111;">
+      <svg width="140" height="140" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="175" y="155" width="56" height="260" fill="currentColor"/>
+        <rect x="355" y="275" width="56" height="245" fill="currentColor"/>
+        <rect x="540" y="380" width="65" height="255" fill="currentColor"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Dark theme</div>
+    <div class="mockup-body" style="background:#0f0f0f;display:flex;align-items:center;justify-content:center;padding:40px;min-height:180px;color:#ffffff;">
+      <svg width="140" height="140" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="175" y="155" width="56" height="260" fill="currentColor"/>
+        <rect x="355" y="275" width="56" height="245" fill="currentColor"/>
+        <rect x="540" y="380" width="65" height="255" fill="currentColor"/>
+      </svg>
+    </div>
+  </div>
+
+</div>
+
+<div class="section">
+  <h3>Sizes</h3>
+  <div style="display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap;color:#111;">
+    <div style="text-align:center;">
+      <svg width="16" height="16" viewBox="0 0 800 800" fill="none"><rect x="175" y="155" width="56" height="260" fill="currentColor"/><rect x="355" y="275" width="56" height="245" fill="currentColor"/><rect x="540" y="380" width="65" height="255" fill="currentColor"/></svg>
+      <p class="label">16px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="24" height="24" viewBox="0 0 800 800" fill="none"><rect x="175" y="155" width="56" height="260" fill="currentColor"/><rect x="355" y="275" width="56" height="245" fill="currentColor"/><rect x="540" y="380" width="65" height="255" fill="currentColor"/></svg>
+      <p class="label">24px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="40" height="40" viewBox="0 0 800 800" fill="none"><rect x="175" y="155" width="56" height="260" fill="currentColor"/><rect x="355" y="275" width="56" height="245" fill="currentColor"/><rect x="540" y="380" width="65" height="255" fill="currentColor"/></svg>
+      <p class="label">40px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="64" height="64" viewBox="0 0 800 800" fill="none"><rect x="175" y="155" width="56" height="260" fill="currentColor"/><rect x="355" y="275" width="56" height="245" fill="currentColor"/><rect x="540" y="380" width="65" height="255" fill="currentColor"/></svg>
+      <p class="label">64px</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:24px;">
+  <div class="option" data-choice="looks-right" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>Looks right — use this</h3>
+      <p>Ready to proceed with the full rebrand plan.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="needs-tweak" onclick="toggleSelect(this)">
+    <div class="letter">↺</div>
+    <div class="content">
+      <h3>Needs a tweak</h3>
+      <p>Describe what's off in the terminal.</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,1 @@
+[   81704ms] [ERROR] Blocked script execution in 'https://raw.githubusercontent.com/stackblitz-labs/bolt.diy/main/app/components/workbench/Workbench.client.tsx' because the document's frame is sandboxed and the 'allow-scripts' permission is not set. @ https://raw.githubusercontent.com/stackblitz-labs/bolt.diy/main/app/components/workbench/Workbench.client.tsx:0

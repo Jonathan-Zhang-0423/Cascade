@@ -1,0 +1,204 @@
+<h2>Font Swap — Geekier, More Technical</h2>
+<p class="subtitle">Same midnight palette, same layout. Just the font changes. Which feels most like a serious dev tool?</p>
+
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&family=Departure+Mono:wght@400;500&family=Fira+Code:wght@300;400;500;600&family=Fragment+Mono:wght@400&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:    #06060a;
+  --bg1:   #0c0c14;
+  --bg2:   #14141e;
+  --bg3:   #1a1a26;
+  --blue:  #4f82ff;
+  --indigo:#818cf8;
+  --green: #34d68a;
+  --t1:    #eeeef6;
+  --t2:    #8888a8;
+  --t3:    #484860;
+  --t4:    #2e2e42;
+  --br1:   rgba(255,255,255,0.04);
+  --br2:   rgba(255,255,255,0.07);
+}
+
+.font-card {
+  background: var(--bg1);
+  border: 1px solid var(--br2);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-top: 0;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.font-card:hover { border-color: rgba(79,130,255,0.3); }
+
+.fc-label {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--blue);
+  margin-bottom: 10px;
+}
+.fc-nav {
+  display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px;
+  background: var(--bg); border: 1px solid var(--br1);
+  border-radius: 6px; margin-bottom: 6px;
+}
+.fc-name { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.fc-dot  { font-size: 11px; color: var(--t4); }
+.fc-fw   { font-size: 11px; color: var(--t2); }
+.fc-run  {
+  margin-left: auto; height: 22px; padding: 0 10px;
+  background: linear-gradient(135deg,#5585ff,#2a5ce0);
+  border-radius: 4px; font-size: 11px; font-weight: 600; color: #fff;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.fc-plan {
+  background: var(--bg2);
+  border: 1px solid var(--br1);
+  border-radius: 6px; padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.fc-plan-lbl { font-size: 9px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.fc-plan-title { font-size: 12px; font-weight: 500; color: var(--t1); margin-bottom: 6px; }
+.fc-bar { height: 1.5px; background: var(--br2); border-radius: 2px; margin-bottom: 7px; overflow: hidden; }
+.fc-bar-fill { height: 100%; width: 50%; background: linear-gradient(90deg,var(--blue),var(--indigo)); }
+.fc-step { font-size: 10px; color: var(--t2); margin-bottom: 2px; display: flex; align-items: center; gap: 5px; }
+.fc-step-run { font-size: 10px; color: var(--t1); font-weight: 500; display: flex; align-items: center; gap: 5px; }
+.dot-done { width: 7px; height: 7px; border-radius: 50%; background: #1a5e3a; flex-shrink: 0; }
+.dot-run  { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--blue); flex-shrink: 0; }
+.dot-pend { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--br2); flex-shrink: 0; }
+
+.fc-alog-write {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 8px;
+  background: rgba(52,214,138,0.05);
+  border-left: 2px solid var(--green);
+  border-radius: 0 4px 4px 0;
+  font-size: 11px; color: #4ddc96; font-weight: 500;
+}
+
+.fc-chat-input {
+  background: var(--bg3); border: 1px solid var(--br2);
+  border-radius: 6px; padding: 7px 9px 5px;
+}
+.fc-placeholder { font-size: 12px; color: var(--t3); }
+.fc-send-row { display: flex; align-items: center; padding-top: 4px; gap: 5px; }
+.fc-mode { font-size: 9px; color: var(--t3); }
+.fc-send-btn {
+  margin-left: auto; height: 20px; width: 20px;
+  background: linear-gradient(135deg,#5585ff,#2a5ce0);
+  border-radius: 4px; display: flex; align-items: center; justify-content: center;
+}
+</style>
+
+<div class="options" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+
+  <!-- A: Geist -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)" style="display:block;padding:0;">
+    <div class="font-card" style="font-family:'Geist',sans-serif;">
+      <div class="fc-label">A — Geist · Vercel's font</div>
+      <div class="fc-nav">
+        <span class="fc-name">TaskMaster</span>
+        <span class="fc-dot">·</span>
+        <span class="fc-fw">React Native</span>
+        <div class="fc-run">▶ Run</div>
+      </div>
+      <div class="fc-plan">
+        <div class="fc-plan-lbl">Plan · 2 of 4</div>
+        <div class="fc-plan-title">Add login screen</div>
+        <div class="fc-bar"><div class="fc-bar-fill"></div></div>
+        <div class="fc-step"><div class="dot-done"></div>Create component</div>
+        <div class="fc-step-run"><div class="dot-run"></div>Write auth store</div>
+        <div class="fc-step"><div class="dot-pend"></div><span style="color:var(--t4)">Connect to API</span></div>
+      </div>
+      <div class="fc-alog-write">LoginScreen.tsx <span style="margin-left:auto;font-size:9px;color:#2a7a4e;">written</span></div>
+      <div class="fc-chat-input" style="margin-top:6px;">
+        <div class="fc-placeholder">Ask anything...</div>
+        <div class="fc-send-row"><span class="fc-mode">Plan ✓</span><div class="fc-send-btn"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--t3);">Sharp, geometric. Cold precision. Instantly recognizable as "modern dev tool."</div>
+    </div>
+  </div>
+
+  <!-- B: JetBrains Mono (all UI) -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)" style="display:block;padding:0;">
+    <div class="font-card" style="font-family:'JetBrains Mono',monospace;">
+      <div class="fc-label" style="font-family:'JetBrains Mono',monospace;">B — JetBrains Mono · Pure code DNA</div>
+      <div class="fc-nav">
+        <span class="fc-name" style="letter-spacing:-0.03em;">TaskMaster</span>
+        <span class="fc-dot">·</span>
+        <span class="fc-fw" style="font-weight:300;">React Native</span>
+        <div class="fc-run" style="font-family:'JetBrains Mono',monospace;">▶ Run</div>
+      </div>
+      <div class="fc-plan">
+        <div class="fc-plan-lbl" style="font-family:'JetBrains Mono',monospace;">Plan · 2 of 4</div>
+        <div class="fc-plan-title">Add login screen</div>
+        <div class="fc-bar"><div class="fc-bar-fill"></div></div>
+        <div class="fc-step"><div class="dot-done"></div>Create component</div>
+        <div class="fc-step-run"><div class="dot-run"></div>Write auth store</div>
+        <div class="fc-step"><div class="dot-pend"></div><span style="color:var(--t4)">Connect to API</span></div>
+      </div>
+      <div class="fc-alog-write" style="font-family:'JetBrains Mono',monospace;">LoginScreen.tsx <span style="margin-left:auto;font-size:9px;color:#2a7a4e;">written</span></div>
+      <div class="fc-chat-input" style="margin-top:6px;">
+        <div class="fc-placeholder">Ask anything...</div>
+        <div class="fc-send-row"><span class="fc-mode">Plan ✓</span><div class="fc-send-btn"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;">Everything in mono. Feels like a terminal. Super geeky — no UI/code distinction.</div>
+    </div>
+  </div>
+
+  <!-- C: Geist (UI) + JetBrains Mono (labels/data) -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)" style="display:block;padding:0;">
+    <div class="font-card" style="font-family:'Geist',sans-serif;">
+      <div class="fc-label" style="font-family:'JetBrains Mono',monospace;font-size:9px;">C — Geist UI + JetBrains Mono labels</div>
+      <div class="fc-nav">
+        <span class="fc-name">TaskMaster</span>
+        <span class="fc-dot" style="font-family:'JetBrains Mono',monospace;">·</span>
+        <span class="fc-fw" style="font-family:'JetBrains Mono',monospace;font-size:10px;">React Native</span>
+        <div class="fc-run">▶ Run</div>
+      </div>
+      <div class="fc-plan">
+        <div class="fc-plan-lbl" style="font-family:'JetBrains Mono',monospace;">Plan · 2 of 4</div>
+        <div class="fc-plan-title">Add login screen</div>
+        <div class="fc-bar"><div class="fc-bar-fill"></div></div>
+        <div class="fc-step" style="font-family:'JetBrains Mono',monospace;font-size:9px;"><div class="dot-done"></div>Create component</div>
+        <div class="fc-step-run" style="font-family:'JetBrains Mono',monospace;font-size:9px;"><div class="dot-run"></div>Write auth store</div>
+        <div class="fc-step" style="font-family:'JetBrains Mono',monospace;font-size:9px;"><div class="dot-pend"></div><span style="color:var(--t4)">Connect to API</span></div>
+      </div>
+      <div class="fc-alog-write" style="font-family:'JetBrains Mono',monospace;font-size:10px;">LoginScreen.tsx <span style="margin-left:auto;font-size:9px;color:#2a7a4e;">written</span></div>
+      <div class="fc-chat-input" style="margin-top:6px;">
+        <div class="fc-placeholder">Ask anything...</div>
+        <div class="fc-send-row"><span class="fc-mode" style="font-family:'JetBrains Mono',monospace;">Plan ✓</span><div class="fc-send-btn"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--t3);">Best of both: clean prose in Geist, all technical labels/steps in mono. Hybrid pairing.</div>
+    </div>
+  </div>
+
+  <!-- D: Space Grotesk -->
+  <div class="option" data-choice="d" onclick="toggleSelect(this)" style="display:block;padding:0;">
+    <div class="font-card" style="font-family:'Space Grotesk',sans-serif;">
+      <div class="fc-label" style="font-family:'Space Grotesk',sans-serif;">D — Space Grotesk · Space-age geometric</div>
+      <div class="fc-nav">
+        <span class="fc-name" style="letter-spacing:-0.02em;">TaskMaster</span>
+        <span class="fc-dot">·</span>
+        <span class="fc-fw" style="font-weight:300;">React Native</span>
+        <div class="fc-run" style="font-family:'Space Grotesk',sans-serif;">▶ Run</div>
+      </div>
+      <div class="fc-plan">
+        <div class="fc-plan-lbl" style="font-family:'Space Grotesk',sans-serif;">Plan · 2 of 4</div>
+        <div class="fc-plan-title">Add login screen</div>
+        <div class="fc-bar"><div class="fc-bar-fill"></div></div>
+        <div class="fc-step"><div class="dot-done"></div>Create component</div>
+        <div class="fc-step-run"><div class="dot-run"></div>Write auth store</div>
+        <div class="fc-step"><div class="dot-pend"></div><span style="color:var(--t4)">Connect to API</span></div>
+      </div>
+      <div class="fc-alog-write" style="font-family:'Space Grotesk',sans-serif;">LoginScreen.tsx <span style="margin-left:auto;font-size:9px;color:#2a7a4e;">written</span></div>
+      <div class="fc-chat-input" style="margin-top:6px;">
+        <div class="fc-placeholder">Ask anything...</div>
+        <div class="fc-send-row"><span class="fc-mode">Plan ✓</span><div class="fc-send-btn"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--t3);">Quirky, techy, slightly sci-fi. Distinctive letterforms with mono-inspired geometry.</div>
+    </div>
+  </div>
+
+</div>

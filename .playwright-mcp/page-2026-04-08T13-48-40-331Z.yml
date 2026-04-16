@@ -1,0 +1,291 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e6]:
+        - link "Go to Replit Homepage" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img [ref=e9]
+        - navigation [ref=e19]:
+          - button "Products" [ref=e21] [cursor=pointer]:
+            - generic [ref=e22]: Products
+            - img [ref=e23]
+          - button "For Work" [ref=e26] [cursor=pointer]:
+            - generic [ref=e27]: For Work
+            - img [ref=e28]
+          - button "Resources" [ref=e31] [cursor=pointer]:
+            - generic [ref=e32]: Resources
+            - img [ref=e33]
+          - link "Security" [ref=e35] [cursor=pointer]:
+            - /url: /products/security
+          - link "Pricing" [ref=e36] [cursor=pointer]:
+            - /url: https://replit.com/pricing
+          - link "Careers" [ref=e37] [cursor=pointer]:
+            - /url: /careers
+          - link [ref=e38] [cursor=pointer]:
+            - /url: /agent4
+            - img [ref=e39]
+        - navigation [ref=e48]:
+          - link "Contact sales" [ref=e49] [cursor=pointer]:
+            - /url: https://replit.com/enterprise
+          - link "Log in" [ref=e50] [cursor=pointer]:
+            - /url: /login
+          - link "Sign up" [ref=e51] [cursor=pointer]:
+            - /url: /signup
+    - main [ref=e52]:
+      - generic [ref=e53]:
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - paragraph [ref=e59]: Replit Agent
+            - heading "Make apps & sites with natural language prompts" [level=2] [ref=e60]
+            - link "Start building" [ref=e63] [cursor=pointer]:
+              - /url: https://replit.com/signup
+            - paragraph
+          - generic [ref=e64]:
+            - paragraph [ref=e65]:
+              - strong [ref=e66]: No-code needed
+            - paragraph [ref=e67]: Tell Replit Agent your app or website idea, and it will build it for you automatically. It’s like having an entire team of software engineers on demand, ready to build what you need — all through a simple chat.
+            - paragraph [ref=e68]
+        - generic [ref=e71]:
+          - generic [ref=e74]:
+            - heading "Introducing Replit Agent" [level=2] [ref=e75]
+            - paragraph [ref=e76]: Ask for an app and watch it get built. Deploy right away and share with the world.
+          - iframe [ref=e82]:
+            - generic [active] [ref=f2e1]:
+              - generic "YouTube Video Player" [ref=f2e3]
+              - generic [ref=f2e5]:
+                - generic:
+                  - generic:
+                    - button "Play video" [ref=f2e10] [cursor=pointer]:
+                      - generic [ref=f2e13]:
+                        - img
+                    - button "Hide player controls" [ref=f2e14] [cursor=pointer]
+                    - generic [ref=f2e16]:
+                      - generic [ref=f2e21]:
+                        - generic [ref=f2e22]:
+                          - link "What's the Replit Agent? Find out in 60 Seconds" [ref=f2e23] [cursor=pointer]:
+                            - /url: https://www.youtube.com/watch?v=aWBiZc5XKJM
+                          - link "Replit" [ref=f2e24] [cursor=pointer]:
+                            - /url: /channel/UCgoJjdR6-7AMu9fDitb6nVw
+                            - generic [ref=f2e25]: Replit
+                        - generic [ref=f2e26]:
+                          - button "thumbnail-image" [ref=f2e27] [cursor=pointer]:
+                            - img "thumbnail-image" [ref=f2e28]
+                          - generic [ref=f2e30]:
+                            - generic: Replit
+                            - generic: 116K subscribers
+                      - generic [ref=f2e31]:
+                        - button "Share" [ref=f2e34] [cursor=pointer]:
+                          - generic [ref=f2e38]:
+                            - img
+                        - link "Watch on YouTube" [ref=f2e45] [cursor=pointer]:
+                          - /url: https://www.youtube.com/watch?v=aWBiZc5XKJM
+                          - generic [ref=f2e48]:
+                            - text: Watch on
+                            - img [ref=f2e50]:
+                              - generic [ref=f2e52]:
+                                - img
+        - generic [ref=e85]:
+          - heading "Bring your idea to life with Replit Agent" [level=2] [ref=e89]:
+            - strong [ref=e90]: Bring your idea to life with Replit Agent
+          - generic [ref=e105]:
+            - heading "Replit Agent" [level=3] [ref=e106]:
+              - strong [ref=e107]: Replit Agent
+            - list [ref=e108]:
+              - listitem [ref=e109]:
+                - paragraph [ref=e110]: • Quickly go from idea to working prototype
+              - listitem [ref=e111]:
+                - paragraph [ref=e112]: • The best tool for ANYONE — both technical & non-technical creators
+              - listitem [ref=e113]:
+                - paragraph [ref=e114]:
+                  - text: • See an app or website that inspires you?
+                  - text: Simply screenshot, upload, and Agent will build it
+        - generic [ref=e117]:
+          - generic [ref=e120]:
+            - heading "🚀 What will you build?" [level=2] [ref=e121]:
+              - strong [ref=e122]: 🚀
+              - text: What will you build?
+            - paragraph [ref=e123]: You name it, Replit Agent builds it.
+          - generic [ref=e128]:
+            - generic [ref=e132]: Business software
+            - generic [ref=e136]: AI chatbots and characters
+            - generic [ref=e140]: Games
+            - generic [ref=e144]: Online shops
+            - generic [ref=e148]: Blogs
+            - generic [ref=e152]: Health and fitness trackers
+            - generic [ref=e156]: Marketing tools
+            - generic [ref=e160]: Courses and storytelling
+          - iframe [ref=e166]:
+            - generic [active] [ref=f3e1]:
+              - generic "YouTube Video Player" [ref=f3e3]
+              - generic [ref=f3e5]:
+                - generic:
+                  - generic:
+                    - button "Play video" [ref=f3e10] [cursor=pointer]
+                    - button "Hide player controls" [ref=f3e12] [cursor=pointer]
+                    - generic [ref=f3e14]:
+                      - generic [ref=f3e19]:
+                        - generic [ref=f3e20]:
+                          - link "Replit Agent on Mobile" [ref=f3e21] [cursor=pointer]:
+                            - /url: https://www.youtube.com/watch?v=NZSPy9DN3HU
+                          - link "Replit" [ref=f3e22] [cursor=pointer]:
+                            - /url: /channel/UCgoJjdR6-7AMu9fDitb6nVw
+                            - generic [ref=f3e23]: Replit
+                        - generic [ref=f3e24]:
+                          - button [ref=f3e25] [cursor=pointer]
+                          - generic [ref=f3e27]:
+                            - generic: Replit
+                            - generic: 116K subscribers
+                      - generic [ref=f3e28]:
+                        - button "Share" [ref=f3e31] [cursor=pointer]:
+                          - generic [ref=f3e35]:
+                            - img
+                        - link "Watch on YouTube" [ref=f3e42] [cursor=pointer]:
+                          - /url: https://www.youtube.com/watch?v=NZSPy9DN3HU
+                          - generic [ref=f3e45]:
+                            - text: Watch on
+                            - img [ref=f3e47]:
+                              - generic [ref=f3e49]:
+                                - img
+        - generic [ref=e171]:
+          - heading "Get inspired by our community" [level=4] [ref=e173]
+          - generic [ref=e175]:
+            - link "Craft Games From @KoichiNishizuka on x.com" [ref=e177] [cursor=pointer]:
+              - /url: https://x.com/KoichiNishizuka/status/1859398570845274505
+              - generic [ref=e181]:
+                - paragraph [ref=e182]:
+                  - strong [ref=e183]: Craft Games
+                - paragraph [ref=e184]: From @KoichiNishizuka on x.com
+            - link "Replit for Designers Andrew Wilkinson, Co-Founder, Tiny" [ref=e186] [cursor=pointer]:
+              - /url: https://x.com/awilkinson/status/1843063918421549135
+              - generic [ref=e190]:
+                - paragraph [ref=e191]:
+                  - strong [ref=e192]: Replit for Designers
+                - paragraph [ref=e193]: Andrew Wilkinson, Co-Founder, Tiny
+            - link "Create Health & Fitness Apps Shin Matsura" [ref=e195] [cursor=pointer]:
+              - /url: https://realtime-emotion-analyzer.replit.app/
+              - generic [ref=e199]:
+                - paragraph [ref=e200]:
+                  - strong [ref=e201]: Create Health & Fitness Apps
+                - paragraph [ref=e202]: Shin Matsura
+            - link "Build a Custom Health Dashboard From @healthspan_md on x.com" [ref=e204] [cursor=pointer]:
+              - /url: https://x.com/healthspan_md/status/1834379412848214467?ref_src=twsrc%5Etfw%7Ctwcamp%5Etweetembed%7Ctwterm%5E1834379412848214467%7Ctwgr%5Eec67c4bb6f3ed1bf13ac6f1d26a133f490405750%7Ctwcon%5Es1_&ref_url=https%3A%2F%2Fblog.replit.com%2Fnew-ai-assistant-announcement
+              - generic [ref=e208]:
+                - paragraph [ref=e209]:
+                  - strong [ref=e210]: Build a Custom Health Dashboard
+                - paragraph [ref=e211]: From @healthspan_md on x.com
+            - link "Deploy a GIF Converter Official Guide" [ref=e213] [cursor=pointer]:
+              - /url: https://replit.com/guides/deploy-a-gif-conversion-app-on-replit
+              - generic [ref=e217]:
+                - paragraph [ref=e218]:
+                  - strong [ref=e219]: Deploy a GIF Converter
+                - paragraph [ref=e220]: Official Guide
+            - link "Build a Personal CRM From @sphregis on x.com" [ref=e222] [cursor=pointer]:
+              - /url: https://x.com/sphregis/status/1850724048445030881?s=46
+              - generic [ref=e226]:
+                - paragraph [ref=e227]:
+                  - strong [ref=e228]: Build a Personal CRM
+                - paragraph [ref=e229]: From @sphregis on x.com
+        - generic [ref=e230]:
+          - generic [ref=e233]:
+            - heading "What makes Replit unique versus other AI tools?" [level=2] [ref=e234]
+            - paragraph
+          - generic [ref=e238]:
+            - button "Create fully working apps and go live fast" [ref=e240] [cursor=pointer]:
+              - heading "Create fully working apps and go live fast" [level=5] [ref=e242]
+              - img [ref=e243]
+            - button "No need to copy and paste from ChatGPT" [ref=e246] [cursor=pointer]:
+              - heading "No need to copy and paste from ChatGPT" [level=5] [ref=e248]
+              - img [ref=e249]
+            - button "The AI is smart enough to fix bugs for you" [ref=e252] [cursor=pointer]:
+              - heading "The AI is smart enough to fix bugs for you" [level=5] [ref=e254]
+              - img [ref=e255]
+            - button "Everything you need to build in 1 place" [ref=e258] [cursor=pointer]:
+              - heading "Everything you need to build in 1 place" [level=5] [ref=e260]
+              - img [ref=e261]
+            - button "More powerful than any other solution" [ref=e264] [cursor=pointer]:
+              - heading "More powerful than any other solution" [level=5] [ref=e266]
+              - img [ref=e267]
+        - generic [ref=e270]:
+          - heading "Frequently Asked Questions" [level=2] [ref=e274]
+          - generic [ref=e278]:
+            - button "What is Replit Agent?" [ref=e280] [cursor=pointer]:
+              - heading "What is Replit Agent?" [level=5] [ref=e282]
+              - img [ref=e283]
+            - button "How does Replit Agent work?" [ref=e286] [cursor=pointer]:
+              - heading "How does Replit Agent work?" [level=5] [ref=e288]
+              - img [ref=e289]
+            - button "How good is Replit Agent?" [ref=e292] [cursor=pointer]:
+              - heading "How good is Replit Agent?" [level=5] [ref=e294]
+              - img [ref=e295]
+            - button "Is Agent an AI?" [ref=e298] [cursor=pointer]:
+              - heading "Is Agent an AI?" [level=5] [ref=e300]
+              - img [ref=e301]
+          - generic [ref=e305]:
+            - heading "Idea to software, fast" [level=2] [ref=e306]
+            - link "Start building" [ref=e309] [cursor=pointer]:
+              - /url: https://replit.com/signup
+        - generic [ref=e314]:
+          - generic [ref=e315]:
+            - img [ref=e316]
+            - generic [ref=e325]:
+              - generic [ref=e326]:
+                - img [ref=e327]
+                - generic [ref=e332]:
+                  - generic [ref=e333]: CA
+                  - generic [ref=e334]: 6:48 AM
+              - generic [ref=e335]:
+                - generic [ref=e336]: Made in sunny California.
+                - generic [ref=e338]: All rights reserved. Copyright © 2026 Replit, Inc.
+          - generic [ref=e339]:
+            - generic [ref=e340]:
+              - generic [ref=e341]: Handy Links
+              - generic [ref=e342]:
+                - link "About us" [ref=e343] [cursor=pointer]:
+                  - /url: https://replit.com/about
+                - link "Vibe Coding 101" [ref=e344] [cursor=pointer]:
+                  - /url: https://blog.replit.com/what-is-vibe-coding
+                - link "Help" [ref=e345] [cursor=pointer]:
+                  - /url: /help
+                - link "How to guides" [ref=e346] [cursor=pointer]:
+                  - /url: https://replit.com/build
+                - link "Import from GitHub" [ref=e347] [cursor=pointer]:
+                  - /url: /github
+                - link "Status" [ref=e348] [cursor=pointer]:
+                  - /url: https://status.replit.com/
+                - link "Additional resources" [ref=e349] [cursor=pointer]:
+                  - /url: https://replit.com/additional-resources
+                - link "Brand kit" [ref=e350] [cursor=pointer]:
+                  - /url: /brandkit
+                - link "Certifications" [ref=e351] [cursor=pointer]:
+                  - /url: /partners/certifications
+                - link "Partnerships" [ref=e352] [cursor=pointer]:
+                  - /url: /partners
+            - generic [ref=e353]:
+              - generic [ref=e354]: Legal
+              - generic [ref=e355]:
+                - link "Terms of service" [ref=e356] [cursor=pointer]:
+                  - /url: /terms-of-service
+                - link "Commercial agreement" [ref=e357] [cursor=pointer]:
+                  - /url: /commercial-agreement
+                - link "Privacy" [ref=e358] [cursor=pointer]:
+                  - /url: /privacy-policy
+                - link "Subprocessors" [ref=e359] [cursor=pointer]:
+                  - /url: /subprocessors
+                - link "DPA" [ref=e360] [cursor=pointer]:
+                  - /url: /dpa
+                - link "Report abuse" [ref=e361] [cursor=pointer]:
+                  - /url: https://docs.replit.com/legal-and-security-info/abuse-report
+            - generic [ref=e362]:
+              - generic [ref=e363]: Connect
+              - generic [ref=e364]:
+                - link "X / Twitter" [ref=e365] [cursor=pointer]:
+                  - /url: https://twitter.com/replit
+                - link "Tiktok" [ref=e366] [cursor=pointer]:
+                  - /url: https://www.tiktok.com/@replit
+                - link "Facebook" [ref=e367] [cursor=pointer]:
+                  - /url: https://facebook.com/repl.it
+                - link "Instagram" [ref=e368] [cursor=pointer]:
+                  - /url: https://instagram.com/repl.it
+                - link "Linkedin" [ref=e369] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/repl-it
+  - alert [ref=e370]

@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeStart — Midnight Studio v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-base:   #06060a;
+  --bg-dock:   #080810;
+  --bg-nav:    #08080e;
+  --bg-1:      #0c0c14;
+  --bg-2:      #101018;
+  --bg-3:      #14141e;
+  --bg-4:      #1a1a26;
+  --bg-5:      #20202e;
+  --br-1: rgba(255,255,255,0.04);
+  --br-2: rgba(255,255,255,0.07);
+  --br-3: rgba(255,255,255,0.11);
+  --t1: #eeeef6;
+  --t2: #8888a8;
+  --t3: #484860;
+  --t4: #2e2e42;
+  --blue:      #4f82ff;
+  --blue-dim:  rgba(79,130,255,0.10);
+  --blue-glow: rgba(79,130,255,0.28);
+  --indigo:    #818cf8;
+  --green:     #34d68a;
+  --green-dim: rgba(52,214,138,0.08);
+  --font-ui:   'Geist', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Menlo', monospace;
+  --r-sm: 4px; --r-md: 6px; --r-lg: 9px; --r-xl: 12px;
+}
+
+body {
+  background: #040408;
+  font-family: var(--font-ui);
+  color: var(--t1);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.page-title { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--blue); text-align: center; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: var(--t2); text-align: center; margin-bottom: 8px; }
+
+/* ── IDE ── */
+.ide {
+  width: 100%; max-width: 980px; height: 560px;
+  background: var(--bg-base);
+  border: 1px solid var(--br-2);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 0 0 1px var(--br-1), 0 32px 80px rgba(0,0,0,0.8), 0 8px 24px rgba(0,0,0,0.5);
+}
+
+/* NAVBAR */
+.navbar {
+  height: 44px; background: var(--bg-nav);
+  border-bottom: 1px solid var(--br-2);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; flex-shrink: 0;
+}
+.nb-l, .nb-r { display: flex; align-items: center; gap: 7px; }
+.nb-back {
+  width: 26px; height: 26px; border-radius: var(--r-md);
+  background: rgba(255,255,255,0.03); border: 1px solid var(--br-2);
+  color: var(--t2); font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+.nb-emoji {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--br-2);
+  font-size: 13px; display: flex; align-items: center; justify-content: center;
+}
+.nb-name { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.nb-dot  { font-size: 10px; color: var(--t4); }
+.nb-fw   { font-family: var(--font-mono); font-size: 10px; color: var(--t2); font-weight: 400; }
+.nb-eye, .nb-theme-btn {
+  height: 26px; border-radius: var(--r-md);
+  background: rgba(255,255,255,0.03); border: 1px solid var(--br-2);
+  color: var(--t2); display: flex; align-items: center; justify-content: center;
+}
+.nb-eye { width: 26px; font-size: 12px; }
+.nb-theme-btn { padding: 0 8px; gap: 4px; font-family: var(--font-mono); font-size: 10px; }
+.nb-run {
+  height: 27px; padding: 0 12px;
+  background: linear-gradient(135deg, #5585ff, #2a5ce0);
+  border-radius: var(--r-md);
+  font-size: 11px; font-weight: 600; color: #fff;
+  box-shadow: 0 1px 10px rgba(79,130,255,0.42), inset 0 1px 0 rgba(255,255,255,0.13);
+  display: flex; align-items: center; gap: 5px;
+  letter-spacing: 0.01em;
+}
+
+/* BODY */
+.ide-body { flex: 1; display: flex; min-height: 0; }
+
+/* DOCK */
+.dock {
+  width: 44px; background: var(--bg-dock);
+  border-right: 1px solid var(--br-1);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: space-between; padding: 8px 0; flex-shrink: 0;
+}
+.dock-top, .dock-bot { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.dock-btn {
+  width: 32px; height: 32px; border-radius: var(--r-lg);
+  opacity: 0.18; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.15s;
+}
+.dock-btn.on {
+  background: #141d34; border: 1px solid rgba(79,130,255,0.18);
+  opacity: 1; filter: drop-shadow(0 0 5px rgba(79,130,255,0.4));
+}
+
+/* WORKSPACE */
+.workspace { flex: 1; display: flex; gap: 5px; padding: 5px; min-width: 0; }
+
+/* CHAT */
+.chat {
+  width: 224px; flex-shrink: 0;
+  background: var(--bg-1); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); display: flex; flex-direction: column; overflow: hidden;
+}
+.chat-head {
+  height: 34px; padding: 0 11px;
+  display: flex; align-items: center; gap: 6px;
+  border-bottom: 1px solid var(--br-1);
+  font-size: 11px; font-weight: 500; color: var(--t2); flex-shrink: 0;
+}
+.chat-body { flex: 1; padding: 9px; display: flex; flex-direction: column; gap: 7px; overflow: hidden; }
+
+.msg-user {
+  align-self: flex-end; max-width: 88%;
+  background: #141e36; border: 1px solid rgba(79,130,255,0.14);
+  border-radius: var(--r-lg) var(--r-lg) 2px var(--r-lg);
+  padding: 6px 9px; font-size: 11px; color: var(--t1); line-height: 1.5;
+}
+.msg-ai { font-size: 11px; color: var(--t2); line-height: 1.65; max-width: 96%; }
+
+/* plan card */
+.plan {
+  background: var(--bg-3); border: 1px solid var(--br-2);
+  border-radius: var(--r-md); overflow: hidden;
+}
+.plan-head { padding: 7px 9px; border-bottom: 1px solid var(--br-1); }
+.plan-prow { display: flex; justify-content: space-between; margin-bottom: 3px; }
+.plan-lbl { font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; }
+.plan-pct { font-family: var(--font-mono); font-size: 9px; color: var(--t3); }
+.plan-title { font-size: 11px; font-weight: 500; color: var(--t1); margin-bottom: 5px; letter-spacing: -0.01em; }
+.plan-bar { height: 1.5px; background: var(--br-2); border-radius: 2px; overflow: hidden; }
+.plan-bar-fill { height: 100%; width: 50%; background: linear-gradient(90deg, var(--blue), var(--indigo)); }
+.plan-steps { padding: 6px 9px; display: flex; flex-direction: column; gap: 3px; }
+.step { display: flex; align-items: flex-start; gap: 5px; }
+.step.run { background: rgba(79,130,255,0.05); border-radius: 3px; padding: 2px 4px; margin: 0 -4px; }
+.step-d { width: 8px; height: 8px; border-radius: 50%; background: #1a5e3a; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; }
+.step-r { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--blue); flex-shrink: 0; margin-top: 1px; }
+.step-p { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--br-2); flex-shrink: 0; margin-top: 1px; }
+.step-t { font-family: var(--font-mono); font-size: 9px; line-height: 1.4; }
+.step-t.d { color: var(--t3); }
+.step-t.r { color: var(--t1); font-weight: 500; }
+.step-t.p { color: var(--t4); }
+
+/* action log */
+.alog { display: flex; flex-direction: column; gap: 2px; }
+.alog-think {
+  display: flex; align-items: center; gap: 7px; padding: 5px 8px;
+  background: rgba(129,140,248,0.05); border: 1px solid rgba(129,140,248,0.10);
+  border-radius: var(--r-md);
+}
+.alog-think-text { font-family: var(--font-mono); font-size: 10px; color: var(--indigo); }
+.alog-dots { display: flex; gap: 3px; margin-left: auto; }
+.alog-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--indigo); }
+.alog-read { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: var(--r-sm); }
+.alog-read-text { font-family: var(--font-mono); font-size: 9px; color: var(--t3); flex: 1; }
+.alog-read-files { font-family: var(--font-mono); font-size: 9px; color: var(--t4); }
+.alog-write {
+  display: flex; align-items: center; gap: 7px; padding: 4px 9px;
+  background: rgba(52,214,138,0.05); border-left: 2px solid var(--green);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.alog-write-name { font-family: var(--font-mono); font-size: 10px; color: #4ddc96; font-weight: 500; flex: 1; }
+.alog-write-ok   { font-family: var(--font-mono); font-size: 9px; color: #2a7a4e; }
+
+/* chat input */
+.chat-input-wrap { flex-shrink: 0; padding: 7px; border-top: 1px solid var(--br-1); }
+.chat-input-box {
+  background: var(--bg-3); border: 1px solid var(--br-2); border-radius: var(--r-md); overflow: hidden;
+}
+.chat-input-ph { padding: 7px 9px 4px; font-size: 11px; color: var(--t3); }
+.chat-input-bar { display: flex; align-items: center; gap: 5px; padding: 0 7px 6px; }
+.chat-tool {
+  height: 20px; padding: 0 6px;
+  background: var(--bg-4); border: 1px solid var(--br-2); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9px; color: var(--t3);
+  display: flex; align-items: center; gap: 3px;
+}
+.chat-mode { font-family: var(--font-mono); font-size: 9px; color: var(--t3); }
+.chat-send {
+  margin-left: auto; height: 22px; width: 22px;
+  background: linear-gradient(135deg, #5585ff, #2a5ce0); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 5px rgba(79,130,255,0.3);
+}
+
+/* RIGHT */
+.ide-right { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ep { flex: 1; display: flex; gap: 5px; min-height: 0; }
+
+/* EDITOR */
+.editor {
+  flex: 1; background: var(--bg-1); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column;
+}
+.editor-tabs {
+  height: 33px; background: var(--bg-2); border-bottom: 1px solid var(--br-1);
+  display: flex; align-items: flex-end; padding: 0 8px; gap: 2px; flex-shrink: 0;
+}
+.tab {
+  height: 27px; padding: 0 9px;
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 10px;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid transparent; border-bottom: none;
+}
+.tab.on { background: var(--bg-1); border-color: var(--br-2); color: var(--t1); }
+.tab.off { color: var(--t3); }
+.tab-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); opacity: 0.6; }
+
+.code-body { flex: 1; padding: 9px 0; overflow: hidden; }
+.line { display: flex; font-family: var(--font-mono); font-size: 10px; line-height: 1.75; }
+.ln { width: 30px; text-align: right; padding-right: 12px; color: var(--t4); flex-shrink: 0; }
+.c { color: var(--t2); }
+.kw { color: #7ba4f8; } .fn { color: #82aaff; } .str { color: #9ece6a; }
+.cm { color: var(--t3); } .tc { color: #ffb07a; }
+
+/* PREVIEW */
+.preview {
+  width: 192px; flex-shrink: 0;
+  background: var(--bg-1); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column;
+}
+.preview-bar {
+  height: 36px; padding: 0 7px;
+  display: flex; align-items: center; gap: 4px;
+  border-bottom: 1px solid var(--br-1); flex-shrink: 0;
+}
+.pt-badge {
+  padding: 1px 6px; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 500;
+  background: rgba(56,189,248,0.07); border: 1px solid rgba(56,189,248,0.16); color: #56c4f0;
+}
+.pt-div { width: 1px; height: 12px; background: var(--br-2); }
+.pt-pill {
+  display: flex; align-items: center;
+  background: var(--bg-3); border: 1px solid var(--br-2);
+  border-radius: 5px; padding: 1px; gap: 1px; margin-left: auto;
+}
+.pt-pb { padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 9px; }
+.pt-pb.on { background: rgba(255,255,255,0.08); color: var(--t1); }
+.pt-pb.off { color: var(--t4); }
+.pt-ico {
+  width: 20px; height: 18px; border-radius: 4px;
+  background: var(--bg-3); border: 1px solid var(--br-2);
+  color: var(--t3); font-size: 9px;
+  display: flex; align-items: center; justify-content: center;
+}
+.pt-ico.on { background: rgba(79,130,255,0.09); border-color: rgba(79,130,255,0.18); color: var(--blue); }
+.preview-body { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+.phone {
+  width: 62px;
+  background: linear-gradient(160deg, #282830, #0e0e14);
+  border: 1.5px solid #36363e; border-radius: 17px;
+  padding: 5px 4px 8px; position: relative;
+  box-shadow: 0 4px 22px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.055);
+}
+.ph-island { display: flex; justify-content: center; margin-bottom: 3px; }
+.ph-pill { width: 17px; height: 5px; background: #000; border-radius: 4px; }
+.ph-status { background: #000; padding: 1px 6px; display: flex; justify-content: space-between; align-items: center; }
+.ph-time { font-family: var(--font-mono); font-size: 5px; color: #fff; font-weight: 500; }
+.ph-bat  { width: 7px; height: 4px; border: 1px solid rgba(255,255,255,0.65); border-radius: 1px; }
+.ph-screen { background: #12121a; height: 66px; border-radius: 0 0 4px 4px; overflow: hidden; }
+.ph-sh { background: #1e1e2a; padding: 5px 6px; font-size: 7px; color: #fff; font-weight: 600; }
+.ph-inp { margin: 4px 6px; height: 10px; border-radius: 3px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); }
+.ph-btn { margin: 3px 6px 0; height: 10px; border-radius: 3px; background: #2a5ce0; display: flex; align-items: center; justify-content: center; }
+.ph-btn-in { width: 18px; height: 3px; background: rgba(255,255,255,0.85); border-radius: 2px; }
+.ph-hb-wrap { display: flex; justify-content: center; padding: 5px 0 2px; }
+.ph-hb { width: 22px; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; }
+.ph-side { position: absolute; right: -1.5px; top: 28%; width: 1.5px; height: 16px; background: #36363e; border-radius: 0 1px 1px 0; }
+
+/* CONSOLE */
+.console {
+  height: 76px; flex-shrink: 0;
+  background: var(--bg-1); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column;
+}
+.con-head {
+  height: 28px; padding: 0 11px;
+  display: flex; align-items: center; gap: 6px;
+  border-bottom: 1px solid var(--br-1);
+  font-family: var(--font-mono); font-size: 10px; color: var(--t3); flex-shrink: 0;
+}
+.con-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; opacity: 0.75; margin-left: auto; }
+.con-body { flex: 1; padding: 5px 11px; overflow: hidden; }
+.con-line { font-family: var(--font-mono); font-size: 9px; line-height: 1.7; }
+.con-line.ok   { color: var(--green); }
+.con-line.info { color: var(--blue); }
+.con-line.mute { color: var(--t3); }
+
+/* CALLOUTS */
+.callouts {
+  width: 100%; max-width: 980px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+.callout {
+  background: var(--bg-2); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); padding: 12px 14px;
+}
+.callout-num { font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--blue); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.callout-title { font-size: 12px; font-weight: 600; color: var(--t1); letter-spacing: -0.01em; margin-bottom: 4px; }
+.callout-desc { font-size: 10px; color: var(--t2); line-height: 1.55; }
+
+.font-note {
+  width: 100%; max-width: 980px;
+  background: var(--bg-2); border: 1px solid var(--br-1);
+  border-radius: var(--r-lg); padding: 14px 18px;
+  display: flex; gap: 32px; align-items: center;
+}
+.fn-item { display: flex; flex-direction: column; gap: 3px; }
+.fn-label { font-family: var(--font-mono); font-size: 9px; color: var(--blue); text-transform: uppercase; letter-spacing: 0.08em; }
+.fn-sample-ui   { font-family: 'Geist', sans-serif; font-size: 14px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.fn-sample-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--t2); }
+</style>
+</head>
+<body>
+
+<div>
+  <div class="page-title">Midnight Studio v2</div>
+  <div class="page-sub" style="font-size:14px;font-weight:600;color:var(--t1);letter-spacing:-0.02em;">Geist UI · JetBrains Mono labels · Electric blue · True midnight</div>
+</div>
+
+<!-- Font pairing note -->
+<div class="font-note">
+  <div class="fn-item">
+    <div class="fn-label">UI type — Geist</div>
+    <div class="fn-sample-ui">Project name · AI narration · Chat messages</div>
+  </div>
+  <div style="width:1px;height:36px;background:var(--br-2);"></div>
+  <div class="fn-item">
+    <div class="fn-label">Technical labels — JetBrains Mono</div>
+    <div class="fn-sample-mono">Plan · Step 2 of 4 · LoginScreen.tsx · written</div>
+  </div>
+  <div style="width:1px;height:36px;background:var(--br-2);"></div>
+  <div class="fn-item">
+    <div class="fn-label">Code — JetBrains Mono</div>
+    <div class="fn-sample-mono" style="color:var(--t3);">import React from 'react'</div>
+  </div>
+</div>
+
+<!-- IDE -->
+<div class="ide">
+  <!-- Navbar -->
+  <div class="navbar">
+    <div class="nb-l">
+      <div class="nb-back">‹</div>
+      <div class="nb-emoji">🚀</div>
+      <span class="nb-name">TaskMaster</span>
+      <span class="nb-dot">·</span>
+      <span class="nb-fw">React Native</span>
+    </div>
+    <div class="nb-r">
+      <div class="nb-eye">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1.1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1.1"/></svg>
+      </div>
+      <div class="nb-theme-btn">Dracula <span style="color:var(--t4);margin-left:2px;">▾</span></div>
+      <div class="nb-run">
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 1.5l5 2.5-5 2.5V1.5z" fill="white"/></svg>
+        Run
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="ide-body">
+    <!-- Dock -->
+    <div class="dock">
+      <div class="dock-top">
+        <div class="dock-btn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2h4v4H2V2zm6 0h4v4H8V2zM2 8h4v4H2V8zm6 0h4v4H8V8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="dock-btn on">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.4 3.8H12L8.8 7.1l1.1 3.8-3.4-2.3-3.4 2.3 1.1-3.8L1 4.8h4.1z" stroke="var(--blue)" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="dock-btn">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 4v3l1.5 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="dock-bot">
+        <div class="dock-btn" style="position:relative;">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.1"/><path d="M4.5 5c0-1.1 1-2 2-2s2 .9 2 2c0 .8-.5 1.5-1.2 1.8V8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><circle cx="6.5" cy="9.5" r="0.6" fill="currentColor"/></svg>
+          <span style="position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workspace -->
+    <div class="workspace">
+      <!-- Chat -->
+      <div class="chat">
+        <div class="chat-head">
+          <span style="color:var(--blue);font-size:12px;">✦</span>
+          Chat
+        </div>
+        <div class="chat-body">
+          <div class="msg-user">Add a login screen</div>
+          <div class="msg-ai">I'll create a login screen with email + password fields and wire it to the auth store.</div>
+
+          <div class="plan">
+            <div class="plan-head">
+              <div class="plan-prow">
+                <span class="plan-lbl">Plan · 2 of 4</span>
+                <span class="plan-pct">50%</span>
+              </div>
+              <div class="plan-title">Add login screen</div>
+              <div class="plan-bar"><div class="plan-bar-fill"></div></div>
+            </div>
+            <div class="plan-steps">
+              <div class="step">
+                <div class="step-d"><svg width="5" height="5" viewBox="0 0 5 5" fill="none"><polyline points="1,2.5 2,3.5 4,1.5" stroke="#34d68a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <span class="step-t d">Create component</span>
+              </div>
+              <div class="step run">
+                <div class="step-r"></div>
+                <span class="step-t r">Write auth store</span>
+              </div>
+              <div class="step">
+                <div class="step-p"></div>
+                <span class="step-t p">Connect to API</span>
+              </div>
+              <div class="step">
+                <div class="step-p"></div>
+                <span class="step-t p">Add navigation</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="alog">
+            <div class="alog-think">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="3.5" stroke="var(--indigo)" stroke-width="1"/></svg>
+              <span class="alog-think-text">Thinking</span>
+              <div class="alog-dots">
+                <div class="alog-dot" style="opacity:.3;"></div>
+                <div class="alog-dot" style="opacity:.6;"></div>
+                <div class="alog-dot"></div>
+              </div>
+            </div>
+            <div class="alog-read">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="1.5" y=".5" width="6" height="8" rx="1" stroke="#484860" stroke-width="1"/></svg>
+              <span class="alog-read-text">Read 2 files</span>
+              <span class="alog-read-files">App.tsx, routes.ts</span>
+            </div>
+            <div class="alog-write">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="1.5" y=".5" width="6" height="8" rx="1" stroke="var(--green)" stroke-width="1.1"/><polyline points="2.5,5.5 3.5,6.5 6,4" stroke="var(--green)" stroke-width="1" stroke-linecap="round"/></svg>
+              <span class="alog-write-name">LoginScreen.tsx</span>
+              <span class="alog-write-ok">written</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-wrap">
+          <div class="chat-input-box">
+            <div class="chat-input-ph">Ask anything...</div>
+            <div class="chat-input-bar">
+              <div class="chat-tool">+ Attach</div>
+              <span class="chat-mode">Plan ✓</span>
+              <div class="chat-send">
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 7V2M2 4.5l2.5-2.5 2.5 2.5" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right -->
+      <div class="ide-right">
+        <div class="ep">
+          <!-- Editor -->
+          <div class="editor">
+            <div class="editor-tabs">
+              <div class="tab on"><span>LoginScreen.tsx</span><div class="tab-dot"></div></div>
+              <div class="tab off">auth/store.ts</div>
+            </div>
+            <div class="code-body">
+              <div class="line"><span class="ln">1</span><span class="c"><span class="kw">import</span> <span class="tc">React</span> <span class="kw">from</span> <span class="str">'react'</span></span></div>
+              <div class="line"><span class="ln">2</span><span class="c"><span class="kw">import</span> { <span class="tc">View</span>, <span class="tc">Text</span>, <span class="tc">TextInput</span> } <span class="kw">from</span> <span class="str">'react-native'</span></span></div>
+              <div class="line"><span class="ln">3</span><span class="c"></span></div>
+              <div class="line"><span class="ln">4</span><span class="c"><span class="kw">export</span> <span class="kw">default</span> <span class="kw">function</span> <span class="fn">LoginScreen</span>() {</span></div>
+              <div class="line"><span class="ln">5</span><span class="c">  <span class="kw">const</span> [email, setEmail] = useState(<span class="str">''</span>)</span></div>
+              <div class="line"><span class="ln">6</span><span class="c">  <span class="kw">const</span> [password, setPassword] = useState(<span class="str">''</span>)</span></div>
+              <div class="line"><span class="ln">7</span><span class="c"></span></div>
+              <div class="line"><span class="ln">8</span><span class="c">  <span class="kw">return</span> (</span></div>
+              <div class="line"><span class="ln">9</span><span class="c">    &lt;<span class="tc">View</span> style={styles.container}&gt;</span></div>
+              <div class="line"><span class="ln">10</span><span class="c">      &lt;<span class="tc">Text</span> style={styles.title}&gt;<span class="str">Sign In</span>&lt;/<span class="tc">Text</span>&gt;</span></div>
+              <div class="line"><span class="ln">11</span><span class="c">      &lt;<span class="tc">TextInput</span></span></div>
+              <div class="line"><span class="ln">12</span><span class="c">        placeholder=<span class="str">"Email"</span></span></div>
+              <div class="line"><span class="ln">13</span><span class="c">        value={email} <span class="cm">// controlled</span></span></div>
+              <div class="line"><span class="ln">14</span><span class="c">        style={styles.input} /&gt;</span></div>
+              <div class="line"><span class="ln">15</span><span class="c cm">      {/* password field... */}</span></div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="preview">
+            <div class="preview-bar">
+              <span class="pt-badge">RN</span>
+              <div class="pt-div"></div>
+              <div class="pt-pill">
+                <span class="pt-pb on">iOS</span>
+                <span class="pt-pb off">And</span>
+              </div>
+              <div class="pt-ico" style="margin-left:4px;">⟳</div>
+              <div class="pt-ico on">⌨</div>
+            </div>
+            <div class="preview-body">
+              <div class="phone">
+                <div class="ph-island"><div class="ph-pill"></div></div>
+                <div class="ph-status"><span class="ph-time">9:41</span><div class="ph-bat"></div></div>
+                <div class="ph-screen">
+                  <div class="ph-sh">Sign In</div>
+                  <div class="ph-inp"></div>
+                  <div class="ph-inp"></div>
+                  <div class="ph-btn"><div class="ph-btn-in"></div></div>
+                </div>
+                <div class="ph-hb-wrap"><div class="ph-hb"></div></div>
+                <div class="ph-side"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Console -->
+        <div class="console">
+          <div class="con-head">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="1.5" width="8" height="7" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M2.5 4l1.5 1.5-1.5 1.5M5.5 7H8" stroke="currentColor" stroke-width=".9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Terminal
+            <div class="con-dot"></div>
+          </div>
+          <div class="con-body">
+            <div class="con-line info">$ npm start</div>
+            <div class="con-line ok">✓ Metro bundler ready on port 8081</div>
+            <div class="con-line mute">› Press a for Android, i for iOS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Callouts -->
+<div class="callouts">
+  <div class="callout">
+    <div class="callout-num">Navbar</div>
+    <div class="callout-title">Geist name, mono framework tag</div>
+    <div class="callout-desc">Project name in Geist 600. "React Native" tag in JetBrains Mono. Run button gradient + glow. Consistent border treatment on all icon buttons.</div>
+  </div>
+  <div class="callout">
+    <div class="callout-num">Plan card</div>
+    <div class="callout-title">All metadata in mono</div>
+    <div class="callout-desc">"Plan · 2 of 4" label, step names, percentage — all JetBrains Mono. Plan title in Geist. Gradient progress bar + connector dots + running row highlight.</div>
+  </div>
+  <div class="callout">
+    <div class="callout-num">Action log</div>
+    <div class="callout-title">Green writes, indigo thinking</div>
+    <div class="callout-desc">File names in JetBrains Mono. Write rows: green left-border + dim green bg. Thinking row: indigo bg + animated dots. Read rows: collapsed, subdued.</div>
+  </div>
+  <div class="callout">
+    <div class="callout-num">Terminal + Preview</div>
+    <div class="callout-title">Full mono in terminal</div>
+    <div class="callout-desc">Terminal header label + all console output in JetBrains Mono. Preview toolbar: mono for badge/platform labels. Device frame: gradient body + translucent home bar.</div>
+  </div>
+</div>
+
+</body>
+</html>

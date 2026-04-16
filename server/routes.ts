@@ -35,6 +35,8 @@ import {
 } from "./verifier-prompt";
 import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
 import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./build-orchestrator";
+import { lspManager } from "./lsp-manager";
+import { shellManager } from "./shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
@@ -584,6 +586,13 @@ export async function registerRoutes(
         .finally(() => {
           session.done = true;
           session.doneAt = Date.now();
+          // Clean up session directory
+          if (session.sessionDir) {
+            rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
+          }
+          // Stop LSP servers and shell session
+          lspManager.stop(session.id).catch(() => {});
+          shellManager.destroyShell(session.id).catch(() => {});
         });
 
       buildPromise.catch(() => {});

@@ -1,0 +1,62 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - img "CodeStart" [ref=e7]
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - button "Switch to English" [ref=e10] [cursor=pointer]: EN
+            - button "切换到中文" [ref=e12] [cursor=pointer]: 中
+          - combobox [ref=e13] [cursor=pointer]:
+            - img [ref=e14]
+            - generic: Dark+
+            - img [ref=e20]
+          - button "新建项目" [ref=e22] [cursor=pointer]:
+            - img
+            - text: 新建项目
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - heading "我的项目" [level=1] [ref=e25]
+        - button "选择" [ref=e26] [cursor=pointer]:
+          - img
+          - text: 选择
+      - paragraph [ref=e27]: 创建新项目或打开已有项目开始构建。
+      - generic [ref=e28]:
+        - generic [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]:
+            - generic [ref=e31]: 📅
+            - generic [ref=e32]:
+              - button [ref=e33]:
+                - img
+              - button [ref=e34]:
+                - img
+          - heading "新建项目" [level=3] [ref=e35]
+          - generic [ref=e36]:
+            - img [ref=e37]
+            - generic [ref=e39]: 4/11/2026
+        - generic [ref=e40] [cursor=pointer]:
+          - generic [ref=e41]:
+            - generic [ref=e42]: 🔢
+            - generic [ref=e43]:
+              - button [ref=e44]:
+                - img
+              - button [ref=e45]:
+                - img
+          - heading "2048" [level=3] [ref=e46]
+          - generic [ref=e47]:
+            - img [ref=e48]
+            - generic [ref=e50]: 4/10/2026
+        - generic [ref=e51] [cursor=pointer]:
+          - generic [ref=e52]:
+            - generic [ref=e53]: 💻
+            - generic [ref=e54]:
+              - button [ref=e55]:
+                - img
+              - button [ref=e56]:
+                - img
+          - heading "卡路里追踪器" [level=3] [ref=e57]
+          - generic [ref=e58]:
+            - img [ref=e59]
+            - generic [ref=e61]: 4/9/2026

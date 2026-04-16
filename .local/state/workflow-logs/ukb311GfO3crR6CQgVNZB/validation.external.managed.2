@@ -1,0 +1,43 @@
+VERDICT: APPROVED_WITH_COMMENTS
+The diff substantially implements the navigation-survival task end-to-end, with only minor non-blocking concerns.
+
+Critical findings / analysis:
+- **Session retention fixed**: server cleanup now uses `doneRetention =VERDICT: APPROVED_WITH_COMMENTS
+ 30 * 60 * 1000` for both build and manager sessions, and manager sessions now track `doneAtThe diff substantially implements the navigation-survival task end-to-end, with only minor non-blocking concerns.
+` so retention is based on completion time.
+- **Plan persistence adde
+d**: on manager `plan_ready`, server persists plan viCritical findings / analysis:
+a `storage.updateProjectPlan(...)`; client can restore via new `GET /api/project- **Session retention fixed**: server cleanup now uses `doneRetention = 30 * 60 * 1000` for both build and manager sessions, and manager sessions now track `doneAt` so retention is based on completion time.
+s/:id/plan` and fallback logic in `useManagerStream`.
+- **Build result persistence added**: on build `all_complete`, server persists `{changedFiles, summary, completedAt}` via `updateProjectBuildResult`; client restores via new `GET /api/projects/:id/build-result` in reconnect-failure paths.
+- **Reconnect blocking behavior improved**: manager reconnect no longer sets `isManagerResponding=true` optimistically from snapshot; it now uses dedicated `isMgrReconnecting` and only sets responding true when status confirms active stream.
+- **LocalStorage plan restore improved**: persisted IDE state now includes `managerPlan`, and `loadProject` restores from `saved.managerPlan` when plan is not reconstructible from messages.
+- **Build file sync on return implemented**: after `done` handling, client triggers a file refresh path (`/api/projects/:id/files` then `loadProject`) to re-align IDE files with server-applied changes.
+
+Comments (non-blocking):
+1) File sync currently calls `loadProject(projectId)` from the build hook, which is heavier than a targeted file refresh and may reset more IDE/chat state than necessary. Functionally acceptable, but worth tightening later.
+2) New DB-backed columns (`last_plan`, `last_build_result`) require schema application in deployed DBs (e.g., `drizzle-kit push`) or persistence APIs will fail at runtime.
+
+Security:
+- None observed that are serious/new relative to this task. No evident authz, injection, or secret-handling regressions introduced by this diff.
+
+Next actions:
+1) Merge as-is for task completion.
+2) Ensure DB schema push/migration is executed in target environments.
+3) Optionally replace `loadProject`-based file sync with a narrower file-tree refresh to avoid extra state churn.- **Plan persistence added**: on manager `plan_ready`, server persists plan via `storage.updateProjectPlan(...)`; client can restore via new `GET /api/projects/:id/plan` and fallback logic in `useManagerStream`.
+- **Build result persistence added**: on build `all_complete`, server persists `{changedFiles, summary, completedAt}` via `updateProjectBuildResult`; client restores via new `GET /api/projects/:id/build-result` in reconnect-failure paths.
+- **Reconnect blocking behavior improved**: manager reconnect no longer sets `isManagerResponding=true` optimistically from snapshot; it now uses dedicated `isMgrReconnecting` and only sets responding true when status confirms active stream.
+- **LocalStorage plan restore improved**: persisted IDE state now includes `managerPlan`, and `loadProject` restores from `saved.managerPlan` when plan is not reconstructible from messages.
+- **Build file sync on return implemented**: after `done` handling, client triggers a file refresh path (`/api/projects/:id/files` then `loadProject`) to re-align IDE files with server-applied changes.
+
+Comments (non-blocking):
+1) File sync currently calls `loadProject(projectId)` from the build hook, which is heavier than a targeted file refresh and may reset more IDE/chat state than necessary. Functionally acceptable, but worth tightening later.
+2) New DB-backed columns (`last_plan`, `last_build_result`) require schema application in deployed DBs (e.g., `drizzle-kit push`) or persistence APIs will fail at runtime.
+
+Security:
+- None observed that are serious/new relative to this task. No evident authz, injection, or secret-handling regressions introduced by this diff.
+
+Next actions:
+1) Merge as-is for task completion.
+2) Ensure DB schema push/migration is executed in target environments.
+3) Optionally replace `loadProject`-based file sync with a narrower file-tree refresh to avoid extra state churn.

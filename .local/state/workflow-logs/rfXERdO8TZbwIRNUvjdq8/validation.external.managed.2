@@ -1,0 +1,39 @@
+VERDICT: REJECTED
+The diff makes meaningful progress on the navigation-survival problem, but it does not fully satisfy a core requirement: done sessions are still not guaranteed to survive 30 minutes after completion.
+
+Critical findings:
+- **BlockiVERDICT: REJECTED
+ng: done-session retention logic is still completion-time incorrect.** In `server/routes.ts` cleanup, both maps fThe diff makes meaningful progress on the navigation-survival problem, but it does not fully satisfy a core requirement: done sessions are still not guaranteed to survive 30 minutes after completion.
+irst check `doneRetention` but then still apply `maxAge` uncondit
+ionally. For any session that ran for N minutes beCritical findings:
+fore finishing, effective post-completion retention is `30m - N` (and can be near-zero for long runs). This violates “retain done sessions for at least 30 minutes.”
+- Plan persistence is correctly added server-side (`updateProjectPlan` on `plan_ready`) and recovery route exists (`GET /api/projects/:id/plan`).
+- Build result persistence is correctly added server-side (`updateProjectBuildResult` on `all_complete`) with recovery route (`GET /api/projects/:id/build-result`).
+- Manager reconnect no longer sets `isManagerResponding=true` preemptively; this addresses the stuck-input problem during async status checks. Dedicated `isMgrReconnecting` state is added.
+- Local restore improvements are in place (`managerPlan` fallback from persisted state in `ide-store`, DB/local fallback in manager reconnect flow).
+
+Additional non-blocking concern:
+- `restoreBuildResultFromDB` bails out if **any** historical `buildResult` exists in `managerMessages`. If user had an older build result and completes a newer build while away, fallback may not update to latest persisted result.
+
+Security:
+- None observed at serious/blocking level for this task.
+
+Next actions:
+1. In cleanup interval, apply `maxAge` only to **non-done** sessions (or compute done-session expiry solely from `doneAt`) for both manager and build maps.
+2. Update build-result restore logic to replace/refresh the latest plan/build result rather than short-circuiting on any existing historical result.
+3. Add a focused regression test: long-running session (e.g., 15–20 min simulated age) remains reconnectable for full 30 min after `doneAt`.- **Blocking: done-session retention logic is still completion-time incorrect.** In `server/routes.ts` cleanup, both maps first check `doneRetention` but then still apply `maxAge` unconditionally. For any session that ran for N minutes before finishing, effective post-completion retention is `30m - N` (and can be near-zero for long runs). This violates “retain done sessions for at least 30 minutes.”
+- Plan persistence is correctly added server-side (`updateProjectPlan` on `plan_ready`) and recovery route exists (`GET /api/projects/:id/plan`).
+- Build result persistence is correctly added server-side (`updateProjectBuildResult` on `all_complete`) with recovery route (`GET /api/projects/:id/build-result`).
+- Manager reconnect no longer sets `isManagerResponding=true` preemptively; this addresses the stuck-input problem during async status checks. Dedicated `isMgrReconnecting` state is added.
+- Local restore improvements are in place (`managerPlan` fallback from persisted state in `ide-store`, DB/local fallback in manager reconnect flow).
+
+Additional non-blocking concern:
+- `restoreBuildResultFromDB` bails out if **any** historical `buildResult` exists in `managerMessages`. If user had an older build result and completes a newer build while away, fallback may not update to latest persisted result.
+
+Security:
+- None observed at serious/blocking level for this task.
+
+Next actions:
+1. In cleanup interval, apply `maxAge` only to **non-done** sessions (or compute done-session expiry solely from `doneAt`) for both manager and build maps.
+2. Update build-result restore logic to replace/refresh the latest plan/build result rather than short-circuiting on any existing historical result.
+3. Add a focused regression test: long-running session (e.g., 15–20 min simulated age) remains reconnectable for full 30 min after `doneAt`.

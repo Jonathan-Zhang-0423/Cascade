@@ -1,0 +1,21 @@
+Task #138: Fix plan/build session survival on navigation
+
+- Increased done session retention from 5 min to 30 min
+- Added doneAt timestamp to ManagerChatSession, pruning now uses
+  doneAt instead of startedAt for accurate post-completion retention
+- Added lastPlan and lastBuildResult columns to projects table
+- Server persists plan on plan_ready and build result on all_complete
+- Added GET /api/projects/:id/plan and /build-result endpoints
+- Added isMgrReconnecting state (useState + ref) for manager reconnect
+  status tracking; isManagerResponding only set true for active streams,
+  not done sessions during status probing
+- restorePlanFromDB: checks localStorage/managerMessages first, then
+  falls back to DB endpoint; populates taskStatuses for each step
+- ide-store loadProject: falls back to saved.managerPlan when no plan
+  found in managerMessages
+- restoreBuildResultFromDB: fetches from DB when build session pruned,
+  restores build result with summary, sets task statuses to done
+- Build completion triggers file sync only when user is still on
+  the same project (prevents navigation hijack)
+- Replaced any casts with proper ManagerPlan/ManagerMessage types
+- Omitted lastPlan/lastBuildResult from insertProjectSchema

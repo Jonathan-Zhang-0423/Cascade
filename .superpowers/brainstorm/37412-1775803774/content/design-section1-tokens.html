@@ -1,0 +1,79 @@
+<h2>Design Section 1 of 5: Foundation — Tokens & Animations</h2>
+<p class="subtitle">The base layer everything else builds on. Does this look right before we move on?</p>
+
+<div class="section">
+  <h3>1A — Typography Scale Fix</h3>
+  <p>Current code uses <code>text-[10px]</code> and <code>text-[11px]</code> throughout chat UI. We'll establish a clean scale:</p>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+    <div style="background:#1a1a1e; border-radius:8px; padding:16px; font-family:system-ui;">
+      <div style="color:#888; font-size:10px; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.08em">BEFORE (current)</div>
+      <div style="color:#fff; font-size:10px; margin-bottom:6px; opacity:0.5">Step 1 of 4 · running</div>
+      <div style="color:#fff; font-size:11px; margin-bottom:4px; opacity:0.6">Writing files to project...</div>
+      <div style="color:#aaa; font-size:10px">3 files written · 2.1s</div>
+    </div>
+    <div style="background:#1a1a1e; border-radius:8px; padding:16px; font-family:system-ui;">
+      <div style="color:#888; font-size:10px; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.08em">AFTER (proposed)</div>
+      <div style="color:#94a3b8; font-size:12px; margin-bottom:6px;">Step 1 of 4 · running</div>
+      <div style="color:#e2e8f0; font-size:13px; margin-bottom:4px;">Writing files to project...</div>
+      <div style="color:#64748b; font-size:11px">3 files written · 2.1s</div>
+    </div>
+  </div>
+  <p style="margin-top:10px; color:#64748b; font-size:13px">Minimum text size: <strong>11px</strong> for metadata, <strong>12px</strong> for secondary text, <strong>13px</strong> for primary content, <strong>14px</strong> for inputs and chat messages.</p>
+</div>
+
+<div class="section">
+  <h3>1B — Shadow & Elevation System</h3>
+  <p>All shadows are currently zeroed out. We'll add real elevation for both modes:</p>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+    <div style="background:#111114; border-radius:10px; padding:16px;">
+      <div style="color:#888; font-size:11px; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.08em">Dark mode elevation</div>
+      <div style="background:#1c1c20; border-radius:7px; padding:12px; margin-bottom:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.4);">
+        <div style="color:#e2e8f0; font-size:12px">Level 1 — Cards, panels</div>
+      </div>
+      <div style="background:#222226; border-radius:7px; padding:12px; margin-bottom:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3);">
+        <div style="color:#e2e8f0; font-size:12px">Level 2 — Popovers, dropdowns</div>
+      </div>
+      <div style="background:#2a2a2e; border-radius:7px; padding:12px; box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4);">
+        <div style="color:#e2e8f0; font-size:12px">Level 3 — Modals, command palette</div>
+      </div>
+    </div>
+    <div style="background:#f0f0f4; border-radius:10px; padding:16px;">
+      <div style="color:#888; font-size:11px; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.08em">Light mode elevation</div>
+      <div style="background:#fff; border-radius:7px; padding:12px; margin-bottom:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);">
+        <div style="color:#1e293b; font-size:12px">Level 1 — Cards, panels</div>
+      </div>
+      <div style="background:#fff; border-radius:7px; padding:12px; margin-bottom:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);">
+        <div style="color:#1e293b; font-size:12px">Level 2 — Popovers, dropdowns</div>
+      </div>
+      <div style="background:#fff; border-radius:7px; padding:12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08);">
+        <div style="color:#1e293b; font-size:12px">Level 3 — Modals, command palette</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>1C — Micro-animation Layer (new CSS variables)</h3>
+  <p>New transitions added to <code>index.css</code> and consumed throughout components:</p>
+  <div style="background:#111114; border-radius:8px; padding:16px; font-family:'Menlo',monospace; font-size:12px; color:#94a3b8; margin-top:8px; line-height:1.8;">
+    <span style="color:#8b5cf6">--transition-fast</span>: 100ms ease;<br>
+    <span style="color:#8b5cf6">--transition-base</span>: 150ms ease;<br>
+    <span style="color:#8b5cf6">--transition-slow</span>: 300ms ease;<br>
+    <span style="color:#8b5cf6">--transition-spring</span>: 200ms cubic-bezier(0.34,1.56,0.64,1);<br><br>
+    <span style="color:#64748b">/* Step completion pulse (green flash) */</span><br>
+    <span style="color:#8b5cf6">@keyframes step-complete</span> { 0%,100% { opacity:1 } 50% { opacity:0.6 } }<br><br>
+    <span style="color:#64748b">/* File write flash (subtle blue highlight) */</span><br>
+    <span style="color:#8b5cf6">@keyframes file-written</span> { from { background: #3b82f615 } to { background: transparent } }<br><br>
+    <span style="color:#64748b">/* Build phase fade-in */</span><br>
+    <span style="color:#8b5cf6">@keyframes fade-up</span> { from { opacity:0; transform:translateY(4px) } to { opacity:1; transform:none } }
+  </div>
+</div>
+
+<div class="section">
+  <h3>1D — Border Radius Refinement</h3>
+  <p>Current <code>--radius: 0.5rem</code> (8px). We'll add intermediate steps: <strong>4px</strong> for dense UI elements (badges, chips, code labels), <strong>8px</strong> for cards/panels, <strong>12px</strong> for modals/popovers, <strong>full</strong> for pills/avatars. These map to existing Tailwind scale (rounded-sm, rounded-md, rounded-lg, rounded-full) — no new classes needed.</p>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">This section only touches <code>index.css</code> and <code>tailwind.config.ts</code>. Does this foundation look right?</p>

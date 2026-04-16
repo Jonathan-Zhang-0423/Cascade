@@ -1,0 +1,200 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K[kotlin-wasm] WARNING: Gradle not found at /home/runner/.gradle-sdk/gradle-8.10/bin/gradle. Kotlin/Wasm preview will be unavailable. Run: bash scripts/setup-gradle.sh
+[swift-wasm] WARNING: Swift toolchain not found at /home/runner/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift. SwiftUI/WASM preview will be unavailable. Run: bash scripts/setup-swift-wasm.sh
+12:16:39 PM [express] serving on port 5000
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+12:16:51 PM [express] GET /api/projects 304 in 18ms :: {"projects":[{"id":"dif3qrcimmnhzcr9","name":"贪吃蛇游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:53.898Z"},{"id":"13w9f881mmomxde3","name":"个人网站项目","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.077Z"},{"id":"4q7y2t7lmmuai77j","name":"太空大战游戏","emoji":null,"framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-21T13:01:54.225Z"},{"id":"41spyc6ymn3yevse","name":"第三关飞行Boss战","emoji":"🎮","framework":"web","language":"html","targetPlatform":null,"lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-24T01:46:43.807Z"},{"id":"zexvak1imn8s9ohh","name":"移动端2048游戏","emoji":"🔢","framework":"swiftui","language":"swift","targetPlatform":"ios","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-03-27T10:53:34.280Z"},{"id":"d207ozdbmnikq9xa","name":"新建项目","emoji":"🔢","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:20:13.588Z"},{"id":"ltehf8vhmnil5l9r","name":"新建项目","emoji":"✅","framework":"rn-expo","language":"typescript","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T07:32:08.093Z"},{"id":"test_1775213463062_tk7pdg","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T10:51:03.081Z"},{"id":"diag_1775213838199","name":"__diag__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T10:58:29.044Z"}]}
+12:17:19 PM [express] POST /api/projects 200 in 63ms :: {"project":{"id":"test_1775218639150_lpjnc0","name":"__streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:17:19.186Z"}}
+12:17:19 PM [express] POST /api/projects 200 in 29ms :: {"project":{"id":"test_1775218639200_lvvx0r","name":"__build_streaming_test__","emoji":null,"framework":"web","language":"html","targetPlatform":"both","lastPlan":null,"lastBuildResult":null,"createdAt":"2026-04-03T12:17:19.221Z"}}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+12:17:27 PM [express] POST /api/manager-chat 200 in 8623ms
+12:17:27 PM [express] DELETE /api/projects/test_1775218639150_lpjnc0 200 in 5ms :: {"ok":true}
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=3
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=4
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=1
+[agent-loop] first thinking_token from doubao-seed-2-0-code-preview-260215, iteration=2
+[agent-loop] first narration_token from doubao-seed-2-0-code-preview-260215, iteration=2
+12:17:57 PM [express] DELETE /api/projects/test_1775218639200_lvvx0r 200 in 16ms :: {"ok":true}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:19:18 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:19:34 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:19:48 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:19:54 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x4)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:20:20 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x5)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:20:37 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x6)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m12:20:50 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ide/chat-panel.tsx[22m [33m(x7)[39m

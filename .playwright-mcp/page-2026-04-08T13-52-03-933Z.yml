@@ -1,0 +1,1421 @@
+- generic [ref=e3]:
+  - navigation:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - link "Go to dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img [ref=e14]
+        - navigation "Main" [ref=e25]:
+          - list [ref=e27]:
+            - listitem [ref=e28]:
+              - button "Solutions" [ref=e29] [cursor=pointer]:
+                - text: Solutions
+                - img [ref=e30]
+            - listitem [ref=e32]:
+              - button "Resources" [ref=e33] [cursor=pointer]:
+                - text: Resources
+                - img [ref=e34]
+            - listitem [ref=e36]:
+              - link "Enterprise" [ref=e37] [cursor=pointer]:
+                - /url: /enterprise-landing
+            - listitem [ref=e38]:
+              - link "Pricing" [ref=e39] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=e40]:
+              - link "Community" [ref=e41] [cursor=pointer]:
+                - /url: /community
+            - listitem [ref=e42]:
+              - link "Security" [ref=e43] [cursor=pointer]:
+                - /url: /security
+      - generic [ref=e45]:
+        - button "Log in" [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]: Log in
+        - button "Get started" [ref=e48] [cursor=pointer]
+  - main [ref=e50]:
+    - generic [ref=e51]:
+      - complementary [ref=e52]:
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - heading "Blog" [level=1] [ref=e56]
+            - paragraph [ref=e57]: Compiled notes from the Lovable team
+          - navigation [ref=e59]:
+            - link "Latest" [ref=e60] [cursor=pointer]:
+              - /url: /blog
+            - link "Announcements" [ref=e61] [cursor=pointer]:
+              - /url: /blog?category=announcements
+            - link "Changelog" [ref=e62] [cursor=pointer]:
+              - /url: /blog?category=changelog
+            - link "Inside Lovable" [ref=e63] [cursor=pointer]:
+              - /url: /blog?category=inside%20lovable
+            - link "Development 101" [ref=e64] [cursor=pointer]:
+              - /url: /blog?category=development%20101
+            - link "Reports" [ref=e65] [cursor=pointer]:
+              - /url: /blog?category=reports
+            - link "Tutorials" [ref=e66] [cursor=pointer]:
+              - /url: /blog?category=tutorials
+            - link "Stories" [ref=e67] [cursor=pointer]:
+              - /url: /blog?category=stories
+      - main [ref=e68]:
+        - generic [ref=e69]:
+          - link "A Bug Hunt in Our Kubernetes Cluster inside lovable A Bug Hunt in Our Kubernetes Cluster How Lovable's infrastructure team tracked down sporadic networking errors in Kubernetes, from crashing anetd pods to MTU mismatches, using AI-assisted debugging and deep packet inspection. Sascha Eglau • April 1, 2026" [ref=e70] [cursor=pointer]:
+            - /url: /blog/hunting-networking-bugs-in-kubernetes
+            - img "A Bug Hunt in Our Kubernetes Cluster" [ref=e72]
+            - generic [ref=e73]:
+              - generic [ref=e74]: inside lovable
+              - heading "A Bug Hunt in Our Kubernetes Cluster" [level=2] [ref=e75]
+              - paragraph [ref=e76]: How Lovable's infrastructure team tracked down sporadic networking errors in Kubernetes, from crashing anetd pods to MTU mismatches, using AI-assisted debugging and deep packet inspection.
+              - generic [ref=e77]:
+                - generic [ref=e78]: Sascha Eglau
+                - generic [ref=e79]: •
+                - time [ref=e80]: April 1, 2026
+          - link "A founder's guide to Lovable security Latest A founder's guide to Lovable security Talia Moyal • March 24, 2026" [ref=e81] [cursor=pointer]:
+            - /url: /blog/a-founders-guide-to-lovable-security
+            - img "A founder's guide to Lovable security" [ref=e83]
+            - generic [ref=e84]:
+              - generic [ref=e85]: Latest
+              - heading "A founder's guide to Lovable security" [level=2] [ref=e86]
+              - generic [ref=e87]:
+                - generic [ref=e88]: Talia Moyal
+                - generic [ref=e89]: •
+                - time [ref=e90]: March 24, 2026
+          - link "Think your app is secure? Prove It. announcements Think your app is secure? Prove It. Introduced Penetration Testing for all Lovable projects. Talia Moyal • March 24, 2026" [ref=e91] [cursor=pointer]:
+            - /url: /blog/announcing-pentesting
+            - img "Think your app is secure? Prove It." [ref=e93]
+            - generic [ref=e94]:
+              - generic [ref=e95]: announcements
+              - heading "Think your app is secure? Prove It." [level=2] [ref=e96]
+              - paragraph [ref=e97]: Introduced Penetration Testing for all Lovable projects.
+              - generic [ref=e98]:
+                - generic [ref=e99]: Talia Moyal
+                - generic [ref=e100]: •
+                - time [ref=e101]: March 24, 2026
+          - link "Go beyond building apps with Lovable announcements Go beyond building apps with Lovable You can now analyze data, create and edit files, generate business docs, and turn things like spreadsheets into working apps without ever leaving Lovable. Gemma Casey-Swift • March 19, 2026" [ref=e102] [cursor=pointer]:
+            - /url: /blog/go-beyond-building-full-stack-apps-with-lovable
+            - img "Go beyond building apps with Lovable" [ref=e104]
+            - generic [ref=e105]:
+              - generic [ref=e106]: announcements
+              - heading "Go beyond building apps with Lovable" [level=2] [ref=e107]
+              - paragraph [ref=e108]: You can now analyze data, create and edit files, generate business docs, and turn things like spreadsheets into working apps without ever leaving Lovable.
+              - generic [ref=e109]:
+                - generic [ref=e110]: Gemma Casey-Swift
+                - generic [ref=e111]: •
+                - time [ref=e112]: March 19, 2026
+          - 'link "Prototype-to-production handoff: how non-technical teams use Lovable without bypassing engineering inside lovable Prototype-to-production handoff: how non-technical teams use Lovable without bypassing engineering Talia Moyal • March 19, 2026" [ref=e113] [cursor=pointer]':
+            - /url: /blog/prototype-to-production-handoff-how-non-technical-teams-use-lovable-without-bypassing-engineering
+            - 'img "Prototype-to-production handoff: how non-technical teams use Lovable without bypassing engineering" [ref=e115]'
+            - generic [ref=e116]:
+              - generic [ref=e117]: inside lovable
+              - 'heading "Prototype-to-production handoff: how non-technical teams use Lovable without bypassing engineering" [level=2] [ref=e118]'
+              - generic [ref=e119]:
+                - generic [ref=e120]: Talia Moyal
+                - generic [ref=e121]: •
+                - time [ref=e122]: March 19, 2026
+          - link "9 ways to use Workspace Knowledge to empower your entire team inside lovable 9 ways to use Workspace Knowledge to empower your entire team Talia Moyal • March 11, 2026" [ref=e123] [cursor=pointer]:
+            - /url: /blog/9-ways-to-use-workspace-knowledge-to-empower-your-entire-team
+            - img "9 ways to use Workspace Knowledge to empower your entire team" [ref=e125]
+            - generic [ref=e126]:
+              - generic [ref=e127]: inside lovable
+              - heading "9 ways to use Workspace Knowledge to empower your entire team" [level=2] [ref=e128]
+              - generic [ref=e129]:
+                - generic [ref=e130]: Talia Moyal
+                - generic [ref=e131]: •
+                - time [ref=e132]: March 11, 2026
+          - link "What sales teams build on Lovable inside lovable What sales teams build on Lovable Talia Moyal • March 5, 2026" [ref=e133] [cursor=pointer]:
+            - /url: /blog/what-sales-teams-build-on-lovable
+            - img "What sales teams build on Lovable" [ref=e135]
+            - generic [ref=e136]:
+              - generic [ref=e137]: inside lovable
+              - heading "What sales teams build on Lovable" [level=2] [ref=e138]
+              - generic [ref=e139]:
+                - generic [ref=e140]: Talia Moyal
+                - generic [ref=e141]: •
+                - time [ref=e142]: March 5, 2026
+          - link "What product teams build on Lovable inside lovable What product teams build on Lovable Talia Moyal • March 5, 2026" [ref=e143] [cursor=pointer]:
+            - /url: /blog/what-product-teams-build-on-lovable
+            - img "What product teams build on Lovable" [ref=e145]
+            - generic [ref=e146]:
+              - generic [ref=e147]: inside lovable
+              - heading "What product teams build on Lovable" [level=2] [ref=e148]
+              - generic [ref=e149]:
+                - generic [ref=e150]: Talia Moyal
+                - generic [ref=e151]: •
+                - time [ref=e152]: March 5, 2026
+          - link "How Lovable built an industry intelligence tool stories How Lovable built an industry intelligence tool Talia Moyal • March 5, 2026" [ref=e153] [cursor=pointer]:
+            - /url: /blog/how-lovable-built-an-industry-intelligence-tool
+            - img "How Lovable built an industry intelligence tool" [ref=e155]
+            - generic [ref=e156]:
+              - generic [ref=e157]: stories
+              - heading "How Lovable built an industry intelligence tool" [level=2] [ref=e158]
+              - generic [ref=e159]:
+                - generic [ref=e160]: Talia Moyal
+                - generic [ref=e161]: •
+                - time [ref=e162]: March 5, 2026
+          - link "Routing Billions of Tokens per Minute inside lovable Routing Billions of Tokens per Minute How Lovable built a robust LLM provider load balancer to handle billions of tokens per minute while preserving prompt caching and preventing rate limit exhaustion. Mårten Wiman • March 4, 2026" [ref=e163] [cursor=pointer]:
+            - /url: /blog/routing-billions-of-tokens-per-minute
+            - img "Routing Billions of Tokens per Minute" [ref=e165]
+            - generic [ref=e166]:
+              - generic [ref=e167]: inside lovable
+              - heading "Routing Billions of Tokens per Minute" [level=2] [ref=e168]
+              - paragraph [ref=e169]: How Lovable built a robust LLM provider load balancer to handle billions of tokens per minute while preserving prompt caching and preventing rate limit exhaustion.
+              - generic [ref=e170]:
+                - generic [ref=e171]: Mårten Wiman
+                - generic [ref=e172]: •
+                - time [ref=e173]: March 4, 2026
+          - link "How Lovable approaches governance, permissions, and security for non-technical teams inside lovable How Lovable approaches governance, permissions, and security for non-technical teams Talia Moyal • February 25, 2026" [ref=e174] [cursor=pointer]:
+            - /url: /blog/security-for-non-technical-teams
+            - img "How Lovable approaches governance, permissions, and security for non-technical teams" [ref=e176]
+            - generic [ref=e177]:
+              - generic [ref=e178]: inside lovable
+              - heading "How Lovable approaches governance, permissions, and security for non-technical teams" [level=2] [ref=e179]
+              - generic [ref=e180]:
+                - generic [ref=e181]: Talia Moyal
+                - generic [ref=e182]: •
+                - time [ref=e183]: February 25, 2026
+          - link "How Lovable built a product launch tracker stories How Lovable built a product launch tracker Talia Moyal • February 25, 2026" [ref=e184] [cursor=pointer]:
+            - /url: /blog/how-lovable-built-a-product-launch-tracker
+            - img "How Lovable built a product launch tracker" [ref=e186]
+            - generic [ref=e187]:
+              - generic [ref=e188]: stories
+              - heading "How Lovable built a product launch tracker" [level=2] [ref=e189]
+              - generic [ref=e190]:
+                - generic [ref=e191]: Talia Moyal
+                - generic [ref=e192]: •
+                - time [ref=e193]: February 25, 2026
+          - link "How a startup replaced a $40,000 Salesforce contract with a Lovable-built CRM stories How a startup replaced a $40,000 Salesforce contract with a Lovable-built CRM Talia Moyal • February 24, 2026" [ref=e194] [cursor=pointer]:
+            - /url: /blog/how-a-startup-replaced-a-salesforce-contract-with-a-lovable-built-crm
+            - img "How a startup replaced a $40,000 Salesforce contract with a Lovable-built CRM" [ref=e196]
+            - generic [ref=e197]:
+              - generic [ref=e198]: stories
+              - heading "How a startup replaced a $40,000 Salesforce contract with a Lovable-built CRM" [level=2] [ref=e199]
+              - generic [ref=e200]:
+                - generic [ref=e201]: Talia Moyal
+                - generic [ref=e202]: •
+                - time [ref=e203]: February 24, 2026
+          - link "How modern marketing teams build on Lovable inside lovable How modern marketing teams build on Lovable Talia Moyal • February 19, 2026" [ref=e204] [cursor=pointer]:
+            - /url: /blog/how-modern-marketing-teams-build-on-lovable
+            - img "How modern marketing teams build on Lovable" [ref=e206]
+            - generic [ref=e207]:
+              - generic [ref=e208]: inside lovable
+              - heading "How modern marketing teams build on Lovable" [level=2] [ref=e209]
+              - generic [ref=e210]:
+                - generic [ref=e211]: Talia Moyal
+                - generic [ref=e212]: •
+                - time [ref=e213]: February 19, 2026
+          - link "The modern website is a product, not a project inside lovable The modern website is a product, not a project Talia Moyal • February 19, 2026" [ref=e214] [cursor=pointer]:
+            - /url: /blog/the-modern-website-is-a-product
+            - img "The modern website is a product, not a project" [ref=e216]
+            - generic [ref=e217]:
+              - generic [ref=e218]: inside lovable
+              - heading "The modern website is a product, not a project" [level=2] [ref=e219]
+              - generic [ref=e220]:
+                - generic [ref=e221]: Talia Moyal
+                - generic [ref=e222]: •
+                - time [ref=e223]: February 19, 2026
+          - link "Marketing velocity is the new competitive advantage inside lovable Marketing velocity is the new competitive advantage Talia Moyal • February 19, 2026" [ref=e224] [cursor=pointer]:
+            - /url: /blog/marketing-velocity-is-the-new-competitive-advantage
+            - img "Marketing velocity is the new competitive advantage" [ref=e226]
+            - generic [ref=e227]:
+              - generic [ref=e228]: inside lovable
+              - heading "Marketing velocity is the new competitive advantage" [level=2] [ref=e229]
+              - generic [ref=e230]:
+                - generic [ref=e231]: Talia Moyal
+                - generic [ref=e232]: •
+                - time [ref=e233]: February 19, 2026
+          - link "How to maintain brand control when building with Lovable inside lovable How to maintain brand control when building with Lovable Talia Moyal • February 17, 2026" [ref=e234] [cursor=pointer]:
+            - /url: /blog/how-to-maintain-brand-control-when-build-with-lovable
+            - img "How to maintain brand control when building with Lovable" [ref=e236]
+            - generic [ref=e237]:
+              - generic [ref=e238]: inside lovable
+              - heading "How to maintain brand control when building with Lovable" [level=2] [ref=e239]
+              - generic [ref=e240]:
+                - generic [ref=e241]: Talia Moyal
+                - generic [ref=e242]: •
+                - time [ref=e243]: February 17, 2026
+          - link "Claude Opus 4.6 now in Lovable announcements Claude Opus 4.6 now in Lovable February 5, 2026" [ref=e244] [cursor=pointer]:
+            - /url: /blog/opus-4-6-now-in-lovable
+            - img "Claude Opus 4.6 now in Lovable" [ref=e246]
+            - generic [ref=e247]:
+              - generic [ref=e248]: announcements
+              - heading "Claude Opus 4.6 now in Lovable" [level=2] [ref=e249]
+              - time [ref=e251]: February 5, 2026
+          - link "Build more. Manage less. announcements Build more. Manage less. Lovable now handles more complex builds more autonomously with less back-and-forth. Hand off ambitious ideas, queue up your thinking, and ship with confidence. January 28, 2026" [ref=e252] [cursor=pointer]:
+            - /url: /blog/a-smarter-lovable
+            - img "Build more. Manage less." [ref=e254]
+            - generic [ref=e255]:
+              - generic [ref=e256]: announcements
+              - heading "Build more. Manage less." [level=2] [ref=e257]
+              - paragraph [ref=e258]: Lovable now handles more complex builds more autonomously with less back-and-forth. Hand off ambitious ideas, queue up your thinking, and ship with confidence.
+              - time [ref=e260]: January 28, 2026
+          - 'link "From Buy to Build: How eXp Realty cancelled millions in SaaS contracts for custom software built with Lovable stories From Buy to Build: How eXp Realty cancelled millions in SaaS contracts for custom software built with Lovable January 18, 2026" [ref=e261] [cursor=pointer]':
+            - /url: /blog/exprealty
+            - 'img "From Buy to Build: How eXp Realty cancelled millions in SaaS contracts for custom software built with Lovable" [ref=e263]'
+            - generic [ref=e264]:
+              - generic [ref=e265]: stories
+              - 'heading "From Buy to Build: How eXp Realty cancelled millions in SaaS contracts for custom software built with Lovable" [level=2] [ref=e266]'
+              - time [ref=e268]: January 18, 2026
+          - link "How ElevenLabs Builds Mind-Blowing Demos with Lovable stories How ElevenLabs Builds Mind-Blowing Demos with Lovable January 9, 2026" [ref=e269] [cursor=pointer]:
+            - /url: /blog/elevenlabs
+            - img "How ElevenLabs Builds Mind-Blowing Demos with Lovable" [ref=e271]
+            - generic [ref=e272]:
+              - generic [ref=e273]: stories
+              - heading "How ElevenLabs Builds Mind-Blowing Demos with Lovable" [level=2] [ref=e274]
+              - time [ref=e276]: January 9, 2026
+          - link "Lovable raises $330M to power the age of the builder announcements Lovable raises $330M to power the age of the builder December 18, 2025" [ref=e277] [cursor=pointer]:
+            - /url: /blog/series-b
+            - img "Lovable raises $330M to power the age of the builder" [ref=e279]
+            - generic [ref=e280]:
+              - generic [ref=e281]: announcements
+              - heading "Lovable raises $330M to power the age of the builder" [level=2] [ref=e282]
+              - time [ref=e284]: December 18, 2025
+          - 'link "Perplexity, ElevenLabs, Firecrawl, and Miro: now in Lovable announcements Perplexity, ElevenLabs, Firecrawl, and Miro: now in Lovable December 16, 2025" [ref=e285] [cursor=pointer]':
+            - /url: /blog/ai-connectors
+            - 'img "Perplexity, ElevenLabs, Firecrawl, and Miro: now in Lovable" [ref=e287]'
+            - generic [ref=e288]:
+              - generic [ref=e289]: announcements
+              - 'heading "Perplexity, ElevenLabs, Firecrawl, and Miro: now in Lovable" [level=2] [ref=e290]'
+              - time [ref=e292]: December 16, 2025
+          - 'link "Better planning, better apps: Chat mode & Follow-up questions announcements Better planning, better apps: Chat mode & Follow-up questions December 5, 2025" [ref=e293] [cursor=pointer]':
+            - /url: /blog/chat-mode-and-questions
+            - 'img "Better planning, better apps: Chat mode & Follow-up questions" [ref=e295]'
+            - generic [ref=e296]:
+              - generic [ref=e297]: announcements
+              - 'heading "Better planning, better apps: Chat mode & Follow-up questions" [level=2] [ref=e298]'
+              - time [ref=e300]: December 5, 2025
+          - link "Lovable Now Powered by Claude Opus 4.5 announcements Lovable Now Powered by Claude Opus 4.5 December 2, 2025" [ref=e301] [cursor=pointer]:
+            - /url: /blog/claude-opus-4-5-in-chat
+            - img "Lovable Now Powered by Claude Opus 4.5" [ref=e303]
+            - generic [ref=e304]:
+              - generic [ref=e305]: announcements
+              - heading "Lovable Now Powered by Claude Opus 4.5" [level=2] [ref=e306]
+              - time [ref=e308]: December 2, 2025
+          - link "Lovable outages on Friday November 28 inside lovable Lovable outages on Friday November 28 Erik Lindblad • December 2, 2025" [ref=e309] [cursor=pointer]:
+            - /url: /blog/outage-nov-28
+            - img "Lovable outages on Friday November 28" [ref=e311]
+            - generic [ref=e312]:
+              - generic [ref=e313]: inside lovable
+              - heading "Lovable outages on Friday November 28" [level=2] [ref=e314]
+              - generic [ref=e315]:
+                - generic [ref=e316]: Erik Lindblad
+                - generic [ref=e317]: •
+                - time [ref=e318]: December 2, 2025
+          - link "Lovable acquires Molnett and expands our platform team announcements Lovable acquires Molnett and expands our platform team November 25, 2025" [ref=e319] [cursor=pointer]:
+            - /url: /blog/lovable-welcomes-molnett
+            - img "Lovable acquires Molnett and expands our platform team" [ref=e321]
+            - generic [ref=e322]:
+              - generic [ref=e323]: announcements
+              - heading "Lovable acquires Molnett and expands our platform team" [level=2] [ref=e324]
+              - time [ref=e326]: November 25, 2025
+          - 'link "One year of Lovable: Welcome to the age of the builder announcements One year of Lovable: Welcome to the age of the builder Anton Osika • November 18, 2025" [ref=e327] [cursor=pointer]':
+            - /url: /blog/one-year-of-lovable
+            - 'img "One year of Lovable: Welcome to the age of the builder" [ref=e329]'
+            - generic [ref=e330]:
+              - generic [ref=e331]: announcements
+              - 'heading "One year of Lovable: Welcome to the age of the builder" [level=2] [ref=e332]'
+              - generic [ref=e333]:
+                - generic [ref=e334]: Anton Osika
+                - generic [ref=e335]: •
+                - time [ref=e336]: November 18, 2025
+          - 'link "What''s new in Lovable: MCP servers and more design power announcements What''s new in Lovable: MCP servers and more design power November 18, 2025" [ref=e337] [cursor=pointer]':
+            - /url: /blog/mcp-servers
+            - 'img "What''s new in Lovable: MCP servers and more design power" [ref=e339]'
+            - generic [ref=e340]:
+              - generic [ref=e341]: announcements
+              - 'heading "What''s new in Lovable: MCP servers and more design power" [level=2] [ref=e342]'
+              - time [ref=e344]: November 18, 2025
+          - link "How Delivery Hero Green-Lights Features 66% Faster with Lovable stories How Delivery Hero Green-Lights Features 66% Faster with Lovable November 18, 2025" [ref=e345] [cursor=pointer]:
+            - /url: /blog/deliveryhero
+            - img "How Delivery Hero Green-Lights Features 66% Faster with Lovable" [ref=e347]
+            - generic [ref=e348]:
+              - generic [ref=e349]: stories
+              - heading "How Delivery Hero Green-Lights Features 66% Faster with Lovable" [level=2] [ref=e350]
+              - time [ref=e352]: November 18, 2025
+          - link "How n8n accelerates product development with Lovable stories How n8n accelerates product development with Lovable November 18, 2025" [ref=e353] [cursor=pointer]:
+            - /url: /blog/n8n
+            - img "How n8n accelerates product development with Lovable" [ref=e355]
+            - generic [ref=e356]:
+              - generic [ref=e357]: stories
+              - heading "How n8n accelerates product development with Lovable" [level=2] [ref=e358]
+              - time [ref=e360]: November 18, 2025
+          - link "How Sentry uses Lovable to build what can’t be bought stories How Sentry uses Lovable to build what can’t be bought November 18, 2025" [ref=e361] [cursor=pointer]:
+            - /url: /blog/sentry
+            - img "How Sentry uses Lovable to build what can’t be bought" [ref=e363]
+            - generic [ref=e364]:
+              - generic [ref=e365]: stories
+              - heading "How Sentry uses Lovable to build what can’t be bought" [level=2] [ref=e366]
+              - time [ref=e368]: November 18, 2025
+          - link "How AppDirect turned non-technical teams into builders with Lovable stories How AppDirect turned non-technical teams into builders with Lovable November 18, 2025" [ref=e369] [cursor=pointer]:
+            - /url: /blog/appdirect
+            - img "How AppDirect turned non-technical teams into builders with Lovable" [ref=e371]
+            - generic [ref=e372]:
+              - generic [ref=e373]: stories
+              - heading "How AppDirect turned non-technical teams into builders with Lovable" [level=2] [ref=e374]
+              - time [ref=e376]: November 18, 2025
+          - link "How Thinkific uses Lovable to prototype the future stories How Thinkific uses Lovable to prototype the future November 18, 2025" [ref=e377] [cursor=pointer]:
+            - /url: /blog/thinkific
+            - img "How Thinkific uses Lovable to prototype the future" [ref=e379]
+            - generic [ref=e380]:
+              - generic [ref=e381]: stories
+              - heading "How Thinkific uses Lovable to prototype the future" [level=2] [ref=e382]
+              - time [ref=e384]: November 18, 2025
+          - link "Build apps from a link with Lovable Build with URL announcements Build apps from a link with Lovable Build with URL October 24, 2025" [ref=e385] [cursor=pointer]:
+            - /url: /blog/introducing-lovable-api-build-with-url
+            - img "Build apps from a link with Lovable Build with URL" [ref=e387]
+            - generic [ref=e388]:
+              - generic [ref=e389]: announcements
+              - heading "Build apps from a link with Lovable Build with URL" [level=2] [ref=e390]
+              - time [ref=e392]: October 24, 2025
+          - link "Lovable Shopify Integration announcements Lovable Shopify Integration Learn how to integrate Shopify with no-code and AI tools to build smarter ecommerce apps. October 20, 2025" [ref=e393] [cursor=pointer]:
+            - /url: /blog/shopify-integration
+            - img "Lovable Shopify Integration" [ref=e395]
+            - generic [ref=e396]:
+              - generic [ref=e397]: announcements
+              - heading "Lovable Shopify Integration" [level=2] [ref=e398]
+              - paragraph [ref=e399]: Learn how to integrate Shopify with no-code and AI tools to build smarter ecommerce apps.
+              - time [ref=e401]: October 20, 2025
+          - link "How Lumoo used Lovable to transform the fashion industry from the inside out stories How Lumoo used Lovable to transform the fashion industry from the inside out Henrik Skagerlind Fasth and Peter Thörngren turned decades of fashion and retail experience into Lumoo, a centralized content creation platform transforming how fashion brands create, manage, and scale digital content. Ash Oliver • October 1, 2025" [ref=e402] [cursor=pointer]:
+            - /url: /blog/lumoo-ai-fashion-platform
+            - img "How Lumoo used Lovable to transform the fashion industry from the inside out" [ref=e404]
+            - generic [ref=e405]:
+              - generic [ref=e406]: stories
+              - heading "How Lumoo used Lovable to transform the fashion industry from the inside out" [level=2] [ref=e407]
+              - paragraph [ref=e408]: Henrik Skagerlind Fasth and Peter Thörngren turned decades of fashion and retail experience into Lumoo, a centralized content creation platform transforming how fashion brands create, manage, and scale digital content.
+              - generic [ref=e409]:
+                - generic [ref=e410]: Ash Oliver
+                - generic [ref=e411]: •
+                - time [ref=e412]: October 1, 2025
+          - link "AI usage in Lovable apps through Lovable AI is FREE (with Google Gemini models) until October 6th! announcements AI usage in Lovable apps through Lovable AI is FREE (with Google Gemini models) until October 6th! September 30, 2025" [ref=e413] [cursor=pointer]:
+            - /url: /blog/free-lovable-ai
+            - img "AI usage in Lovable apps through Lovable AI is FREE (with Google Gemini models) until October 6th!" [ref=e415]
+            - generic [ref=e416]:
+              - generic [ref=e417]: announcements
+              - heading "AI usage in Lovable apps through Lovable AI is FREE (with Google Gemini models) until October 6th!" [level=2] [ref=e418]
+              - time [ref=e420]: September 30, 2025
+          - link "Introducing Lovable Cloud and AI announcements Introducing Lovable Cloud and AI Lovable Cloud is a built-in backend for Lovable apps. With it you can build apps that save your data, let users sign up and log in, and connect safely with other services just by telling Lovable what you want done. No external dashboards or configuration screens. Everything just works, right within your Lovable project. September 29, 2025" [ref=e421] [cursor=pointer]:
+            - /url: /blog/lovable-cloud
+            - img "Introducing Lovable Cloud and AI" [ref=e423]
+            - generic [ref=e424]:
+              - generic [ref=e425]: announcements
+              - heading "Introducing Lovable Cloud and AI" [level=2] [ref=e426]
+              - paragraph [ref=e427]: Lovable Cloud is a built-in backend for Lovable apps. With it you can build apps that save your data, let users sign up and log in, and connect safely with other services just by telling Lovable what you want done. No external dashboards or configuration screens. Everything just works, right within your Lovable project.
+              - time [ref=e429]: September 29, 2025
+          - link "Introducing Lovable File Uploads announcements Introducing Lovable File Uploads Drop files directly into Lovable and turn them into apps and websites. September 24, 2025" [ref=e430] [cursor=pointer]:
+            - /url: /blog/lovable-file-uploads
+            - img "Introducing Lovable File Uploads" [ref=e432]
+            - generic [ref=e433]:
+              - generic [ref=e434]: announcements
+              - heading "Introducing Lovable File Uploads" [level=2] [ref=e435]
+              - paragraph [ref=e436]: Drop files directly into Lovable and turn them into apps and websites.
+              - time [ref=e438]: September 24, 2025
+          - link "How Sabrine used Lovable to Fight Gender-Based Violence in Brazil stories How Sabrine used Lovable to Fight Gender-Based Violence in Brazil Sabrine Matos turned an urgent social issue facing women in Brazil into real-world impact by using Lovable. Without a technical background, she built Plinq — a women's safety app that's making public criminal data available to consumers. Ash Oliver • September 18, 2025" [ref=e439] [cursor=pointer]:
+            - /url: /blog/how-sabrine-matos-built-plinq
+            - img "How Sabrine used Lovable to Fight Gender-Based Violence in Brazil" [ref=e441]
+            - generic [ref=e442]:
+              - generic [ref=e443]: stories
+              - heading "How Sabrine used Lovable to Fight Gender-Based Violence in Brazil" [level=2] [ref=e444]
+              - paragraph [ref=e445]: Sabrine Matos turned an urgent social issue facing women in Brazil into real-world impact by using Lovable. Without a technical background, she built Plinq — a women's safety app that's making public criminal data available to consumers.
+              - generic [ref=e446]:
+                - generic [ref=e447]: Ash Oliver
+                - generic [ref=e448]: •
+                - time [ref=e449]: September 18, 2025
+          - 'link "From command line to community impact: How Shalini Ananda built Fire Fairness with Lovable stories From command line to community impact: How Shalini Ananda built Fire Fairness with Lovable How Shalini Ananda created a fire equity engine to support victims of the 2025 Los Angeles wildfires by using Lovable. Ash Oliver • September 3, 2025" [ref=e450] [cursor=pointer]':
+            - /url: /blog/from-command-line-to-community-impact
+            - 'img "From command line to community impact: How Shalini Ananda built Fire Fairness with Lovable" [ref=e452]'
+            - generic [ref=e453]:
+              - generic [ref=e454]: stories
+              - 'heading "From command line to community impact: How Shalini Ananda built Fire Fairness with Lovable" [level=2] [ref=e455]'
+              - paragraph [ref=e456]: How Shalini Ananda created a fire equity engine to support victims of the 2025 Los Angeles wildfires by using Lovable.
+              - generic [ref=e457]:
+                - generic [ref=e458]: Ash Oliver
+                - generic [ref=e459]: •
+                - time [ref=e460]: September 3, 2025
+          - link "Lovable is where vibe coding meets security reports Lovable is where vibe coding meets security Igor Andriushchenko • August 18, 2025" [ref=e461] [cursor=pointer]:
+            - /url: /blog/lovable-security
+            - img "Lovable is where vibe coding meets security" [ref=e463]
+            - generic [ref=e464]:
+              - generic [ref=e465]: reports
+              - heading "Lovable is where vibe coding meets security" [level=2] [ref=e466]
+              - generic [ref=e467]:
+                - generic [ref=e468]: Igor Andriushchenko
+                - generic [ref=e469]: •
+                - time [ref=e470]: August 18, 2025
+          - link "Lovable Goes Back to School announcements Lovable Goes Back to School August 14, 2025" [ref=e471] [cursor=pointer]:
+            - /url: /blog/back-to-school-discount
+            - img "Lovable Goes Back to School" [ref=e473]
+            - generic [ref=e474]:
+              - generic [ref=e475]: announcements
+              - heading "Lovable Goes Back to School" [level=2] [ref=e476]
+              - time [ref=e478]: August 14, 2025
+          - link "GPT-5 Meets Lovable announcements GPT-5 Meets Lovable Limited preview to Lovable + GPT-5 available today. August 7, 2025" [ref=e479] [cursor=pointer]:
+            - /url: /blog/gpt5-meets-lovable
+            - img "GPT-5 Meets Lovable" [ref=e481]
+            - generic [ref=e482]:
+              - generic [ref=e483]: announcements
+              - heading "GPT-5 Meets Lovable" [level=2] [ref=e484]
+              - paragraph [ref=e485]: Limited preview to Lovable + GPT-5 available today.
+              - time [ref=e487]: August 7, 2025
+          - link "$100M ARR & Lovable Agent announcements $100M ARR & Lovable Agent July 23, 2025" [ref=e488] [cursor=pointer]:
+            - /url: /blog/agent
+            - img "$100M ARR & Lovable Agent" [ref=e490]
+            - generic [ref=e491]:
+              - generic [ref=e492]: announcements
+              - heading "$100M ARR & Lovable Agent" [level=2] [ref=e493]
+              - time [ref=e495]: July 23, 2025
+          - link "Lovable Raises $200M, Valued at $1.8B, Just Eight Months After Launch announcements Lovable Raises $200M, Valued at $1.8B, Just Eight Months After Launch July 17, 2025" [ref=e496] [cursor=pointer]:
+            - /url: /blog/200m-series-a-fundraise
+            - img "Lovable Raises $200M, Valued at $1.8B, Just Eight Months After Launch" [ref=e498]
+            - generic [ref=e499]:
+              - generic [ref=e500]: announcements
+              - heading "Lovable Raises $200M, Valued at $1.8B, Just Eight Months After Launch" [level=2] [ref=e501]
+              - time [ref=e503]: July 17, 2025
+          - 'link "Introducing Agent Mode (Beta): enabling Lovable to think, plan, and take actions autonomously announcements Introducing Agent Mode (Beta): enabling Lovable to think, plan, and take actions autonomously June 30, 2025" [ref=e504] [cursor=pointer]':
+            - /url: /blog/agent-mode-beta
+            - 'img "Introducing Agent Mode (Beta): enabling Lovable to think, plan, and take actions autonomously" [ref=e506]'
+            - generic [ref=e507]:
+              - generic [ref=e508]: announcements
+              - 'heading "Introducing Agent Mode (Beta): enabling Lovable to think, plan, and take actions autonomously" [level=2] [ref=e509]'
+              - time [ref=e511]: June 30, 2025
+          - 'link "Lovable: Secure Vibe Coding reports Lovable: Secure Vibe Coding Lovable will now helps you make sure your app is secure before going live. June 9, 2025" [ref=e512] [cursor=pointer]':
+            - /url: /blog/secure-vibe-coding
+            - 'img "Lovable: Secure Vibe Coding" [ref=e514]'
+            - generic [ref=e515]:
+              - generic [ref=e516]: reports
+              - 'heading "Lovable: Secure Vibe Coding" [level=2] [ref=e517]'
+              - paragraph [ref=e518]: Lovable will now helps you make sure your app is secure before going live.
+              - time [ref=e520]: June 9, 2025
+          - 'link "Lovable 2.0: What’s New and What It Means for no-code App Builders announcements Lovable 2.0: What’s New and What It Means for no-code App Builders Discover what’s new in Lovable 2.0, including product updates for AI and no-code app building. April 24, 2025" [ref=e521] [cursor=pointer]':
+            - /url: /blog/lovable-2-0
+            - 'img "Lovable 2.0: What’s New and What It Means for no-code App Builders" [ref=e523]'
+            - generic [ref=e524]:
+              - generic [ref=e525]: announcements
+              - 'heading "Lovable 2.0: What’s New and What It Means for no-code App Builders" [level=2] [ref=e526]'
+              - paragraph [ref=e527]: Discover what’s new in Lovable 2.0, including product updates for AI and no-code app building.
+              - time [ref=e529]: April 24, 2025
+          - link "How Lovable Empowered Grammy Nominated Music Producer and Filmmaker Mike Burns to Build an AI Filmmaking Studio Platform stories How Lovable Empowered Grammy Nominated Music Producer and Filmmaker Mike Burns to Build an AI Filmmaking Studio Platform Grammy-nominated filmmaker Mike Burns used Lovable—without any coding experience—to build MVP, an AI-powered filmmaking studio that's now reshaping how movies are made and opening Hollywood to a new wave of creators. Stephane & Mike • April 15, 2025" [ref=e530] [cursor=pointer]:
+            - /url: /blog/mike-burns-ai-filmmaking-studio-platform
+            - img "How Lovable Empowered Grammy Nominated Music Producer and Filmmaker Mike Burns to Build an AI Filmmaking Studio Platform" [ref=e532]
+            - generic [ref=e533]:
+              - generic [ref=e534]: stories
+              - heading "How Lovable Empowered Grammy Nominated Music Producer and Filmmaker Mike Burns to Build an AI Filmmaking Studio Platform" [level=2] [ref=e535]
+              - paragraph [ref=e536]: Grammy-nominated filmmaker Mike Burns used Lovable—without any coding experience—to build MVP, an AI-powered filmmaking studio that's now reshaping how movies are made and opening Hollywood to a new wave of creators.
+              - generic [ref=e537]:
+                - generic [ref=e538]: Stephane & Mike
+                - generic [ref=e539]: •
+                - time [ref=e540]: April 15, 2025
+          - 'link "From 3D Artist to AI Maker: How Zohar Vanunu Built a Full SaaS Platform with Lovable stories From 3D Artist to AI Maker: How Zohar Vanunu Built a Full SaaS Platform with Lovable Zohar Vanunu used Lovable to turn AI ideas into a real platform, a national course, and a new career. Stephane & Zohar • April 6, 2025" [ref=e541] [cursor=pointer]':
+            - /url: /blog/zohar-vanunu-magican-ai-maker
+            - 'img "From 3D Artist to AI Maker: How Zohar Vanunu Built a Full SaaS Platform with Lovable" [ref=e543]'
+            - generic [ref=e544]:
+              - generic [ref=e545]: stories
+              - 'heading "From 3D Artist to AI Maker: How Zohar Vanunu Built a Full SaaS Platform with Lovable" [level=2] [ref=e546]'
+              - paragraph [ref=e547]: Zohar Vanunu used Lovable to turn AI ideas into a real platform, a national course, and a new career.
+              - generic [ref=e548]:
+                - generic [ref=e549]: Stephane & Zohar
+                - generic [ref=e550]: •
+                - time [ref=e551]: April 6, 2025
+          - link "How Mindaugas Built Backchannel with Lovable stories How Mindaugas Built Backchannel with Lovable How Mindaugas used Lovable to build Backchannel without coding experience, proving that AI-driven tools are reshaping education and product development. Stephane & Mindaugas • March 19, 2025" [ref=e552] [cursor=pointer]:
+            - /url: /blog/from-recruitment-to-innovation-backchannel
+            - img "How Mindaugas Built Backchannel with Lovable" [ref=e554]
+            - generic [ref=e555]:
+              - generic [ref=e556]: stories
+              - heading "How Mindaugas Built Backchannel with Lovable" [level=2] [ref=e557]
+              - paragraph [ref=e558]: How Mindaugas used Lovable to build Backchannel without coding experience, proving that AI-driven tools are reshaping education and product development.
+              - generic [ref=e559]:
+                - generic [ref=e560]: Stephane & Mindaugas
+                - generic [ref=e561]: •
+                - time [ref=e562]: March 19, 2025
+          - link "How we built the Visual Edits feature inside lovable How we built the Visual Edits feature Learn how we built the Visual Edits feature at Lovable, an intuitive, Figma-like visual editor that empowers users to visually select, edit, and save instant frontend changes directly in their apps. Emil Ahlbäck • March 13, 2025" [ref=e563] [cursor=pointer]:
+            - /url: /blog/visual-edits
+            - img "How we built the Visual Edits feature" [ref=e565]
+            - generic [ref=e566]:
+              - generic [ref=e567]: inside lovable
+              - heading "How we built the Visual Edits feature" [level=2] [ref=e568]
+              - paragraph [ref=e569]: Learn how we built the Visual Edits feature at Lovable, an intuitive, Figma-like visual editor that empowers users to visually select, edit, and save instant frontend changes directly in their apps.
+              - generic [ref=e570]:
+                - generic [ref=e571]: Emil Ahlbäck
+                - generic [ref=e572]: •
+                - time [ref=e573]: March 13, 2025
+          - link "Versioning, Dev Mode & Lovable Livestream with Clerk announcements Versioning, Dev Mode & Lovable Livestream with Clerk Some exciting updates for you. Kristian • March 12, 2025" [ref=e574] [cursor=pointer]:
+            - /url: /blog/versioning-dev-mode
+            - img "Versioning, Dev Mode & Lovable Livestream with Clerk" [ref=e576]
+            - generic [ref=e577]:
+              - generic [ref=e578]: announcements
+              - heading "Versioning, Dev Mode & Lovable Livestream with Clerk" [level=2] [ref=e579]
+              - paragraph [ref=e580]: Some exciting updates for you.
+              - generic [ref=e581]:
+                - generic [ref=e582]: Kristian
+                - generic [ref=e583]: •
+                - time [ref=e584]: March 12, 2025
+          - link "Anthropic Sonnet 3.7 Broke our Diff Viewer reports Anthropic Sonnet 3.7 Broke our Diff Viewer How we used time slicing to prevent browser freezing when displaying large numbers of code diffs generated by Anthropic's latest model. Tiger • March 12, 2025" [ref=e585] [cursor=pointer]:
+            - /url: /blog/anthropic-sonnet-3-7-lovable-diff-viewer
+            - img "Anthropic Sonnet 3.7 Broke our Diff Viewer" [ref=e587]
+            - generic [ref=e588]:
+              - generic [ref=e589]: reports
+              - heading "Anthropic Sonnet 3.7 Broke our Diff Viewer" [level=2] [ref=e590]
+              - paragraph [ref=e591]: How we used time slicing to prevent browser freezing when displaying large numbers of code diffs generated by Anthropic's latest model.
+              - generic [ref=e592]:
+                - generic [ref=e593]: Tiger
+                - generic [ref=e594]: •
+                - time [ref=e595]: March 12, 2025
+          - link "How Lovable’s Supabase Integration Changed the Game reports How Lovable’s Supabase Integration Changed the Game How we built the best Supabase integration for LLMs, why it was a big deal, and what MCP changes for the future. Alex • March 11, 2025" [ref=e596] [cursor=pointer]:
+            - /url: /blog/lovable-supabase-integration-mcp
+            - img "How Lovable’s Supabase Integration Changed the Game" [ref=e598]
+            - generic [ref=e599]:
+              - generic [ref=e600]: reports
+              - heading "How Lovable’s Supabase Integration Changed the Game" [level=2] [ref=e601]
+              - paragraph [ref=e602]: How we built the best Supabase integration for LLMs, why it was a big deal, and what MCP changes for the future.
+              - generic [ref=e603]:
+                - generic [ref=e604]: Alex
+                - generic [ref=e605]: •
+                - time [ref=e606]: March 11, 2025
+          - link "Introducing Versioning 2.0 to Lovable announcements Introducing Versioning 2.0 to Lovable Restore to earlier versions of your app more easily by using bookmarks and our improved history view. Stephane • March 3, 2025" [ref=e607] [cursor=pointer]:
+            - /url: /blog/versioning-with-lovable-two-point-zero
+            - img "Introducing Versioning 2.0 to Lovable" [ref=e609]
+            - generic [ref=e610]:
+              - generic [ref=e611]: announcements
+              - heading "Introducing Versioning 2.0 to Lovable" [level=2] [ref=e612]
+              - paragraph [ref=e613]: Restore to earlier versions of your app more easily by using bookmarks and our improved history view.
+              - generic [ref=e614]:
+                - generic [ref=e615]: Stephane
+                - generic [ref=e616]: •
+                - time [ref=e617]: March 3, 2025
+          - link "What Is Vibe Coding? A Beginner’s Guide to AI-First Development reports What Is Vibe Coding? A Beginner’s Guide to AI-First Development Understand what vibe coding is and how AI-first and no-code development are changing how apps are built. Stephane • March 3, 2025" [ref=e618] [cursor=pointer]:
+            - /url: /blog/what-is-vibe-coding
+            - img "What Is Vibe Coding? A Beginner’s Guide to AI-First Development" [ref=e620]
+            - generic [ref=e621]:
+              - generic [ref=e622]: reports
+              - heading "What Is Vibe Coding? A Beginner’s Guide to AI-First Development" [level=2] [ref=e623]
+              - paragraph [ref=e624]: Understand what vibe coding is and how AI-first and no-code development are changing how apps are built.
+              - generic [ref=e625]:
+                - generic [ref=e626]: Stephane
+                - generic [ref=e627]: •
+                - time [ref=e628]: March 3, 2025
+          - link "How to Make a Social Media App Using AI-Powered Development tutorials How to Make a Social Media App Using AI-Powered Development Learn how to build a fully functional AI-powered social media app with Lovable, streamlining development with no-code and automated coding solutions. Stephane & Infrasity • February 28, 2025" [ref=e629] [cursor=pointer]:
+            - /url: /blog/how-to-make-a-social-media-app-using-ai
+            - img "How to Make a Social Media App Using AI-Powered Development" [ref=e631]
+            - generic [ref=e632]:
+              - generic [ref=e633]: tutorials
+              - heading "How to Make a Social Media App Using AI-Powered Development" [level=2] [ref=e634]
+              - paragraph [ref=e635]: Learn how to build a fully functional AI-powered social media app with Lovable, streamlining development with no-code and automated coding solutions.
+              - generic [ref=e636]:
+                - generic [ref=e637]: Stephane & Infrasity
+                - generic [ref=e638]: •
+                - time [ref=e639]: February 28, 2025
+          - link "How to Develop an App With AI (Step-by-Step Guide) development 101 How to Develop an App With AI (Step-by-Step Guide) Learn how to develop an app using AI and no-code tools with a step-by-step approach, from idea to launch. Stephane • February 28, 2025" [ref=e640] [cursor=pointer]:
+            - /url: /blog/how-to-develop-an-app-with-ai
+            - img "How to Develop an App With AI (Step-by-Step Guide)" [ref=e642]
+            - generic [ref=e643]:
+              - generic [ref=e644]: development 101
+              - heading "How to Develop an App With AI (Step-by-Step Guide)" [level=2] [ref=e645]
+              - paragraph [ref=e646]: Learn how to develop an app using AI and no-code tools with a step-by-step approach, from idea to launch.
+              - generic [ref=e647]:
+                - generic [ref=e648]: Stephane
+                - generic [ref=e649]: •
+                - time [ref=e650]: February 28, 2025
+          - link "How to Use an AI Form Builder to Create Secure Login and Sign-up Forms tutorials How to Use an AI Form Builder to Create Secure Login and Sign-up Forms Learn how to streamline authentication with Lovable AI’s form builder, automating secure login and sign-up processes with seamless Supabase integration. Arvish & Shan • February 26, 2025" [ref=e651] [cursor=pointer]:
+            - /url: /blog/ai-form-builder-authentication-login
+            - img "How to Use an AI Form Builder to Create Secure Login and Sign-up Forms" [ref=e653]
+            - generic [ref=e654]:
+              - generic [ref=e655]: tutorials
+              - heading "How to Use an AI Form Builder to Create Secure Login and Sign-up Forms" [level=2] [ref=e656]
+              - paragraph [ref=e657]: Learn how to streamline authentication with Lovable AI’s form builder, automating secure login and sign-up processes with seamless Supabase integration.
+              - generic [ref=e658]:
+                - generic [ref=e659]: Arvish & Shan
+                - generic [ref=e660]: •
+                - time [ref=e661]: February 26, 2025
+          - 'link "How to Build a Website From Scratch: A Complete Beginner’s Guide tutorials How to Build a Website From Scratch: A Complete Beginner’s Guide Follow this complete beginner''s guide to building a website from scratch using no-code tools. Stephane • February 26, 2025" [ref=e662] [cursor=pointer]':
+            - /url: /blog/how-to-build-website-from-scratch-guide
+            - 'img "How to Build a Website From Scratch: A Complete Beginner’s Guide" [ref=e664]'
+            - generic [ref=e665]:
+              - generic [ref=e666]: tutorials
+              - 'heading "How to Build a Website From Scratch: A Complete Beginner’s Guide" [level=2] [ref=e667]'
+              - paragraph [ref=e668]: Follow this complete beginner's guide to building a website from scratch using no-code tools.
+              - generic [ref=e669]:
+                - generic [ref=e670]: Stephane
+                - generic [ref=e671]: •
+                - time [ref=e672]: February 26, 2025
+          - link "Build a Stunning Portfolio Website in Minutes with Lovable tutorials Build a Stunning Portfolio Website in Minutes with Lovable Create a professional, polished portfolio effortlessly with Lovable. Get step-by-step guidance, follow best practices, and use ready-made prompts to launch your portfolio in minutes—no coding required! Stephane • February 25, 2025" [ref=e673] [cursor=pointer]:
+            - /url: /blog/digital-portfolio-website-examples
+            - img "Build a Stunning Portfolio Website in Minutes with Lovable" [ref=e675]
+            - generic [ref=e676]:
+              - generic [ref=e677]: tutorials
+              - heading "Build a Stunning Portfolio Website in Minutes with Lovable" [level=2] [ref=e678]
+              - paragraph [ref=e679]: Create a professional, polished portfolio effortlessly with Lovable. Get step-by-step guidance, follow best practices, and use ready-made prompts to launch your portfolio in minutes—no coding required!
+              - generic [ref=e680]:
+                - generic [ref=e681]: Stephane
+                - generic [ref=e682]: •
+                - time [ref=e683]: February 25, 2025
+          - link "Announcing $15m added funding to build the last piece of software inside lovable Announcing $15m added funding to build the last piece of software We have been extremely selective in our fundraising process. We will use this money to hire the best talent in Europe and keep making the product even better. Stephane • February 25, 2025" [ref=e684] [cursor=pointer]:
+            - /url: /blog/fundraise-series-a-announcement
+            - img "Announcing $15m added funding to build the last piece of software" [ref=e686]
+            - generic [ref=e687]:
+              - generic [ref=e688]: inside lovable
+              - heading "Announcing $15m added funding to build the last piece of software" [level=2] [ref=e689]
+              - paragraph [ref=e690]: We have been extremely selective in our fundraising process. We will use this money to hire the best talent in Europe and keep making the product even better.
+              - generic [ref=e691]:
+                - generic [ref=e692]: Stephane
+                - generic [ref=e693]: •
+                - time [ref=e694]: February 25, 2025
+          - link "How to Build a Wedding Website? tutorials How to Build a Wedding Website? Discover how to make a wedding website that keeps your guests informed, organized, and excited for your big day in less than 20 minutes. James • February 25, 2025" [ref=e695] [cursor=pointer]:
+            - /url: /blog/best-wedding-website-builder
+            - img "How to Build a Wedding Website?" [ref=e697]
+            - generic [ref=e698]:
+              - generic [ref=e699]: tutorials
+              - heading "How to Build a Wedding Website?" [level=2] [ref=e700]
+              - paragraph [ref=e701]: Discover how to make a wedding website that keeps your guests informed, organized, and excited for your big day in less than 20 minutes.
+              - generic [ref=e702]:
+                - generic [ref=e703]: James
+                - generic [ref=e704]: •
+                - time [ref=e705]: February 25, 2025
+          - link "Do You Need a CTO to Launch Your Startup? reports Do You Need a CTO to Launch Your Startup? Many founders wonder if they need a CTO for their MVP—here’s a clear, no-nonsense guide to help you decide based on your technical skills, product complexity, and long-term vision. Stephane • February 24, 2025" [ref=e706] [cursor=pointer]:
+            - /url: /blog/do-you-need-a-cto-as-startup
+            - img "Do You Need a CTO to Launch Your Startup?" [ref=e708]
+            - generic [ref=e709]:
+              - generic [ref=e710]: reports
+              - heading "Do You Need a CTO to Launch Your Startup?" [level=2] [ref=e711]
+              - paragraph [ref=e712]: Many founders wonder if they need a CTO for their MVP—here’s a clear, no-nonsense guide to help you decide based on your technical skills, product complexity, and long-term vision.
+              - generic [ref=e713]:
+                - generic [ref=e714]: Stephane
+                - generic [ref=e715]: •
+                - time [ref=e716]: February 24, 2025
+          - link "Frontend Development Isn’t Just UI development 101 Frontend Development Isn’t Just UI Fundamentals, optimization strategies, and emerging trends of frontend development. Stephane & Niklas • February 19, 2025" [ref=e717] [cursor=pointer]:
+            - /url: /blog/frontend-development-with-lovable
+            - img "Frontend Development Isn’t Just UI" [ref=e719]
+            - generic [ref=e720]:
+              - generic [ref=e721]: development 101
+              - heading "Frontend Development Isn’t Just UI" [level=2] [ref=e722]
+              - paragraph [ref=e723]: Fundamentals, optimization strategies, and emerging trends of frontend development.
+              - generic [ref=e724]:
+                - generic [ref=e725]: Stephane & Niklas
+                - generic [ref=e726]: •
+                - time [ref=e727]: February 19, 2025
+          - link "How One Recruiter Built an AI Hiring Platform with Lovable stories How One Recruiter Built an AI Hiring Platform with Lovable How a top recruiter used Lovable to build an AI-driven hiring platform, cutting development time from months to days and reshaping the future of hiring. Stephane & Kyler • February 14, 2025" [ref=e728] [cursor=pointer]:
+            - /url: /blog/ai-hiring-platform-recruiter
+            - img "How One Recruiter Built an AI Hiring Platform with Lovable" [ref=e730]
+            - generic [ref=e731]:
+              - generic [ref=e732]: stories
+              - heading "How One Recruiter Built an AI Hiring Platform with Lovable" [level=2] [ref=e733]
+              - paragraph [ref=e734]: How a top recruiter used Lovable to build an AI-driven hiring platform, cutting development time from months to days and reshaping the future of hiring.
+              - generic [ref=e735]:
+                - generic [ref=e736]: Stephane & Kyler
+                - generic [ref=e737]: •
+                - time [ref=e738]: February 14, 2025
+          - link "How Rezaul Supercharged Lovable with Voice Input, Prompt Libraries, and More stories How Rezaul Supercharged Lovable with Voice Input, Prompt Libraries, and More Learn how network engineer and weekend developer Rezaul built a powerful Chrome extension—complete with voice input, prompt libraries, SEO tools, and more—that takes Lovable to the next level. Stephane & Rezaul • February 12, 2025" [ref=e739] [cursor=pointer]:
+            - /url: /blog/supercharge-lovable-chrome-extension
+            - img "How Rezaul Supercharged Lovable with Voice Input, Prompt Libraries, and More" [ref=e741]
+            - generic [ref=e742]:
+              - generic [ref=e743]: stories
+              - heading "How Rezaul Supercharged Lovable with Voice Input, Prompt Libraries, and More" [level=2] [ref=e744]
+              - paragraph [ref=e745]: Learn how network engineer and weekend developer Rezaul built a powerful Chrome extension—complete with voice input, prompt libraries, SEO tools, and more—that takes Lovable to the next level.
+              - generic [ref=e746]:
+                - generic [ref=e747]: Stephane & Rezaul
+                - generic [ref=e748]: •
+                - time [ref=e749]: February 12, 2025
+          - link "Introducing Visual Edits announcements Introducing Visual Edits Gain a Figma-like editing experience in Lovable, allowing instant tweaks to sizes, colors, and elements without prompting the AI. Stephane, Nad & Emil • February 12, 2025" [ref=e750] [cursor=pointer]:
+            - /url: /blog/introducing-visual-edits
+            - img "Introducing Visual Edits" [ref=e752]
+            - generic [ref=e753]:
+              - generic [ref=e754]: announcements
+              - heading "Introducing Visual Edits" [level=2] [ref=e755]
+              - paragraph [ref=e756]: Gain a Figma-like editing experience in Lovable, allowing instant tweaks to sizes, colors, and elements without prompting the AI.
+              - generic [ref=e757]:
+                - generic [ref=e758]: Stephane, Nad & Emil
+                - generic [ref=e759]: •
+                - time [ref=e760]: February 12, 2025
+          - link "How to set-up Supabase Authentication? development 101 How to set-up Supabase Authentication? Discover a straightforward, real-world method to integrate Supabase authentication into your app’s development lifecycle, complete with practical tips and easy-to-follow steps. Stephane & Bobby • February 12, 2025" [ref=e761] [cursor=pointer]:
+            - /url: /blog/supabase-authentification-step-by-step
+            - img "How to set-up Supabase Authentication?" [ref=e763]
+            - generic [ref=e764]:
+              - generic [ref=e765]: development 101
+              - heading "How to set-up Supabase Authentication?" [level=2] [ref=e766]
+              - paragraph [ref=e767]: Discover a straightforward, real-world method to integrate Supabase authentication into your app’s development lifecycle, complete with practical tips and easy-to-follow steps.
+              - generic [ref=e768]:
+                - generic [ref=e769]: Stephane & Bobby
+                - generic [ref=e770]: •
+                - time [ref=e771]: February 12, 2025
+          - link "Reimagining Healthcare Innovation with NHS stories Reimagining Healthcare Innovation with NHS Dive into the inspiring journey of Arun, an NHS pharmacist who overcame coding barriers to develop 20+ healthcare apps with Lovable, sparking hackathons and a wave of clinical innovation. Stephane & Arun • February 11, 2025" [ref=e772] [cursor=pointer]:
+            - /url: /blog/reimagining-healthcare-innovation-nhs
+            - img "Reimagining Healthcare Innovation with NHS" [ref=e774]
+            - generic [ref=e775]:
+              - generic [ref=e776]: stories
+              - heading "Reimagining Healthcare Innovation with NHS" [level=2] [ref=e777]
+              - paragraph [ref=e778]: Dive into the inspiring journey of Arun, an NHS pharmacist who overcame coding barriers to develop 20+ healthcare apps with Lovable, sparking hackathons and a wave of clinical innovation.
+              - generic [ref=e779]:
+                - generic [ref=e780]: Stephane & Arun
+                - generic [ref=e781]: •
+                - time [ref=e782]: February 11, 2025
+          - link "Introducing Lovable’s Supabase Integration 2.0 announcements Introducing Lovable’s Supabase Integration 2.0 Smoother Supabase development with Lovable’s enhanced integration, featuring automated edge function log reading, customizable user flows, and robust support for new capabilities. Stephane • February 10, 2025" [ref=e783] [cursor=pointer]:
+            - /url: /blog/lovable-supabase-integration-second-version
+            - img "Introducing Lovable’s Supabase Integration 2.0" [ref=e785]
+            - generic [ref=e786]:
+              - generic [ref=e787]: announcements
+              - heading "Introducing Lovable’s Supabase Integration 2.0" [level=2] [ref=e788]
+              - paragraph [ref=e789]: Smoother Supabase development with Lovable’s enhanced integration, featuring automated edge function log reading, customizable user flows, and robust support for new capabilities.
+              - generic [ref=e790]:
+                - generic [ref=e791]: Stephane
+                - generic [ref=e792]: •
+                - time [ref=e793]: February 10, 2025
+          - link "What No One Talks About AI reports What No One Talks About AI AI-powered coding tools promise speed and efficiency, but beneath the surface lie hidden challenges. Stephane & Marius • February 10, 2025" [ref=e794] [cursor=pointer]:
+            - /url: /blog/what-no-one-talks-about-ai
+            - img "What No One Talks About AI" [ref=e796]
+            - generic [ref=e797]:
+              - generic [ref=e798]: reports
+              - heading "What No One Talks About AI" [level=2] [ref=e799]
+              - paragraph [ref=e800]: AI-powered coding tools promise speed and efficiency, but beneath the surface lie hidden challenges.
+              - generic [ref=e801]:
+                - generic [ref=e802]: Stephane & Marius
+                - generic [ref=e803]: •
+                - time [ref=e804]: February 10, 2025
+          - link "Why Lovable Uses React? reports Why Lovable Uses React? A Deep Dive into Components, State Management, and Tailwind CSS Libraries. Stephane • February 10, 2025" [ref=e805] [cursor=pointer]:
+            - /url: /blog/best-tailwind-css-component
+            - img "Why Lovable Uses React?" [ref=e807]
+            - generic [ref=e808]:
+              - generic [ref=e809]: reports
+              - heading "Why Lovable Uses React?" [level=2] [ref=e810]
+              - paragraph [ref=e811]: A Deep Dive into Components, State Management, and Tailwind CSS Libraries.
+              - generic [ref=e812]:
+                - generic [ref=e813]: Stephane
+                - generic [ref=e814]: •
+                - time [ref=e815]: February 10, 2025
+          - link "How Lovable Transformed Umar's Approach to App Development stories How Lovable Transformed Umar's Approach to App Development Lovable streamlines app development with AI-powered UI generation, seamless backend setup, and GitHub integration. Stephane & Umar • February 10, 2025" [ref=e816] [cursor=pointer]:
+            - /url: /blog/uottohack-umar-app-development
+            - img "How Lovable Transformed Umar's Approach to App Development" [ref=e818]
+            - generic [ref=e819]:
+              - generic [ref=e820]: stories
+              - heading "How Lovable Transformed Umar's Approach to App Development" [level=2] [ref=e821]
+              - paragraph [ref=e822]: Lovable streamlines app development with AI-powered UI generation, seamless backend setup, and GitHub integration.
+              - generic [ref=e823]:
+                - generic [ref=e824]: Stephane & Umar
+                - generic [ref=e825]: •
+                - time [ref=e826]: February 10, 2025
+          - 'link "Building an AI-Powered Financial Wellness: Step by Step Guide stories Building an AI-Powered Financial Wellness: Step by Step Guide A team used Lovable AI to rapidly build an AI-powered financial wellness platform with real-time budgeting, personalized investment recommendations, and seamless backend and UI integrations. Stephane, Bhavya, Sadath, Pankaj, Sweta • February 10, 2025" [ref=e827] [cursor=pointer]':
+            - /url: /blog/ai-powered-financial-wellness
+            - 'img "Building an AI-Powered Financial Wellness: Step by Step Guide" [ref=e829]'
+            - generic [ref=e830]:
+              - generic [ref=e831]: stories
+              - 'heading "Building an AI-Powered Financial Wellness: Step by Step Guide" [level=2] [ref=e832]'
+              - paragraph [ref=e833]: A team used Lovable AI to rapidly build an AI-powered financial wellness platform with real-time budgeting, personalized investment recommendations, and seamless backend and UI integrations.
+              - generic [ref=e834]:
+                - generic [ref=e835]: Stephane, Bhavya, Sadath, Pankaj, Sweta
+                - generic [ref=e836]: •
+                - time [ref=e837]: February 10, 2025
+          - link "Introducing Hire a Lovable Partner announcements Introducing Hire a Lovable Partner Discover how Lovable’s new “Hire a Lovable Partner” program connects you with top-tier experts to bring your ideas to life—up to 20 times faster than traditional coding. Stephane & Caroline • February 7, 2025" [ref=e838] [cursor=pointer]:
+            - /url: /blog/introducing-hire-a-lovable-partner
+            - img "Introducing Hire a Lovable Partner" [ref=e840]
+            - generic [ref=e841]:
+              - generic [ref=e842]: announcements
+              - heading "Introducing Hire a Lovable Partner" [level=2] [ref=e843]
+              - paragraph [ref=e844]: Discover how Lovable’s new “Hire a Lovable Partner” program connects you with top-tier experts to bring your ideas to life—up to 20 times faster than traditional coding.
+              - generic [ref=e845]:
+                - generic [ref=e846]: Stephane & Caroline
+                - generic [ref=e847]: •
+                - time [ref=e848]: February 7, 2025
+          - link "From Python to Go announcements From Python to Go Discover how the Lovable engineering team transformed their core platform by migrating from Python to Go, boosting concurrency and speeding up their product development. Stephane & Viktor • February 6, 2025" [ref=e849] [cursor=pointer]:
+            - /url: /blog/from-python-to-go
+            - img "From Python to Go" [ref=e851]
+            - generic [ref=e852]:
+              - generic [ref=e853]: announcements
+              - heading "From Python to Go" [level=2] [ref=e854]
+              - paragraph [ref=e855]: Discover how the Lovable engineering team transformed their core platform by migrating from Python to Go, boosting concurrency and speeding up their product development.
+              - generic [ref=e856]:
+                - generic [ref=e857]: Stephane & Viktor
+                - generic [ref=e858]: •
+                - time [ref=e859]: February 6, 2025
+          - 'link "Building the Future of No-Code: A Candid Chat with Smash Capital’s Kate stories Building the Future of No-Code: A Candid Chat with Smash Capital’s Kate Discover how a seasoned software investor and self-proclaimed “non-technical” builder brought her passion project to life using Lovable—and why she believes it’s a game-changer for no-code development. Stephane & Katherine • February 5, 2025" [ref=e860] [cursor=pointer]':
+            - /url: /blog/smash-capital-lovable-ai
+            - 'img "Building the Future of No-Code: A Candid Chat with Smash Capital’s Kate" [ref=e862]'
+            - generic [ref=e863]:
+              - generic [ref=e864]: stories
+              - 'heading "Building the Future of No-Code: A Candid Chat with Smash Capital’s Kate" [level=2] [ref=e865]'
+              - paragraph [ref=e866]: Discover how a seasoned software investor and self-proclaimed “non-technical” builder brought her passion project to life using Lovable—and why she believes it’s a game-changer for no-code development.
+              - generic [ref=e867]:
+                - generic [ref=e868]: Stephane & Katherine
+                - generic [ref=e869]: •
+                - time [ref=e870]: February 5, 2025
+          - link "A Cornell Student’s Perspective on Building with LLMs stories A Cornell Student’s Perspective on Building with LLMs Discover how a Cornell University student with minimal coding experience is leveraging AI and Lovable to transform ideation into practical, real-world projects. Stephane & Stephen • February 4, 2025" [ref=e871] [cursor=pointer]:
+            - /url: /blog/building-with-llm-cornell-student
+            - img "A Cornell Student’s Perspective on Building with LLMs" [ref=e873]
+            - generic [ref=e874]:
+              - generic [ref=e875]: stories
+              - heading "A Cornell Student’s Perspective on Building with LLMs" [level=2] [ref=e876]
+              - paragraph [ref=e877]: Discover how a Cornell University student with minimal coding experience is leveraging AI and Lovable to transform ideation into practical, real-world projects.
+              - generic [ref=e878]:
+                - generic [ref=e879]: Stephane & Stephen
+                - generic [ref=e880]: •
+                - time [ref=e881]: February 4, 2025
+          - link "Build Your AI App Faster—Even Without Coding Experience development 101 Build Your AI App Faster—Even Without Coding Experience Learn how to build, scale, and optimize your AI-powered app with Supabase, Lovable, and best practices for seamless development. Stephane • February 4, 2025" [ref=e882] [cursor=pointer]:
+            - /url: /blog/how-to-build-ai-app
+            - img "Build Your AI App Faster—Even Without Coding Experience" [ref=e884]
+            - generic [ref=e885]:
+              - generic [ref=e886]: development 101
+              - heading "Build Your AI App Faster—Even Without Coding Experience" [level=2] [ref=e887]
+              - paragraph [ref=e888]: Learn how to build, scale, and optimize your AI-powered app with Supabase, Lovable, and best practices for seamless development.
+              - generic [ref=e889]:
+                - generic [ref=e890]: Stephane
+                - generic [ref=e891]: •
+                - time [ref=e892]: February 4, 2025
+          - link "Building HealthSync in Hours stories Building HealthSync in Hours Discover how Harsh Patel turned a health-tracking dream into reality—in just a single afternoon—using Lovable’s AI-driven development platform. Stephane & Harsh • February 3, 2025" [ref=e893] [cursor=pointer]:
+            - /url: /blog/building-healthsync-in-hours-1
+            - img "Building HealthSync in Hours" [ref=e895]
+            - generic [ref=e896]:
+              - generic [ref=e897]: stories
+              - heading "Building HealthSync in Hours" [level=2] [ref=e898]
+              - paragraph [ref=e899]: Discover how Harsh Patel turned a health-tracking dream into reality—in just a single afternoon—using Lovable’s AI-driven development platform.
+              - generic [ref=e900]:
+                - generic [ref=e901]: Stephane & Harsh
+                - generic [ref=e902]: •
+                - time [ref=e903]: February 3, 2025
+          - 'link "From Fashion to Founding: How Talisha Found a Home in Lovable’s Community stories From Fashion to Founding: How Talisha Found a Home in Lovable’s Community Lovable community champion Talisha (@RealTalishaW) shares her journey from fashion design to software engineering, her love for AI-driven development, and how Lovable became her go-to tool for building and innovating. Stephane & Talisha • January 31, 2025" [ref=e904] [cursor=pointer]':
+            - /url: /blog/2025-01-31-from-fashion-to-founding-how-talisha-found-a-home-in-lovables-community
+            - 'img "From Fashion to Founding: How Talisha Found a Home in Lovable’s Community" [ref=e906]'
+            - generic [ref=e907]:
+              - generic [ref=e908]: stories
+              - 'heading "From Fashion to Founding: How Talisha Found a Home in Lovable’s Community" [level=2] [ref=e909]'
+              - paragraph [ref=e910]: Lovable community champion Talisha (@RealTalishaW) shares her journey from fashion design to software engineering, her love for AI-driven development, and how Lovable became her go-to tool for building and innovating.
+              - generic [ref=e911]:
+                - generic [ref=e912]: Stephane & Talisha
+                - generic [ref=e913]: •
+                - time [ref=e914]: January 31, 2025
+          - link "Announcing Lovable Launched announcements Announcing Lovable Launched Learn how to launch and drive traffic to your Lovable app through Lovable Launched, Social Media, Product Hunt, and more. Stephane & Henrik • January 31, 2025" [ref=e915] [cursor=pointer]:
+            - /url: /blog/2025-01-30-how-to-launch-and-get-traffic-to-an-app-built-with-lovable
+            - img "Announcing Lovable Launched" [ref=e917]
+            - generic [ref=e918]:
+              - generic [ref=e919]: announcements
+              - heading "Announcing Lovable Launched" [level=2] [ref=e920]
+              - paragraph [ref=e921]: Learn how to launch and drive traffic to your Lovable app through Lovable Launched, Social Media, Product Hunt, and more.
+              - generic [ref=e922]:
+                - generic [ref=e923]: Stephane & Henrik
+                - generic [ref=e924]: •
+                - time [ref=e925]: January 31, 2025
+          - link "Why Non-Tech Founders No Longer Need a Developer to Launch Software development 101 Why Non-Tech Founders No Longer Need a Developer to Launch Software The biggest challenge for non-technical founders is turning their business ideas into real products—AI-driven development with Lovable is changing that by eliminating the need for a technical co-founder. Stephane & Viktor • January 30, 2025" [ref=e926] [cursor=pointer]:
+            - /url: /blog/2025-01-30-why-non-tech-founders-no-longer-need-a-developer-to-launch-software
+            - img "Why Non-Tech Founders No Longer Need a Developer to Launch Software" [ref=e928]
+            - generic [ref=e929]:
+              - generic [ref=e930]: development 101
+              - heading "Why Non-Tech Founders No Longer Need a Developer to Launch Software" [level=2] [ref=e931]
+              - paragraph [ref=e932]: The biggest challenge for non-technical founders is turning their business ideas into real products—AI-driven development with Lovable is changing that by eliminating the need for a technical co-founder.
+              - generic [ref=e933]:
+                - generic [ref=e934]: Stephane & Viktor
+                - generic [ref=e935]: •
+                - time [ref=e936]: January 30, 2025
+          - link "From Idea to Full-Blown Product in a Month stories From Idea to Full-Blown Product in a Month Discover how Tom, a holistic health expert with no coding background, built and launched Elora Health in just one month using Lovable, navigating challenges, AI iterations, and an unexpected journey into software development. Stephane & Tom • January 29, 2025" [ref=e937] [cursor=pointer]:
+            - /url: /blog/2025-01-30-from-idea-to-full-blown-product-in-a-month
+            - img "From Idea to Full-Blown Product in a Month" [ref=e939]
+            - generic [ref=e940]:
+              - generic [ref=e941]: stories
+              - heading "From Idea to Full-Blown Product in a Month" [level=2] [ref=e942]
+              - paragraph [ref=e943]: Discover how Tom, a holistic health expert with no coding background, built and launched Elora Health in just one month using Lovable, navigating challenges, AI iterations, and an unexpected journey into software development.
+              - generic [ref=e944]:
+                - generic [ref=e945]: Stephane & Tom
+                - generic [ref=e946]: •
+                - time [ref=e947]: January 29, 2025
+          - link "Zero to $10M ARR in 2 months inside lovable Zero to $10M ARR in 2 months Discover how Lovable went from an open-source experiment to a market leader, cracking growth through innovative integrations, community-driven features, and a product-first approach. Stephane & Henrik • January 28, 2025" [ref=e948] [cursor=pointer]:
+            - /url: /blog/2025-01-29-zero-to-10m-arr-in-2-months
+            - img "Zero to $10M ARR in 2 months" [ref=e950]
+            - generic [ref=e951]:
+              - generic [ref=e952]: inside lovable
+              - heading "Zero to $10M ARR in 2 months" [level=2] [ref=e953]
+              - paragraph [ref=e954]: Discover how Lovable went from an open-source experiment to a market leader, cracking growth through innovative integrations, community-driven features, and a product-first approach.
+              - generic [ref=e955]:
+                - generic [ref=e956]: Stephane & Henrik
+                - generic [ref=e957]: •
+                - time [ref=e958]: January 28, 2025
+          - link "The Power of APIs development 101 The Power of APIs What does API mean for developers and businesses? And how is Lovable leveraging APIs to redefine development processes? Stephane & Vivas • January 28, 2025" [ref=e959] [cursor=pointer]:
+            - /url: /blog/2025-01-28-the-power-of-apis
+            - img "The Power of APIs" [ref=e961]
+            - generic [ref=e962]:
+              - generic [ref=e963]: development 101
+              - heading "The Power of APIs" [level=2] [ref=e964]
+              - paragraph [ref=e965]: What does API mean for developers and businesses? And how is Lovable leveraging APIs to redefine development processes?
+              - generic [ref=e966]:
+                - generic [ref=e967]: Stephane & Vivas
+                - generic [ref=e968]: •
+                - time [ref=e969]: January 28, 2025
+          - link "How to integrate Replicate with Lovable? tutorials How to integrate Replicate with Lovable? Explore how Lovable and Replicate empower developers to create smarter, more dynamic applications by seamlessly integrating AI models for real-time multimedia generation and simplified workflows. Stephane & Zeke • January 24, 2025" [ref=e970] [cursor=pointer]:
+            - /url: /blog/2025-01-24-supercharge-your-ai-projects-lovable-x-replicate-integration
+            - img "How to integrate Replicate with Lovable?" [ref=e972]
+            - generic [ref=e973]:
+              - generic [ref=e974]: tutorials
+              - heading "How to integrate Replicate with Lovable?" [level=2] [ref=e975]
+              - paragraph [ref=e976]: Explore how Lovable and Replicate empower developers to create smarter, more dynamic applications by seamlessly integrating AI models for real-time multimedia generation and simplified workflows.
+              - generic [ref=e977]:
+                - generic [ref=e978]: Stephane & Zeke
+                - generic [ref=e979]: •
+                - time [ref=e980]: January 24, 2025
+          - link "How a Canadian Infanteer Built 10 Apps in Record Time with Lovable.dev stories How a Canadian Infanteer Built 10 Apps in Record Time with Lovable.dev Discover how Tomas, a Canadian infanteer and developer, leveraged Lovable to create and launch 10 apps, including the innovative DummyForms, while mastering front-end and back-end development. Stephane & Thomas • January 22, 2025" [ref=e981] [cursor=pointer]:
+            - /url: /blog/2025-01-20-how-a-canadian-infanteer-built-10-apps-in-record-time-with-lovable-dev
+            - img "How a Canadian Infanteer Built 10 Apps in Record Time with Lovable.dev" [ref=e983]
+            - generic [ref=e984]:
+              - generic [ref=e985]: stories
+              - heading "How a Canadian Infanteer Built 10 Apps in Record Time with Lovable.dev" [level=2] [ref=e986]
+              - paragraph [ref=e987]: Discover how Tomas, a Canadian infanteer and developer, leveraged Lovable to create and launch 10 apps, including the innovative DummyForms, while mastering front-end and back-end development.
+              - generic [ref=e988]:
+                - generic [ref=e989]: Stephane & Thomas
+                - generic [ref=e990]: •
+                - time [ref=e991]: January 22, 2025
+          - link "How a Venture Capitalist Rebuilt His Website and Internal Data Platform with Lovable stories How a Venture Capitalist Rebuilt His Website and Internal Data Platform with Lovable A venture capitalist shares his journey of discovering Lovable, leveraging its unique features to rebuild his website, optimize backend systems, and boost productivity tenfold. Stephane & Edward • January 22, 2025" [ref=e992] [cursor=pointer]:
+            - /url: /blog/2025-01-23-how-a-venture-capitalist-rebuilt-his-website-and-internal-data-platform-with-lovable
+            - img "How a Venture Capitalist Rebuilt His Website and Internal Data Platform with Lovable" [ref=e994]
+            - generic [ref=e995]:
+              - generic [ref=e996]: stories
+              - heading "How a Venture Capitalist Rebuilt His Website and Internal Data Platform with Lovable" [level=2] [ref=e997]
+              - paragraph [ref=e998]: A venture capitalist shares his journey of discovering Lovable, leveraging its unique features to rebuild his website, optimize backend systems, and boost productivity tenfold.
+              - generic [ref=e999]:
+                - generic [ref=e1000]: Stephane & Edward
+                - generic [ref=e1001]: •
+                - time [ref=e1002]: January 22, 2025
+          - link "Redefining Product Development for PMs development 101 Redefining Product Development for PMs Discover how AI-powered tools like Lovable are transforming product management into prototype management, enabling faster development, reduced costs, and a new era of skillsets for builders and PMs alike. Stephane & Kristian • January 22, 2025" [ref=e1003] [cursor=pointer]:
+            - /url: /blog/2025-01-24-how-ai-tools-like-lovable-are-redefining-product-development-for-pms
+            - img "Redefining Product Development for PMs" [ref=e1005]
+            - generic [ref=e1006]:
+              - generic [ref=e1007]: development 101
+              - heading "Redefining Product Development for PMs" [level=2] [ref=e1008]
+              - paragraph [ref=e1009]: Discover how AI-powered tools like Lovable are transforming product management into prototype management, enabling faster development, reduced costs, and a new era of skillsets for builders and PMs alike.
+              - generic [ref=e1010]:
+                - generic [ref=e1011]: Stephane & Kristian
+                - generic [ref=e1012]: •
+                - time [ref=e1013]: January 22, 2025
+          - link "Reinventing Design Systems development 101 Reinventing Design Systems Discover how Lovable is redefining design systems by blending AI and user-driven creativity, empowering designers to focus on impactful decisions while streamlining the entire development lifecycle. Stephane & Nad • January 22, 2025" [ref=e1014] [cursor=pointer]:
+            - /url: /blog/2025-01-24-reinventing-design-systems
+            - img "Reinventing Design Systems" [ref=e1016]
+            - generic [ref=e1017]:
+              - generic [ref=e1018]: development 101
+              - heading "Reinventing Design Systems" [level=2] [ref=e1019]
+              - paragraph [ref=e1020]: Discover how Lovable is redefining design systems by blending AI and user-driven creativity, empowering designers to focus on impactful decisions while streamlining the entire development lifecycle.
+              - generic [ref=e1021]:
+                - generic [ref=e1022]: Stephane & Nad
+                - generic [ref=e1023]: •
+                - time [ref=e1024]: January 22, 2025
+          - link "Lovable's two Failed Launches and What we got wrong about PLG inside lovable Lovable's two Failed Launches and What we got wrong about PLG Discover how Lovable overcame early challenges, leveraged scrappy experimentation, and nailed their go-to-market strategy to build an AI platform loved by builders worldwide. Stephane & Sebastian • January 22, 2025" [ref=e1025] [cursor=pointer]:
+            - /url: /blog/2025-01-28-lovables-two-failed-launches-and-what-we-got-wrong-about-plg
+            - img "Lovable's two Failed Launches and What we got wrong about PLG" [ref=e1027]
+            - generic [ref=e1028]:
+              - generic [ref=e1029]: inside lovable
+              - heading "Lovable's two Failed Launches and What we got wrong about PLG" [level=2] [ref=e1030]
+              - paragraph [ref=e1031]: Discover how Lovable overcame early challenges, leveraged scrappy experimentation, and nailed their go-to-market strategy to build an AI platform loved by builders worldwide.
+              - generic [ref=e1032]:
+                - generic [ref=e1033]: Stephane & Sebastian
+                - generic [ref=e1034]: •
+                - time [ref=e1035]: January 22, 2025
+          - link "Software Development Lifecycle 2.0 development 101 Software Development Lifecycle 2.0 Discover how Lovable is transforming the traditional software development lifecycle, enabling individuals to build, ship, and iterate faster than ever with AI-driven tools. Stephane & Alex • January 22, 2025" [ref=e1036] [cursor=pointer]:
+            - /url: /blog/2025-01-21-revolutionizing-the-software-development-lifecycle
+            - img "Software Development Lifecycle 2.0" [ref=e1038]
+            - generic [ref=e1039]:
+              - generic [ref=e1040]: development 101
+              - heading "Software Development Lifecycle 2.0" [level=2] [ref=e1041]
+              - paragraph [ref=e1042]: Discover how Lovable is transforming the traditional software development lifecycle, enabling individuals to build, ship, and iterate faster than ever with AI-driven tools.
+              - generic [ref=e1043]:
+                - generic [ref=e1044]: Stephane & Alex
+                - generic [ref=e1045]: •
+                - time [ref=e1046]: January 22, 2025
+          - 'link "From Idea to Reality: How Bilal Built Aneta, an AI-Powered HR Agent, with Lovable stories From Idea to Reality: How Bilal Built Aneta, an AI-Powered HR Agent, with Lovable Discover how Bilal turned his vision for Aneta, an AI-powered HR engagement platform, into a full-fledged product in just one month using Lovable’s groundbreaking development tools. Stephane & Bilal • January 21, 2025" [ref=e1047] [cursor=pointer]':
+            - /url: /blog/2025-01-21-from-idea-to-reality-how-bilal-built-aneta-an-ai-powered-hr-agent-with-lovable
+            - 'img "From Idea to Reality: How Bilal Built Aneta, an AI-Powered HR Agent, with Lovable" [ref=e1049]'
+            - generic [ref=e1050]:
+              - generic [ref=e1051]: stories
+              - 'heading "From Idea to Reality: How Bilal Built Aneta, an AI-Powered HR Agent, with Lovable" [level=2] [ref=e1052]'
+              - paragraph [ref=e1053]: Discover how Bilal turned his vision for Aneta, an AI-powered HR engagement platform, into a full-fledged product in just one month using Lovable’s groundbreaking development tools.
+              - generic [ref=e1054]:
+                - generic [ref=e1055]: Stephane & Bilal
+                - generic [ref=e1056]: •
+                - time [ref=e1057]: January 21, 2025
+          - link "How to Build a Thriving Business with Lovable? development 101 How to Build a Thriving Business with Lovable? Learn how Harry, a solo developer turned entrepreneur, leveraged Lovable to build a thriving business, triple his revenue, and redefine client solutions with AI. Stephane & Harry • January 21, 2025" [ref=e1058] [cursor=pointer]:
+            - /url: /blog/2025-01-21-from-solo-developer-to-1-million-dream-building-a-thriving-business-with-lovable
+            - img "How to Build a Thriving Business with Lovable?" [ref=e1060]
+            - generic [ref=e1061]:
+              - generic [ref=e1062]: development 101
+              - heading "How to Build a Thriving Business with Lovable?" [level=2] [ref=e1063]
+              - paragraph [ref=e1064]: Learn how Harry, a solo developer turned entrepreneur, leveraged Lovable to build a thriving business, triple his revenue, and redefine client solutions with AI.
+              - generic [ref=e1065]:
+                - generic [ref=e1066]: Stephane & Harry
+                - generic [ref=e1067]: •
+                - time [ref=e1068]: January 21, 2025
+          - link "Redefining Software Creation from the Heart of Stockholm 🇸🇪 inside lovable Redefining Software Creation from the Heart of Stockholm 🇸🇪 Get an inside look at Lovable through the eyes of a team member, exploring what makes it a remarkable place to work, innovate, and shape the future of tech. Stephane & Olivia • January 21, 2025" [ref=e1069] [cursor=pointer]:
+            - /url: /blog/2025-01-21-how-lovable-is-redefining-software-creation-from-the-heart-of-stockholm
+            - img "Redefining Software Creation from the Heart of Stockholm 🇸🇪" [ref=e1071]
+            - generic [ref=e1072]:
+              - generic [ref=e1073]: inside lovable
+              - heading "Redefining Software Creation from the Heart of Stockholm 🇸🇪" [level=2] [ref=e1074]
+              - paragraph [ref=e1075]: Get an inside look at Lovable through the eyes of a team member, exploring what makes it a remarkable place to work, innovate, and shape the future of tech.
+              - generic [ref=e1076]:
+                - generic [ref=e1077]: Stephane & Olivia
+                - generic [ref=e1078]: •
+                - time [ref=e1079]: January 21, 2025
+          - 'link "Building AI Conversations: How Sergio is Crafting Tribbai by Using Lovable stories Building AI Conversations: How Sergio is Crafting Tribbai by Using Lovable Discover how Sergio, a non-developer from Portugal, is leveraging Lovable.dev to create Tribbai —a revolutionary conversational AI platform blending AI roles to provide natural, collaborative dialogue experiences. Stephane & Sergio • January 21, 2025" [ref=e1080] [cursor=pointer]':
+            - /url: /blog/2025-01-21-building-ai-conversations-how-sergio-is-crafting-tribbai-by-using-lovable
+            - 'img "Building AI Conversations: How Sergio is Crafting Tribbai by Using Lovable" [ref=e1082]'
+            - generic [ref=e1083]:
+              - generic [ref=e1084]: stories
+              - 'heading "Building AI Conversations: How Sergio is Crafting Tribbai by Using Lovable" [level=2] [ref=e1085]'
+              - paragraph [ref=e1086]: Discover how Sergio, a non-developer from Portugal, is leveraging Lovable.dev to create Tribbai —a revolutionary conversational AI platform blending AI roles to provide natural, collaborative dialogue experiences.
+              - generic [ref=e1087]:
+                - generic [ref=e1088]: Stephane & Sergio
+                - generic [ref=e1089]: •
+                - time [ref=e1090]: January 21, 2025
+          - link "How a Developer Advocate Built Stunning 3D Projects with Lovable—and Won Big stories How a Developer Advocate Built Stunning 3D Projects with Lovable—and Won Big Discover how Konstantin, a developer advocate from Ukraine, uses Lovable.dev to build innovative 3D projects, win hackathons, and integrate advanced features seamlessly. Stephane & Konstantin • January 20, 2025" [ref=e1091] [cursor=pointer]:
+            - /url: /blog/2025-01-20-how-a-developer-advocate-built-stunning-3d-projects-with-lovable-dev-and-won-big
+            - img "How a Developer Advocate Built Stunning 3D Projects with Lovable—and Won Big" [ref=e1093]
+            - generic [ref=e1094]:
+              - generic [ref=e1095]: stories
+              - heading "How a Developer Advocate Built Stunning 3D Projects with Lovable—and Won Big" [level=2] [ref=e1096]
+              - paragraph [ref=e1097]: Discover how Konstantin, a developer advocate from Ukraine, uses Lovable.dev to build innovative 3D projects, win hackathons, and integrate advanced features seamlessly.
+              - generic [ref=e1098]:
+                - generic [ref=e1099]: Stephane & Konstantin
+                - generic [ref=e1100]: •
+                - time [ref=e1101]: January 20, 2025
+          - 'link "MySafe x Lovable: Hackathon Canada Winner stories MySafe x Lovable: Hackathon Canada Winner The team behind the community-driven safety app, built in less than 24 hours with Lovable. Stephane • January 17, 2025" [ref=e1102] [cursor=pointer]':
+            - /url: /blog/2025-01-17-mysafe-x-lovable-hackathon-canada-winner
+            - 'img "MySafe x Lovable: Hackathon Canada Winner" [ref=e1104]'
+            - generic [ref=e1105]:
+              - generic [ref=e1106]: stories
+              - 'heading "MySafe x Lovable: Hackathon Canada Winner" [level=2] [ref=e1107]'
+              - paragraph [ref=e1108]: The team behind the community-driven safety app, built in less than 24 hours with Lovable.
+              - generic [ref=e1109]:
+                - generic [ref=e1110]: Stephane
+                - generic [ref=e1111]: •
+                - time [ref=e1112]: January 17, 2025
+          - link "How Prompt Father Built a Thriving Community with Lovable stories How Prompt Father Built a Thriving Community with Lovable Discover how \"Prompt Father\" leveraged Lovable to revolutionize AI-driven coding, build a thriving community, and inspire a new wave of creators with innovative challenges and projects. Stephane & Sancho • January 17, 2025" [ref=e1113] [cursor=pointer]:
+            - /url: /blog/2025-01-20-how-prompt-father-built-a-thriving-community-with-lovable
+            - img "How Prompt Father Built a Thriving Community with Lovable" [ref=e1115]
+            - generic [ref=e1116]:
+              - generic [ref=e1117]: stories
+              - heading "How Prompt Father Built a Thriving Community with Lovable" [level=2] [ref=e1118]
+              - paragraph [ref=e1119]: Discover how "Prompt Father" leveraged Lovable to revolutionize AI-driven coding, build a thriving community, and inspire a new wave of creators with innovative challenges and projects.
+              - generic [ref=e1120]:
+                - generic [ref=e1121]: Stephane & Sancho
+                - generic [ref=e1122]: •
+                - time [ref=e1123]: January 17, 2025
+          - 'link "From Idea to Impact: Yannis'' Journey with Lovable stories From Idea to Impact: Yannis'' Journey with Lovable Discover how Yannis, a digital marketer from Greece, transformed a simple frustration into PrintPigeon, a thriving micro-SaaS solution built in just three days using Lovable. Stephane & Yannis • January 17, 2025" [ref=e1124] [cursor=pointer]':
+            - /url: /blog/2025-01-17-from-idea-to-impact-yannis-journey-with-lovable
+            - 'img "From Idea to Impact: Yannis'' Journey with Lovable" [ref=e1126]'
+            - generic [ref=e1127]:
+              - generic [ref=e1128]: stories
+              - 'heading "From Idea to Impact: Yannis'' Journey with Lovable" [level=2] [ref=e1129]'
+              - paragraph [ref=e1130]: Discover how Yannis, a digital marketer from Greece, transformed a simple frustration into PrintPigeon, a thriving micro-SaaS solution built in just three days using Lovable.
+              - generic [ref=e1131]:
+                - generic [ref=e1132]: Stephane & Yannis
+                - generic [ref=e1133]: •
+                - time [ref=e1134]: January 17, 2025
+          - link "The Lovable Prompting Bible development 101 The Lovable Prompting Bible Stop Wasting Time with Bad Prompts—Here’s How to Get AI to Do Exactly What You Want. Stephane • January 16, 2025" [ref=e1135] [cursor=pointer]:
+            - /url: /blog/2025-01-16-lovable-prompting-handbook
+            - img "The Lovable Prompting Bible" [ref=e1137]
+            - generic [ref=e1138]:
+              - generic [ref=e1139]: development 101
+              - heading "The Lovable Prompting Bible" [level=2] [ref=e1140]
+              - paragraph [ref=e1141]: Stop Wasting Time with Bad Prompts—Here’s How to Get AI to Do Exactly What You Want.
+              - generic [ref=e1142]:
+                - generic [ref=e1143]: Stephane
+                - generic [ref=e1144]: •
+                - time [ref=e1145]: January 16, 2025
+          - link "Incident update, new Labs features and more Changelog Incident update, new Labs features and more Kristian • January 7, 2025" [ref=e1146] [cursor=pointer]:
+            - /url: /blog/2025-01-07-changelog
+            - img "Incident update, new Labs features and more" [ref=e1148]
+            - generic [ref=e1149]:
+              - generic [ref=e1150]: Changelog
+              - heading "Incident update, new Labs features and more" [level=2] [ref=e1151]
+              - generic [ref=e1152]:
+                - generic [ref=e1153]: Kristian
+                - generic [ref=e1154]: •
+                - time [ref=e1155]: January 7, 2025
+          - 'link "Incident Jan 2: Github outage inside lovable Incident Jan 2: Github outage Incident report for the GitHub outage on January 2-3, 2025 Viktor Eriksson • January 6, 2025" [ref=e1156] [cursor=pointer]':
+            - /url: /blog/incident-github-outage
+            - 'img "Incident Jan 2: Github outage" [ref=e1158]'
+            - generic [ref=e1159]:
+              - generic [ref=e1160]: inside lovable
+              - 'heading "Incident Jan 2: Github outage" [level=2] [ref=e1161]'
+              - paragraph [ref=e1162]: Incident report for the GitHub outage on January 2-3, 2025
+              - generic [ref=e1163]:
+                - generic [ref=e1164]: Viktor Eriksson
+                - generic [ref=e1165]: •
+                - time [ref=e1166]: January 6, 2025
+          - 'link "Best AI for Coding: Top AI Code Writers & Tools reports Best AI for Coding: Top AI Code Writers & Tools Discover the best AI for coding! Explore top AI code writers and tools for developers and non-developers looking to enhance productivity. Stephane • January 1, 2025" [ref=e1167] [cursor=pointer]':
+            - /url: /blog/2025-01-16-tested-top-ai-code-generation-tools
+            - 'img "Best AI for Coding: Top AI Code Writers & Tools" [ref=e1169]'
+            - generic [ref=e1170]:
+              - generic [ref=e1171]: reports
+              - 'heading "Best AI for Coding: Top AI Code Writers & Tools" [level=2] [ref=e1172]'
+              - paragraph [ref=e1173]: Discover the best AI for coding! Explore top AI code writers and tools for developers and non-developers looking to enhance productivity.
+              - generic [ref=e1174]:
+                - generic [ref=e1175]: Stephane
+                - generic [ref=e1176]: •
+                - time [ref=e1177]: January 1, 2025
+          - 'link "Lovable Christmas Hackhaton: Top 10 Projects reports Lovable Christmas Hackhaton: Top 10 Projects Here’s a closer look at the most inspiring entries from this Christmas hackathon. Stephane • December 24, 2024" [ref=e1178] [cursor=pointer]':
+            - /url: /blog/2025-01-15-lovable-christmas-hackhaton-top-10-projects
+            - 'img "Lovable Christmas Hackhaton: Top 10 Projects" [ref=e1180]'
+            - generic [ref=e1181]:
+              - generic [ref=e1182]: reports
+              - 'heading "Lovable Christmas Hackhaton: Top 10 Projects" [level=2] [ref=e1183]'
+              - paragraph [ref=e1184]: Here’s a closer look at the most inspiring entries from this Christmas hackathon.
+              - generic [ref=e1185]:
+                - generic [ref=e1186]: Stephane
+                - generic [ref=e1187]: •
+                - time [ref=e1188]: December 24, 2024
+          - link "Streamlined Supabase Keys Management, Flexible Plans, and New Integrations announcements Streamlined Supabase Keys Management, Flexible Plans, and New Integrations Kristian • December 11, 2024" [ref=e1189] [cursor=pointer]:
+            - /url: /blog/2025-01-13-streamlined-supabase-keys-management-flexible-plans-and-new-integrations
+            - img "Streamlined Supabase Keys Management, Flexible Plans, and New Integrations" [ref=e1191]
+            - generic [ref=e1192]:
+              - generic [ref=e1193]: announcements
+              - heading "Streamlined Supabase Keys Management, Flexible Plans, and New Integrations" [level=2] [ref=e1194]
+              - generic [ref=e1195]:
+                - generic [ref=e1196]: Kristian
+                - generic [ref=e1197]: •
+                - time [ref=e1198]: December 11, 2024
+          - 'link "Rebranding: GPT Engineer to Lovable inside lovable Rebranding: GPT Engineer to Lovable Empowering users to build high-quality software faster without coding. Kristian & Alex • December 3, 2024" [ref=e1199] [cursor=pointer]':
+            - /url: /blog/2025-01-13-rebranding-gpt-engineer-to-lovable
+            - 'img "Rebranding: GPT Engineer to Lovable" [ref=e1201]'
+            - generic [ref=e1202]:
+              - generic [ref=e1203]: inside lovable
+              - 'heading "Rebranding: GPT Engineer to Lovable" [level=2] [ref=e1204]'
+              - paragraph [ref=e1205]: Empowering users to build high-quality software faster without coding.
+              - generic [ref=e1206]:
+                - generic [ref=e1207]: Kristian & Alex
+                - generic [ref=e1208]: •
+                - time [ref=e1209]: December 3, 2024
+          - link "Kickstart Your Builds with Templates, Feedback Portal, and More announcements Kickstart Your Builds with Templates, Feedback Portal, and More Krisitan • December 3, 2024" [ref=e1210] [cursor=pointer]:
+            - /url: /blog/2025-01-13-kickstart-your-builds-with-templates-feedback-portal-and-more
+            - img "Kickstart Your Builds with Templates, Feedback Portal, and More" [ref=e1212]
+            - generic [ref=e1213]:
+              - generic [ref=e1214]: announcements
+              - heading "Kickstart Your Builds with Templates, Feedback Portal, and More" [level=2] [ref=e1215]
+              - generic [ref=e1216]:
+                - generic [ref=e1217]: Krisitan
+                - generic [ref=e1218]: •
+                - time [ref=e1219]: December 3, 2024
+          - link "Targeted Edits, Supabase Integration Improvements, and Pricing Updates announcements Targeted Edits, Supabase Integration Improvements, and Pricing Updates Emil Fagerholm • November 11, 2024" [ref=e1220] [cursor=pointer]:
+            - /url: /blog/2025-01-13-targeted-edits-supabase-integration-improvements-and-pricing-updates
+            - img "Targeted Edits, Supabase Integration Improvements, and Pricing Updates" [ref=e1222]
+            - generic [ref=e1223]:
+              - generic [ref=e1224]: announcements
+              - heading "Targeted Edits, Supabase Integration Improvements, and Pricing Updates" [level=2] [ref=e1225]
+              - generic [ref=e1226]:
+                - generic [ref=e1227]: Emil Fagerholm
+                - generic [ref=e1228]: •
+                - time [ref=e1229]: November 11, 2024
+          - link "Better Version Management and Speed Enhancements announcements Better Version Management and Speed Enhancements Kristian • October 2, 2024" [ref=e1230] [cursor=pointer]:
+            - /url: /blog/2025-01-13-better-version-management-and-speed-enhancements
+            - img "Better Version Management and Speed Enhancements" [ref=e1232]
+            - generic [ref=e1233]:
+              - generic [ref=e1234]: announcements
+              - heading "Better Version Management and Speed Enhancements" [level=2] [ref=e1235]
+              - generic [ref=e1236]:
+                - generic [ref=e1237]: Kristian
+                - generic [ref=e1238]: •
+                - time [ref=e1239]: October 2, 2024
+          - link "Branch Switching, Hot Projects, and Reliability Improvements announcements Branch Switching, Hot Projects, and Reliability Improvements Kristian • September 23, 2024" [ref=e1240] [cursor=pointer]:
+            - /url: /blog/2025-01-13-branch-switching-hot-projects-and-reliability-improvements
+            - img "Branch Switching, Hot Projects, and Reliability Improvements" [ref=e1242]
+            - generic [ref=e1243]:
+              - generic [ref=e1244]: announcements
+              - heading "Branch Switching, Hot Projects, and Reliability Improvements" [level=2] [ref=e1245]
+              - generic [ref=e1246]:
+                - generic [ref=e1247]: Kristian
+                - generic [ref=e1248]: •
+                - time [ref=e1249]: September 23, 2024
+          - 'link "2025: The Evolution of Artificial Intelligence in Startups reports 2025: The Evolution of Artificial Intelligence in Startups How AI is transforming startups from manual operations to autonomous systems. Stephane • January 9, 2024" [ref=e1250] [cursor=pointer]':
+            - /url: /blog/2025-01-13-2025-the-evolution-of-artificial-intelligence-in-startups
+            - 'img "2025: The Evolution of Artificial Intelligence in Startups" [ref=e1252]'
+            - generic [ref=e1253]:
+              - generic [ref=e1254]: reports
+              - 'heading "2025: The Evolution of Artificial Intelligence in Startups" [level=2] [ref=e1255]'
+              - paragraph [ref=e1256]: How AI is transforming startups from manual operations to autonomous systems.
+              - generic [ref=e1257]:
+                - generic [ref=e1258]: Stephane
+                - generic [ref=e1259]: •
+                - time [ref=e1260]: January 9, 2024
+  - contentinfo [ref=e1263]:
+    - navigation [ref=e1264]:
+      - link [ref=e1266] [cursor=pointer]:
+        - /url: /
+        - img [ref=e1267]
+      - generic [ref=e1277]:
+        - heading "Company" [level=3] [ref=e1278]
+        - list [ref=e1279]:
+          - listitem [ref=e1280]:
+            - link "Careers" [ref=e1281] [cursor=pointer]:
+              - /url: /careers
+          - listitem [ref=e1282]:
+            - link "Press & media" [ref=e1283] [cursor=pointer]:
+              - /url: /brand
+          - listitem [ref=e1284]:
+            - link "Enterprise" [ref=e1285] [cursor=pointer]:
+              - /url: /enterprise-landing
+          - listitem [ref=e1286]:
+            - link "Security" [ref=e1287] [cursor=pointer]:
+              - /url: /security
+          - listitem [ref=e1288]:
+            - link "Trust center" [ref=e1289] [cursor=pointer]:
+              - /url: https://trust.lovable.dev
+              - text: Trust center
+              - img [ref=e1290]
+          - listitem [ref=e1292]:
+            - link "Partnerships" [ref=e1293] [cursor=pointer]:
+              - /url: /partners
+      - generic [ref=e1294]:
+        - heading "Product" [level=3] [ref=e1295]
+        - list [ref=e1296]:
+          - listitem [ref=e1297]:
+            - link "Pricing" [ref=e1298] [cursor=pointer]:
+              - /url: /pricing
+          - listitem [ref=e1299]:
+            - link "Student discount" [ref=e1300] [cursor=pointer]:
+              - /url: /students
+          - listitem [ref=e1301]:
+            - link "Founders" [ref=e1302] [cursor=pointer]:
+              - /url: /founders
+          - listitem [ref=e1303]:
+            - link "Product Managers" [ref=e1304] [cursor=pointer]:
+              - /url: /product-managers
+          - listitem [ref=e1305]:
+            - link "Designers" [ref=e1306] [cursor=pointer]:
+              - /url: /designers
+          - listitem [ref=e1307]:
+            - link "Marketers" [ref=e1308] [cursor=pointer]:
+              - /url: /marketers
+          - listitem [ref=e1309]:
+            - link "Sales" [ref=e1310] [cursor=pointer]:
+              - /url: /sales
+          - listitem [ref=e1311]:
+            - link "Ops" [ref=e1312] [cursor=pointer]:
+              - /url: /ops
+          - listitem [ref=e1313]:
+            - link "People" [ref=e1314] [cursor=pointer]:
+              - /url: /people
+          - listitem [ref=e1315]:
+            - link "Prototyping" [ref=e1316] [cursor=pointer]:
+              - /url: /prototypes
+          - listitem [ref=e1317]:
+            - link "Internal Tools" [ref=e1318] [cursor=pointer]:
+              - /url: /tools
+          - listitem [ref=e1319]:
+            - link "Connections" [ref=e1320] [cursor=pointer]:
+              - /url: https://docs.lovable.dev/integrations/introduction
+              - text: Connections
+              - img [ref=e1321]
+          - listitem [ref=e1323]:
+            - link "Changelog" [ref=e1324] [cursor=pointer]:
+              - /url: https://docs.lovable.dev/changelog
+              - text: Changelog
+              - img [ref=e1325]
+          - listitem [ref=e1327]:
+            - link "Status" [ref=e1328] [cursor=pointer]:
+              - /url: https://status.lovable.dev/
+              - text: Status
+              - img [ref=e1329]
+      - generic [ref=e1331]:
+        - heading "Resources" [level=3] [ref=e1332]
+        - list [ref=e1333]:
+          - listitem [ref=e1334]:
+            - link "Learn" [ref=e1335] [cursor=pointer]:
+              - /url: https://docs.lovable.dev/introduction/welcome
+              - text: Learn
+              - img [ref=e1336]
+          - listitem [ref=e1338]:
+            - link "Templates" [ref=e1339] [cursor=pointer]:
+              - /url: /templates
+          - listitem [ref=e1340]:
+            - link "Guides" [ref=e1341] [cursor=pointer]:
+              - /url: /guides
+          - listitem [ref=e1342]:
+            - link "Connectors" [ref=e1343] [cursor=pointer]:
+              - /url: /connect
+          - listitem [ref=e1344]:
+            - link "Videos" [ref=e1345] [cursor=pointer]:
+              - /url: /videos
+          - listitem [ref=e1346]:
+            - link "Blog" [ref=e1347] [cursor=pointer]:
+              - /url: /blog
+          - listitem [ref=e1348]:
+            - link "Support" [ref=e1349] [cursor=pointer]:
+              - /url: /support
+          - listitem [ref=e1350]:
+            - link "Reviews" [ref=e1351] [cursor=pointer]:
+              - /url: /reviews
+          - listitem [ref=e1352]:
+            - link "FAQs" [ref=e1353] [cursor=pointer]:
+              - /url: /faq
+      - generic [ref=e1354]:
+        - heading "Legal" [level=3] [ref=e1355]
+        - list [ref=e1356]:
+          - listitem [ref=e1357]:
+            - link "Privacy policy" [ref=e1358] [cursor=pointer]:
+              - /url: /privacy
+              - text: Privacy policy
+              - img [ref=e1359]
+          - listitem [ref=e1361]:
+            - link "Do not sell or share my personal information" [ref=e1362] [cursor=pointer]:
+              - /url: /do-not-sell-or-share-my-personal-information
+          - listitem [ref=e1363]:
+            - link "Cookie settings" [ref=e1364] [cursor=pointer]:
+              - /url: /cookie-policy
+          - listitem [ref=e1365]:
+            - link "Enterprise terms" [ref=e1366] [cursor=pointer]:
+              - /url: https://lovable.dev/legal
+              - text: Enterprise terms
+              - img [ref=e1367]
+          - listitem [ref=e1369]:
+            - link "General terms" [ref=e1370] [cursor=pointer]:
+              - /url: /terms
+              - text: General terms
+              - img [ref=e1371]
+          - listitem [ref=e1373]:
+            - link "Platform rules" [ref=e1374] [cursor=pointer]:
+              - /url: /platform-rules
+              - text: Platform rules
+              - img [ref=e1375]
+          - listitem [ref=e1377]:
+            - link "Report abuse" [ref=e1378] [cursor=pointer]:
+              - /url: /abuse
+              - text: Report abuse
+              - img [ref=e1379]
+          - listitem [ref=e1381]:
+            - link "Report security concerns" [ref=e1382] [cursor=pointer]:
+              - /url: /security-issues
+              - text: Report security concerns
+              - img [ref=e1383]
+          - listitem [ref=e1385]:
+            - link "DPA" [ref=e1386] [cursor=pointer]:
+              - /url: /data-processing-agreement
+              - text: DPA
+              - img [ref=e1387]
+      - generic [ref=e1389]:
+        - heading "Community" [level=3] [ref=e1390]
+        - list [ref=e1391]:
+          - listitem [ref=e1392]:
+            - link "Apply to our expert program" [ref=e1393] [cursor=pointer]:
+              - /url: /experts/apply
+          - listitem [ref=e1394]:
+            - link "Hire a Lovable expert" [ref=e1395] [cursor=pointer]:
+              - /url: /experts
+          - listitem [ref=e1396]:
+            - link "Affiliates" [ref=e1397] [cursor=pointer]:
+              - /url: /affiliates
+          - listitem [ref=e1398]:
+            - link "Code of conduct" [ref=e1399] [cursor=pointer]:
+              - /url: /community-code-of-conduct
+          - listitem [ref=e1400]:
+            - link "Discord" [ref=e1401] [cursor=pointer]:
+              - /url: https://discord.com/invite/lovable-dev
+              - text: Discord
+              - img [ref=e1402]
+          - listitem [ref=e1404]:
+            - link "Reddit" [ref=e1405] [cursor=pointer]:
+              - /url: https://reddit.com/r/lovable
+              - text: Reddit
+              - img [ref=e1406]
+          - listitem [ref=e1408]:
+            - link "X / Twitter" [ref=e1409] [cursor=pointer]:
+              - /url: https://twitter.com/Lovable
+              - text: X / Twitter
+              - img [ref=e1410]
+          - listitem [ref=e1412]:
+            - link "YouTube" [ref=e1413] [cursor=pointer]:
+              - /url: https://www.youtube.com/@lovable
+              - text: YouTube
+              - img [ref=e1414]
+          - listitem [ref=e1416]:
+            - link "LinkedIn" [ref=e1417] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/lovable-dev/
+              - text: LinkedIn
+              - img [ref=e1418]
+      - button "EN" [ref=e1421] [cursor=pointer]:
+        - img [ref=e1422]
+        - generic [ref=e1424]: EN

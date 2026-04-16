@@ -1,0 +1,76 @@
+<h2>Accent Color — The One Color That Defines Everything</h2>
+<p class="subtitle">On a near-black background, the accent does a lot of work. Which feels right for CodeStart?</p>
+
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  .accent-demo {
+    font-family: 'IBM Plex Sans', sans-serif;
+    padding: 12px 14px;
+    background: #0a0a10;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-top: 10px;
+  }
+  .accent-demo .run-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 26px; padding: 0 11px;
+    border-radius: 5px; font-size: 11px; font-weight: 600;
+    color: #fff;
+  }
+  .accent-demo .step-active {
+    font-size: 11px; font-weight: 600; margin-top: 8px;
+  }
+  .accent-demo .bar {
+    height: 2px; border-radius: 2px; margin-top: 6px; width: 45%;
+  }
+  .accent-demo .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+</style>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3 style="font-family:'IBM Plex Sans',sans-serif;color:#4f82ff;">Electric Blue #4f82ff</h3>
+      <p style="font-family:'IBM Plex Sans',sans-serif;">Cool, precise, technical. The safe choice that still looks great. Used by the mockup spec.</p>
+      <div class="accent-demo">
+        <span class="run-btn" style="background:linear-gradient(135deg,#4f82ff,#2a5ce0);box-shadow:0 1px 8px rgba(79,130,255,0.35);">▶ Run</span>
+        <div class="step-active" style="color:#4f82ff;">Writing auth/store.ts...</div>
+        <div class="bar" style="background:linear-gradient(90deg,#4f82ff,#818cf8);"></div>
+        <div class="badge" style="background:rgba(79,130,255,0.1);border:1px solid rgba(79,130,255,0.2);color:#4f82ff;">React Native</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3 style="font-family:'IBM Plex Sans',sans-serif;color:#38bdf8;">Cyan Blue #38bdf8</h3>
+      <p style="font-family:'IBM Plex Sans',sans-serif;">Brighter, more distinctive. Pops more on deep black. Feels like a terminal — closer to VS Code's palette.</p>
+      <div class="accent-demo">
+        <span class="run-btn" style="background:linear-gradient(135deg,#38bdf8,#0284c7);box-shadow:0 1px 8px rgba(56,189,248,0.35);">▶ Run</span>
+        <div class="step-active" style="color:#38bdf8;">Writing auth/store.ts...</div>
+        <div class="bar" style="background:linear-gradient(90deg,#38bdf8,#818cf8);"></div>
+        <div class="badge" style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);color:#38bdf8;">React Native</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3 style="font-family:'IBM Plex Sans',sans-serif;color:#a78bfa;">Soft Violet #a78bfa</h3>
+      <p style="font-family:'IBM Plex Sans',sans-serif;">More unusual for a dev tool — stands apart from every IDE on the market. Sophisticated, slightly editorial.</p>
+      <div class="accent-demo">
+        <span class="run-btn" style="background:linear-gradient(135deg,#a78bfa,#7c3aed);box-shadow:0 1px 8px rgba(167,139,250,0.35);">▶ Run</span>
+        <div class="step-active" style="color:#a78bfa;">Writing auth/store.ts...</div>
+        <div class="bar" style="background:linear-gradient(90deg,#a78bfa,#60a5fa);"></div>
+        <div class="badge" style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2);color:#a78bfa;">React Native</div>
+      </div>
+    </div>
+  </div>
+</div>

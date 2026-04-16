@@ -1,0 +1,50 @@
+<h2>Three approaches to the full UI/UX overhaul</h2>
+<p class="subtitle">Each targets all panels — chat, layout, preview. They differ in scope, risk, and how much they change the current structure.</p>
+
+<div class="options">
+
+  <div class="option" data-choice="surface" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Surface Polish</h3>
+      <p><strong>What:</strong> Fix typography (bump text-[10px] → text-xs/sm), tighten spacing, unify border weights, add subtle transitions, improve icon sizing, fix contrast issues. No structural changes.</p>
+      <p style="margin-top:8px"><strong>Risk:</strong> Low. Every change is purely CSS/Tailwind class swaps. Nothing breaks.</p>
+      <p style="margin-top:8px"><strong>Result:</strong> Feels more polished and professional, but same overall layout and interaction patterns.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Fast to implement</li><li>Safe — no logic changes</li><li>Immediately visible improvement</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Doesn't fix structural UX issues</li><li>Plan cards still complex</li><li>No new interaction improvements</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="targeted" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Targeted Redesign <span style="color:#3b82f6;font-size:11px;margin-left:6px">RECOMMENDED</span></h3>
+      <p><strong>What:</strong> Surface polish PLUS redesign of 4 high-impact components: (1) Navbar — cleaner, more intentional, (2) Chat message bubbles + plan cards — readable typography, decluttered layout, better streaming feel, (3) Action log — grouped, collapsible, less noise, (4) Tools dock — refined icons, better active states.</p>
+      <p style="margin-top:8px"><strong>Risk:</strong> Medium. Component-level rewrites but no store/logic changes.</p>
+      <p style="margin-top:8px"><strong>Result:</strong> Feels like a different (better) product. Mixed audience can approach it confidently; power users get the premium feel.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>High impact on the most-used surfaces</li><li>Manageable scope</li><li>Targets real pain points found in code</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More work than A</li><li>Plan card redesign is the riskiest piece</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="full" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full Visual Overhaul</h3>
+      <p><strong>What:</strong> Everything in B, plus: redesign the preview panel controls, add micro-animations (step completion, file write flash, build phase transitions), introduce a refined design token layer (spacing, shadow, radius scale), and polish the device simulator frame.</p>
+      <p style="margin-top:8px"><strong>Risk:</strong> Higher. More files touched, more moving parts. More likely to introduce visual regressions in edge cases.</p>
+      <p style="margin-top:8px"><strong>Result:</strong> The most premium result. Feels production-grade.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Most impactful end result</li><li>Every surface gets attention</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Large scope — many files</li><li>Animations can regress if CSS conflicts</li><li>Longer implementation</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">I recommend B — targeted redesign. It hits the highest-impact surfaces with manageable risk. Click your choice and respond in the terminal.</p>

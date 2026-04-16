@@ -1,0 +1,8 @@
+{"type":"server-started","port":59301,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:59301","screen_dir":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/6098-1776306302/content","state_dir":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/6098-1776306302/state"}
+{"type":"screen-added","file":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/6098-1776306302/content/logo-preview.html"}
+{"source":"user-event","type":"click","text":"Cascade AI\n    \n    \n      C — Full horizontal, bold\n      Larger icon, heavier wordmark side by side. Higher visual impact for landing pages.","choice":"icon-only","id":null,"timestamp":1776306402429}
+{"source":"user-event","type":"click","text":"Cascade AI\n    \n    \n      C — Full horizontal, bold\n      Larger icon, heavier wordmark side by side. Higher visual impact for landing pages.","choice":"icon-only","id":null,"timestamp":1776306437509}
+{"source":"user-event","type":"click","text":"Cascade AI\n    \n    \n      C — Full horizontal, bold\n      Larger icon, heavier wordmark side by side. Higher visual impact for landing pages.","choice":"icon-only","id":null,"timestamp":1776306438328}
+{"type":"screen-added","file":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/6098-1776306302/content/logo-trace.html"}
+{"type":"screen-added","file":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/6098-1776306302/content/waiting-1.html"}
+{"type":"server-stopped","reason":"idle timeout"}

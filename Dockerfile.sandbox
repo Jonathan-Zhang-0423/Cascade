@@ -1,0 +1,6 @@
+FROM node:20-slim
+
+# Install TypeScript globally for tsc
+RUN npm install -g typescript
+
+WORKDIR /workspace

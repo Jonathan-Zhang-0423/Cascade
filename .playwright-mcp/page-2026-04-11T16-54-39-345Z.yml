@@ -1,0 +1,79 @@
+- generic:
+  - generic:
+    - list
+    - generic:
+      - banner:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - generic:
+              - button: EN
+              - button: 中
+            - combobox:
+              - img
+              - generic: Dark+
+              - img
+            - button:
+              - img
+              - text: 新建项目
+      - main:
+        - generic:
+          - heading [level=1]: 我的项目
+          - button:
+            - img
+            - text: 选择
+        - paragraph: 创建新项目或打开已有项目开始构建。
+        - generic:
+          - generic:
+            - generic:
+              - generic: 📅
+              - generic:
+                - button:
+                  - img
+                - button:
+                  - img
+            - heading [level=3]: 新建项目
+            - generic:
+              - img
+              - generic: 4/11/2026
+          - generic:
+            - generic:
+              - generic: 🔢
+              - generic:
+                - button:
+                  - img
+                - button:
+                  - img
+            - heading [level=3]: "2048"
+            - generic:
+              - img
+              - generic: 4/10/2026
+          - generic:
+            - generic:
+              - generic: 💻
+              - generic:
+                - button:
+                  - img
+                - button:
+                  - img
+            - heading [level=3]: 卡路里追踪器
+            - generic:
+              - img
+              - generic: 4/9/2026
+  - dialog "今天你想做什么？😉" [ref=e63]:
+    - heading "今天你想做什么？😉" [level=2] [ref=e65]
+    - textbox "例如：贪吃蛇游戏、个人主页、待办事项..." [active] [ref=e66]
+    - generic [ref=e67]:
+      - text: Framework
+      - combobox [ref=e68] [cursor=pointer]:
+        - generic: Web (HTML/CSS/JS)
+        - img [ref=e69]
+    - generic [ref=e71]:
+      - button "取消" [ref=e72] [cursor=pointer]
+      - button "出发！" [disabled]:
+        - img
+        - text: 出发！
+    - button "Close" [ref=e73] [cursor=pointer]:
+      - img [ref=e74]
+      - generic [ref=e77]: Close

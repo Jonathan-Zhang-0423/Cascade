@@ -1,0 +1,122 @@
+<h2>Design Section 2 of 5: IDE Shell — Navbar, Tools Dock & Layout</h2>
+<p class="subtitle">The chrome around the workspace. Does this feel right?</p>
+
+<div class="section">
+  <h3>2A — Navbar Redesign</h3>
+  <p>Current navbar is a flat bar with mixed element sizes. Proposed changes:</p>
+
+  <!-- BEFORE -->
+  <div style="margin-top:12px;">
+    <div style="color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px;">BEFORE</div>
+    <div style="background:#1c1c1e; border:1px solid #2a2a2e; border-radius:8px; padding:0 12px; height:40px; display:flex; align-items:center; justify-content:space-between; font-family:system-ui;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="color:#666; font-size:13px;">‹</div>
+        <div style="font-size:13px; color:#e2e8f0; font-weight:600;">📱 My App</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;border:1px solid #333;border-radius:6px;overflow:hidden;height:28px;">
+          <div style="padding:0 8px;display:flex;align-items:center;background:#2a2a2e;color:#e2e8f0;font-size:12px;">⬛</div>
+          <div style="padding:0 8px;display:flex;align-items:center;color:#666;font-size:12px;border-left:1px solid #333;">🖥</div>
+        </div>
+        <div style="border:1px solid #333;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;">👁</div>
+        <div style="border:1px solid #333;border-radius:6px;width:150px;height:28px;display:flex;align-items:center;padding:0 8px;color:#666;font-size:12px;">Default Theme ▾</div>
+        <div style="background:#2563eb;border-radius:6px;height:28px;padding:0 12px;display:flex;align-items:center;gap:6px;color:#fff;font-size:12px;font-weight:500;">↺ Run</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AFTER -->
+  <div style="margin-top:14px;">
+    <div style="color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px;">AFTER</div>
+    <div style="background:#111114; border-bottom:1px solid #222226; height:44px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; font-family:system-ui; border-radius:8px;">
+      <!-- Left -->
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:28px;height:28px;border-radius:6px;background:#1c1c20;border:1px solid #2a2a2e;display:flex;align-items:center;justify-content:center;color:#8b9ab0;font-size:13px;">‹</div>
+        <div style="width:1px;height:18px;background:#2a2a2e;"></div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div style="width:22px;height:22px;border-radius:6px;background:#1c1c20;border:1px solid #2a2a2e;display:flex;align-items:center;justify-content:center;font-size:12px;">📱</div>
+          <span style="color:#e2e8f0;font-size:13px;font-weight:600;letter-spacing:-0.01em;">My App</span>
+          <span style="color:#3b3b45;font-size:12px;">·</span>
+          <span style="color:#4a5568;font-size:11px;">React Native</span>
+        </div>
+      </div>
+      <!-- Center: layout toggle -->
+      <div style="display:flex;background:#1c1c20;border:1px solid #2a2a2e;border-radius:8px;padding:3px;gap:2px;">
+        <div style="padding:4px 10px;border-radius:5px;background:#2a2a30;color:#e2e8f0;font-size:11px;font-weight:500;display:flex;align-items:center;gap:5px;">⬛ <span>Code</span></div>
+        <div style="padding:4px 10px;border-radius:5px;color:#4a5568;font-size:11px;font-weight:500;display:flex;align-items:center;gap:5px;">🖥 <span>Preview</span></div>
+      </div>
+      <!-- Right -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="color:#4a5568;font-size:11px;background:#1c1c20;border:1px solid #2a2a2e;border-radius:6px;padding:4px 8px;">Default ▾</div>
+        <div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);border-radius:7px;height:30px;padding:0 14px;display:flex;align-items:center;gap:6px;color:#fff;font-size:12px;font-weight:600;box-shadow:0 1px 3px rgba(37,99,235,0.4);">↺ Run</div>
+      </div>
+    </div>
+  </div>
+
+  <ul style="margin-top:12px; padding-left:18px; color:#94a3b8; font-size:13px; line-height:2;">
+    <li>Height bumped <strong>40px → 44px</strong> for more breathing room</li>
+    <li>Back button is now a distinct icon button, not just a caret</li>
+    <li>Framework label shown subtly next to project name</li>
+    <li>Layout toggle moves to <strong>center</strong> (more intentional, not buried in right cluster)</li>
+    <li>Run button gets a gradient + subtle glow shadow for visual weight</li>
+    <li>Theme selector simplified — just the current theme name, smaller</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>2B — Tools Dock Refinement</h3>
+  <p>Width stays at <code>w-11</code> (44px). Active indicator moves from left-border strip to a more polished pill. Tooltips added.</p>
+
+  <div style="display:flex;gap:20px;margin-top:12px;align-items:flex-start;">
+    <!-- Before dock -->
+    <div>
+      <div style="color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;">BEFORE</div>
+      <div style="background:#161618; border:1px solid #2a2a2e; border-radius:8px; padding:8px 6px; width:44px; display:flex; flex-direction:column; gap:4px;">
+        <div style="width:40px;height:40px;border-radius:8px;background:#1c2333;display:flex;align-items:center;justify-content:center;position:relative;">
+          <div style="position:absolute;left:0;top:8px;bottom:8px;width:2px;background:#3b82f6;border-radius:0 2px 2px 0;"></div>
+          <span style="font-size:15px;">✦</span>
+        </div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#444;">📁</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#444;">⌨</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#444;">⬛</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#444;">🕐</div>
+      </div>
+    </div>
+
+    <!-- After dock -->
+    <div>
+      <div style="color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;">AFTER</div>
+      <div style="background:#0f0f12; border-right:1px solid #1e1e22; padding:10px 6px; width:44px; display:flex; flex-direction:column; gap:2px; border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:8px;background:#1e2940;display:flex;align-items:center;justify-content:center;position:relative;box-shadow:0 0 0 1px #3b82f630;">
+          <span style="font-size:15px;filter:drop-shadow(0 0 4px #3b82f680);">✦</span>
+        </div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#3a3a45;transition:all 0.15s;">📁</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#3a3a45;">⌨</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#3a3a45;">⬛</div>
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#3a3a45;">🕐</div>
+      </div>
+    </div>
+
+    <div style="flex:1; color:#94a3b8; font-size:13px; line-height:1.8; padding-top:24px;">
+      <strong style="color:#e2e8f0;">Changes:</strong><br>
+      • Active icon gets a <strong>subtle blue glow + tinted background</strong> instead of the left border strip<br>
+      • Dock background slightly darker than sidebar for depth<br>
+      • No border-right in dark mode — border replaced with background contrast<br>
+      • Inactive icons at ~25% opacity, hover brings to 70%<br>
+      • LLM Monitor badge rounded-full stays, but gets slightly larger (16px)
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2C — Panel Borders & Dividers</h3>
+  <p>All <code>border-border/50</code> and <code>border-border/30</code> replaced with a unified system:</p>
+  <ul style="padding-left:18px; color:#94a3b8; font-size:13px; line-height:2;">
+    <li><strong>Panel dividers</strong>: <code>border-border</code> (full opacity, 1px) — visible and intentional</li>
+    <li><strong>Inner card borders</strong>: <code>border-border/60</code> — slightly recessed</li>
+    <li><strong>Subtle separators</strong>: <code>border-border/30</code> — only for decorative grouping</li>
+    <li>ResizeHandle gets a <strong>hover state</strong>: subtle blue tint on drag target</li>
+  </ul>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Only touches <code>navbar.tsx</code>, <code>tools-dock.tsx</code>, <code>index.css</code>. Does this look right?</p>

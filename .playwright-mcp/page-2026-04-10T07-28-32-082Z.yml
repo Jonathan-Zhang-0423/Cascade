@@ -1,0 +1,106 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "Superpowers Brainstorming" [level=1] [ref=e3]:
+      - link "Superpowers Brainstorming" [ref=e4] [cursor=pointer]:
+        - /url: https://github.com/obra/superpowers
+    - generic [ref=e5]: Connected
+  - generic [ref=e7]:
+    - 'heading "Design Section 4 of 5: Preview Panel & Device Simulator" [level=2] [ref=e8]'
+    - paragraph [ref=e9]: The right-hand panel where code comes to life. Does this direction feel right?
+    - generic [ref=e10]:
+      - heading "4A — Preview Toolbar Cleanup" [level=3] [ref=e11]
+      - paragraph [ref=e12]: "Current toolbar packs many controls at equal visual weight — platform toggle, device picker, orientation, frame theme, QR, refresh. Proposed: group by purpose, reduce visual noise."
+      - generic [ref=e13]:
+        - generic [ref=e14]: BEFORE
+        - generic [ref=e15]:
+          - generic [ref=e16]: React Native
+          - generic [ref=e18]:
+            - generic [ref=e19]: iOS
+            - generic [ref=e20]: Android
+          - generic [ref=e21]:
+            - generic [ref=e22]: iPhone 14
+            - generic [ref=e23]: ▾
+          - generic [ref=e24]: ↻
+          - generic [ref=e25]: ☀
+          - generic [ref=e26]: QR
+          - generic [ref=e27]: ↺
+      - generic [ref=e28]:
+        - generic [ref=e29]: AFTER
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - generic [ref=e32]: React Native
+            - generic [ref=e34]:
+              - generic [ref=e35]: iOS
+              - generic [ref=e36]: Android
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]: iPhone 14
+              - generic [ref=e40]: ▾
+            - img [ref=e42]
+          - generic [ref=e44]:
+            - img [ref=e46]
+            - img [ref=e49]
+            - img [ref=e55]
+      - list [ref=e58]:
+        - listitem [ref=e59]:
+          - text: "Three logical groups:"
+          - strong [ref=e60]: Framework/Platform
+          - text: ·
+          - strong [ref=e61]: Device/Orientation
+          - text: ·
+          - strong [ref=e62]: Frame/Actions
+        - listitem [ref=e63]: Platform toggle uses same pill style as navbar layout toggle — consistent language
+        - listitem [ref=e64]: All icon buttons unified at 28×26px — no more mismatched sizes
+        - listitem [ref=e65]: Toolbar height 36px → 38px, matching the navbar bump
+        - listitem [ref=e66]: QR and refresh icons replaced with clean SVG — no text labels needed
+    - generic [ref=e67]:
+      - heading "4B — Device Frame Polish" [level=3] [ref=e68]
+      - paragraph [ref=e69]: The simulator frame itself. Current bezel colors and status bar are functional. Proposed refinements for the dark frame mode.
+      - generic [ref=e70]:
+        - generic [ref=e71]:
+          - generic [ref=e72]: BEFORE (dark frame)
+          - generic [ref=e75]: 9:41
+        - generic [ref=e84]:
+          - generic [ref=e85]: AFTER (dark frame)
+          - generic [ref=e90]: 9:41
+        - generic [ref=e99]:
+          - strong [ref=e100]: "Frame changes:"
+          - text: "• Subtle gradient on the frame body (not flat #1a1a1a) — adds depth"
+          - text: • Inner highlight on top edge via
+          - code [ref=e101]: inset box-shadow
+          - text: — catches light like real aluminum
+          - text: • Side buttons thinner (3px → 2px), same color as frame rather than darker
+          - text: "• Home bar: transparent white instead of opaque grey"
+          - text: "• Overall shadow: deeper and more diffuse for premium feel"
+          - text: • Dynamic Island shown in all modern iPhone presets (already in code, just styled better)
+    - generic [ref=e102]:
+      - heading "4C — Empty / Loading States" [level=3] [ref=e103]
+      - paragraph [ref=e104]: "Currently the preview area shows a blank screen or a raw iframe before content loads. Proposed placeholder states:"
+      - generic [ref=e105]:
+        - generic [ref=e106]:
+          - generic [ref=e107]: Not yet run
+          - generic [ref=e108]:
+            - img [ref=e109]
+            - generic [ref=e112]: Run your project to see the preview
+        - generic [ref=e113]:
+          - generic [ref=e114]: Compiling
+          - generic [ref=e117]: Compiling...
+        - generic [ref=e118]:
+          - generic [ref=e119]: Error
+          - generic [ref=e120]:
+            - img [ref=e121]
+            - generic [ref=e124]:
+              - text: Compile error
+              - text: Check the action log
+      - list [ref=e125]:
+        - listitem [ref=e126]: Three distinct states replace the current blank iframe
+        - listitem [ref=e127]: "Not-yet-run: muted play icon with instruction text"
+        - listitem [ref=e128]: "Compiling: spinner (CSS animation) with status text"
+        - listitem [ref=e129]: "Error: red border + icon + pointer to action log"
+    - paragraph [ref=e130]:
+      - text: Touches
+      - code [ref=e131]: preview-panel.tsx
+      - text: and
+      - code [ref=e132]: device-simulator.tsx
+      - text: . Does Section 4 look right?
+  - generic [ref=e133]: Click an option above, then return to the terminal

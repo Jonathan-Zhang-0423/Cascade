@@ -1,0 +1,255 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - link [ref=e9] [cursor=pointer]:
+      - /url: /
+    - navigation "Main" [ref=e11]:
+      - list [ref=e13]:
+        - listitem [ref=e14]:
+          - link "Community" [ref=e15] [cursor=pointer]:
+            - /url: https://discord.com/invite/stackblitz
+        - listitem [ref=e16]:
+          - link "Enterprise" [ref=e17] [cursor=pointer]:
+            - /url: /enterprise
+        - listitem [ref=e18]:
+          - button "Resources" [ref=e19]: Resources
+        - listitem [ref=e21]:
+          - link "Careers" [ref=e22] [cursor=pointer]:
+            - /url: /careers
+        - listitem [ref=e23]:
+          - link "Pricing" [ref=e24] [cursor=pointer]:
+            - /url: /pricing
+    - generic [ref=e25]:
+      - list [ref=e26]:
+        - listitem [ref=e27]:
+          - link "Discord" [ref=e28] [cursor=pointer]:
+            - /url: https://discord.com/invite/stackblitz
+        - listitem [ref=e29]:
+          - link "LinkedIn" [ref=e30] [cursor=pointer]:
+            - /url: https://www.linkedin.com/company/stackblitz
+        - listitem [ref=e31]:
+          - link "Twitter/X" [ref=e32] [cursor=pointer]:
+            - /url: https://x.com/boltdotnew
+        - listitem [ref=e33]:
+          - link "Reddit" [ref=e34] [cursor=pointer]:
+            - /url: https://www.reddit.com/r/boltnewbuilders/
+      - generic [ref=e35]:
+        - button "Sign in" [ref=e36] [cursor=pointer]:
+          - generic [ref=e37]: Sign in
+        - button "Get started" [ref=e38] [cursor=pointer]:
+          - generic [ref=e39]: Get started
+  - generic [ref=e41]:
+    - generic [ref=e42]:
+      - generic [ref=e43]:
+        - link "Introducing Design Systems in Bolt" [ref=e45] [cursor=pointer]:
+          - /url: https://x.com/boltdotnew/status/2039024467846860972
+          - img [ref=e47]
+          - generic [ref=e49]: Introducing Design Systems in Bolt
+        - generic [ref=e51]:
+          - heading "What will you build today?" [level=1] [ref=e52]:
+            - text: What will you
+            - generic [ref=e53]: build
+            - img [ref=e54]
+            - text: today?
+          - paragraph [ref=e60]: Create stunning apps & websites by chatting with AI.
+        - generic [ref=e64]:
+          - textbox "Type your idea and we'll build it together." [active] [ref=e71]:
+            - /placeholder: Let's build a prototype to validate my...
+          - generic [ref=e72]:
+            - button "Prompt actions" [ref=e74] [cursor=pointer]
+            - generic [ref=e77]:
+              - button "Plan" [ref=e79] [cursor=pointer]:
+                - generic [ref=e81]: Plan
+              - button "Send message" [disabled] [ref=e82]:
+                - generic [ref=e83]: Build now
+                - img [ref=e84]
+        - generic [ref=e87]:
+          - generic [ref=e89]:
+            - paragraph [ref=e90]: or import from
+            - button "Figma" [ref=e91] [cursor=pointer]:
+              - generic [ref=e93]: Figma
+            - button "GitHub" [ref=e94] [cursor=pointer]:
+              - generic [ref=e96]: GitHub
+          - region "Design systems showcase" [ref=e97]:
+            - heading "Your company's design system, now in Bolt" [level=2] [ref=e99]
+            - generic [ref=e101]:
+              - button "Porsche Porsche Porsche Porsche Design System" [ref=e102] [cursor=pointer]:
+                - img "Porsche" [ref=e103]
+                - img "Porsche" [ref=e106]
+                - generic [ref=e110]:
+                  - heading "Porsche" [level=3] [ref=e111]
+                  - paragraph [ref=e112]: Porsche Design System
+              - button "Material UI Material UI Material UI Material Design" [ref=e113] [cursor=pointer]:
+                - img "Material UI" [ref=e114]
+                - img "Material UI" [ref=e116]
+                - generic [ref=e120]:
+                  - heading "Material UI" [level=3] [ref=e121]
+                  - paragraph [ref=e122]: Material Design
+              - button "Chakra Chakra Chakra Chakra UI" [ref=e123] [cursor=pointer]:
+                - img "Chakra" [ref=e124]
+                - img "Chakra" [ref=e126]
+                - generic [ref=e130]:
+                  - heading "Chakra" [level=3] [ref=e131]
+                  - paragraph [ref=e132]: Chakra UI
+              - button "Shadcn Shadcn Shadcn Shadcn UI" [ref=e133] [cursor=pointer]:
+                - img "Shadcn" [ref=e134]
+                - img "Shadcn" [ref=e136]
+                - generic [ref=e140]:
+                  - heading "Shadcn" [level=3] [ref=e141]
+                  - paragraph [ref=e142]: Shadcn UI
+              - button "Washington Post Washington Post Washington Post Washington Post Design System" [ref=e143] [cursor=pointer]:
+                - img "Washington Post" [ref=e144]
+                - img "Washington Post" [ref=e146]
+                - generic [ref=e150]:
+                  - heading "Washington Post" [level=3] [ref=e151]
+                  - paragraph [ref=e152]: Washington Post Design System
+            - generic [ref=e153]:
+              - button "Previous design system" [ref=e154] [cursor=pointer]
+              - button "Next design system" [ref=e157] [cursor=pointer]
+          - generic [ref=e161]:
+            - generic [ref=e162]:
+              - heading "Use your team's components and brand guidelines to build for production" [level=2] [ref=e163]
+              - paragraph [ref=e164]: Try one of the examples above or get started with your own
+            - generic [ref=e165]:
+              - link "Learn more" [ref=e167] [cursor=pointer]:
+                - /url: https://support.bolt.new/building/design-system/introduction
+                - text: Learn more
+              - button "Import your design system" [ref=e170] [cursor=pointer]:
+                - generic [ref=e172]: Import your design system
+      - generic [ref=e174]: "The #1 professional vibe coding tool trusted by"
+      - generic [ref=e185]:
+        - generic [ref=e186]:
+          - heading "Empowering product builders with the most powerful coding agents" [level=2] [ref=e190]:
+            - text: Empowering product builders
+            - text: with the most powerful coding agents
+          - paragraph [ref=e191]: Bolt does the heavy lifting for you, so you can focus on your vision instead of fighting errors.
+        - generic [ref=e192]:
+          - generic [ref=e194]:
+            - heading "Always the best, without switching tools" [level=3] [ref=e195]
+            - paragraph [ref=e196]: Bolt integrates the frontier coding agents from the AI labs directly inside one familiar visual interface. No more AI anxiety or juggling multiple platforms.
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - paragraph [ref=e200]: 98%
+              - paragraph [ref=e201]: less errors
+            - paragraph [ref=e202]: Bolt automatically tests, refactors, and iterates reducing errors so you keep building instead of fixing.
+          - generic [ref=e204]:
+            - heading "Build big without breaking" [level=3] [ref=e205]
+            - paragraph [ref=e206]: Bolt handles projects 1,000 times larger than before. It's improved built-in context management can handle complexity and keep your projects running smoothly.
+        - generic [ref=e209]:
+          - generic [ref=e215]:
+            - text: Build with
+            - img "your" [ref=e217]
+            - text: design system
+          - paragraph [ref=e218]: Stop building from scratch. Start building on-brand.
+          - img "Design system example 1" [ref=e220]
+      - generic [ref=e223]:
+        - generic [ref=e224]:
+          - heading "Everything you need to scale Built in." [level=2] [ref=e225]:
+            - text: Everything you need to scale
+            - generic [ref=e226]: Built in.
+          - paragraph [ref=e227]: Stop stitching together platforms. Bolt Cloud gives you enterprise-grade backend infrastructure including hosting, databases, integrations and more.
+        - generic [ref=e228]:
+          - heading "Unlimited databases" [level=3] [ref=e230]
+          - heading "Enterprise-grade" [level=3] [ref=e232]
+          - heading "User Management & Authentication" [level=3] [ref=e234]
+          - heading "SEO optimization so your project ranks from day one." [level=3] [ref=e236]
+          - heading "Hosting with analytics & custom domains" [level=3] [ref=e238]
+        - generic [ref=e239]:
+          - img "Divider"
+          - paragraph [ref=e240]: Bolt gives you everything you need inside one familiar interface no extra accounts, no steep learning curve.
+      - generic [ref=e242]:
+        - generic [ref=e243]:
+          - paragraph [ref=e244]: Whatever your role
+          - heading "Bolt gives you superpowers" [level=2] [ref=e245]
+          - paragraph [ref=e246]: From idea to live product, Bolt adapts to the way you work turning every vision into something real & fast
+        - generic [ref=e247]:
+          - generic [ref=e249]:
+            - heading "Product managers" [level=3] [ref=e250]
+            - paragraph [ref=e251]: Go from insight to prototype in hours and test ideas with your team before the day is over.
+          - generic [ref=e253]:
+            - heading "Entrepreneurs" [level=3] [ref=e254]
+            - paragraph [ref=e255]: Launch a full business in days, not months. From landing page to product, all in one flow.
+          - generic [ref=e257]:
+            - heading "Marketers" [level=3] [ref=e258]
+            - paragraph [ref=e259]: Spin up high-performing campaign pages in hours, with SEO and hosting built in.
+          - generic [ref=e261]:
+            - heading "Agencies" [level=3] [ref=e262]
+            - paragraph [ref=e263]: "Multiply your impact: deliver more projects, faster, without scaling headcount."
+          - generic [ref=e265]:
+            - heading "Students & builders" [level=3] [ref=e266]
+            - paragraph [ref=e267]: Learn by doing. Take ideas from class or side projects and turn them into fully working apps.
+      - generic [ref=e270]:
+        - generic [ref=e271]:
+          - heading "Ready to build something amazing?" [level=2] [ref=e272]
+          - paragraph [ref=e273]: Try it out and start building for free
+        - generic [ref=e277]:
+          - textbox "Type your idea and we'll build it together." [ref=e284]:
+            - /placeholder: Let's build a prototype to validate my...
+          - generic [ref=e285]:
+            - button "Prompt actions" [ref=e287] [cursor=pointer]
+            - generic [ref=e290]:
+              - button "Plan" [ref=e292] [cursor=pointer]:
+                - generic [ref=e294]: Plan
+              - button "Send message" [disabled] [ref=e295]:
+                - generic [ref=e296]: Build now
+    - contentinfo [ref=e298]:
+      - navigation [ref=e302]:
+        - generic [ref=e303]:
+          - heading "Resources" [level=3] [ref=e304]
+          - list [ref=e305]:
+            - listitem [ref=e306]:
+              - link "Pricing" [ref=e307] [cursor=pointer]:
+                - /url: /pricing
+                - text: Pricing
+            - listitem [ref=e309]:
+              - link "Support" [ref=e310] [cursor=pointer]:
+                - /url: https://support.bolt.new
+                - text: Support
+            - listitem [ref=e312]:
+              - link "Blog" [ref=e313] [cursor=pointer]:
+                - /url: /blog
+                - text: Blog
+            - listitem [ref=e315]:
+              - link "Status" [ref=e316] [cursor=pointer]:
+                - /url: https://status.bolt.new
+                - text: Status
+        - generic [ref=e318]:
+          - heading "Company" [level=3] [ref=e319]
+          - list [ref=e320]:
+            - listitem [ref=e321]:
+              - link "Careers" [ref=e322] [cursor=pointer]:
+                - /url: /careers
+            - listitem [ref=e323]:
+              - link "Privacy" [ref=e324] [cursor=pointer]:
+                - /url: https://stackblitz.com/privacy-policy
+            - listitem [ref=e325]:
+              - link "Terms" [ref=e326] [cursor=pointer]:
+                - /url: https://stackblitz.com/terms-of-service
+        - generic [ref=e327]:
+          - heading "Social" [level=3] [ref=e328]
+          - list [ref=e329]:
+            - listitem [ref=e330]:
+              - link "Discord" [ref=e331] [cursor=pointer]:
+                - /url: https://discord.com/invite/stackblitz
+                - text: Discord
+            - listitem [ref=e333]:
+              - link "LinkedIn" [ref=e334] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/stackblitz
+                - text: LinkedIn
+            - listitem [ref=e336]:
+              - link "YouTube" [ref=e337] [cursor=pointer]:
+                - /url: https://www.youtube.com/@BoltDotNew
+                - text: YouTube
+            - listitem [ref=e339]:
+              - link "Twitter/X" [ref=e340] [cursor=pointer]:
+                - /url: https://x.com/boltdotnew
+                - text: Twitter/X
+            - listitem [ref=e342]:
+              - link "Instagram" [ref=e343] [cursor=pointer]:
+                - /url: https://www.instagram.com/boltdotnew/
+                - text: Instagram
+            - listitem [ref=e345]:
+              - link "Reddit" [ref=e346] [cursor=pointer]:
+                - /url: https://www.reddit.com/r/boltnewbuilders/
+                - text: Reddit
+      - paragraph [ref=e348]:
+        - generic [ref=e349]: © 2026 StackBlitz - All rights reserved.

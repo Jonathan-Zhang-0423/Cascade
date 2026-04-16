@@ -1,0 +1,1917 @@
+- generic [ref=e2]:
+  - region
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner [ref=e6]:
+      - heading "Navigation Menu" [level=2] [ref=e7]
+      - generic [ref=e8]:
+        - link "Homepage" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - img [ref=e11]
+        - generic [ref=e13]:
+          - navigation "Global" [ref=e16]:
+            - list [ref=e17]:
+              - listitem [ref=e18]:
+                - button "Platform" [ref=e20] [cursor=pointer]:
+                  - text: Platform
+                  - img [ref=e21]
+              - listitem [ref=e23]:
+                - button "Solutions" [ref=e25] [cursor=pointer]:
+                  - text: Solutions
+                  - img [ref=e26]
+              - listitem [ref=e28]:
+                - button "Resources" [ref=e30] [cursor=pointer]:
+                  - text: Resources
+                  - img [ref=e31]
+              - listitem [ref=e33]:
+                - button "Open Source" [ref=e35] [cursor=pointer]:
+                  - text: Open Source
+                  - img [ref=e36]
+              - listitem [ref=e38]:
+                - button "Enterprise" [ref=e40] [cursor=pointer]:
+                  - text: Enterprise
+                  - img [ref=e41]
+              - listitem [ref=e43]:
+                - link "Pricing" [ref=e44] [cursor=pointer]:
+                  - /url: https://github.com/pricing
+                  - generic [ref=e45]: Pricing
+          - generic [ref=e46]:
+            - button "Search or jump to…" [ref=e49] [cursor=pointer]:
+              - img [ref=e51]
+            - link "Sign in" [ref=e54] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2Fstackblitz-labs%2Fbolt.diy
+            - link "Sign up" [ref=e55] [cursor=pointer]:
+              - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E&source=header-repo&source_repo=stackblitz-labs%2Fbolt.diy
+            - button "Appearance settings" [ref=e58] [cursor=pointer]:
+              - img
+  - main [ref=e62]:
+    - generic [ref=e63]:
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - img [ref=e67]
+            - link "stackblitz-labs" [ref=e70] [cursor=pointer]:
+              - /url: /stackblitz-labs
+            - generic [ref=e71]: /
+            - strong [ref=e72]:
+              - link "bolt.diy" [ref=e73] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy
+            - generic [ref=e74]: Public template
+          - generic [ref=e75]:
+            - text: forked from
+            - link "stackblitz/bolt.new" [ref=e76] [cursor=pointer]:
+              - /url: /stackblitz/bolt.new
+        - generic [ref=e77]:
+          - list:
+            - listitem [ref=e78]:
+              - link "You must be signed in to change notification settings" [ref=e79] [cursor=pointer]:
+                - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                - img [ref=e80]
+                - text: Notifications
+            - listitem [ref=e82]:
+              - link "Fork 10.4k" [ref=e83] [cursor=pointer]:
+                - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                - img [ref=e84]
+                - text: Fork
+                - generic "10,387" [ref=e86]: 10.4k
+            - listitem [ref=e87]:
+              - link "You must be signed in to star a repository" [ref=e89] [cursor=pointer]:
+                - /url: /login?return_to=%2Fstackblitz-labs%2Fbolt.diy
+                - img [ref=e90]
+                - text: Star
+                - generic "19232 users starred this repository" [ref=e92]: 19.2k
+      - navigation "Repository" [ref=e93]:
+        - list [ref=e94]:
+          - listitem [ref=e95]:
+            - link "Code" [ref=e96] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy
+              - img [ref=e97]
+              - generic [ref=e99]: Code
+          - listitem [ref=e100]:
+            - link "Issues 66" [ref=e101] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/issues
+              - img [ref=e102]
+              - generic [ref=e105]: Issues
+              - generic "66" [ref=e106]
+          - listitem [ref=e107]:
+            - link "Pull requests 31" [ref=e108] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/pulls
+              - img [ref=e109]
+              - generic [ref=e111]: Pull requests
+              - generic "31" [ref=e112]
+          - listitem [ref=e113]:
+            - link "Actions" [ref=e114] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/actions
+              - img [ref=e115]
+              - generic [ref=e117]: Actions
+          - listitem [ref=e118]:
+            - link "Projects" [ref=e119] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/projects
+              - img [ref=e120]
+              - generic [ref=e122]: Projects
+          - listitem [ref=e123]:
+            - link "Security and quality" [ref=e124] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/security
+              - img [ref=e125]
+              - generic [ref=e127]: Security and quality
+          - listitem [ref=e128]:
+            - link "Insights" [ref=e129] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/pulse
+              - img [ref=e130]
+              - generic [ref=e132]: Insights
+    - generic [ref=e145]:
+      - heading "stackblitz-labs/bolt.diy" [level=1] [ref=e147]
+      - generic [ref=e148]:
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - generic [ref=e153]:
+              - button "main branch" [ref=e155] [cursor=pointer]:
+                - generic [ref=e156]:
+                  - generic [ref=e158]:
+                    - img [ref=e160]
+                    - generic [ref=e163]: main
+                  - generic:
+                    - img
+              - generic [ref=e164]:
+                - link "8 Branches" [ref=e165] [cursor=pointer]:
+                  - /url: /stackblitz-labs/bolt.diy/branches
+                  - generic [ref=e166]:
+                    - generic:
+                      - img
+                    - generic [ref=e168]:
+                      - strong [ref=e169]: "8"
+                      - text: Branches
+                - link "9 Tags" [ref=e170] [cursor=pointer]:
+                  - /url: /stackblitz-labs/bolt.diy/tags
+                  - generic [ref=e171]:
+                    - generic:
+                      - img
+                    - generic [ref=e173]:
+                      - strong [ref=e174]: "9"
+                      - text: Tags
+            - generic [ref=e175]:
+              - generic [ref=e179]:
+                - img [ref=e181]
+                - combobox "Go to file" [ref=e183]
+              - button "Code" [ref=e184] [cursor=pointer]:
+                - generic [ref=e185]:
+                  - generic:
+                    - img
+                  - generic [ref=e186]: Code
+                  - generic:
+                    - img
+          - generic [ref=e190]:
+            - generic [ref=e191]:
+              - heading "Folders and files" [level=2] [ref=e192]
+              - table "Folders and files" [ref=e193]:
+                - rowgroup:
+                  - row "Name Last commit message Last commit date":
+                    - columnheader "Name"
+                    - columnheader "Last commit message":
+                      - generic "Last commit message"
+                    - columnheader "Last commit date":
+                      - generic "Last commit date"
+                - rowgroup [ref=e194]:
+                  - 'row "Latest commit Stijnus claude commits by Stijnus and commits by claude feat: add web URL content fetcher for chat context Open commit details success Commit 2e254ac · Feb 7, 20262 months ago History 1,629 Commits" [ref=e195]':
+                    - 'cell "Latest commit Stijnus claude commits by Stijnus and commits by claude feat: add web URL content fetcher for chat context Open commit details success Commit 2e254ac · Feb 7, 20262 months ago History 1,629 Commits" [ref=e196]':
+                      - generic [ref=e197]:
+                        - heading "Latest commit" [level=2] [ref=e198]
+                        - generic [ref=e199]:
+                          - generic [ref=e200]:
+                            - generic [ref=e202]:
+                              - img "Stijnus" [ref=e203]
+                              - img "claude" [ref=e204]
+                            - link "commits by Stijnus" [ref=e206] [cursor=pointer]:
+                              - /url: /stackblitz-labs/bolt.diy/commits?author=Stijnus
+                              - text: Stijnus
+                            - generic [ref=e207]: and
+                            - link "commits by claude" [ref=e209] [cursor=pointer]:
+                              - /url: /stackblitz-labs/bolt.diy/commits?author=claude
+                              - text: claude
+                          - generic [ref=e210]:
+                            - 'link "feat: add web URL content fetcher for chat context" [ref=e213] [cursor=pointer]':
+                              - /url: /stackblitz-labs/bolt.diy/commit/2e254ac19a696394030601bc602f54945b12bfc4
+                            - button "Open commit details" [ref=e214] [cursor=pointer]:
+                              - img [ref=e215]
+                            - button "success" [ref=e217] [cursor=pointer]:
+                              - img [ref=e218]
+                        - generic [ref=e220]:
+                          - generic [ref=e222]:
+                            - link "Commit 2e254ac" [ref=e223] [cursor=pointer]:
+                              - /url: /stackblitz-labs/bolt.diy/commit/2e254ac19a696394030601bc602f54945b12bfc4
+                              - text: 2e254ac
+                            - text: ·
+                            - generic "Feb 7, 2026, 10:36 PM GMT+8" [ref=e224]: Feb 7, 20262 months ago
+                          - generic [ref=e225]:
+                            - heading "History" [level=2] [ref=e226]
+                            - link "1,629 Commits" [ref=e227] [cursor=pointer]:
+                              - /url: /stackblitz-labs/bolt.diy/commits/main/
+                              - generic [ref=e228]:
+                                - generic:
+                                  - img
+                                - generic [ref=e229]: 1,629 Commits
+                  - row ".github, (Directory)" [ref=e230]:
+                    - cell ".github, (Directory)" [ref=e231]:
+                      - generic [ref=e232]:
+                        - img [ref=e233]
+                        - link ".github, (Directory)" [ref=e238] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/.github
+                          - text: .github
+                    - cell [ref=e239]
+                    - cell [ref=e241]
+                  - row ".husky, (Directory)" [ref=e244]:
+                    - cell ".husky, (Directory)" [ref=e245]:
+                      - generic [ref=e246]:
+                        - img [ref=e247]
+                        - link ".husky, (Directory)" [ref=e252] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/.husky
+                          - text: .husky
+                    - cell [ref=e253]
+                    - cell [ref=e255]
+                  - row "app, (Directory)" [ref=e258]:
+                    - cell "app, (Directory)" [ref=e259]:
+                      - generic [ref=e260]:
+                        - img [ref=e261]
+                        - link "app, (Directory)" [ref=e266] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/app
+                          - text: app
+                    - cell [ref=e267]
+                    - cell [ref=e269]
+                  - row "assets, (Directory)" [ref=e272]:
+                    - cell "assets, (Directory)" [ref=e273]:
+                      - generic [ref=e274]:
+                        - img [ref=e275]
+                        - link "assets, (Directory)" [ref=e280] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/assets
+                          - text: assets
+                    - cell [ref=e281]
+                    - cell [ref=e283]
+                  - row "docs, (Directory)" [ref=e286]:
+                    - cell "docs, (Directory)" [ref=e287]:
+                      - generic [ref=e288]:
+                        - img [ref=e289]
+                        - link "docs, (Directory)" [ref=e294] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/docs
+                          - text: docs
+                    - cell [ref=e295]
+                    - cell [ref=e297]
+                  - row "electron, (Directory)" [ref=e300]:
+                    - cell "electron, (Directory)" [ref=e301]:
+                      - generic [ref=e302]:
+                        - img [ref=e303]
+                        - link "electron, (Directory)" [ref=e308] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/electron
+                          - text: electron
+                    - cell [ref=e309]
+                    - cell [ref=e311]
+                  - row "functions, (Directory)" [ref=e314]:
+                    - cell "functions, (Directory)" [ref=e315]:
+                      - generic [ref=e316]:
+                        - img [ref=e317]
+                        - link "functions, (Directory)" [ref=e322] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/functions
+                          - text: functions
+                    - cell [ref=e323]
+                    - cell [ref=e325]
+                  - row "icons, (Directory)" [ref=e328]:
+                    - cell "icons, (Directory)" [ref=e329]:
+                      - generic [ref=e330]:
+                        - img [ref=e331]
+                        - link "icons, (Directory)" [ref=e336] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/icons
+                          - text: icons
+                    - cell [ref=e337]
+                    - cell [ref=e339]
+                  - row "public, (Directory)" [ref=e342]:
+                    - cell "public, (Directory)" [ref=e343]:
+                      - generic [ref=e344]:
+                        - img [ref=e345]
+                        - link "public, (Directory)" [ref=e350] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/public
+                          - text: public
+                    - cell [ref=e351]
+                    - cell [ref=e353]
+                  - row "scripts, (Directory)" [ref=e356]:
+                    - cell "scripts, (Directory)" [ref=e357]:
+                      - generic [ref=e358]:
+                        - img [ref=e359]
+                        - link "scripts, (Directory)" [ref=e364] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/scripts
+                          - text: scripts
+                    - cell [ref=e365]
+                    - cell [ref=e367]
+                  - row "types, (Directory)" [ref=e370]:
+                    - cell "types, (Directory)" [ref=e371]:
+                      - generic [ref=e372]:
+                        - img [ref=e373]
+                        - link "types, (Directory)" [ref=e378] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/tree/main/types
+                          - text: types
+                    - cell [ref=e379]
+                    - cell [ref=e381]
+                  - row ".depcheckrc.json, (File)" [ref=e384]:
+                    - cell ".depcheckrc.json, (File)" [ref=e385]:
+                      - generic [ref=e386]:
+                        - img [ref=e387]
+                        - link ".depcheckrc.json, (File)" [ref=e392] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.depcheckrc.json
+                          - text: .depcheckrc.json
+                    - cell [ref=e393]
+                    - cell [ref=e395]
+                  - row ".dockerignore, (File)" [ref=e398]:
+                    - cell ".dockerignore, (File)" [ref=e399]:
+                      - generic [ref=e400]:
+                        - img [ref=e401]
+                        - link ".dockerignore, (File)" [ref=e406] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.dockerignore
+                          - text: .dockerignore
+                    - cell [ref=e407]
+                    - cell [ref=e409]
+                  - row ".editorconfig, (File)" [ref=e412]:
+                    - cell ".editorconfig, (File)" [ref=e413]:
+                      - generic [ref=e414]:
+                        - img [ref=e415]
+                        - link ".editorconfig, (File)" [ref=e420] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.editorconfig
+                          - text: .editorconfig
+                    - cell [ref=e421]
+                    - cell [ref=e423]
+                  - row ".env.example, (File)" [ref=e426]:
+                    - cell ".env.example, (File)" [ref=e427]:
+                      - generic [ref=e428]:
+                        - img [ref=e429]
+                        - link ".env.example, (File)" [ref=e434] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.env.example
+                          - text: .env.example
+                    - cell [ref=e435]
+                    - cell [ref=e437]
+                  - row ".env.production, (File)" [ref=e440]:
+                    - cell ".env.production, (File)" [ref=e441]:
+                      - generic [ref=e442]:
+                        - img [ref=e443]
+                        - link ".env.production, (File)" [ref=e448] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.env.production
+                          - text: .env.production
+                    - cell [ref=e449]
+                    - cell [ref=e451]
+                  - row ".gitignore, (File)" [ref=e454]:
+                    - cell ".gitignore, (File)" [ref=e455]:
+                      - generic [ref=e456]:
+                        - img [ref=e457]
+                        - link ".gitignore, (File)" [ref=e462] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.gitignore
+                          - text: .gitignore
+                    - cell [ref=e463]
+                    - cell [ref=e465]
+                  - row ".lighthouserc.json, (File)" [ref=e468]:
+                    - cell ".lighthouserc.json, (File)" [ref=e469]:
+                      - generic [ref=e470]:
+                        - img [ref=e471]
+                        - link ".lighthouserc.json, (File)" [ref=e476] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.lighthouserc.json
+                          - text: .lighthouserc.json
+                    - cell [ref=e477]
+                    - cell [ref=e479]
+                  - row ".prettierignore, (File)" [ref=e482]:
+                    - cell ".prettierignore, (File)" [ref=e483]:
+                      - generic [ref=e484]:
+                        - img [ref=e485]
+                        - link ".prettierignore, (File)" [ref=e490] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.prettierignore
+                          - text: .prettierignore
+                    - cell [ref=e491]
+                    - cell [ref=e493]
+                  - row ".prettierrc, (File)" [ref=e496]:
+                    - cell ".prettierrc, (File)" [ref=e497]:
+                      - generic [ref=e498]:
+                        - img [ref=e499]
+                        - link ".prettierrc, (File)" [ref=e504] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/.prettierrc
+                          - text: .prettierrc
+                    - cell [ref=e505]
+                    - cell [ref=e507]
+                  - row "CHANGES.md, (File)" [ref=e510]:
+                    - cell "CHANGES.md, (File)" [ref=e511]:
+                      - generic [ref=e512]:
+                        - img [ref=e513]
+                        - link "CHANGES.md, (File)" [ref=e518] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/CHANGES.md
+                          - text: CHANGES.md
+                    - cell [ref=e519]
+                    - cell [ref=e521]
+                  - row "CONTRIBUTING.md, (File)" [ref=e524]:
+                    - cell "CONTRIBUTING.md, (File)" [ref=e525]:
+                      - generic [ref=e526]:
+                        - img [ref=e527]
+                        - link "CONTRIBUTING.md, (File)" [ref=e532] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/CONTRIBUTING.md
+                          - text: CONTRIBUTING.md
+                    - cell [ref=e533]
+                    - cell [ref=e535]
+                  - row "Dockerfile, (File)" [ref=e538]:
+                    - cell "Dockerfile, (File)" [ref=e539]:
+                      - generic [ref=e540]:
+                        - img [ref=e541]
+                        - link "Dockerfile, (File)" [ref=e546] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/Dockerfile
+                          - text: Dockerfile
+                    - cell [ref=e547]
+                    - cell [ref=e549]
+                  - row "FAQ.md, (File)" [ref=e552]:
+                    - cell "FAQ.md, (File)" [ref=e553]:
+                      - generic [ref=e554]:
+                        - img [ref=e555]
+                        - link "FAQ.md, (File)" [ref=e560] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/FAQ.md
+                          - text: FAQ.md
+                    - cell [ref=e561]
+                    - cell [ref=e563]
+                  - row "LICENSE, (File)" [ref=e566]:
+                    - cell "LICENSE, (File)" [ref=e567]:
+                      - generic [ref=e568]:
+                        - img [ref=e569]
+                        - link "LICENSE, (File)" [ref=e574] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/LICENSE
+                          - text: LICENSE
+                    - cell [ref=e575]
+                    - cell [ref=e577]
+                  - row "PROJECT.md, (File)" [ref=e580]:
+                    - cell "PROJECT.md, (File)" [ref=e581]:
+                      - generic [ref=e582]:
+                        - img [ref=e583]
+                        - link "PROJECT.md, (File)" [ref=e588] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/PROJECT.md
+                          - text: PROJECT.md
+                    - cell [ref=e589]
+                    - cell [ref=e591]
+                  - row "README.md, (File)" [ref=e594]:
+                    - cell "README.md, (File)" [ref=e595]:
+                      - generic [ref=e596]:
+                        - img [ref=e597]
+                        - link "README.md, (File)" [ref=e602] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/README.md
+                          - text: README.md
+                    - cell [ref=e603]
+                    - cell [ref=e605]
+                  - row "bindings.sh, (File)" [ref=e608]:
+                    - cell "bindings.sh, (File)" [ref=e609]:
+                      - generic [ref=e610]:
+                        - img [ref=e611]
+                        - link "bindings.sh, (File)" [ref=e616] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/bindings.sh
+                          - text: bindings.sh
+                    - cell [ref=e617]
+                    - cell [ref=e619]
+                  - row "changelog.md, (File)" [ref=e622]:
+                    - cell "changelog.md, (File)" [ref=e623]:
+                      - generic [ref=e624]:
+                        - img [ref=e625]
+                        - link "changelog.md, (File)" [ref=e630] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/changelog.md
+                          - text: changelog.md
+                    - cell [ref=e631]
+                    - cell [ref=e633]
+                  - row "docker-compose.yaml, (File)" [ref=e636]:
+                    - cell "docker-compose.yaml, (File)" [ref=e637]:
+                      - generic [ref=e638]:
+                        - img [ref=e639]
+                        - link "docker-compose.yaml, (File)" [ref=e644] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/docker-compose.yaml
+                          - text: docker-compose.yaml
+                    - cell [ref=e645]
+                    - cell [ref=e647]
+                  - row "electron-builder.yml, (File)" [ref=e650]:
+                    - cell "electron-builder.yml, (File)" [ref=e651]:
+                      - generic [ref=e652]:
+                        - img [ref=e653]
+                        - link "electron-builder.yml, (File)" [ref=e658] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/electron-builder.yml
+                          - text: electron-builder.yml
+                    - cell [ref=e659]
+                    - cell [ref=e661]
+                  - row "electron-update.yml, (File)" [ref=e664]:
+                    - cell "electron-update.yml, (File)" [ref=e665]:
+                      - generic [ref=e666]:
+                        - img [ref=e667]
+                        - link "electron-update.yml, (File)" [ref=e672] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/electron-update.yml
+                          - text: electron-update.yml
+                    - cell [ref=e673]
+                    - cell [ref=e675]
+                  - row "eslint.config.mjs, (File)" [ref=e678]:
+                    - cell "eslint.config.mjs, (File)" [ref=e679]:
+                      - generic [ref=e680]:
+                        - img [ref=e681]
+                        - link "eslint.config.mjs, (File)" [ref=e686] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/eslint.config.mjs
+                          - text: eslint.config.mjs
+                    - cell [ref=e687]
+                    - cell [ref=e689]
+                  - row "load-context.ts, (File)" [ref=e692]:
+                    - cell "load-context.ts, (File)" [ref=e693]:
+                      - generic [ref=e694]:
+                        - img [ref=e695]
+                        - link "load-context.ts, (File)" [ref=e700] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/load-context.ts
+                          - text: load-context.ts
+                    - cell [ref=e701]
+                    - cell [ref=e703]
+                  - row "notarize.cjs, (File)" [ref=e706]:
+                    - cell "notarize.cjs, (File)" [ref=e707]:
+                      - generic [ref=e708]:
+                        - img [ref=e709]
+                        - link "notarize.cjs, (File)" [ref=e714] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/notarize.cjs
+                          - text: notarize.cjs
+                    - cell [ref=e715]
+                    - cell [ref=e717]
+                  - row "package.json, (File)" [ref=e720]:
+                    - cell "package.json, (File)" [ref=e721]:
+                      - generic [ref=e722]:
+                        - img [ref=e723]
+                        - link "package.json, (File)" [ref=e728] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/package.json
+                          - text: package.json
+                    - cell [ref=e729]
+                    - cell [ref=e731]
+                  - row "playwright.config.preview.ts, (File)" [ref=e734]:
+                    - cell "playwright.config.preview.ts, (File)" [ref=e735]:
+                      - generic [ref=e736]:
+                        - img [ref=e737]
+                        - link "playwright.config.preview.ts, (File)" [ref=e742] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/playwright.config.preview.ts
+                          - text: playwright.config.preview.ts
+                    - cell [ref=e743]
+                    - cell [ref=e745]
+                  - row "pnpm-lock.yaml, (File)" [ref=e748]:
+                    - cell "pnpm-lock.yaml, (File)" [ref=e749]:
+                      - generic [ref=e750]:
+                        - img [ref=e751]
+                        - link "pnpm-lock.yaml, (File)" [ref=e756] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/pnpm-lock.yaml
+                          - text: pnpm-lock.yaml
+                    - cell [ref=e757]
+                    - cell [ref=e759]
+                  - row "pre-start.cjs, (File)" [ref=e762]:
+                    - cell "pre-start.cjs, (File)" [ref=e763]:
+                      - generic [ref=e764]:
+                        - img [ref=e765]
+                        - link "pre-start.cjs, (File)" [ref=e770] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/pre-start.cjs
+                          - text: pre-start.cjs
+                    - cell [ref=e771]
+                    - cell [ref=e773]
+                  - row "test-workflows.sh, (File)" [ref=e776]:
+                    - cell "test-workflows.sh, (File)" [ref=e777]:
+                      - generic [ref=e778]:
+                        - img [ref=e779]
+                        - link "test-workflows.sh, (File)" [ref=e784] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/test-workflows.sh
+                          - text: test-workflows.sh
+                    - cell [ref=e785]
+                    - cell [ref=e787]
+                  - row "tsconfig.json, (File)" [ref=e790]:
+                    - cell "tsconfig.json, (File)" [ref=e791]:
+                      - generic [ref=e792]:
+                        - img [ref=e793]
+                        - link "tsconfig.json, (File)" [ref=e798] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/tsconfig.json
+                          - text: tsconfig.json
+                    - cell [ref=e799]
+                    - cell [ref=e801]
+                  - row "uno.config.ts, (File)" [ref=e804]:
+                    - cell "uno.config.ts, (File)" [ref=e805]:
+                      - generic [ref=e806]:
+                        - img [ref=e807]
+                        - link "uno.config.ts, (File)" [ref=e812] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/uno.config.ts
+                          - text: uno.config.ts
+                    - cell [ref=e813]
+                    - cell [ref=e815]
+                  - row "vite-electron.config.ts, (File)" [ref=e818]:
+                    - cell "vite-electron.config.ts, (File)" [ref=e819]:
+                      - generic [ref=e820]:
+                        - img [ref=e821]
+                        - link "vite-electron.config.ts, (File)" [ref=e826] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/vite-electron.config.ts
+                          - text: vite-electron.config.ts
+                    - cell [ref=e827]
+                    - cell [ref=e829]
+                  - row "vite.config.ts, (File)" [ref=e832]:
+                    - cell "vite.config.ts, (File)" [ref=e833]:
+                      - generic [ref=e834]:
+                        - img [ref=e835]
+                        - link "vite.config.ts, (File)" [ref=e840] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/vite.config.ts
+                          - text: vite.config.ts
+                    - cell [ref=e841]
+                    - cell [ref=e843]
+                  - row "vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs, (File)" [ref=e846]:
+                    - cell "vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs, (File)" [ref=e847]:
+                      - generic [ref=e848]:
+                        - img [ref=e849]
+                        - link "vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs, (File)" [ref=e854] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs
+                          - text: vite.config.ts.timestamp-1770328346417-a90f095482a09.mjs
+                    - cell [ref=e855]
+                    - cell [ref=e857]
+                  - row "worker-configuration.d.ts, (File)" [ref=e860]:
+                    - cell "worker-configuration.d.ts, (File)" [ref=e861]:
+                      - generic [ref=e862]:
+                        - img [ref=e863]
+                        - link "worker-configuration.d.ts, (File)" [ref=e868] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/worker-configuration.d.ts
+                          - text: worker-configuration.d.ts
+                    - cell [ref=e869]
+                    - cell [ref=e871]
+                  - row "wrangler.toml, (File)" [ref=e874]:
+                    - cell "wrangler.toml, (File)" [ref=e875]:
+                      - generic [ref=e876]:
+                        - img [ref=e877]
+                        - link "wrangler.toml, (File)" [ref=e882] [cursor=pointer]:
+                          - /url: /stackblitz-labs/bolt.diy/blob/main/wrangler.toml
+                          - text: wrangler.toml
+                    - cell [ref=e883]
+                    - cell [ref=e885]
+            - generic [ref=e889]:
+              - generic [ref=e890]:
+                - heading "Repository files navigation" [level=2] [ref=e891]
+                - navigation "Repository files" [ref=e892]:
+                  - list [ref=e893]:
+                    - listitem [ref=e894]:
+                      - link "README" [ref=e895] [cursor=pointer]:
+                        - /url: "#"
+                        - img [ref=e897]
+                        - generic [ref=e899]: README
+                    - listitem [ref=e900]:
+                      - link "Contributing" [ref=e901] [cursor=pointer]:
+                        - /url: "#"
+                        - img [ref=e903]
+                        - generic [ref=e905]: Contributing
+                    - listitem [ref=e906]:
+                      - link "MIT license" [ref=e907] [cursor=pointer]:
+                        - /url: "#"
+                        - img [ref=e909]
+                        - generic [ref=e911]: MIT license
+                - button "Outline" [ref=e912] [cursor=pointer]:
+                  - img [ref=e913]
+              - article [ref=e916]:
+                - generic [ref=e917]:
+                  - heading "bolt.diy" [level=1] [ref=e918]
+                  - 'link "Permalink: bolt.diy" [ref=e919] [cursor=pointer]':
+                    - /url: "#boltdiy"
+                    - img [ref=e920]
+                - paragraph [ref=e922]:
+                  - 'link "bolt.diy: AI-Powered Full-Stack Web Development in the Browser" [ref=e923] [cursor=pointer]':
+                    - /url: https://bolt.diy
+                    - 'img "bolt.diy: AI-Powered Full-Stack Web Development in the Browser" [ref=e924]'
+                - paragraph [ref=e925]: Welcome to bolt.diy, the official open source version of Bolt.new, which allows you to choose the LLM that you use for each prompt! Currently, you can use OpenAI, Anthropic, Ollama, OpenRouter, Gemini, LMStudio, Mistral, xAI, HuggingFace, DeepSeek, Groq, Cohere, Together, Perplexity, Moonshot (Kimi), Hyperbolic, GitHub Models, Amazon Bedrock, and OpenAI-like providers - and it is easily extended to use any other model supported by the Vercel AI SDK! See the instructions below for running this locally and extending it to include more models.
+                - separator [ref=e926]
+                - paragraph [ref=e927]:
+                  - text: Check the
+                  - link "bolt.diy Docs" [ref=e928] [cursor=pointer]:
+                    - /url: https://stackblitz-labs.github.io/bolt.diy/
+                  - text: for more official installation instructions and additional information.
+                - separator [ref=e929]
+                - paragraph [ref=e930]:
+                  - text: Also
+                  - link "this pinned post in our community" [ref=e931] [cursor=pointer]:
+                    - /url: https://thinktank.ottomator.ai/t/videos-tutorial-helpful-content/3243
+                  - text: has a bunch of incredible resources for running and deploying bolt.diy yourself!
+                - paragraph [ref=e932]:
+                  - text: We have also launched an experimental agent called the "bolt.diy Expert" that can answer common questions about bolt.diy. Find it here on the
+                  - link "oTTomator Live Agent Studio" [ref=e933] [cursor=pointer]:
+                    - /url: https://studio.ottomator.ai/
+                  - text: .
+                - paragraph [ref=e934]:
+                  - text: bolt.diy was originally started by
+                  - link "Cole Medin" [ref=e935] [cursor=pointer]:
+                    - /url: https://www.youtube.com/@ColeMedin
+                  - text: but has quickly grown into a massive community effort to build the BEST open source AI coding assistant!
+                - generic [ref=e936]:
+                  - heading "Table of Contents" [level=2] [ref=e937]
+                  - 'link "Permalink: Table of Contents" [ref=e938] [cursor=pointer]':
+                    - /url: "#table-of-contents"
+                    - img [ref=e939]
+                - list [ref=e941]:
+                  - listitem [ref=e942]:
+                    - link "Join the Community" [ref=e943] [cursor=pointer]:
+                      - /url: "#join-the-community"
+                  - listitem [ref=e944]:
+                    - link "Recent Major Additions" [ref=e945] [cursor=pointer]:
+                      - /url: "#recent-major-additions"
+                  - listitem [ref=e946]:
+                    - link "Features" [ref=e947] [cursor=pointer]:
+                      - /url: "#features"
+                  - listitem [ref=e948]:
+                    - link "Setup" [ref=e949] [cursor=pointer]:
+                      - /url: "#setup"
+                  - listitem [ref=e950]:
+                    - link "Quick Installation" [ref=e951] [cursor=pointer]:
+                      - /url: "#quick-installation"
+                  - listitem [ref=e952]:
+                    - link "Manual Installation" [ref=e953] [cursor=pointer]:
+                      - /url: "#manual-installation"
+                  - listitem [ref=e954]:
+                    - link "Configuring API Keys and Providers" [ref=e955] [cursor=pointer]:
+                      - /url: "#configuring-api-keys-and-providers"
+                  - listitem [ref=e956]:
+                    - link "Setup Using Git (For Developers only)" [ref=e957] [cursor=pointer]:
+                      - /url: "#setup-using-git-for-developers-only"
+                  - listitem [ref=e958]:
+                    - link "Available Scripts" [ref=e959] [cursor=pointer]:
+                      - /url: "#available-scripts"
+                  - listitem [ref=e960]:
+                    - link "Contributing" [ref=e961] [cursor=pointer]:
+                      - /url: "#contributing"
+                  - listitem [ref=e962]:
+                    - link "Roadmap" [ref=e963] [cursor=pointer]:
+                      - /url: "#roadmap"
+                  - listitem [ref=e964]:
+                    - link "FAQ" [ref=e965] [cursor=pointer]:
+                      - /url: "#faq"
+                - generic [ref=e966]:
+                  - heading "Join the community" [level=2] [ref=e967]
+                  - 'link "Permalink: Join the community" [ref=e968] [cursor=pointer]':
+                    - /url: "#join-the-community"
+                    - img [ref=e969]
+                - paragraph [ref=e971]:
+                  - link "Join the bolt.diy community here, in the oTTomator Think Tank!" [ref=e972] [cursor=pointer]:
+                    - /url: https://thinktank.ottomator.ai
+                - generic [ref=e973]:
+                  - heading "Project management" [level=2] [ref=e974]
+                  - 'link "Permalink: Project management" [ref=e975] [cursor=pointer]':
+                    - /url: "#project-management"
+                    - img [ref=e976]
+                - paragraph [ref=e978]: Bolt.diy is a community effort! Still, the core team of contributors aims at organizing the project in way that allows you to understand where the current areas of focus are.
+                - paragraph [ref=e979]:
+                  - text: If you want to know what we are working on, what we are planning to work on, or if you want to contribute to the project, please check the
+                  - link "project management guide" [ref=e980] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/blob/main/PROJECT.md
+                  - text: to get started easily.
+                - generic [ref=e981]:
+                  - heading "Recent Major Additions" [level=2] [ref=e982]
+                  - 'link "Permalink: Recent Major Additions" [ref=e983] [cursor=pointer]':
+                    - /url: "#recent-major-additions"
+                    - img [ref=e984]
+                - generic [ref=e986]:
+                  - heading "✅ Completed Features" [level=3] [ref=e987]
+                  - 'link "Permalink: ✅ Completed Features" [ref=e988] [cursor=pointer]':
+                    - /url: "#-completed-features"
+                    - img [ref=e989]
+                - list [ref=e991]:
+                  - listitem [ref=e992]:
+                    - strong [ref=e993]: 19+ AI Provider Integrations
+                    - text: "- OpenAI, Anthropic, Google, Groq, xAI, DeepSeek, Mistral, Cohere, Together, Perplexity, HuggingFace, Ollama, LM Studio, OpenRouter, Moonshot, Hyperbolic, GitHub Models, Amazon Bedrock, OpenAI-like"
+                  - listitem [ref=e994]:
+                    - strong [ref=e995]: Electron Desktop App
+                    - text: "- Native desktop experience with full functionality"
+                  - listitem [ref=e996]:
+                    - strong [ref=e997]: Advanced Deployment Options
+                    - text: "- Netlify, Vercel, and GitHub Pages deployment"
+                  - listitem [ref=e998]:
+                    - strong [ref=e999]: Supabase Integration
+                    - text: "- Database management and query capabilities"
+                  - listitem [ref=e1000]:
+                    - strong [ref=e1001]: Data Visualization & Analysis
+                    - text: "- Charts, graphs, and data analysis tools"
+                  - listitem [ref=e1002]:
+                    - strong [ref=e1003]: MCP (Model Context Protocol)
+                    - text: "- Enhanced AI tool integration"
+                  - listitem [ref=e1004]:
+                    - strong [ref=e1005]: Search Functionality
+                    - text: "- Codebase search and navigation"
+                  - listitem [ref=e1006]:
+                    - strong [ref=e1007]: File Locking System
+                    - text: "- Prevents conflicts during AI code generation"
+                  - listitem [ref=e1008]:
+                    - strong [ref=e1009]: Diff View
+                    - text: "- Visual representation of AI-made changes"
+                  - listitem [ref=e1010]:
+                    - strong [ref=e1011]: Git Integration
+                    - text: "- Clone, import, and deployment capabilities"
+                  - listitem [ref=e1012]:
+                    - strong [ref=e1013]: Expo App Creation
+                    - text: "- React Native development support"
+                  - listitem [ref=e1014]:
+                    - strong [ref=e1015]: Voice Prompting
+                    - text: "- Audio input for prompts"
+                  - listitem [ref=e1016]:
+                    - strong [ref=e1017]: Bulk Chat Operations
+                    - text: "- Delete multiple chats at once"
+                  - listitem [ref=e1018]:
+                    - strong [ref=e1019]: Project Snapshot Restoration
+                    - text: "- Restore projects from snapshots on reload"
+                - generic [ref=e1020]:
+                  - heading "🔄 In Progress / Planned" [level=3] [ref=e1021]
+                  - 'link "Permalink: 🔄 In Progress / Planned" [ref=e1022] [cursor=pointer]':
+                    - /url: "#-in-progress--planned"
+                    - img [ref=e1023]
+                - list [ref=e1025]:
+                  - listitem [ref=e1026]:
+                    - strong [ref=e1027]: File Locking & Diff Improvements
+                    - text: "- Enhanced conflict prevention"
+                  - listitem [ref=e1028]:
+                    - strong [ref=e1029]: Backend Agent Architecture
+                    - text: "- Move from single model calls to agent-based system"
+                  - listitem [ref=e1030]:
+                    - strong [ref=e1031]: LLM Prompt Optimization
+                    - text: "- Better performance for smaller models"
+                  - listitem [ref=e1032]:
+                    - strong [ref=e1033]: Project Planning Documentation
+                    - text: "- LLM-generated project plans in markdown"
+                  - listitem [ref=e1034]:
+                    - strong [ref=e1035]: VSCode Integration
+                    - text: "- Git-like confirmations and workflows"
+                  - listitem [ref=e1036]:
+                    - strong [ref=e1037]: Document Upload for Knowledge
+                    - text: "- Reference materials and coding style guides"
+                  - listitem [ref=e1038]:
+                    - strong [ref=e1039]: Additional Provider Integrations
+                    - text: "- Azure OpenAI, Vertex AI, Granite"
+                - generic [ref=e1040]:
+                  - heading "Features" [level=2] [ref=e1041]
+                  - 'link "Permalink: Features" [ref=e1042] [cursor=pointer]':
+                    - /url: "#features"
+                    - img [ref=e1043]
+                - list [ref=e1045]:
+                  - listitem [ref=e1046]:
+                    - strong [ref=e1047]: AI-powered full-stack web development
+                    - text: for
+                    - strong [ref=e1048]: NodeJS based applications
+                    - text: directly in your browser.
+                  - listitem [ref=e1049]:
+                    - strong [ref=e1050]: Support for 19+ LLMs
+                    - text: with an extensible architecture to integrate additional models.
+                  - listitem [ref=e1051]:
+                    - strong [ref=e1052]: Attach images to prompts
+                    - text: for better contextual understanding.
+                  - listitem [ref=e1053]:
+                    - strong [ref=e1054]: Integrated terminal
+                    - text: to view output of LLM-run commands.
+                  - listitem [ref=e1055]:
+                    - strong [ref=e1056]: Revert code to earlier versions
+                    - text: for easier debugging and quicker changes.
+                  - listitem [ref=e1057]:
+                    - strong [ref=e1058]: Download projects as ZIP
+                    - text: for easy portability and sync to a folder on the host.
+                  - listitem [ref=e1059]:
+                    - strong [ref=e1060]: Integration-ready Docker support
+                    - text: for a hassle-free setup.
+                  - listitem [ref=e1061]:
+                    - strong [ref=e1062]: Deploy directly
+                    - text: to
+                    - strong [ref=e1063]: Netlify
+                    - text: ","
+                    - strong [ref=e1064]: Vercel
+                    - text: ", or"
+                    - strong [ref=e1065]: GitHub Pages
+                    - text: .
+                  - listitem [ref=e1066]:
+                    - strong [ref=e1067]: Electron desktop app
+                    - text: for native desktop experience.
+                  - listitem [ref=e1068]:
+                    - strong [ref=e1069]: Data visualization and analysis
+                    - text: with integrated charts and graphs.
+                  - listitem [ref=e1070]:
+                    - strong [ref=e1071]: Git integration
+                    - text: with clone, import, and deployment capabilities.
+                  - listitem [ref=e1072]:
+                    - strong [ref=e1073]: MCP (Model Context Protocol)
+                    - text: support for enhanced AI tool integration.
+                  - listitem [ref=e1074]:
+                    - strong [ref=e1075]: Search functionality
+                    - text: to search through your codebase.
+                  - listitem [ref=e1076]:
+                    - strong [ref=e1077]: File locking system
+                    - text: to prevent conflicts during AI code generation.
+                  - listitem [ref=e1078]:
+                    - strong [ref=e1079]: Diff view
+                    - text: to see changes made by the AI.
+                  - listitem [ref=e1080]:
+                    - strong [ref=e1081]: Supabase integration
+                    - text: for database management and queries.
+                  - listitem [ref=e1082]:
+                    - strong [ref=e1083]: Expo app creation
+                    - text: for React Native development.
+                - generic [ref=e1084]:
+                  - heading "Setup" [level=2] [ref=e1085]
+                  - 'link "Permalink: Setup" [ref=e1086] [cursor=pointer]':
+                    - /url: "#setup"
+                    - img [ref=e1087]
+                - paragraph [ref=e1089]: If you're new to installing software from GitHub, don't worry! If you encounter any issues, feel free to submit an "issue" using the provided links or improve this documentation by forking the repository, editing the instructions, and submitting a pull request. The following instruction will help you get the stable branch up and running on your local machine in no time.
+                - paragraph [ref=e1090]: Let's get you up and running with the stable version of Bolt.DIY!
+                - generic [ref=e1091]:
+                  - heading "Quick Installation" [level=2] [ref=e1092]
+                  - 'link "Permalink: Quick Installation" [ref=e1093] [cursor=pointer]':
+                    - /url: "#quick-installation"
+                    - img [ref=e1094]
+                - paragraph [ref=e1096]:
+                  - link "Download Latest Release" [ref=e1097] [cursor=pointer]:
+                    - /url: https://github.com/stackblitz-labs/bolt.diy/releases/latest
+                    - img "Download Latest Release" [ref=e1098]
+                  - text: ← Click here to go to the latest release version!
+                - list [ref=e1099]:
+                  - listitem [ref=e1100]: Download the binary for your platform (available for Windows, macOS, and Linux)
+                  - listitem [ref=e1101]:
+                    - strong [ref=e1102]: Note
+                    - text: ": For macOS, if you get the error \"This app is damaged\", run:"
+                    - generic [ref=e1103]:
+                      - generic [ref=e1104]: xattr -cr /path/to/Bolt.app
+                      - button "Copy" [ref=e1106] [cursor=pointer]:
+                        - img [ref=e1107]
+                - generic [ref=e1110]:
+                  - heading "Manual installation" [level=2] [ref=e1111]
+                  - 'link "Permalink: Manual installation" [ref=e1112] [cursor=pointer]':
+                    - /url: "#manual-installation"
+                    - img [ref=e1113]
+                - generic [ref=e1115]:
+                  - 'heading "Option 1: Node.js" [level=3] [ref=e1116]'
+                  - 'link "Permalink: Option 1: Node.js" [ref=e1117] [cursor=pointer]':
+                    - /url: "#option-1-nodejs"
+                    - img [ref=e1118]
+                - paragraph [ref=e1120]: Node.js is required to run the application.
+                - list [ref=e1121]:
+                  - listitem [ref=e1122]:
+                    - text: Visit the
+                    - link "Node.js Download Page" [ref=e1123] [cursor=pointer]:
+                      - /url: https://nodejs.org/en/download/
+                  - listitem [ref=e1124]: Download the "LTS" (Long Term Support) version for your operating system
+                  - listitem [ref=e1125]: Run the installer, accepting the default settings
+                  - listitem [ref=e1126]:
+                    - text: "Verify Node.js is properly installed:"
+                    - list [ref=e1127]:
+                      - listitem [ref=e1128]:
+                        - strong [ref=e1129]: For Windows Users
+                        - text: ":"
+                        - list [ref=e1130]:
+                          - listitem [ref=e1131]:
+                            - text: Press
+                            - code [ref=e1132]: Windows + R
+                          - listitem [ref=e1133]: Type "sysdm.cpl" and press Enter
+                          - listitem [ref=e1134]: Go to "Advanced" tab → "Environment Variables"
+                          - listitem [ref=e1135]:
+                            - text: Check if
+                            - code [ref=e1136]: Node.js
+                            - text: appears in the "Path" variable
+                      - listitem [ref=e1137]:
+                        - strong [ref=e1138]: For Mac/Linux Users
+                        - text: ":"
+                        - list [ref=e1139]:
+                          - listitem [ref=e1140]: Open Terminal
+                          - listitem [ref=e1141]:
+                            - text: "Type this command:"
+                            - generic [ref=e1142]:
+                              - generic [ref=e1143]: echo $PATH
+                              - button "Copy" [ref=e1145] [cursor=pointer]:
+                                - img [ref=e1146]
+                          - listitem [ref=e1149]:
+                            - text: Look for
+                            - code [ref=e1150]: /usr/local/bin
+                            - text: in the output
+                - generic [ref=e1151]:
+                  - heading "Running the Application" [level=2] [ref=e1152]
+                  - 'link "Permalink: Running the Application" [ref=e1153] [cursor=pointer]':
+                    - /url: "#running-the-application"
+                    - img [ref=e1154]
+                - paragraph [ref=e1156]: "You have two options for running Bolt.DIY: directly on your machine or using Docker."
+                - generic [ref=e1157]:
+                  - 'heading "Option 1: Direct Installation (Recommended for Beginners)" [level=3] [ref=e1158]'
+                  - 'link "Permalink: Option 1: Direct Installation (Recommended for Beginners)" [ref=e1159] [cursor=pointer]':
+                    - /url: "#option-1-direct-installation-recommended-for-beginners"
+                    - img [ref=e1160]
+                - list [ref=e1162]:
+                  - listitem [ref=e1163]:
+                    - paragraph [ref=e1164]:
+                      - strong [ref=e1165]: Install Package Manager (pnpm)
+                      - text: ":"
+                    - generic [ref=e1166]:
+                      - generic [ref=e1167]: npm install -g pnpm
+                      - button "Copy" [ref=e1169] [cursor=pointer]:
+                        - img [ref=e1170]
+                  - listitem [ref=e1173]:
+                    - paragraph [ref=e1174]:
+                      - strong [ref=e1175]: Install Project Dependencies
+                      - text: ":"
+                    - generic [ref=e1176]:
+                      - generic [ref=e1177]: pnpm install
+                      - button "Copy" [ref=e1179] [cursor=pointer]:
+                        - img [ref=e1180]
+                  - listitem [ref=e1183]:
+                    - paragraph [ref=e1184]:
+                      - strong [ref=e1185]: Start the Application
+                      - text: ":"
+                    - generic [ref=e1186]:
+                      - generic [ref=e1187]: pnpm run dev
+                      - button "Copy" [ref=e1189] [cursor=pointer]:
+                        - img [ref=e1190]
+                - generic [ref=e1193]:
+                  - 'heading "Option 2: Using Docker" [level=3] [ref=e1194]'
+                  - 'link "Permalink: Option 2: Using Docker" [ref=e1195] [cursor=pointer]':
+                    - /url: "#option-2-using-docker"
+                    - img [ref=e1196]
+                - paragraph [ref=e1198]: This option requires Docker and is great when you want an isolated environment or to mirror the production image.
+                - generic [ref=e1199]:
+                  - heading "Additional Prerequisite" [level=4] [ref=e1200]
+                  - 'link "Permalink: Additional Prerequisite" [ref=e1201] [cursor=pointer]':
+                    - /url: "#additional-prerequisite"
+                    - img [ref=e1202]
+                - list [ref=e1204]:
+                  - listitem [ref=e1205]:
+                    - text: "Install Docker:"
+                    - link "Download Docker" [ref=e1206] [cursor=pointer]:
+                      - /url: https://www.docker.com/
+                - generic [ref=e1207]:
+                  - heading "Steps" [level=4] [ref=e1208]
+                  - 'link "Permalink: Steps" [ref=e1209] [cursor=pointer]':
+                    - /url: "#steps"
+                    - img [ref=e1210]
+                - list [ref=e1212]:
+                  - listitem [ref=e1213]:
+                    - paragraph [ref=e1214]:
+                      - strong [ref=e1215]: Prepare Environment Variables
+                    - paragraph [ref=e1216]: "Copy the provided examples and add your provider keys:"
+                    - generic [ref=e1217]:
+                      - generic [ref=e1218]: cp .env.example .env cp .env.example .env.local
+                      - button "Copy" [ref=e1220] [cursor=pointer]:
+                        - img [ref=e1221]
+                    - paragraph [ref=e1224]:
+                      - text: The runtime scripts inside the container source
+                      - code [ref=e1225]: .env
+                      - text: and
+                      - code [ref=e1226]: .env.local
+                      - text: ", so keep any API keys you need in one of those files."
+                  - listitem [ref=e1227]:
+                    - paragraph [ref=e1228]:
+                      - strong [ref=e1229]: Build an Image
+                    - generic [ref=e1230]:
+                      - generic [ref=e1231]:
+                        - generic [ref=e1232]: "# Development image (bind-mounts your local source when run)"
+                        - text: pnpm run dockerbuild
+                        - generic [ref=e1233]: "# ≈ docker build -t bolt-ai:development -t bolt-ai:latest --target development ."
+                        - generic [ref=e1234]: "# Production image (self-contained build artifacts)"
+                        - text: pnpm run dockerbuild:prod
+                        - generic [ref=e1235]: "# ≈ docker build -t bolt-ai:production -t bolt-ai:latest --target bolt-ai-production ."
+                      - button "Copy" [ref=e1237] [cursor=pointer]:
+                        - img [ref=e1238]
+                  - listitem [ref=e1241]:
+                    - paragraph [ref=e1242]:
+                      - strong [ref=e1243]: Run the Container
+                    - generic [ref=e1244]:
+                      - generic [ref=e1245]:
+                        - generic [ref=e1246]: "# Development workflow with hot reload"
+                        - text: docker compose --profile development up
+                        - generic [ref=e1247]: "# Production-style container using composed services"
+                        - text: docker compose --profile production up
+                        - generic [ref=e1248]: "# One-off production container (exposes the app on port 5173)"
+                        - text: docker run --rm -p 5173:5173 --env-file .env.local bolt-ai:latest
+                      - button "Copy" [ref=e1250] [cursor=pointer]:
+                        - img [ref=e1251]
+                    - paragraph [ref=e1254]:
+                      - text: When the container starts it runs
+                      - code [ref=e1255]: pnpm run dockerstart
+                      - text: ", which in turn executes"
+                      - code [ref=e1256]: bindings.sh
+                      - text: to pass Cloudflare bindings through Wrangler. You can override this command in
+                      - code [ref=e1257]: docker-compose.yaml
+                      - text: if you need a different startup routine.
+                - generic [ref=e1258]:
+                  - 'heading "Option 3: Desktop Application (Electron)" [level=3] [ref=e1259]'
+                  - 'link "Permalink: Option 3: Desktop Application (Electron)" [ref=e1260] [cursor=pointer]':
+                    - /url: "#option-3-desktop-application-electron"
+                    - img [ref=e1261]
+                - paragraph [ref=e1263]: "For users who prefer a native desktop experience, bolt.diy is also available as an Electron desktop application:"
+                - list [ref=e1264]:
+                  - listitem [ref=e1265]:
+                    - paragraph [ref=e1266]:
+                      - strong [ref=e1267]: Download the Desktop App
+                      - text: ":"
+                    - list [ref=e1268]:
+                      - listitem [ref=e1269]:
+                        - text: Visit the
+                        - link "latest release" [ref=e1270] [cursor=pointer]:
+                          - /url: https://github.com/stackblitz-labs/bolt.diy/releases/latest
+                      - listitem [ref=e1271]: Download the appropriate binary for your operating system
+                      - listitem [ref=e1272]:
+                        - text: "For macOS: Extract and run the"
+                        - code [ref=e1273]: .dmg
+                        - text: file
+                      - listitem [ref=e1274]:
+                        - text: "For Windows: Run the"
+                        - code [ref=e1275]: .exe
+                        - text: installer
+                      - listitem [ref=e1276]:
+                        - text: "For Linux: Extract and run the AppImage or install the"
+                        - code [ref=e1277]: .deb
+                        - text: package
+                  - listitem [ref=e1278]:
+                    - paragraph [ref=e1279]:
+                      - strong [ref=e1280]: Alternative
+                      - text: ": Build from Source:"
+                    - generic [ref=e1281]:
+                      - generic [ref=e1282]:
+                        - generic [ref=e1283]: "# Install dependencies"
+                        - text: pnpm install
+                        - generic [ref=e1284]: "# Build the Electron app"
+                        - text: pnpm electron:build:dist
+                        - generic [ref=e1285]: "# For all platforms"
+                        - generic [ref=e1286]: "# OR platform-specific:"
+                        - text: pnpm electron:build:mac
+                        - generic [ref=e1287]: "# macOS"
+                        - text: pnpm electron:build:win
+                        - generic [ref=e1288]: "# Windows"
+                        - text: pnpm electron:build:linux
+                        - generic [ref=e1289]: "# Linux"
+                      - button "Copy" [ref=e1291] [cursor=pointer]:
+                        - img [ref=e1292]
+                - paragraph [ref=e1295]: The desktop app provides the same full functionality as the web version with additional native features.
+                - generic [ref=e1296]:
+                  - heading "Configuring API Keys and Providers" [level=2] [ref=e1297]
+                  - 'link "Permalink: Configuring API Keys and Providers" [ref=e1298] [cursor=pointer]':
+                    - /url: "#configuring-api-keys-and-providers"
+                    - img [ref=e1299]
+                - paragraph [ref=e1301]: Bolt.diy features a modern, intuitive settings interface for managing AI providers and API keys. The settings are organized into dedicated panels for easy navigation and configuration.
+                - generic [ref=e1302]:
+                  - heading "Accessing Provider Settings" [level=3] [ref=e1303]
+                  - 'link "Permalink: Accessing Provider Settings" [ref=e1304] [cursor=pointer]':
+                    - /url: "#accessing-provider-settings"
+                    - img [ref=e1305]
+                - list [ref=e1307]:
+                  - listitem [ref=e1308]:
+                    - strong [ref=e1309]: Open Settings
+                    - text: ": Click the settings icon (⚙️) in the sidebar to access the settings panel"
+                  - listitem [ref=e1310]:
+                    - strong [ref=e1311]: Navigate to Providers
+                    - text: ": Select the \"Providers\" tab from the settings menu"
+                  - listitem [ref=e1312]:
+                    - strong [ref=e1313]: Choose Provider Type
+                    - text: ": Switch between \"Cloud Providers\" and \"Local Providers\" tabs"
+                - generic [ref=e1314]:
+                  - heading "Cloud Providers Configuration" [level=3] [ref=e1315]
+                  - 'link "Permalink: Cloud Providers Configuration" [ref=e1316] [cursor=pointer]':
+                    - /url: "#cloud-providers-configuration"
+                    - img [ref=e1317]
+                - paragraph [ref=e1319]: "The Cloud Providers tab displays all cloud-based AI services in an organized card layout:"
+                - generic [ref=e1320]:
+                  - heading "Adding API Keys" [level=4] [ref=e1321]
+                  - 'link "Permalink: Adding API Keys" [ref=e1322] [cursor=pointer]':
+                    - /url: "#adding-api-keys"
+                    - img [ref=e1323]
+                - list [ref=e1325]:
+                  - listitem [ref=e1326]:
+                    - strong [ref=e1327]: Select Provider
+                    - text: ": Browse the grid of available cloud providers (OpenAI, Anthropic, Google, etc.)"
+                  - listitem [ref=e1328]:
+                    - strong [ref=e1329]: Toggle Provider
+                    - text: ": Use the switch to enable/disable each provider"
+                  - listitem [ref=e1330]:
+                    - strong [ref=e1331]: Set API Key
+                    - text: ":"
+                    - list [ref=e1332]:
+                      - listitem [ref=e1333]: Click the provider card to expand its configuration
+                      - listitem [ref=e1334]: Click on the "API Key" field to enter edit mode
+                      - listitem [ref=e1335]: Paste your API key and press Enter to save
+                      - listitem [ref=e1336]: The interface shows real-time validation with green checkmarks for valid keys
+                - generic [ref=e1337]:
+                  - heading "Advanced Features" [level=4] [ref=e1338]
+                  - 'link "Permalink: Advanced Features" [ref=e1339] [cursor=pointer]':
+                    - /url: "#advanced-features"
+                    - img [ref=e1340]
+                - list [ref=e1342]:
+                  - listitem [ref=e1343]:
+                    - strong [ref=e1344]: Bulk Toggle
+                    - text: ": Use \"Enable All Cloud\" to toggle all cloud providers at once"
+                  - listitem [ref=e1345]:
+                    - strong [ref=e1346]: Visual Status
+                    - text: ": Green checkmarks indicate properly configured providers"
+                  - listitem [ref=e1347]:
+                    - strong [ref=e1348]: Provider Icons
+                    - text: ": Each provider has a distinctive icon for easy identification"
+                  - listitem [ref=e1349]:
+                    - strong [ref=e1350]: Descriptions
+                    - text: ": Helpful descriptions explain each provider's capabilities"
+                - generic [ref=e1351]:
+                  - heading "Local Providers Configuration" [level=3] [ref=e1352]
+                  - 'link "Permalink: Local Providers Configuration" [ref=e1353] [cursor=pointer]':
+                    - /url: "#local-providers-configuration"
+                    - img [ref=e1354]
+                - paragraph [ref=e1356]: "The Local Providers tab manages local AI installations and custom endpoints:"
+                - generic [ref=e1357]:
+                  - heading "Ollama Configuration" [level=4] [ref=e1358]
+                  - 'link "Permalink: Ollama Configuration" [ref=e1359] [cursor=pointer]':
+                    - /url: "#ollama-configuration"
+                    - img [ref=e1360]
+                - list [ref=e1362]:
+                  - listitem [ref=e1363]:
+                    - strong [ref=e1364]: Enable Ollama
+                    - text: ": Toggle the Ollama provider switch"
+                  - listitem [ref=e1365]:
+                    - strong [ref=e1366]: Configure Endpoint
+                    - text: ": Set the API endpoint (defaults to"
+                    - code [ref=e1367]: http://127.0.0.1:11434
+                    - text: )
+                  - listitem [ref=e1368]:
+                    - strong [ref=e1369]: Model Management
+                    - text: ":"
+                    - list [ref=e1370]:
+                      - listitem [ref=e1371]: View all installed models with size and parameter information
+                      - listitem [ref=e1372]: Update models to latest versions with one click
+                      - listitem [ref=e1373]: Delete unused models
+                      - listitem [ref=e1374]: Install new models by entering model names
+                - generic [ref=e1375]:
+                  - heading "Other Local Providers" [level=4] [ref=e1376]
+                  - 'link "Permalink: Other Local Providers" [ref=e1377] [cursor=pointer]':
+                    - /url: "#other-local-providers"
+                    - img [ref=e1378]
+                - list [ref=e1380]:
+                  - listitem [ref=e1381]:
+                    - strong [ref=e1382]: LM Studio
+                    - text: ": Configure custom base URLs for LM Studio endpoints"
+                  - listitem [ref=e1383]:
+                    - strong [ref=e1384]: OpenAI-like
+                    - text: ": Connect to any OpenAI-compatible API endpoint"
+                  - listitem [ref=e1385]:
+                    - strong [ref=e1386]: Auto-detection
+                    - text: ": The system automatically detects environment variables for base URLs"
+                - generic [ref=e1387]:
+                  - heading "Environment Variables vs UI Configuration" [level=3] [ref=e1388]
+                  - 'link "Permalink: Environment Variables vs UI Configuration" [ref=e1389] [cursor=pointer]':
+                    - /url: "#environment-variables-vs-ui-configuration"
+                    - img [ref=e1390]
+                - paragraph [ref=e1392]: "Bolt.diy supports both methods for maximum flexibility:"
+                - generic [ref=e1393]:
+                  - heading "Environment Variables (Recommended for Production)" [level=4] [ref=e1394]
+                  - 'link "Permalink: Environment Variables (Recommended for Production)" [ref=e1395] [cursor=pointer]':
+                    - /url: "#environment-variables-recommended-for-production"
+                    - img [ref=e1396]
+                - paragraph [ref=e1398]:
+                  - text: Set API keys and base URLs in your
+                  - code [ref=e1399]: .env.local
+                  - text: "file:"
+                - generic [ref=e1400]:
+                  - generic [ref=e1401]:
+                    - generic [ref=e1402]: "# API Keys"
+                    - text: OPENAI_API_KEY=your_openai_key_here ANTHROPIC_API_KEY=your_anthropic_key_here
+                    - generic [ref=e1403]: "# Custom Base URLs"
+                    - text: OLLAMA_BASE_URL=http://127.0.0.1:11434 LMSTUDIO_BASE_URL=http://127.0.0.1:1234
+                  - button "Copy" [ref=e1405] [cursor=pointer]:
+                    - img [ref=e1406]
+                - generic [ref=e1409]:
+                  - heading "UI-Based Configuration" [level=4] [ref=e1410]
+                  - 'link "Permalink: UI-Based Configuration" [ref=e1411] [cursor=pointer]':
+                    - /url: "#ui-based-configuration"
+                    - img [ref=e1412]
+                - list [ref=e1414]:
+                  - listitem [ref=e1415]:
+                    - strong [ref=e1416]: Real-time Updates
+                    - text: ": Changes take effect immediately"
+                  - listitem [ref=e1417]:
+                    - strong [ref=e1418]: Secure Storage
+                    - text: ": API keys are stored securely in browser cookies"
+                  - listitem [ref=e1419]:
+                    - strong [ref=e1420]: Visual Feedback
+                    - text: ": Clear indicators show configuration status"
+                  - listitem [ref=e1421]:
+                    - strong [ref=e1422]: Easy Management
+                    - text: ": Edit, view, and manage keys through the interface"
+                - generic [ref=e1423]:
+                  - heading "Provider-Specific Features" [level=3] [ref=e1424]
+                  - 'link "Permalink: Provider-Specific Features" [ref=e1425] [cursor=pointer]':
+                    - /url: "#provider-specific-features"
+                    - img [ref=e1426]
+                - generic [ref=e1428]:
+                  - heading "OpenRouter" [level=4] [ref=e1429]
+                  - 'link "Permalink: OpenRouter" [ref=e1430] [cursor=pointer]':
+                    - /url: "#openrouter"
+                    - img [ref=e1431]
+                - list [ref=e1433]:
+                  - listitem [ref=e1434]:
+                    - strong [ref=e1435]: Free Models Filter
+                    - text: ": Toggle to show only free models when browsing"
+                  - listitem [ref=e1436]:
+                    - strong [ref=e1437]: Pricing Information
+                    - text: ": View input/output costs for each model"
+                  - listitem [ref=e1438]:
+                    - strong [ref=e1439]: Model Search
+                    - text: ": Fuzzy search through all available models"
+                - generic [ref=e1440]:
+                  - heading "Ollama" [level=4] [ref=e1441]
+                  - 'link "Permalink: Ollama" [ref=e1442] [cursor=pointer]':
+                    - /url: "#ollama"
+                    - img [ref=e1443]
+                - list [ref=e1445]:
+                  - listitem [ref=e1446]:
+                    - strong [ref=e1447]: Model Installer
+                    - text: ": Built-in interface to install new models"
+                  - listitem [ref=e1448]:
+                    - strong [ref=e1449]: Progress Tracking
+                    - text: ": Real-time download progress for model updates"
+                  - listitem [ref=e1450]:
+                    - strong [ref=e1451]: Model Details
+                    - text: ": View model size, parameters, and quantization levels"
+                  - listitem [ref=e1452]:
+                    - strong [ref=e1453]: Auto-refresh
+                    - text: ": Automatically detects newly installed models"
+                - generic [ref=e1454]:
+                  - heading "Search & Navigation" [level=4] [ref=e1455]
+                  - 'link "Permalink: Search & Navigation" [ref=e1456] [cursor=pointer]':
+                    - /url: "#search--navigation"
+                    - img [ref=e1457]
+                - list [ref=e1459]:
+                  - listitem [ref=e1460]:
+                    - strong [ref=e1461]: Fuzzy Search
+                    - text: ": Type-ahead search across all providers and models"
+                  - listitem [ref=e1462]:
+                    - strong [ref=e1463]: Keyboard Navigation
+                    - text: ": Use arrow keys and Enter to navigate quickly"
+                  - listitem [ref=e1464]:
+                    - strong [ref=e1465]: Clear Search
+                    - text: ": Press"
+                    - code [ref=e1466]: Cmd+K
+                    - text: (Mac) or
+                    - code [ref=e1467]: Ctrl+K
+                    - text: (Windows/Linux) to clear search
+                - generic [ref=e1468]:
+                  - heading "Troubleshooting" [level=3] [ref=e1469]
+                  - 'link "Permalink: Troubleshooting" [ref=e1470] [cursor=pointer]':
+                    - /url: "#troubleshooting"
+                    - img [ref=e1471]
+                - generic [ref=e1473]:
+                  - heading "Common Issues" [level=4] [ref=e1474]
+                  - 'link "Permalink: Common Issues" [ref=e1475] [cursor=pointer]':
+                    - /url: "#common-issues"
+                    - img [ref=e1476]
+                - list [ref=e1478]:
+                  - listitem [ref=e1479]:
+                    - strong [ref=e1480]: API Key Not Recognized
+                    - text: ": Ensure you're using the correct API key format for each provider"
+                  - listitem [ref=e1481]:
+                    - strong [ref=e1482]: Base URL Issues
+                    - text: ": Verify the endpoint URL is correct and accessible"
+                  - listitem [ref=e1483]:
+                    - strong [ref=e1484]: Model Not Loading
+                    - text: ": Check that the provider is enabled and properly configured"
+                  - listitem [ref=e1485]:
+                    - strong [ref=e1486]: Environment Variables Not Working
+                    - text: ": Restart the application after adding new environment variables"
+                - generic [ref=e1487]:
+                  - heading "Status Indicators" [level=4] [ref=e1488]
+                  - 'link "Permalink: Status Indicators" [ref=e1489] [cursor=pointer]':
+                    - /url: "#status-indicators"
+                    - img [ref=e1490]
+                - list [ref=e1492]:
+                  - listitem [ref=e1493]:
+                    - text: 🟢
+                    - strong [ref=e1494]: Green Checkmark
+                    - text: ": Provider properly configured and ready to use"
+                  - listitem [ref=e1495]:
+                    - text: 🔴
+                    - strong [ref=e1496]: Red X
+                    - text: ": Configuration missing or invalid"
+                  - listitem [ref=e1497]:
+                    - text: 🟡
+                    - strong [ref=e1498]: Yellow Indicator
+                    - text: ": Provider enabled but may need additional setup"
+                  - listitem [ref=e1499]:
+                    - text: 🔵
+                    - strong [ref=e1500]: Blue Pencil
+                    - text: ": Click to edit configuration"
+                - generic [ref=e1501]:
+                  - heading "Supported Providers Overview" [level=3] [ref=e1502]
+                  - 'link "Permalink: Supported Providers Overview" [ref=e1503] [cursor=pointer]':
+                    - /url: "#supported-providers-overview"
+                    - img [ref=e1504]
+                - generic [ref=e1506]:
+                  - heading "Cloud Providers" [level=4] [ref=e1507]
+                  - 'link "Permalink: Cloud Providers" [ref=e1508] [cursor=pointer]':
+                    - /url: "#cloud-providers"
+                    - img [ref=e1509]
+                - list [ref=e1511]:
+                  - listitem [ref=e1512]:
+                    - strong [ref=e1513]: OpenAI
+                    - text: "- GPT-4, GPT-3.5, and other OpenAI models"
+                  - listitem [ref=e1514]:
+                    - strong [ref=e1515]: Anthropic
+                    - text: "- Claude 3.5 Sonnet, Claude 3 Opus, and other Claude models"
+                  - listitem [ref=e1516]:
+                    - strong [ref=e1517]: Google (Gemini)
+                    - text: "- Gemini 1.5 Pro, Gemini 1.5 Flash, and other Gemini models"
+                  - listitem [ref=e1518]:
+                    - strong [ref=e1519]: Groq
+                    - text: "- Fast inference with Llama, Mixtral, and other models"
+                  - listitem [ref=e1520]:
+                    - strong [ref=e1521]: xAI
+                    - text: "- Grok models including Grok-2 and Grok-2 Vision"
+                  - listitem [ref=e1522]:
+                    - strong [ref=e1523]: DeepSeek
+                    - text: "- DeepSeek Coder and other DeepSeek models"
+                  - listitem [ref=e1524]:
+                    - strong [ref=e1525]: Mistral
+                    - text: "- Mixtral, Mistral 7B, and other Mistral models"
+                  - listitem [ref=e1526]:
+                    - strong [ref=e1527]: Cohere
+                    - text: "- Command R, Command R+, and other Cohere models"
+                  - listitem [ref=e1528]:
+                    - strong [ref=e1529]: Together AI
+                    - text: "- Various open-source models"
+                  - listitem [ref=e1530]:
+                    - strong [ref=e1531]: Perplexity
+                    - text: "- Sonar models for search and reasoning"
+                  - listitem [ref=e1532]:
+                    - strong [ref=e1533]: HuggingFace
+                    - text: "- Access to HuggingFace model hub"
+                  - listitem [ref=e1534]:
+                    - strong [ref=e1535]: OpenRouter
+                    - text: "- Unified API for multiple model providers"
+                  - listitem [ref=e1536]:
+                    - strong [ref=e1537]: Moonshot (Kimi)
+                    - text: "- Kimi AI models"
+                  - listitem [ref=e1538]:
+                    - strong [ref=e1539]: Hyperbolic
+                    - text: "- High-performance model inference"
+                  - listitem [ref=e1540]:
+                    - strong [ref=e1541]: GitHub Models
+                    - text: "- Models available through GitHub"
+                  - listitem [ref=e1542]:
+                    - strong [ref=e1543]: Amazon Bedrock
+                    - text: "- AWS managed AI models"
+                - generic [ref=e1544]:
+                  - heading "Local Providers" [level=4] [ref=e1545]
+                  - 'link "Permalink: Local Providers" [ref=e1546] [cursor=pointer]':
+                    - /url: "#local-providers"
+                    - img [ref=e1547]
+                - list [ref=e1549]:
+                  - listitem [ref=e1550]:
+                    - strong [ref=e1551]: Ollama
+                    - text: "- Run open-source models locally with advanced model management"
+                  - listitem [ref=e1552]:
+                    - strong [ref=e1553]: LM Studio
+                    - text: "- Local model inference with LM Studio"
+                  - listitem [ref=e1554]:
+                    - strong [ref=e1555]: OpenAI-like
+                    - text: "- Connect to any OpenAI-compatible API endpoint"
+                - blockquote [ref=e1556]:
+                  - paragraph [ref=e1557]:
+                    - strong [ref=e1558]: 💡 Pro Tip
+                    - text: ": Start with OpenAI or Anthropic for the best results, then explore other providers based on your specific needs and budget considerations."
+                - generic [ref=e1559]:
+                  - heading "Setup Using Git (For Developers only)" [level=2] [ref=e1560]
+                  - 'link "Permalink: Setup Using Git (For Developers only)" [ref=e1561] [cursor=pointer]':
+                    - /url: "#setup-using-git-for-developers-only"
+                    - img [ref=e1562]
+                - paragraph [ref=e1564]: "This method is recommended for developers who want to:"
+                - list [ref=e1565]:
+                  - listitem [ref=e1566]: Contribute to the project
+                  - listitem [ref=e1567]: Stay updated with the latest changes
+                  - listitem [ref=e1568]: Switch between different versions
+                  - listitem [ref=e1569]: Create custom modifications
+                - generic [ref=e1570]:
+                  - heading "Prerequisites" [level=4] [ref=e1571]
+                  - 'link "Permalink: Prerequisites" [ref=e1572] [cursor=pointer]':
+                    - /url: "#prerequisites"
+                    - img [ref=e1573]
+                - list [ref=e1575]:
+                  - listitem [ref=e1576]:
+                    - text: "Install Git:"
+                    - link "Download Git" [ref=e1577] [cursor=pointer]:
+                      - /url: https://git-scm.com/downloads
+                - generic [ref=e1578]:
+                  - heading "Initial Setup" [level=4] [ref=e1579]
+                  - 'link "Permalink: Initial Setup" [ref=e1580] [cursor=pointer]':
+                    - /url: "#initial-setup"
+                    - img [ref=e1581]
+                - list [ref=e1583]:
+                  - listitem [ref=e1584]:
+                    - paragraph [ref=e1585]:
+                      - strong [ref=e1586]: Clone the Repository
+                      - text: ":"
+                    - generic [ref=e1587]:
+                      - generic [ref=e1588]: git clone -b stable https://github.com/stackblitz-labs/bolt.diy.git
+                      - button "Copy" [ref=e1590] [cursor=pointer]:
+                        - img [ref=e1591]
+                  - listitem [ref=e1594]:
+                    - paragraph [ref=e1595]:
+                      - strong [ref=e1596]: Navigate to Project Directory
+                      - text: ":"
+                    - generic [ref=e1597]:
+                      - generic [ref=e1598]: cd bolt.diy
+                      - button "Copy" [ref=e1600] [cursor=pointer]:
+                        - img [ref=e1601]
+                  - listitem [ref=e1604]:
+                    - paragraph [ref=e1605]:
+                      - strong [ref=e1606]: Install Dependencies
+                      - text: ":"
+                    - generic [ref=e1607]:
+                      - generic [ref=e1608]: pnpm install
+                      - button "Copy" [ref=e1610] [cursor=pointer]:
+                        - img [ref=e1611]
+                  - listitem [ref=e1614]:
+                    - paragraph [ref=e1615]:
+                      - strong [ref=e1616]: Start the Development Server
+                      - text: ":"
+                    - generic [ref=e1617]:
+                      - generic [ref=e1618]: pnpm run dev
+                      - button "Copy" [ref=e1620] [cursor=pointer]:
+                        - img [ref=e1621]
+                  - listitem [ref=e1624]:
+                    - paragraph [ref=e1625]:
+                      - strong [ref=e1626]: (OPTIONAL)
+                      - text: "Switch to the Main Branch if you want to use pre-release/testbranch:"
+                    - generic [ref=e1627]:
+                      - generic [ref=e1628]: git checkout main pnpm install pnpm run dev
+                      - button "Copy" [ref=e1630] [cursor=pointer]:
+                        - img [ref=e1631]
+                - paragraph [ref=e1634]: "Hint: Be aware that this can have beta-features and more likely got bugs than the stable release"
+                - blockquote [ref=e1635]:
+                  - paragraph [ref=e1636]:
+                    - strong [ref=e1637]:
+                      - text: "Open the WebUI to test (Default:"
+                      - link "http://localhost:5173" [ref=e1638] [cursor=pointer]:
+                        - /url: http://localhost:5173
+                      - text: )
+                  - list [ref=e1639]:
+                    - listitem [ref=e1640]:
+                      - text: "Beginners:"
+                      - list [ref=e1641]:
+                        - listitem [ref=e1642]: Try to use a sophisticated Provider/Model like Anthropic with Claude Sonnet 3.x Models to get best results
+                        - listitem [ref=e1643]: "Explanation: The System Prompt currently implemented in bolt.diy cant cover the best performance for all providers and models out there. So it works better with some models, then other, even if the models itself are perfect for >programming"
+                        - listitem [ref=e1644]: "Future: Planned is a Plugin/Extentions-Library so there can be different System Prompts for different Models, which will help to get better results"
+                - generic [ref=e1645]:
+                  - heading "Staying Updated" [level=4] [ref=e1646]
+                  - 'link "Permalink: Staying Updated" [ref=e1647] [cursor=pointer]':
+                    - /url: "#staying-updated"
+                    - img [ref=e1648]
+                - paragraph [ref=e1650]: "To get the latest changes from the repository:"
+                - list [ref=e1651]:
+                  - listitem [ref=e1652]:
+                    - paragraph [ref=e1653]:
+                      - strong [ref=e1654]: Save Your Local Changes
+                      - text: "(if any):"
+                    - generic [ref=e1655]:
+                      - generic [ref=e1656]: git stash
+                      - button "Copy" [ref=e1658] [cursor=pointer]:
+                        - img [ref=e1659]
+                  - listitem [ref=e1662]:
+                    - paragraph [ref=e1663]:
+                      - strong [ref=e1664]: Pull Latest Updates
+                      - text: ":"
+                    - generic [ref=e1665]:
+                      - generic [ref=e1666]: git pull
+                      - button "Copy" [ref=e1668] [cursor=pointer]:
+                        - img [ref=e1669]
+                  - listitem [ref=e1672]:
+                    - paragraph [ref=e1673]:
+                      - strong [ref=e1674]: Update Dependencies
+                      - text: ":"
+                    - generic [ref=e1675]:
+                      - generic [ref=e1676]: pnpm install
+                      - button "Copy" [ref=e1678] [cursor=pointer]:
+                        - img [ref=e1679]
+                  - listitem [ref=e1682]:
+                    - paragraph [ref=e1683]:
+                      - strong [ref=e1684]: Restore Your Local Changes
+                      - text: "(if any):"
+                    - generic [ref=e1685]:
+                      - generic [ref=e1686]: git stash pop
+                      - button "Copy" [ref=e1688] [cursor=pointer]:
+                        - img [ref=e1689]
+                - generic [ref=e1692]:
+                  - heading "Troubleshooting Git Setup" [level=4] [ref=e1693]
+                  - 'link "Permalink: Troubleshooting Git Setup" [ref=e1694] [cursor=pointer]':
+                    - /url: "#troubleshooting-git-setup"
+                    - img [ref=e1695]
+                - paragraph [ref=e1697]: "If you encounter issues:"
+                - list [ref=e1698]:
+                  - listitem [ref=e1699]:
+                    - paragraph [ref=e1700]:
+                      - strong [ref=e1701]: Clean Installation
+                      - text: ":"
+                    - generic [ref=e1702]:
+                      - generic [ref=e1703]:
+                        - generic [ref=e1704]: "# Remove node modules and lock files"
+                        - text: rm -rf node_modules pnpm-lock.yaml
+                        - generic [ref=e1705]: "# Clear pnpm cache"
+                        - text: pnpm store prune
+                        - generic [ref=e1706]: "# Reinstall dependencies"
+                        - text: pnpm install
+                      - button "Copy" [ref=e1708] [cursor=pointer]:
+                        - img [ref=e1709]
+                  - listitem [ref=e1712]:
+                    - paragraph [ref=e1713]:
+                      - strong [ref=e1714]: Reset Local Changes
+                      - text: ":"
+                    - generic [ref=e1715]:
+                      - generic [ref=e1716]:
+                        - generic [ref=e1717]: "# Discard all local changes"
+                        - text: git reset --hard origin/main
+                      - button "Copy" [ref=e1719] [cursor=pointer]:
+                        - img [ref=e1720]
+                - paragraph [ref=e1723]: Remember to always commit your local changes or stash them before pulling updates to avoid conflicts.
+                - separator [ref=e1724]
+                - generic [ref=e1725]:
+                  - heading "Available Scripts" [level=2] [ref=e1726]
+                  - 'link "Permalink: Available Scripts" [ref=e1727] [cursor=pointer]':
+                    - /url: "#available-scripts"
+                    - img [ref=e1728]
+                - list [ref=e1730]:
+                  - listitem [ref=e1731]:
+                    - strong [ref=e1732]:
+                      - code [ref=e1733]: pnpm run dev
+                    - text: ": Starts the development server."
+                  - listitem [ref=e1734]:
+                    - strong [ref=e1735]:
+                      - code [ref=e1736]: pnpm run build
+                    - text: ": Builds the project."
+                  - listitem [ref=e1737]:
+                    - strong [ref=e1738]:
+                      - code [ref=e1739]: pnpm run start
+                    - text: ": Runs the built application locally using Wrangler Pages."
+                  - listitem [ref=e1740]:
+                    - strong [ref=e1741]:
+                      - code [ref=e1742]: pnpm run preview
+                    - text: ": Builds and runs the production build locally."
+                  - listitem [ref=e1743]:
+                    - strong [ref=e1744]:
+                      - code [ref=e1745]: pnpm test
+                    - text: ": Runs the test suite using Vitest."
+                  - listitem [ref=e1746]:
+                    - strong [ref=e1747]:
+                      - code [ref=e1748]: pnpm run typecheck
+                    - text: ": Runs TypeScript type checking."
+                  - listitem [ref=e1749]:
+                    - strong [ref=e1750]:
+                      - code [ref=e1751]: pnpm run typegen
+                    - text: ": Generates TypeScript types using Wrangler."
+                  - listitem [ref=e1752]:
+                    - strong [ref=e1753]:
+                      - code [ref=e1754]: pnpm run deploy
+                    - text: ": Deploys the project to Cloudflare Pages."
+                  - listitem [ref=e1755]:
+                    - strong [ref=e1756]:
+                      - code [ref=e1757]: pnpm run lint
+                    - text: ": Runs ESLint to check for code issues."
+                  - listitem [ref=e1758]:
+                    - strong [ref=e1759]:
+                      - code [ref=e1760]: pnpm run lint:fix
+                    - text: ": Automatically fixes linting issues."
+                  - listitem [ref=e1761]:
+                    - strong [ref=e1762]:
+                      - code [ref=e1763]: pnpm run clean
+                    - text: ": Cleans build artifacts and cache."
+                  - listitem [ref=e1764]:
+                    - strong [ref=e1765]:
+                      - code [ref=e1766]: pnpm run prepare
+                    - text: ": Sets up husky for git hooks."
+                  - listitem [ref=e1767]:
+                    - strong [ref=e1768]: Docker Scripts
+                    - text: ":"
+                    - list [ref=e1769]:
+                      - listitem [ref=e1770]:
+                        - strong [ref=e1771]:
+                          - code [ref=e1772]: pnpm run dockerbuild
+                        - text: ": Builds the Docker image for development."
+                      - listitem [ref=e1773]:
+                        - strong [ref=e1774]:
+                          - code [ref=e1775]: pnpm run dockerbuild:prod
+                        - text: ": Builds the Docker image for production."
+                      - listitem [ref=e1776]:
+                        - strong [ref=e1777]:
+                          - code [ref=e1778]: pnpm run dockerrun
+                        - text: ": Runs the Docker container."
+                      - listitem [ref=e1779]:
+                        - strong [ref=e1780]:
+                          - code [ref=e1781]: pnpm run dockerstart
+                        - text: ": Starts the Docker container with proper bindings."
+                  - listitem [ref=e1782]:
+                    - strong [ref=e1783]: Electron Scripts
+                    - text: ":"
+                    - list [ref=e1784]:
+                      - listitem [ref=e1785]:
+                        - strong [ref=e1786]:
+                          - code [ref=e1787]: pnpm electron:build:deps
+                        - text: ": Builds Electron main and preload scripts."
+                      - listitem [ref=e1788]:
+                        - strong [ref=e1789]:
+                          - code [ref=e1790]: pnpm electron:build:main
+                        - text: ": Builds the Electron main process."
+                      - listitem [ref=e1791]:
+                        - strong [ref=e1792]:
+                          - code [ref=e1793]: pnpm electron:build:preload
+                        - text: ": Builds the Electron preload script."
+                      - listitem [ref=e1794]:
+                        - strong [ref=e1795]:
+                          - code [ref=e1796]: pnpm electron:build:renderer
+                        - text: ": Builds the Electron renderer."
+                      - listitem [ref=e1797]:
+                        - strong [ref=e1798]:
+                          - code [ref=e1799]: pnpm electron:build:unpack
+                        - text: ": Creates an unpacked Electron build."
+                      - listitem [ref=e1800]:
+                        - strong [ref=e1801]:
+                          - code [ref=e1802]: pnpm electron:build:mac
+                        - text: ": Builds for macOS."
+                      - listitem [ref=e1803]:
+                        - strong [ref=e1804]:
+                          - code [ref=e1805]: pnpm electron:build:win
+                        - text: ": Builds for Windows."
+                      - listitem [ref=e1806]:
+                        - strong [ref=e1807]:
+                          - code [ref=e1808]: pnpm electron:build:linux
+                        - text: ": Builds for Linux."
+                      - listitem [ref=e1809]:
+                        - strong [ref=e1810]:
+                          - code [ref=e1811]: pnpm electron:build:dist
+                        - text: ": Builds for all platforms."
+                - separator [ref=e1812]
+                - generic [ref=e1813]:
+                  - heading "Contributing" [level=2] [ref=e1814]
+                  - 'link "Permalink: Contributing" [ref=e1815] [cursor=pointer]':
+                    - /url: "#contributing"
+                    - img [ref=e1816]
+                - paragraph [ref=e1818]:
+                  - text: We welcome contributions! Check out our
+                  - link "Contributing Guide" [ref=e1819] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/blob/main/CONTRIBUTING.md
+                  - text: to get started.
+                - separator [ref=e1820]
+                - generic [ref=e1821]:
+                  - heading "Roadmap" [level=2] [ref=e1822]
+                  - 'link "Permalink: Roadmap" [ref=e1823] [cursor=pointer]':
+                    - /url: "#roadmap"
+                    - img [ref=e1824]
+                - paragraph [ref=e1826]:
+                  - text: Explore upcoming features and priorities on our
+                  - link "Roadmap" [ref=e1827] [cursor=pointer]:
+                    - /url: https://roadmap.sh/r/ottodev-roadmap-2ovzo
+                  - text: .
+                - separator [ref=e1828]
+                - generic [ref=e1829]:
+                  - heading "FAQ" [level=2] [ref=e1830]
+                  - 'link "Permalink: FAQ" [ref=e1831] [cursor=pointer]':
+                    - /url: "#faq"
+                    - img [ref=e1832]
+                - paragraph [ref=e1834]:
+                  - text: For answers to common questions, issues, and to see a list of recommended models, visit our
+                  - link "FAQ Page" [ref=e1835] [cursor=pointer]:
+                    - /url: /stackblitz-labs/bolt.diy/blob/main/FAQ.md
+                  - text: .
+                - generic [ref=e1836]:
+                  - heading "Licensing" [level=1] [ref=e1837]
+                  - 'link "Permalink: Licensing" [ref=e1838] [cursor=pointer]':
+                    - /url: "#licensing"
+                    - img [ref=e1839]
+                - paragraph [ref=e1841]:
+                  - strong [ref=e1842]: Who needs a commercial WebContainer API license?
+                - paragraph [ref=e1843]:
+                  - text: bolt.diy source code is distributed as MIT, but it uses WebContainers API that
+                  - link "requires licensing" [ref=e1844] [cursor=pointer]:
+                    - /url: https://webcontainers.io/enterprise
+                  - text: for production usage in a commercial, for-profit setting. (Prototypes or POCs do not require a commercial license.) If you're using the API to meet the needs of your customers, prospective customers, and/or employees, you need a license to ensure compliance with our Terms of Service. Usage of the API in violation of these terms may result in your access being revoked.
+                - generic [ref=e1845]:
+                  - heading "Test commit to trigger Security Analysis workflow" [level=1] [ref=e1846]
+                  - 'link "Permalink: Test commit to trigger Security Analysis workflow" [ref=e1847] [cursor=pointer]':
+                    - /url: "#test-commit-to-trigger-security-analysis-workflow"
+                    - img [ref=e1848]
+        - generic [ref=e1853]:
+          - generic [ref=e1856]:
+            - heading "About" [level=2] [ref=e1857]
+            - paragraph [ref=e1858]: Prompt, run, edit, and deploy full-stack web applications using any LLM you want!
+            - generic [ref=e1859]:
+              - img [ref=e1860]
+              - link "stackblitz-labs.github.io/bolt.diy/" [ref=e1863] [cursor=pointer]:
+                - /url: https://stackblitz-labs.github.io/bolt.diy/
+            - heading "Resources" [level=3] [ref=e1864]
+            - link "Readme" [ref=e1866] [cursor=pointer]:
+              - /url: "#readme-ov-file"
+              - img [ref=e1867]
+              - text: Readme
+            - heading "License" [level=3] [ref=e1869]
+            - link "MIT license" [ref=e1871] [cursor=pointer]:
+              - /url: "#MIT-1-ov-file"
+              - img [ref=e1872]
+              - text: MIT license
+            - heading "Contributing" [level=3] [ref=e1874]
+            - link "Contributing" [ref=e1876] [cursor=pointer]:
+              - /url: "#contributing-ov-file"
+              - img [ref=e1877]
+              - text: Contributing
+            - link "Activity" [ref=e1880] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/activity
+              - img [ref=e1881]
+              - text: Activity
+            - link "Custom properties" [ref=e1884] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/custom-properties
+              - img [ref=e1885]
+              - text: Custom properties
+            - heading "Stars" [level=3] [ref=e1887]
+            - link "19.2k stars" [ref=e1889] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/stargazers
+              - img [ref=e1890]
+              - strong [ref=e1892]: 19.2k
+              - text: stars
+            - heading "Watchers" [level=3] [ref=e1893]
+            - link "304 watching" [ref=e1895] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/watchers
+              - img [ref=e1896]
+              - strong [ref=e1898]: "304"
+              - text: watching
+            - heading "Forks" [level=3] [ref=e1899]
+            - link "10.4k forks" [ref=e1901] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/forks
+              - img [ref=e1902]
+              - strong [ref=e1904]: 10.4k
+              - text: forks
+            - link "Report repository" [ref=e1906] [cursor=pointer]:
+              - /url: /contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fstackblitz-labs%2Fbolt.diy&report=stackblitz-labs+%28user%29
+          - generic [ref=e1908]:
+            - heading "Releases 8" [level=2] [ref=e1909]:
+              - link "Releases 8" [ref=e1910] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/releases
+                - text: Releases
+                - generic "8" [ref=e1911]
+            - link "Release v1.0.0 Latest May 12, 2025on May 12, 2025" [ref=e1912] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/releases/tag/v1.0.0
+              - img [ref=e1913]
+              - generic [ref=e1915]:
+                - generic [ref=e1916]:
+                  - generic [ref=e1917]: Release v1.0.0
+                  - 'generic "Label: Latest" [ref=e1918]': Latest
+                - generic [ref=e1919]: May 12, 2025on May 12, 2025
+            - link "+ 7 releases" [ref=e1921] [cursor=pointer]:
+              - /url: /stackblitz-labs/bolt.diy/releases
+          - generic [ref=e1923]:
+            - heading "Packages 1" [level=2] [ref=e1924]:
+              - link "Packages 1" [ref=e1925] [cursor=pointer]:
+                - /url: /orgs/stackblitz-labs/packages?repo_name=bolt.diy
+                - text: Packages
+                - generic "1" [ref=e1926]
+            - list [ref=e1927]:
+              - listitem [ref=e1928]:
+                - img [ref=e1930]
+                - link "bolt.diy" [ref=e1932] [cursor=pointer]:
+                  - /url: /orgs/stackblitz-labs/packages/container/package/bolt.diy
+          - generic [ref=e1934]:
+            - heading "Contributors" [level=2] [ref=e1935]:
+              - link "Contributors" [ref=e1936] [cursor=pointer]:
+                - /url: /stackblitz-labs/bolt.diy/graphs/contributors
+            - generic [ref=e1937]: No contributors
+          - generic [ref=e1939]:
+            - heading "Languages" [level=2] [ref=e1940]
+            - list [ref=e1947]:
+              - listitem [ref=e1948]:
+                - generic [ref=e1949]:
+                  - img [ref=e1950]
+                  - generic [ref=e1952]: TypeScript
+                  - generic [ref=e1953]: 96.9%
+              - listitem [ref=e1954]:
+                - generic [ref=e1955]:
+                  - img [ref=e1956]
+                  - generic [ref=e1958]: SCSS
+                  - generic [ref=e1959]: 1.3%
+              - listitem [ref=e1960]:
+                - generic [ref=e1961]:
+                  - img [ref=e1962]
+                  - generic [ref=e1964]: JavaScript
+                  - generic [ref=e1965]: 1.2%
+              - listitem [ref=e1966]:
+                - generic [ref=e1967]:
+                  - img [ref=e1968]
+                  - generic [ref=e1970]: Other
+                  - generic [ref=e1971]: 0.6%
+  - contentinfo [ref=e1973]:
+    - heading "Footer" [level=2] [ref=e1974]
+    - generic [ref=e1975]:
+      - generic [ref=e1976]:
+        - link "GitHub Homepage" [ref=e1977] [cursor=pointer]:
+          - /url: https://github.com
+          - img [ref=e1978]
+        - generic [ref=e1980]: © 2026 GitHub, Inc.
+      - navigation "Footer" [ref=e1981]:
+        - heading "Footer navigation" [level=3] [ref=e1982]
+        - list "Footer navigation" [ref=e1983]:
+          - listitem [ref=e1984]:
+            - link "Terms" [ref=e1985] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/github-terms/github-terms-of-service
+          - listitem [ref=e1986]:
+            - link "Privacy" [ref=e1987] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/privacy-policies/github-privacy-statement
+          - listitem [ref=e1988]:
+            - link "Security" [ref=e1989] [cursor=pointer]:
+              - /url: https://github.com/security
+          - listitem [ref=e1990]:
+            - link "Status" [ref=e1991] [cursor=pointer]:
+              - /url: https://www.githubstatus.com/
+          - listitem [ref=e1992]:
+            - link "Community" [ref=e1993] [cursor=pointer]:
+              - /url: https://github.community/
+          - listitem [ref=e1994]:
+            - link "Docs" [ref=e1995] [cursor=pointer]:
+              - /url: https://docs.github.com/
+          - listitem [ref=e1996]:
+            - link "Contact" [ref=e1997] [cursor=pointer]:
+              - /url: https://support.github.com?tags=dotcom-footer
+          - listitem [ref=e1998]:
+            - button "Manage cookies" [ref=e2000] [cursor=pointer]
+          - listitem [ref=e2001]:
+            - button "Do not share my personal information" [ref=e2003] [cursor=pointer]

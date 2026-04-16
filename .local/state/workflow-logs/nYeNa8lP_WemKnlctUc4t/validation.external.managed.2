@@ -1,0 +1,39 @@
+VERDICT: REJECTED
+The diff makes meaningful progress on persistence/reconnect, but it does not fully satisfy core task requirements and leaves a blocking behavior gap.
+
+Critical findings:
+1) **Manager done-session retention is still measured from `VERDICT: REJECTED
+startedAt`, not completion time** (`server/routes.ts` cleanup for `managerChatSessions`The diff makes meaningful progress on persistence/reconnect, but it does not fully satisfy core task requirements and leaves a blocking behavior gap.
+). The task requires done sessions to survive at least 30 min
+utes after completion. Current logic (`session.done && now Critical findings:
+- session.startedAt > doneRetention`) can prune sooner than 30 minutes post-completion whenever planning took non-trivial time, so the “return 30 minutes later” requirement is not guaranteed.
+
+2) **Reconnect blocking fix is only partially correct** in manager stream. While the premature `setManagerResponding(true)` before status check was removed, the new reconnect path still sets `setManagerResponding(true)` for `data?.done` before replay/confirmation (`useManagerStream.ts`). For a completed/non-streaming session this can still transiently block user send state and contradict the requirement to use reconnect state instead of manager-responding during status/recovery checks.
+
+3) The plan/build DB persistence additions are directionally correct and mostly aligned:
+- plan persisted on `plan_ready` (`routes.ts` + storage + schema)
+- build result persisted on `all_complete` (`build-orchestrator.ts`)
+- client fallback restoration endpoints and reconnect-failure restore are implemented (`/api/projects/:id/plan`, `/build-result`, hook restore logic)
+- build file-sync-on-done behavior was added.
+
+Security: none observed (no new high-risk auth/injection/secret handling issues introduced by this diff).
+
+Next actions:
+1) Add a **manager `doneAt` timestamp** (set when manager marks done) and prune using `now - doneAt > 30min`.
+2) In manager reconnect, keep `isManagerResponding=false` for `done`/status-check phases; use `isMgrReconnecting` until an active stream is confirmed.
+3) Re-verify end-to-end scenarios: away during plan/build, return after >30 min, and confirm chat input is never blocked during reconnect fallback.1) **Manager done-session retention is still measured from `startedAt`, not completion time** (`server/routes.ts` cleanup for `managerChatSessions`). The task requires done sessions to survive at least 30 minutes after completion. Current logic (`session.done && now - session.startedAt > doneRetention`) can prune sooner than 30 minutes post-completion whenever planning took non-trivial time, so the “return 30 minutes later” requirement is not guaranteed.
+
+2) **Reconnect blocking fix is only partially correct** in manager stream. While the premature `setManagerResponding(true)` before status check was removed, the new reconnect path still sets `setManagerResponding(true)` for `data?.done` before replay/confirmation (`useManagerStream.ts`). For a completed/non-streaming session this can still transiently block user send state and contradict the requirement to use reconnect state instead of manager-responding during status/recovery checks.
+
+3) The plan/build DB persistence additions are directionally correct and mostly aligned:
+- plan persisted on `plan_ready` (`routes.ts` + storage + schema)
+- build result persisted on `all_complete` (`build-orchestrator.ts`)
+- client fallback restoration endpoints and reconnect-failure restore are implemented (`/api/projects/:id/plan`, `/build-result`, hook restore logic)
+- build file-sync-on-done behavior was added.
+
+Security: none observed (no new high-risk auth/injection/secret handling issues introduced by this diff).
+
+Next actions:
+1) Add a **manager `doneAt` timestamp** (set when manager marks done) and prune using `now - doneAt > 30min`.
+2) In manager reconnect, keep `isManagerResponding=false` for `done`/status-check phases; use `isMgrReconnecting` until an active stream is confirmed.
+3) Re-verify end-to-end scenarios: away during plan/build, return after >30 min, and confirm chat input is never blocked during reconnect fallback.

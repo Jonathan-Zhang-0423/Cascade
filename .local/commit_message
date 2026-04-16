@@ -1,0 +1,19 @@
+Fix streaming live display — deferred clearing + throttled token rendering (Task #118)
+
+Root cause: SSE events from AI providers arrive in bursts due to proxy buffering.
+Token events followed immediately by transition events (plan_ready, manager_done, done)
+caused live display state to be set then cleared within a single React render batch,
+making thinking/narration text flash or never appear.
+
+Changes:
+- Increase token rendering delay from 0ms to 16ms for thinking_token, raw_token,
+  narration_token in both manager and build SSE handlers (including connectToBuildStream)
+- Replace immediate live-state clearing on transition events with deferred clearing
+  via setTimeout (300-400ms), allowing last-rendered content to persist visually
+- Decouple ActionLogLive rendering from isManagerResponding/isExecuting — show whenever
+  content exists, so deferred clear window keeps content visible after stream ends
+- Cancel pending clear timers when new token/step events arrive to prevent cross-session wipes
+- Add component unmount cleanup useEffect for all timer refs
+- Clear stale timers at start of all handler entry points
+- Fix isExecuting gating: setExecutingTaskIndex now fires when buildSessionIdRef is
+  active (not just when projectId matches), ensuring build live display is always visible

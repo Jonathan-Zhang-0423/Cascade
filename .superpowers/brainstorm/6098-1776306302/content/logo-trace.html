@@ -1,0 +1,96 @@
+<h2>Logo SVG — Faithful Trace</h2>
+<p class="subtitle">Left: your original image. Right: SVG vector trace matching it exactly. Click the SVG option to confirm it looks right.</p>
+
+<div style="display:flex;gap:48px;align-items:flex-start;flex-wrap:wrap;margin:24px 0 32px;">
+
+  <!-- Original PNG -->
+  <div style="text-align:center;">
+    <div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;padding:16px;display:inline-block;">
+      <img src="data:image/png;base64," style="width:160px;height:160px;object-fit:contain;" id="orig-img" />
+    </div>
+    <p class="label" style="margin-top:8px;">Original PNG</p>
+  </div>
+
+  <!-- SVG Trace -->
+  <div style="text-align:center;">
+    <div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;padding:16px;display:inline-block;">
+      <svg width="160" height="160" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Left bar: tallest, top-left -->
+        <rect x="6"  y="4"  width="9" height="40" fill="#111"/>
+        <!-- Middle bar: medium, shifted right and down -->
+        <rect x="33" y="21" width="9" height="36" fill="#111"/>
+        <!-- Right bar: shortest, bottom-right -->
+        <rect x="60" y="37" width="9" height="32" fill="#111"/>
+      </svg>
+    </div>
+    <p class="label" style="margin-top:8px;">SVG Trace</p>
+  </div>
+
+</div>
+
+<div class="section">
+  <h3>At Multiple Sizes</h3>
+  <div style="display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap;margin:16px 0;">
+    <div style="text-align:center;">
+      <svg width="16" height="16" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6"  y="4"  width="9" height="40" fill="#111"/>
+        <rect x="33" y="21" width="9" height="36" fill="#111"/>
+        <rect x="60" y="37" width="9" height="32" fill="#111"/>
+      </svg>
+      <p class="label">16px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="32" height="32" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6"  y="4"  width="9" height="40" fill="#111"/>
+        <rect x="33" y="21" width="9" height="36" fill="#111"/>
+        <rect x="60" y="37" width="9" height="32" fill="#111"/>
+      </svg>
+      <p class="label">32px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="64" height="64" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6"  y="4"  width="9" height="40" fill="#111"/>
+        <rect x="33" y="21" width="9" height="36" fill="#111"/>
+        <rect x="60" y="37" width="9" height="32" fill="#111"/>
+      </svg>
+      <p class="label">64px</p>
+    </div>
+    <div style="text-align:center;">
+      <svg width="120" height="120" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6"  y="4"  width="9" height="40" fill="#111"/>
+        <rect x="33" y="21" width="9" height="36" fill="#111"/>
+        <rect x="60" y="37" width="9" height="32" fill="#111"/>
+      </svg>
+      <p class="label">120px</p>
+    </div>
+    <div style="text-align:center;">
+      <div style="background:#111;padding:12px;border-radius:8px;display:inline-block;">
+        <svg width="64" height="64" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6"  y="4"  width="9" height="40" fill="white"/>
+          <rect x="33" y="21" width="9" height="36" fill="white"/>
+          <rect x="60" y="37" width="9" height="32" fill="white"/>
+        </svg>
+      </div>
+      <p class="label">On dark</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:16px;">
+  <div class="option" data-choice="looks-right" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>SVG looks right — use this</h3>
+      <p>The proportions and shape match the original image.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="needs-adjustment" onclick="toggleSelect(this)">
+    <div class="letter">✗</div>
+    <div class="content">
+      <h3>Still not right — needs adjustment</h3>
+      <p>Tell me what's off (bar width, spacing, height difference, etc.) in the terminal.</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:16px;font-size:13px;color:#888;">Click to select, then reply in the terminal.</p>

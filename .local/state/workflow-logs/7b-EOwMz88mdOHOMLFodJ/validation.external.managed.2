@@ -1,0 +1,41 @@
+VERDICT: APPROVED_WITH_COMMENTS
+
+The diff substantially implements the session-survival objective end-to-end (server retention, DB persistence, reconnect recovery) with no blocking functional regressions found.
+
+Critical analysis:
+- **Done-session retention**: Implemented correctly. Cleanup now uses `doneRetention = 30 * 60 * 1000` for both build and manager sessions, and manager sessions now track `doneAt`, so retention VERDICT: APPROVED_WITH_COMMENTS
+is based on completion time (not start time).
+- **Plan persistence/recovery**: Implemented. Server persists plan o
+n `plan_ready` (`updateProjectPlan`), schema includes `projects.laThe diff substantially implements the session-survival objective end-to-end (server retention, DB persistence, reconnect recovery) with no blocking functional regressions found.
+st_plan`, and client fallback (`restorePlanFromDB`)
+ restores plan when reconnect cannot find a live/pCritical analysis:
+runed session.
+- **Build result persistence/recover- **Done-session retention**: Implemented correctly. Cleanup now uses `doneRetention = 30 * 60 * 1000` for both build and manager sessions, and manager sessions now track `doneAt`, so retention is based on completion time (not start time).
+y**: Implemented. Server persists on `all_complete` (`updateP- **Plan persistence/recovery**: Implemented. Server persists plan on `plan_ready` (`updateProjectPlan`), schema includes `projects.last_plan`, and client fallback (`restorePlanFromDB`) restores plan when reconnect cannot find a live/pruned session.
+rojectBuildResult`), schema includes `projects.last_build_result`, route added for retrieval, and client restores completion data when session reconnect fails.
+- **Reconnect UX state**: Mostly implemented. `isMgrReconnecting` added and the reconnect path no longer eagerly sets `isManagerResponding=true` before session status check.
+- **Build file sync on return**: Implemented via fetch + reload path after `done` handling.
+
+Comments (non-blocking):
+1) In manager reconnect fallback (`/api/manager-chat/active/:projectId`), code still sets `setManagerResponding(true)` whenever `sessionId` exists, even if session is done (`active:false`). This can briefly reintroduce input-blocking behavior contrary to the intended rule (“only set responding when actively streaming”).
+2) `loadProject` now reads `saved.managerPlan`, but `persistState` does not persist `managerPlan` explicitly (it persists `managerMessages`). This doesn’t block recovery because DB fallback is now present, but it means the localStorage-specific enhancement is only partially realized unless plan exists in messages.
+
+Security: none observed (no serious new authz/injection/secrets issues introduced by this diff beyond existing project-wide trust model).
+
+Next actions:
+1) In `fallbackToActiveEndpoint`, gate `setManagerResponding(true)` on `activeData.active === true`.
+2) Either persist `managerPlan` in `persistState` or remove the dead `saved.managerPlan` fallback path to avoid misleading behavior.
+3) (Optional hardening) consider clearing/replacing stale `lastBuildResult` when a new build starts, to avoid restoring old completion state after interrupted subsequent builds.- **Build result persistence/recovery**: Implemented. Server persists on `all_complete` (`updateProjectBuildResult`), schema includes `projects.last_build_result`, route added for retrieval, and client restores completion data when session reconnect fails.
+- **Reconnect UX state**: Mostly implemented. `isMgrReconnecting` added and the reconnect path no longer eagerly sets `isManagerResponding=true` before session status check.
+- **Build file sync on return**: Implemented via fetch + reload path after `done` handling.
+
+Comments (non-blocking):
+1) In manager reconnect fallback (`/api/manager-chat/active/:projectId`), code still sets `setManagerResponding(true)` whenever `sessionId` exists, even if session is done (`active:false`). This can briefly reintroduce input-blocking behavior contrary to the intended rule (“only set responding when actively streaming”).
+2) `loadProject` now reads `saved.managerPlan`, but `persistState` does not persist `managerPlan` explicitly (it persists `managerMessages`). This doesn’t block recovery because DB fallback is now present, but it means the localStorage-specific enhancement is only partially realized unless plan exists in messages.
+
+Security: none observed (no serious new authz/injection/secrets issues introduced by this diff beyond existing project-wide trust model).
+
+Next actions:
+1) In `fallbackToActiveEndpoint`, gate `setManagerResponding(true)` on `activeData.active === true`.
+2) Either persist `managerPlan` in `persistState` or remove the dead `saved.managerPlan` fallback path to avoid misleading behavior.
+3) (Optional hardening) consider clearing/replacing stale `lastBuildResult` when a new build starts, to avoid restoring old completion state after interrupted subsequent builds.

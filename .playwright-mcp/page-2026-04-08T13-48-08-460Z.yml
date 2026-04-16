@@ -1,0 +1,403 @@
+- generic [ref=e3]:
+  - navigation:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - link "Go to dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img [ref=e14]
+        - navigation "Main" [ref=e25]:
+          - list [ref=e27]:
+            - listitem [ref=e28]:
+              - button "Solutions" [ref=e29] [cursor=pointer]:
+                - text: Solutions
+                - img [ref=e30]
+            - listitem [ref=e32]:
+              - button "Resources" [ref=e33] [cursor=pointer]:
+                - text: Resources
+                - img [ref=e34]
+            - listitem [ref=e36]:
+              - link "Enterprise" [ref=e37] [cursor=pointer]:
+                - /url: /enterprise-landing
+            - listitem [ref=e38]:
+              - link "Pricing" [ref=e39] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=e40]:
+              - link "Community" [ref=e41] [cursor=pointer]:
+                - /url: /community
+            - listitem [ref=e42]:
+              - link "Security" [ref=e43] [cursor=pointer]:
+                - /url: /security
+      - generic [ref=e45]:
+        - button "Log in" [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]: Log in
+        - button "Get started" [ref=e48] [cursor=pointer]
+  - main [ref=e49]:
+    - generic [ref=e50]:
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - heading "Build something Lovable" [level=2] [ref=e53]:
+            - generic [ref=e54]: Build something Lovable
+          - paragraph [ref=e55]: Create apps and websites by chatting with AI
+        - generic [ref=e64]:
+          - button "Additional actions" [disabled] [ref=e65]:
+            - img
+          - generic [ref=e66]:
+            - button "Enable plan mode" [disabled] [ref=e67]:
+              - text: Build
+              - img
+            - button "Send message" [disabled] [ref=e68]:
+              - img
+              - generic [ref=e69]: Send message
+      - generic [ref=e70]:
+        - generic [ref=e71]:
+          - paragraph [ref=e72]: Teams from top companies build with Lovable
+          - generic [ref=e76]:
+            - generic [ref=e78]:
+              - img [ref=e79]
+              - img [ref=e92]
+              - img [ref=e94]
+              - img [ref=e97]
+              - img [ref=e103]
+              - img [ref=e108]
+            - generic [ref=e112]:
+              - img [ref=e113]
+              - img [ref=e126]
+              - img [ref=e128]
+              - img [ref=e131]
+              - img [ref=e137]
+              - img [ref=e142]
+            - generic [ref=e146]:
+              - img [ref=e147]
+              - img [ref=e160]
+              - img [ref=e162]
+              - img [ref=e165]
+              - img [ref=e171]
+              - img [ref=e176]
+        - generic [ref=e179]:
+          - generic [ref=e180]:
+            - heading "Meet Lovable" [level=2] [ref=e181]
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - generic "Start with an idea" [ref=e187]
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic "Watch it come to life"
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic "Refine and ship"
+              - generic [ref=e188]:
+                - button "Start with an idea Describe the app or website you want to create or drop in screenshots and docs" [pressed] [ref=e189] [cursor=pointer]:
+                  - heading "Start with an idea" [level=3] [ref=e190]
+                  - paragraph [ref=e191]: Describe the app or website you want to create or drop in screenshots and docs
+                - button "Watch it come to life See your vision transform into a working prototype in real-time as AI builds it for you" [ref=e192] [cursor=pointer]:
+                  - heading "Watch it come to life" [level=3] [ref=e193]
+                  - paragraph [ref=e194]: See your vision transform into a working prototype in real-time as AI builds it for you
+                - button "Refine and ship Iterate on your creation with simple feedback and deploy it to the world with one click" [ref=e195] [cursor=pointer]:
+                  - heading "Refine and ship" [level=3] [ref=e196]
+                  - paragraph [ref=e197]: Iterate on your creation with simple feedback and deploy it to the world with one click
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - generic [ref=e200]:
+                - heading "Discover templates" [level=2] [ref=e201]
+                - paragraph [ref=e202]: Start your next project with a template
+              - link "View all" [ref=e203] [cursor=pointer]:
+                - /url: /templates
+            - generic [ref=e204]:
+              - article "Personal portfolio" [ref=e206]:
+                - link "Personal portfolio" [ref=e208] [cursor=pointer]:
+                  - /url: /templates/websites/portfolio/hobby-photographer
+                - link [ref=e211] [cursor=pointer]:
+                  - /url: /templates/websites/portfolio/hobby-photographer
+                  - generic [ref=e213]:
+                    - generic [ref=e214]: Personal portfolio
+                    - generic [ref=e215]: Personal work showcase
+              - article "Lovable slides" [ref=e217]:
+                - link "Lovable slides" [ref=e219] [cursor=pointer]:
+                  - /url: /templates/apps/saas/lovable-slides
+                - link [ref=e222] [cursor=pointer]:
+                  - /url: /templates/apps/saas/lovable-slides
+                  - generic [ref=e224]:
+                    - generic [ref=e225]: Lovable slides
+                    - generic [ref=e226]: Code-powered presentation builder
+              - article "Architect Portfolio Website Template" [ref=e228]:
+                - link "Architect Portfolio Website Template" [ref=e230] [cursor=pointer]:
+                  - /url: /templates/websites/portfolio/architect-portfolio-1
+                - link [ref=e233] [cursor=pointer]:
+                  - /url: /templates/websites/portfolio/architect-portfolio-1
+                  - generic [ref=e235]:
+                    - generic [ref=e236]: Architect Portfolio Website Template
+                    - generic [ref=e237]: Firm website & showcase
+              - article "Fashion blog" [ref=e239]:
+                - link "Fashion blog" [ref=e241] [cursor=pointer]:
+                  - /url: /templates/websites/blog/vesper
+                - link [ref=e244] [cursor=pointer]:
+                  - /url: /templates/websites/blog/vesper
+                  - generic [ref=e246]:
+                    - generic [ref=e247]: Fashion blog
+                    - generic [ref=e248]: Minimal, playful design
+              - article "Event Platform Website Template" [ref=e250]:
+                - link "Event Platform Website Template" [ref=e252] [cursor=pointer]:
+                  - /url: /templates/websites/events/event-platform-1
+                - link [ref=e255] [cursor=pointer]:
+                  - /url: /templates/websites/events/event-platform-1
+                  - generic [ref=e257]:
+                    - generic [ref=e258]: Event Platform Website Template
+                    - generic [ref=e259]: Find, register, create events
+              - article "Personal blog" [ref=e261]:
+                - link "Personal blog" [ref=e263] [cursor=pointer]:
+                  - /url: /templates/websites/blog/perspective-lifestyle
+                - link [ref=e266] [cursor=pointer]:
+                  - /url: /templates/websites/blog/perspective-lifestyle
+                  - generic [ref=e268]:
+                    - generic [ref=e269]: Personal blog
+                    - generic [ref=e270]: Muted, intimate design
+              - article "Lifestyle Blog" [ref=e272]:
+                - link "Lifestyle Blog" [ref=e274] [cursor=pointer]:
+                  - /url: /templates/websites/blog/lifestyle-blog-3
+                - link [ref=e277] [cursor=pointer]:
+                  - /url: /templates/websites/blog/lifestyle-blog-3
+                  - generic [ref=e279]:
+                    - generic [ref=e280]: Lifestyle Blog
+                    - generic [ref=e281]: Sophisticated blog design
+              - article "Ecommerce Store Website Template" [ref=e283]:
+                - link "Ecommerce Store Website Template" [ref=e285] [cursor=pointer]:
+                  - /url: /templates/websites/ecommerce/ecommerce-store-1
+                - link [ref=e288] [cursor=pointer]:
+                  - /url: /templates/websites/ecommerce/ecommerce-store-1
+                  - generic [ref=e290]:
+                    - generic [ref=e291]: Ecommerce Store Website Template
+                    - generic [ref=e292]: Premium design for webstore
+          - generic [ref=e294]:
+            - generic [ref=e295]:
+              - heading "Discover apps" [level=2] [ref=e296]
+              - paragraph [ref=e297]: Explore what others are building
+            - link "View all" [ref=e298] [cursor=pointer]:
+              - /url: /discover
+          - generic [ref=e348]:
+            - generic [ref=e350]:
+              - heading "Lovable in numbers" [level=2] [ref=e351]
+              - paragraph [ref=e352]: Millions of builders are already turning ideas into reality
+            - generic [ref=e353]:
+              - generic [ref=e354]:
+                - generic [ref=e355]: 0M+
+                - paragraph [ref=e357]: projects built on Lovable
+              - generic [ref=e358]:
+                - generic [ref=e359]: 0K+
+                - paragraph [ref=e361]: projects built per day on Lovable
+              - generic [ref=e362]:
+                - generic [ref=e363]: 0M
+                - paragraph [ref=e365]: visits per day to Lovable-built applications
+  - generic [ref=e366]:
+    - generic [ref=e367]:
+      - heading "AI App Builder" [level=1] [ref=e368]
+      - heading "Ready to build?" [level=2] [ref=e369]
+      - generic [ref=e378]:
+        - button "Additional actions" [disabled] [ref=e379]:
+          - img
+        - generic [ref=e380]:
+          - button "Enable plan mode" [disabled] [ref=e381]:
+            - text: Build
+            - img
+          - button "Send message" [disabled] [ref=e382]:
+            - img
+            - generic [ref=e383]: Send message
+    - contentinfo [ref=e385]:
+      - navigation [ref=e386]:
+        - link [ref=e388] [cursor=pointer]:
+          - /url: /
+          - img [ref=e389]
+        - generic [ref=e399]:
+          - heading "Company" [level=3] [ref=e400]
+          - list [ref=e401]:
+            - listitem [ref=e402]:
+              - link "Careers" [ref=e403] [cursor=pointer]:
+                - /url: /careers
+            - listitem [ref=e404]:
+              - link "Press & media" [ref=e405] [cursor=pointer]:
+                - /url: /brand
+            - listitem [ref=e406]:
+              - link "Enterprise" [ref=e407] [cursor=pointer]:
+                - /url: /enterprise-landing
+            - listitem [ref=e408]:
+              - link "Security" [ref=e409] [cursor=pointer]:
+                - /url: /security
+            - listitem [ref=e410]:
+              - link "Trust center" [ref=e411] [cursor=pointer]:
+                - /url: https://trust.lovable.dev
+                - text: Trust center
+                - img [ref=e412]
+            - listitem [ref=e414]:
+              - link "Partnerships" [ref=e415] [cursor=pointer]:
+                - /url: /partners
+        - generic [ref=e416]:
+          - heading "Product" [level=3] [ref=e417]
+          - list [ref=e418]:
+            - listitem [ref=e419]:
+              - link "Pricing" [ref=e420] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=e421]:
+              - link "Student discount" [ref=e422] [cursor=pointer]:
+                - /url: /students
+            - listitem [ref=e423]:
+              - link "Founders" [ref=e424] [cursor=pointer]:
+                - /url: /founders
+            - listitem [ref=e425]:
+              - link "Product Managers" [ref=e426] [cursor=pointer]:
+                - /url: /product-managers
+            - listitem [ref=e427]:
+              - link "Designers" [ref=e428] [cursor=pointer]:
+                - /url: /designers
+            - listitem [ref=e429]:
+              - link "Marketers" [ref=e430] [cursor=pointer]:
+                - /url: /marketers
+            - listitem [ref=e431]:
+              - link "Sales" [ref=e432] [cursor=pointer]:
+                - /url: /sales
+            - listitem [ref=e433]:
+              - link "Ops" [ref=e434] [cursor=pointer]:
+                - /url: /ops
+            - listitem [ref=e435]:
+              - link "People" [ref=e436] [cursor=pointer]:
+                - /url: /people
+            - listitem [ref=e437]:
+              - link "Prototyping" [ref=e438] [cursor=pointer]:
+                - /url: /prototypes
+            - listitem [ref=e439]:
+              - link "Internal Tools" [ref=e440] [cursor=pointer]:
+                - /url: /tools
+            - listitem [ref=e441]:
+              - link "Connections" [ref=e442] [cursor=pointer]:
+                - /url: https://docs.lovable.dev/integrations/introduction
+                - text: Connections
+                - img [ref=e443]
+            - listitem [ref=e445]:
+              - link "Changelog" [ref=e446] [cursor=pointer]:
+                - /url: https://docs.lovable.dev/changelog
+                - text: Changelog
+                - img [ref=e447]
+            - listitem [ref=e449]:
+              - link "Status" [ref=e450] [cursor=pointer]:
+                - /url: https://status.lovable.dev/
+                - text: Status
+                - img [ref=e451]
+        - generic [ref=e453]:
+          - heading "Resources" [level=3] [ref=e454]
+          - list [ref=e455]:
+            - listitem [ref=e456]:
+              - link "Learn" [ref=e457] [cursor=pointer]:
+                - /url: https://docs.lovable.dev/introduction/welcome
+                - text: Learn
+                - img [ref=e458]
+            - listitem [ref=e460]:
+              - link "Templates" [ref=e461] [cursor=pointer]:
+                - /url: /templates
+            - listitem [ref=e462]:
+              - link "Guides" [ref=e463] [cursor=pointer]:
+                - /url: /guides
+            - listitem [ref=e464]:
+              - link "Connectors" [ref=e465] [cursor=pointer]:
+                - /url: /connect
+            - listitem [ref=e466]:
+              - link "Videos" [ref=e467] [cursor=pointer]:
+                - /url: /videos
+            - listitem [ref=e468]:
+              - link "Blog" [ref=e469] [cursor=pointer]:
+                - /url: /blog
+            - listitem [ref=e470]:
+              - link "Support" [ref=e471] [cursor=pointer]:
+                - /url: /support
+            - listitem [ref=e472]:
+              - link "Reviews" [ref=e473] [cursor=pointer]:
+                - /url: /reviews
+            - listitem [ref=e474]:
+              - link "FAQs" [ref=e475] [cursor=pointer]:
+                - /url: /faq
+        - generic [ref=e476]:
+          - heading "Legal" [level=3] [ref=e477]
+          - list [ref=e478]:
+            - listitem [ref=e479]:
+              - link "Privacy policy" [ref=e480] [cursor=pointer]:
+                - /url: /privacy
+                - text: Privacy policy
+                - img [ref=e481]
+            - listitem [ref=e483]:
+              - link "Do not sell or share my personal information" [ref=e484] [cursor=pointer]:
+                - /url: /do-not-sell-or-share-my-personal-information
+            - listitem [ref=e485]:
+              - link "Cookie settings" [ref=e486] [cursor=pointer]:
+                - /url: /cookie-policy
+            - listitem [ref=e487]:
+              - link "Enterprise terms" [ref=e488] [cursor=pointer]:
+                - /url: https://lovable.dev/legal
+                - text: Enterprise terms
+                - img [ref=e489]
+            - listitem [ref=e491]:
+              - link "General terms" [ref=e492] [cursor=pointer]:
+                - /url: /terms
+                - text: General terms
+                - img [ref=e493]
+            - listitem [ref=e495]:
+              - link "Platform rules" [ref=e496] [cursor=pointer]:
+                - /url: /platform-rules
+                - text: Platform rules
+                - img [ref=e497]
+            - listitem [ref=e499]:
+              - link "Report abuse" [ref=e500] [cursor=pointer]:
+                - /url: /abuse
+                - text: Report abuse
+                - img [ref=e501]
+            - listitem [ref=e503]:
+              - link "Report security concerns" [ref=e504] [cursor=pointer]:
+                - /url: /security-issues
+                - text: Report security concerns
+                - img [ref=e505]
+            - listitem [ref=e507]:
+              - link "DPA" [ref=e508] [cursor=pointer]:
+                - /url: /data-processing-agreement
+                - text: DPA
+                - img [ref=e509]
+        - generic [ref=e511]:
+          - heading "Community" [level=3] [ref=e512]
+          - list [ref=e513]:
+            - listitem [ref=e514]:
+              - link "Apply to our expert program" [ref=e515] [cursor=pointer]:
+                - /url: /experts/apply
+            - listitem [ref=e516]:
+              - link "Hire a Lovable expert" [ref=e517] [cursor=pointer]:
+                - /url: /experts
+            - listitem [ref=e518]:
+              - link "Affiliates" [ref=e519] [cursor=pointer]:
+                - /url: /affiliates
+            - listitem [ref=e520]:
+              - link "Code of conduct" [ref=e521] [cursor=pointer]:
+                - /url: /community-code-of-conduct
+            - listitem [ref=e522]:
+              - link "Discord" [ref=e523] [cursor=pointer]:
+                - /url: https://discord.com/invite/lovable-dev
+                - text: Discord
+                - img [ref=e524]
+            - listitem [ref=e526]:
+              - link "Reddit" [ref=e527] [cursor=pointer]:
+                - /url: https://reddit.com/r/lovable
+                - text: Reddit
+                - img [ref=e528]
+            - listitem [ref=e530]:
+              - link "X / Twitter" [ref=e531] [cursor=pointer]:
+                - /url: https://twitter.com/Lovable
+                - text: X / Twitter
+                - img [ref=e532]
+            - listitem [ref=e534]:
+              - link "YouTube" [ref=e535] [cursor=pointer]:
+                - /url: https://www.youtube.com/@lovable
+                - text: YouTube
+                - img [ref=e536]
+            - listitem [ref=e538]:
+              - link "LinkedIn" [ref=e539] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/lovable-dev/
+                - text: LinkedIn
+                - img [ref=e540]
+        - button "EN" [ref=e543] [cursor=pointer]:
+          - img [ref=e544]
+          - generic [ref=e546]: EN

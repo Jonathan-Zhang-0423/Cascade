@@ -1,0 +1,22 @@
+[1G[0K⠙[1G[0K=== Build-session editor narration streaming (server-side) ===
+
+[1] Creating blank project...
+    Project: test_1775215619768_gvcdul
+
+[2] Streaming /api/build-session (AI latency to Beijing: 5-25s)...
+    First narration_token: 3054ms
+    Last  narration_token: 36376ms
+    Total narration tokens: 156
+    Total duration:         37340ms
+    done event:             true
+
+[3] Assertions:
+  PASS: First narration_token within 40s — 3054ms
+  PASS: At least 3 narration_tokens received — 156 tokens
+  PASS: Completes within 240s — 37340ms
+  PASS: done event received — yes
+
+Cleanup: test project deleted.
+
+=== All checks passed ===
+[1G[0K⠙[1G[0K

@@ -1,0 +1,220 @@
+<h2>Font Pairs — Full Sweep</h2>
+<p class="subtitle">Each option shown as a complete mini-panel at real IDE scale. Pick the one that feels most "serious dev tool."</p>
+
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500&family=Fira+Code:wght@300;400;500&family=Outfit:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&family=Source+Code+Pro:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:   #06060a; --bg1: #0c0c14; --bg2: #14141e; --bg3: #1a1a26;
+  --blue: #4f82ff; --indigo: #818cf8; --green: #34d68a;
+  --t1: #eeeef6; --t2: #8888a8; --t3: #484860; --t4: #2e2e42;
+  --br1: rgba(255,255,255,0.04); --br2: rgba(255,255,255,0.07);
+}
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.fc {
+  background: var(--bg1); border: 1px solid var(--br2);
+  border-radius: 9px; padding: 14px 15px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.fc:hover { border-color: rgba(79,130,255,0.35); }
+.fc-lbl { font-size: 8px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--blue); margin-bottom: 9px; }
+.fc-nav { display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; background: var(--bg); border: 1px solid var(--br1); border-radius: 5px; margin-bottom: 5px; }
+.fc-run { margin-left:auto; height:20px; padding:0 8px; background:linear-gradient(135deg,#5585ff,#2a5ce0); border-radius:3px; font-size:10px; font-weight:600; color:#fff; display:flex; align-items:center; gap:3px; }
+.fc-plan { background:var(--bg2); border:1px solid var(--br1); border-radius:5px; padding:7px 8px; margin-bottom:5px; }
+.fc-bar { height:1.5px; background:var(--br2); border-radius:2px; margin-bottom:6px; overflow:hidden; }
+.fc-fill { height:100%; width:50%; background:linear-gradient(90deg,var(--blue),var(--indigo)); }
+.step { display:flex; align-items:center; gap:4px; margin-bottom:2px; }
+.d { width:7px; height:7px; border-radius:50%; background:#1a5e3a; flex-shrink:0; }
+.r { width:7px; height:7px; border-radius:50%; border:1.5px solid var(--blue); flex-shrink:0; }
+.p { width:7px; height:7px; border-radius:50%; border:1px solid var(--br2); flex-shrink:0; }
+.fc-write { display:flex; align-items:center; gap:6px; padding:3px 7px; background:rgba(52,214,138,0.05); border-left:2px solid var(--green); border-radius:0 3px 3px 0; margin-bottom:5px; }
+.fc-inp { background:var(--bg3); border:1px solid var(--br2); border-radius:5px; padding:6px 8px 4px; }
+.fc-ph { color:var(--t3); }
+.fc-bar2 { display:flex; align-items:center; gap:4px; padding-top:3px; }
+.fc-send { margin-left:auto; width:18px; height:18px; background:linear-gradient(135deg,#5585ff,#2a5ce0); border-radius:3px; display:flex; align-items:center; justify-content:center; }
+.fc-desc { margin-top:9px; font-size:9px; color:var(--t3); line-height:1.5; }
+</style>
+
+<div class="options" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;" data-multiselect>
+
+<!-- A: Geist everywhere -->
+<div class="option" data-choice="a" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc" style="font-family:'Geist',sans-serif;">
+  <div class="fc-lbl">A — Geist (UI + labels)</div>
+  <div class="fc-nav">
+    <span style="font-size:12px;font-weight:600;color:var(--t1);letter-spacing:-0.02em;">TaskMaster</span>
+    <span style="font-size:10px;color:var(--t4);">·</span>
+    <span style="font-size:10px;color:var(--t2);">React Native</span>
+    <div class="fc-run">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-size:8px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-size:11px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-size:10px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-size:9px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp">
+    <div class="fc-ph" style="font-size:11px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc">Clean geometric. Modern. Everything in one font — maximum coherence, lower visual contrast.</div>
+</div>
+</div>
+
+<!-- B: Geist UI + JetBrains Mono labels -->
+<div class="option" data-choice="b" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc">
+  <div class="fc-lbl" style="font-family:'Geist',sans-serif;">B — Geist UI + JetBrains Mono</div>
+  <div class="fc-nav" style="font-family:'Geist',sans-serif;">
+    <span style="font-size:12px;font-weight:600;color:var(--t1);letter-spacing:-0.02em;">TaskMaster</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t4);">·</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t2);">React Native</span>
+    <div class="fc-run" style="font-family:'Geist',sans-serif;">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:500;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-family:'Geist',sans-serif;font-size:11px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp" style="font-family:'Geist',sans-serif;">
+    <div class="fc-ph" style="font-size:11px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc" style="font-family:'Geist',sans-serif;">Prose in Geist, all technical data in mono. High visual contrast between narrative and code-world content.</div>
+</div>
+</div>
+
+<!-- C: JetBrains Mono everywhere -->
+<div class="option" data-choice="c" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc" style="font-family:'JetBrains Mono',monospace;">
+  <div class="fc-lbl">C — JetBrains Mono (all UI)</div>
+  <div class="fc-nav">
+    <span style="font-size:11px;font-weight:600;color:var(--t1);letter-spacing:-0.03em;">TaskMaster</span>
+    <span style="font-size:10px;color:var(--t4);">·</span>
+    <span style="font-size:9px;color:var(--t2);font-weight:300;">React Native</span>
+    <div class="fc-run">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-size:8px;font-weight:500;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-size:10px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-size:9px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-size:8px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp">
+    <div class="fc-ph" style="font-size:10px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc">Full terminal. No UI/code distinction. Maximum geek energy. Reads dense but distinctive.</div>
+</div>
+</div>
+
+<!-- D: IBM Plex Sans + IBM Plex Mono -->
+<div class="option" data-choice="d" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc">
+  <div class="fc-lbl" style="font-family:'IBM Plex Sans',sans-serif;">D — IBM Plex Sans + Plex Mono</div>
+  <div class="fc-nav" style="font-family:'IBM Plex Sans',sans-serif;">
+    <span style="font-size:12px;font-weight:600;color:var(--t1);letter-spacing:-0.01em;">TaskMaster</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--t4);">·</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--t2);">React Native</span>
+    <div class="fc-run" style="font-family:'IBM Plex Sans',sans-serif;">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:500;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp" style="font-family:'IBM Plex Sans',sans-serif;">
+    <div class="fc-ph" style="font-size:11px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc" style="font-family:'IBM Plex Sans',sans-serif;">Technical authority. IBM DNA — designed for dense UIs. More humanist than Geist but still precise.</div>
+</div>
+</div>
+
+<!-- E: Outfit + Fira Code -->
+<div class="option" data-choice="e" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc">
+  <div class="fc-lbl" style="font-family:'Outfit',sans-serif;">E — Outfit + Fira Code</div>
+  <div class="fc-nav" style="font-family:'Outfit',sans-serif;">
+    <span style="font-size:13px;font-weight:600;color:var(--t1);letter-spacing:-0.01em;">TaskMaster</span>
+    <span style="font-family:'Fira Code',monospace;font-size:10px;color:var(--t4);">·</span>
+    <span style="font-family:'Fira Code',monospace;font-size:10px;color:var(--t2);">React Native</span>
+    <div class="fc-run" style="font-family:'Outfit',sans-serif;">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-family:'Fira Code',monospace;font-size:8px;font-weight:500;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-family:'Fira Code',monospace;font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-family:'Fira Code',monospace;font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-family:'Fira Code',monospace;font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-family:'Fira Code',monospace;font-size:10px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-family:'Fira Code',monospace;font-size:9px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp" style="font-family:'Outfit',sans-serif;">
+    <div class="fc-ph" style="font-size:11px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-family:'Fira Code',monospace;font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc" style="font-family:'Outfit',sans-serif;">Friendly + techy. Outfit is warmer/rounder. Fira Code has ligatures — arrows render as →. More playful.</div>
+</div>
+</div>
+
+<!-- F: Space Grotesk + Source Code Pro -->
+<div class="option" data-choice="f" onclick="toggleSelect(this)" style="padding:0;display:block;">
+<div class="fc">
+  <div class="fc-lbl" style="font-family:'Space Grotesk',sans-serif;">F — Space Grotesk + Source Code Pro</div>
+  <div class="fc-nav" style="font-family:'Space Grotesk',sans-serif;">
+    <span style="font-size:12px;font-weight:600;color:var(--t1);letter-spacing:-0.02em;">TaskMaster</span>
+    <span style="font-family:'Source Code Pro',monospace;font-size:10px;color:var(--t4);">·</span>
+    <span style="font-family:'Source Code Pro',monospace;font-size:10px;color:var(--t2);">React Native</span>
+    <div class="fc-run" style="font-family:'Space Grotesk',sans-serif;">▶ Run</div>
+  </div>
+  <div class="fc-plan">
+    <div style="font-family:'Source Code Pro',monospace;font-size:8px;font-weight:500;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Plan · 2 of 4</div>
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:500;color:var(--t1);margin-bottom:5px;">Add login screen</div>
+    <div class="fc-bar"><div class="fc-fill"></div></div>
+    <div class="step"><div class="d"></div><span style="font-family:'Source Code Pro',monospace;font-size:9px;color:var(--t3);">Create component</span></div>
+    <div class="step" style="background:rgba(79,130,255,0.05);border-radius:3px;padding:1px 3px;"><div class="r"></div><span style="font-family:'Source Code Pro',monospace;font-size:9px;color:var(--t1);font-weight:500;">Write auth store</span></div>
+    <div class="step"><div class="p"></div><span style="font-family:'Source Code Pro',monospace;font-size:9px;color:var(--t4);">Connect to API</span></div>
+  </div>
+  <div class="fc-write">
+    <span style="font-family:'Source Code Pro',monospace;font-size:10px;color:#4ddc96;font-weight:500;flex:1;">LoginScreen.tsx</span>
+    <span style="font-family:'Source Code Pro',monospace;font-size:9px;color:#2a7a4e;">written</span>
+  </div>
+  <div class="fc-inp" style="font-family:'Space Grotesk',sans-serif;">
+    <div class="fc-ph" style="font-size:11px;">Ask anything...</div>
+    <div class="fc-bar2"><span style="font-family:'Source Code Pro',monospace;font-size:8px;color:var(--t3);">Plan ✓</span><div class="fc-send"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 6V2M2 4l2-2 2 2" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg></div></div>
+  </div>
+  <div class="fc-desc" style="font-family:'Space Grotesk',sans-serif;">Sci-fi quirk. Space Grotesk has unusual letterforms (note the G, R). Feels futuristic. Source Code Pro is neutral, balanced mono.</div>
+</div>
+</div>
+
+</div>
