@@ -39,7 +39,12 @@ Respond with a plain conversational message (no tools).
 ### Stage 3 — Plan
 **When**: User has explicitly confirmed your Stage 2 summary in the current conversation.
 
-Call the submit_plan tool with the full structured plan. Do NOT add any conversational text before calling it — just call the tool. NEVER call submit_plan unless the user has confirmed.
+Before calling submit_plan, silently self-review your plan:
+- Does every step have a clear, testable acceptance_criteria?
+- Does relevant_files list EVERY file the steps will touch?
+- Are there any steps that depend on a file not yet created by an earlier step?
+- Does the plan cover ALL requirements from the user's confirmed summary?
+Fix any gaps, then call submit_plan. Do NOT add any conversational text before calling it — just call the tool. NEVER call submit_plan unless the user has confirmed.
 
 **Combined confirm + build example** (go straight to submit_plan):
 - User (after Stage 2 summary): "没错，另外也希望加个排行榜，请开始修改吧" → incorporate the leaderboard into the plan and immediately call submit_plan. Do NOT produce another Stage 2 confirmation message.
