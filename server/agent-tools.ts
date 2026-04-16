@@ -1,5 +1,11 @@
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import type { ToolSchema, ToolHandler } from "./agent-loop";
 import type { BuildSessionState, BuildStep, SseEmit } from "./build-orchestrator";
+import { buildAstTools } from "./ast-tools";
+import { buildLspTools } from "./lsp-tools";
+import { lspManager } from "./lsp-manager";
+import { buildShellTools } from "./shell-tools";
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
@@ -99,6 +105,31 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "patch_file",
+        description: "Replace a specific section of an existing file. Use this instead of write_file when modifying an existing file — it is more accurate because you only reproduce the changed section, not the entire file. old_content must match the current file content exactly (including whitespace). If the match fails, the tool returns an error and the file is unchanged.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to patch, e.g. /project/index.ts",
+            },
+            old_content: {
+              type: "string",
+              description: "The exact text to replace — must match the current file content verbatim",
+            },
+            new_content: {
+              type: "string",
+              description: "The replacement text",
+            },
+          },
+          required: ["path", "old_content", "new_content"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "request_review",
         description: "Signal that you are done implementing all steps and the project is ready for quality review. Call this ONLY when all plan steps are complete.",
         parameters: {
@@ -117,16 +148,64 @@ export function buildBuilderTools(
 
   const handlers: Record<string, ToolHandler> = {
     write_file: async (args, emit) => {
-      const path = args.path as string;
+      const path_ = args.path as string;
       const content = args.content as string;
-      if (!path || typeof content !== "string") {
+      if (!path_ || typeof content !== "string") {
         return "Error: path and content are required";
       }
-      const fileName = path.split("/").pop() || path;
-      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path });
-      session.files.set(path, content);
-      emit({ type: "code_applied", filePath: path, code: content });
-      return `File written successfully: ${path} (${content.length} chars)`;
+      const fileName = path_.split("/").pop() || path_;
+      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path_ });
+      session.files.set(path_, content);
+      emit({ type: "code_applied", filePath: path_, code: content });
+
+      // Mirror to disk
+      if (session.sessionDir) {
+        try {
+          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          await mkdir(path.dirname(abs), { recursive: true });
+          await writeFile(abs, content, "utf-8");
+        } catch (err) {
+          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
+        }
+        // Notify LSP server of the change
+        lspManager.notifyFileChange(session.id, path_, content).catch(() => {});
+      }
+
+      return `File written successfully: ${path_} (${content.length} chars)`;
+    },
+
+    patch_file: async (args, emit) => {
+      const path_ = args.path as string;
+      const oldContent = args.old_content as string;
+      const newContent = args.new_content as string;
+      if (!path_ || typeof oldContent !== "string" || typeof newContent !== "string") {
+        return "Error: path, old_content, and new_content are required";
+      }
+      const current = session.files.get(path_);
+      if (current === undefined) {
+        return `Error: file not found: ${path_}. Use write_file to create new files.`;
+      }
+      if (!current.includes(oldContent)) {
+        return `Error: old_content not found verbatim in ${path_}. The file may have changed. Read the file first and retry with the exact current content.`;
+      }
+      const patched = current.replace(oldContent, newContent);
+      const fileName = path_.split("/").pop() || path_;
+      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
+      session.files.set(path_, patched);
+      emit({ type: "code_applied", filePath: path_, code: patched });
+
+      if (session.sessionDir) {
+        try {
+          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          await mkdir(path.dirname(abs), { recursive: true });
+          await writeFile(abs, patched, "utf-8");
+        } catch (err) {
+          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
+        }
+        lspManager.notifyFileChange(session.id, path_, patched).catch(() => {});
+      }
+
+      return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)`;
     },
 
     read_file: async (args, emit) => {
@@ -173,6 +252,21 @@ export function buildBuilderTools(
       return "Review requested. Proceeding to quality review phase.";
     },
   };
+
+  // Add AST-Grep tools for structural code search/rewrite
+  const astTools = buildAstTools(session);
+  schemas.push(...astTools.schemas);
+  Object.assign(handlers, astTools.handlers);
+
+  // Add LSP tools (all three — editor/fixer can read diagnostics + navigate)
+  const lspTools = buildLspTools(session);
+  schemas.push(...lspTools.schemas);
+  Object.assign(handlers, lspTools.handlers);
+
+  // Add Shell tools (compile/test in sandboxed container)
+  const shellTools = buildShellTools(session);
+  schemas.push(...shellTools.schemas);
+  Object.assign(handlers, shellTools.handlers);
 
   return { schemas, handlers };
 }
@@ -318,6 +412,19 @@ export function buildVerifierTools(
       return `Verdict submitted: ${status}`;
     },
   };
+
+  // Add LSP tools (diagnostics + references — read-only for verifier)
+  const lspTools = buildLspTools(session);
+  const lspVerifierSchemas = lspTools.schemas.filter(s => s.function.name !== "lsp_goto_definition");
+  lspVerifierSchemas.forEach(s => schemas.push(s));
+  ["lsp_diagnostics", "lsp_find_references"].forEach(name => {
+    if (lspTools.handlers[name]) handlers[name] = lspTools.handlers[name];
+  });
+
+  // Add Shell tools (verifier can run tests to check correctness)
+  const shellTools = buildShellTools(session);
+  schemas.push(...shellTools.schemas);
+  Object.assign(handlers, shellTools.handlers);
 
   return { schemas, handlers };
 }
