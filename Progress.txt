@@ -1258,7 +1258,8 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
     Files: server/agent-tools.ts (write_file and patch_file handlers), server/editor-prompt.ts
     Effort: 4–6 hours
 
-[ ] AG-8: Sisyphus-style contextual retry for failed steps
+
+[x] AG-8: Sisyphus-style contextual retry for failed steps
     What: In build-orchestrator.ts, when verifier finds bugs in specific files,
       instead of re-running the full editor with the entire plan, construct a
       minimal fix plan containing ONLY the steps that touch the failing files.
@@ -1276,21 +1277,17 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
            server/__tests__/targeted-fix-plan.test.ts (10 test cases)
     Effort: 6–8 hours
 
-[ ] AG-9: Integrate OmO / OpenCode as the execution backend
-    What: Replace runBuildSession()'s custom agent pipeline with:
-      1. server/opencode-manager.ts — singleton opencode serve subprocess
-      2. server/opencode-session.ts — per-session tmpdir + event translator
-      3. Rewrite runBuildSession() to: write tmpdir → opencode client → promptAsync
-         → subscribe to events → translate to CodeStart SSE → read files back
-    Why: Delegates to OmO's hash-anchored Hephaestus, Momus inline verification,
-         and Sisyphus retry — solving AG-6, AG-7, AG-8 in one integration.
-         The Part infrastructure is already built. The remaining work is ~200 lines.
-    Files: server/opencode-manager.ts (new), server/opencode-session.ts (new),
-           server/build-orchestrator.ts (rewrite runBuildSession),
-           server/index.ts (startOpencodeServer at boot),
-           package.json (add @opencode-ai/sdk, oh-my-opencode)
-    Effort: 2–3 days
-    Dependency: Requires opencode CLI installed on server
+[~] AG-9: Integrate OmO / OpenCode as the execution backend — CANCELED
+    Decision (2026-04-17): Do NOT pursue external OmO dependency.
+    Rationale: AG-1 through AG-8 already replicate Momus, Sisyphus, and inline
+      LSP feedback natively. AG-16 (hash-anchored diffs) will replicate the
+      final missing piece (Hephaestus). Keeping our own backend:
+      - Avoids external runtime dependency (opencode serve subprocess)
+      - Preserves our multi-provider fallback (Doubao / Kimi / MiniMax / GLM)
+      - Keeps SSE/Parts/checkpoint integration coherent
+      - Lower operational risk, no cross-process state sync
+    See: docs/superpowers/specs/2026-04-11-opencode-backend-design.md (revised)
+    Replacement path: AG-10 → AG-11 → AG-12 → AG-13 → AG-16 (native parity)
 
 [ ] AG-10: Parallel step execution for independent plan steps
     What: In build-orchestrator.ts, analyze plan step dependencies
@@ -1351,18 +1348,22 @@ Q4 — LESS IMPORTANT & HARD (low impact, high cost)
     Files: server/agent-tools.ts, server/editor-prompt.ts, server/manager-prompt.ts
     Effort: 1–2 days
 
-[ ] AG-16: Hash-anchored verified diff tool (standalone, without OmO)
-    What: If AG-9 (OmO integration) is not pursued, implement hash-anchored
-      edits independently:
+[ ] AG-16: Hash-anchored verified diff tool (PROMOTED TO Q2 — transformational)
+    Decision (2026-04-17): AG-9 (external OmO) canceled. AG-16 is now the
+      headline improvement for edit accuracy — this IS how we replicate
+      Hephaestus natively.
+    What: Implement hash-anchored edits:
         hash_patch_file(path, region_hash, new_content)
-        - Read file, hash each paragraph/function block
+        - On file read, hash each function/block; return hash→line-range map
         - Find block matching region_hash
         - Replace with new_content (reject if hash not found — no silent failures)
-      This is Hephaestus's core primitive without the full OmO dependency.
-    Why: Achieves the 68% accuracy improvement without requiring OpenCode infrastructure.
-    Files: server/agent-tools.ts (new tool), server/editor-prompt.ts
+      This is Hephaestus's core primitive, natively.
+    Why: Achieves the ~68% edit accuracy improvement. Unlike AG-6's verbatim
+         match, hash-anchoring is unambiguous for files with repeated patterns
+         and survives whitespace changes between read and write.
+    Files: server/agent-tools.ts (new tool + extend read_file response),
+           server/editor-prompt.ts (tool schema + usage guidance)
     Effort: 1–2 days
-    Note: Only implement if AG-9 is NOT chosen
 
 [ ] AG-17: Agent telemetry and accuracy tracking
     What: Log per-session metrics:

@@ -1,221 +1,95 @@
-# OpenCode Backend Integration — Design Spec
+# Agent Quality Roadmap — Design Spec (REVISED)
 
-**Date:** 2026-04-11  
-**Status:** Approved for implementation  
-**Branch:** `feat/opencode-backend`
-
----
-
-## Problem
-
-CodeStart's current agent pipeline (editor + verifier + fixer agents) produces low-quality code output. The custom LLM loop with hand-crafted tool schemas does not match the intelligence of purpose-built coding agents. OpenCode + oh-my-opencode (OmO) provides a significantly better execution engine (68.3% file edit success vs 6.7% baseline with OmO's hash-anchored edits).
+**Date:** 2026-04-11 (revised 2026-04-17)
+**Status:** Approved for implementation
+**Branch:** `main`
 
 ---
 
-## Solution Overview: Full OpenCode Backend (Option A)
+## Direction Change (2026-04-17)
 
-Replace the entire CodeStart agent pipeline — manager, editor, fixer, and verifier — with OpenCode + OmO. OmO's internal quality gates (Momus plan review, LSP diagnostics, Sisyphus-Junior completion checks) are sufficient. No CodeStart agents remain.
+**Previous plan:** Replace CodeStart's agent pipeline with OpenCode + oh-my-opencode (OmO) as an external dependency.
 
-### Agent Replacement Map
+**New plan:** **Keep our own backend; replicate OmO's techniques natively.** We retain full control over the agent pipeline, avoid an external runtime dependency, and implement each of OmO's quality-gate primitives as CodeStart-native tools/loops.
 
-| CodeStart Agent | OmO Equivalent | Decision |
-|----------------|----------------|----------|
-| Manager agent (planner) | Prometheus (strategic planner) | **Replace** — Prometheus interviews user, produces structured plans, validates via Momus |
-| Editor agent (code builder) | Hephaestus / Atlas executor | **Replace** — OmO's hash-anchored edits are far superior |
-| Fixer agent (fix cycles) | Sisyphus re-invocation | **Replace** — OmO retries internally |
-| Verifier agent (acceptance check) | Momus + LSP diagnostics | **Replace** — OmO's internal quality gates are sufficient |
+### Why the change
 
-### Architecture
-
-```
-User Request
-     │
-     ▼
-OpenCode + OmO (replaces ALL CodeStart agents)
-  ┌─────────────────────────────────────────────────────┐
-  │  Prometheus: plan + validate (replaces manager)     │
-  │  Sisyphus/Atlas/Hephaestus: execute (replaces editor)│
-  │  Momus: plan review; LSP diagnostics during exec    │
-  │  (replaces verifier + fixer)                        │
-  │                                                     │
-  │  1. Write session files to tmpdir on disk            │
-  │  2. Write opencode.json + OmO plugin config          │
-  │  3. opencode serve (shared process, started once)   │
-  │  4. createOpencodeClient({ directory: tmpdir })     │
-  │  5. client.session.promptAsync(user request)        │
-  │  6. Subscribe to event stream → translate events    │
-  │  7. Read files back from disk → BuildSessionState   │
-  └─────────────────────────────────────────────────────┘
-     │
-     ▼
-all_complete emitted → client shows result
-```
+1. **We've already replicated most of it.** AG-1 through AG-8 have reimplemented Momus (plan review), Sisyphus (targeted retry), inline LSP feedback, and a verbatim-match `patch_file` that approximates Hephaestus's edit primitive. Only hash-anchored diffs remain.
+2. **Lower operational risk.** No external subprocess (`opencode serve`), no SDK version churn, no cross-process state sync.
+3. **Better UX integration.** Our SSE event stream, Parts model, checkpoint system, and device simulator all stay coherent.
+4. **Preserves multi-provider support.** We route through Doubao / Kimi / MiniMax / GLM natively — OmO's model config would have added a translation layer.
 
 ---
 
-## Components
+## Problem (Restated)
 
-### 1. OpenCode Process Manager (`server/opencode-manager.ts`)
-
-A singleton that starts `opencode serve` once at server startup and keeps it running.
-
-```typescript
-// Starts opencode serve subprocess, waits for "server listening" stdout
-// Returns { url: string, close(): void }
-createOpencodeServer({ cwd: process.cwd() })
-```
-
-- Started in `server/index.ts` on startup
-- Shared across all build sessions (OpenCode is multi-tenant via the `x-opencode-directory` header)
-- Graceful shutdown on SIGTERM
-
-### 2. Session Tmpdir Helper (`server/opencode-session.ts`)
-
-Per-build session, writes files to disk so OpenCode can operate on them.
-
-```typescript
-async function writeSessionTmpdir(
-  sessionId: string,
-  files: Map<string, string>
-): Promise<string>  // returns tmpdir path
-```
-
-- Creates `/tmp/codestart-{sessionId}/`
-- Writes each file from `BuildSessionState.files`
-- Writes `opencode.json`:
-  ```json
-  {
-    "permission": { "*": "allow" },
-    "plugins": ["oh-my-opencode"]
-  }
-  ```
-- Returns the tmpdir path
-
-```typescript
-async function readSessionTmpdir(
-  tmpdir: string,
-  files: Map<string, string>
-): Promise<void>
-```
-
-- Reads all files from disk back into the files Map after build completes
-
-### 3. Prompt Builder (`server/opencode-session.ts`)
-
-Since Prometheus (OmO's planner) handles planning internally, we pass the raw user request directly — no need to pre-structure steps.
-
-```typescript
-function buildOpencodePrompt(userRequest: string): string
-```
-
-Format:
-```
-{userRequest}
-```
-
-Prometheus interviews internally (if needed), plans, validates, then Hephaestus executes. No pre-built step list needed from CodeStart's side.
-
-### 4. OpenCode Event Translator (`server/opencode-session.ts`)
-
-Maps OpenCode's SSE events to CodeStart's existing SSE event vocabulary.
-
-| OpenCode Event | CodeStart Event | Notes |
-|----------------|-----------------|-------|
-| `session.status` (running) | `step_starting` | Emit once at start |
-| `file.edited` | `code_applied` | Per file write |
-| `part.created` (text) | `narration_token` | Agent text output |
-| `message.updated` | — | Internal, skip |
-| `session.idle` | trigger verifier | Build phase complete |
-| `session.error` | `build_error` | Forward error message |
-
-### 5. Updated `runBuildSession()` (`server/build-orchestrator.ts`)
-
-The high-level flow becomes:
-
-```
-1. emit step_starting (Prometheus planning phase begins)
-2. writeSessionTmpdir(session.id, session.files)
-3. client = createOpencodeClient({ directory: tmpdir })
-4. ocSession = await client.session.create()
-5. subscribe to client.event.subscribe()
-6. await client.session.promptAsync(ocSession.id, userRequest)  ← raw request, no pre-built plan
-7. wait for session.idle event (OmO planned + built + quality-checked internally)
-8. readSessionTmpdir(tmpdir, session.files)
-9. cleanup tmpdir
-10. emit all_complete — done
-```
-
-No verifier loop. No fix cycles. OmO handles all quality gates internally.
+CodeStart's baseline agent pipeline produced low-quality code output (~6–10% file edit success). OmO achieves ~68% on the same benchmark. The gap comes from four specific techniques, all of which we can implement natively.
 
 ---
 
-## Dependencies
+## Solution: Native Replication of OmO's Quality Gates
 
-```bash
-npm install opencode-ai @opencode-ai/sdk
-npm install oh-my-opencode
-```
+| OmO Component | Technique | CodeStart Equivalent | Status |
+|--------------|-----------|----------------------|--------|
+| Momus | Plan self-review before execution | AG-4 (manager prompt addition) | ✅ Complete |
+| LSP inline feedback | Diagnostics returned with write result | AG-7 (write_file/patch_file return augmentation) | ✅ Complete |
+| Sisyphus | Targeted retry, only re-run failing steps | AG-8 (build-orchestrator targeted fix plan) | ✅ Complete |
+| Hephaestus | Hash-anchored diff edits | AG-6 (patch_file, verbatim) + AG-16 (hash_patch_file) | Partial — AG-6 done, AG-16 pending |
 
-The `opencode` CLI must be available as a shell command. The SDK's `createOpencodeServer()` spawns it as a subprocess.
+AG-6 (patch_file with verbatim string match) is a weaker form of hash-anchoring — good for most cases but fragile when files change between read and write. AG-16 will complete the picture with true hash-anchored edits.
 
 ---
 
-## Configuration
+## Remaining Work Toward Parity
 
-`opencode.json` written per tmpdir:
-```json
-{
-  "permission": { "*": "allow" },
-  "plugins": ["oh-my-opencode"],
-  "model": "moonshot/kimi-k2.5",
-  "agents": {
-    "default": "hephaestus"
-  }
-}
-```
+**AG-10 — Parallel step execution** (in progress)
+Run independent plan steps concurrently. Steps that don't share `required_files` can execute in parallel via `Promise.all()`. Cuts build time 40–60% for multi-file plans.
 
-- `permission: { "*": "allow" }` — suppresses interactive confirmation prompts
-- `hephaestus` (OmO) — the deep executor agent with hash-anchored edits
-- **Model selection — Chinese providers only, no US providers:**
-  - `moonshot/kimi-k2.5` — Kimi K2.5 from Moonshot AI (latest). Uses `KIMI_API_KEY` (already configured in CodeStart). **Default choice.**
-  - `minimax/MiniMax-M2.7` — MiniMax M2.7 (latest). Uses `MINIMAX_API_KEY` (already configured). Fallback option.
-  - `glm/glm-5` — GLM-5 from Zhipu AI (latest). Uses `GLM_API_KEY` (already configured). Second fallback.
-  - Model is overridable via `OPENCODE_MODEL` env var
-- OpenCode provider credentials are stored in `~/.local/share/opencode/auth.json` (set via `/connect` command or env vars)
+**AG-11 — Framework-specific compile checks**
+Extend tsc checks to flutter analyze, kotlinc, py_compile, etc.
+
+**AG-12 — Semantic skill detection**
+Replace keyword scoring in `skill-loader.ts` with a small-model LLM classification call.
+
+**AG-13 — Multi-skill injection**
+Allow multiple matching skills (e.g., react + node-express for full-stack projects).
+
+**AG-16 — Hash-anchored verified diff tool** (the transformational one)
+Implement `hash_patch_file(path, region_hash, new_content)`:
+1. On file read, hash each function/block and return hash→line-range map alongside file contents.
+2. New tool `hash_patch_file` finds the block whose hash matches `region_hash` and replaces it.
+3. Reject with explicit error if hash not found — no silent failures.
+
+This is Hephaestus's core primitive. With AG-16 + AG-7 + AG-8, we achieve full OmO parity without the external dependency.
 
 ---
 
 ## What Does NOT Change
 
-- All SSE event names consumed by the client (existing events still emitted)
-- `useBuildStream.ts` — minimal changes (remove verifier/bug_found handling)
+- All SSE event names and the client stream handler
+- `BuildSessionState` interface
+- Manager/editor/verifier agent separation (we keep the three-agent model)
+- Multi-provider fallback chain (Doubao → Kimi → MiniMax → GLM)
 - Checkpoint + file persistence logic
-- The `BuildSessionState` interface (files Map stays)
 
-## What Is Removed / Replaced
+## What Is Removed From the Original Spec
 
-- Manager agent + `/api/manager-chat` → replaced by OmO's Prometheus
-- Editor agent + `runAgentLoop` build phase → replaced by OmO's Hephaestus/Atlas
-- Fixer agent loop → replaced by OmO's internal retry
-- Verifier agent loop → replaced by OmO's Momus + LSP diagnostics
-- `useManagerStream.ts` — removed or repurposed for OpenCode planning events
-- `server/manager-prompt.ts` — removed
-- `server/editor-prompt.ts` — removed
-- `server/verifier-prompt.ts` — removed
+- OpenCode subprocess manager (`opencode serve`)
+- `@opencode-ai/sdk` and `oh-my-opencode` dependencies
+- Per-session tmpdir shuffling for OpenCode
+- OpenCode event → CodeStart event translator
+
+---
+
+## Verification Plan
+
+After each AG milestone, run:
+1. `npm test` — unit suite (currently 45 tests, must stay green)
+2. Manual build session with a deliberate compile error — verify fix loop converges in fewer cycles than before
+3. Compare file edit accuracy against the baseline snapshot (once AG-16 lands)
 
 ---
 
 ## Rollback
 
-All changes on branch `feat/opencode-backend`. To revert: `git checkout main`.
-
----
-
-## Verification
-
-1. Start server: `npm run dev`
-2. Send a build request — OmO should handle planning + building internally
-3. Watch SSE events in browser network tab: `step_starting`, `narration_token`, `code_applied`, `all_complete`, `done`
-4. Verify files in editor match what was built
-5. Check console for OpenCode subprocess output
-6. Confirm no calls to old `/api/manager-chat` or `/api/communicator-chat` endpoints
+All changes live on `main` behind individual commits per AG task. Any single improvement can be reverted with a targeted revert.
