@@ -10,7 +10,7 @@ import { useLanguageStore } from "@/stores/language-store";
 import { tr } from "@/lib/i18n";
 import type { ActionLogEntry, CodeBlock, BuildSseEvent, NormalizedStep } from "../chat-types";
 import { KNOWN_BUILD_EVENT_TYPES, BUILD_SOURCE_MAP, validateBuildEvent } from "../chat-types";
-import { detectLanguage, normalizeSteps, generateCodestart } from "../chat-utils";
+import { detectLanguage, normalizeSteps, generateCascade } from "../chat-utils";
 import { parseSseStream, createHeartbeatWatchdog } from "./useSSEStream";
 import type { BuildPhase } from "../BuildPhaseIndicator";
 
@@ -392,9 +392,9 @@ export function useBuildStream() {
               .managerMessages.find((m) => m.role === "user");
             const midFileNodes = flattenFiles(useIDEStore.getState().files);
             const midCurrentFiles = midFileNodes
-              .filter((f) => f.path && !f.path.endsWith("codestart.md"))
+              .filter((f) => f.path && !f.path.endsWith("cascade.md"))
               .map((f) => ({ path: f.path!, content: f.content || "" }));
-            generateCodestart({
+            generateCascade({
               plan: midPlan,
               userPrompt: midMsg?.content || "",
               currentFiles: midCurrentFiles,

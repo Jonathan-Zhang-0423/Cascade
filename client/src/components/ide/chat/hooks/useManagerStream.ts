@@ -19,7 +19,7 @@ import {
 import {
   normalizeSteps,
   stripProjectNameMarker,
-  generateCodestart,
+  generateCascade,
 } from "../chat-utils";
 import { parseSseStream } from "./useSSEStream";
 
@@ -373,10 +373,10 @@ export function useManagerStream() {
                   useIDEStore.getState().files,
                 );
                 const currentFilesForServer = currentAllFiles
-                  .filter((f) => f.path && !f.path.endsWith("codestart.md"))
+                  .filter((f) => f.path && !f.path.endsWith("cascade.md"))
                   .map((f) => ({ path: f.path!, content: f.content || "" }));
 
-                generateCodestart({
+                generateCascade({
                   plan,
                   userPrompt,
                   currentFiles: currentFilesForServer,

@@ -392,10 +392,10 @@ const defaultFiles: FileNode[] = [
         content: "",
       },
       {
-        name: "codestart.md",
-        path: "/project/codestart.md",
+        name: "cascade.md",
+        path: "/project/cascade.md",
         type: "file",
-        content: `# codestart.md
+        content: `# cascade.md
 
 ## Overview
 

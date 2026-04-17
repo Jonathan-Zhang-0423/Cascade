@@ -543,12 +543,12 @@ export function getActionLogColor(type: ActionLogEntry["type"]): string {
   }
 }
 
-export function generateCodestart(params: {
+export function generateCascade(params: {
   plan: ManagerPlan | ManagerPlanPayload;
   userPrompt: string;
   currentFiles: { path: string; content: string }[];
 }): void {
-  fetch("/api/generate-codestart", {
+  fetch("/api/generate-cascade", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -565,7 +565,7 @@ export function generateCodestart(params: {
         const { useIDEStore } = await import("@/stores/ide-store");
         useIDEStore
           .getState()
-          .updateFileContent("/project/codestart.md", d.content);
+          .updateFileContent("/project/cascade.md", d.content);
       }
     })
     .catch(() => {});

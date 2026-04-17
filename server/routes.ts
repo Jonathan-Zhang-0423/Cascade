@@ -1569,7 +1569,7 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
     }
   });
 
-  app.post("/api/generate-codestart", async (req, res) => {
+  app.post("/api/generate-cascade", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -1588,7 +1588,7 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
         return;
       }
 
-      const systemPrompt = `You are a technical documentation writer. Generate a codestart.md file for a software project. Use both the project plan AND the actual current file tree to produce an accurate, up-to-date architecture document.
+      const systemPrompt = `You are a technical documentation writer. Generate a cascade.md file for a software project. Use both the project plan AND the actual current file tree to produce an accurate, up-to-date architecture document.
 
 Output ONLY valid markdown — no JSON, no extra text, no code fences wrapping the whole document.
 
@@ -1625,8 +1625,8 @@ If current files are provided, prioritize them over the plan for describing actu
 
       let filesContext = "";
       if (currentFiles && currentFiles.length > 0) {
-        const nonCodestart = currentFiles.filter(f => !f.path.endsWith("codestart.md"));
-        const fileSummaries = nonCodestart.slice(0, 10).map(f => {
+        const nonCascade = currentFiles.filter(f => !f.path.endsWith("cascade.md"));
+        const fileSummaries = nonCascade.slice(0, 10).map(f => {
           const preview = f.content.slice(0, 400).replace(/\n+/g, " ").trim();
           return `### ${f.path}\n${preview}${f.content.length > 400 ? "..." : ""}`;
         }).join("\n\n");
@@ -1651,7 +1651,7 @@ ${stepsText}
 Relevant Files from Plan: ${(plan.relevant_files || []).join(", ")}
 ${filesContext}
 
-Generate the codestart.md content for this project based on both the plan and the actual current files.`;
+Generate the cascade.md content for this project based on both the plan and the actual current files.`;
 
       const completion = await doubaoClient.chat.completions.create({
         model: DOUBAO_MODEL,
@@ -1666,8 +1666,8 @@ Generate the codestart.md content for this project based on both the plan and th
       const content = completion.choices[0]?.message?.content || "";
       res.json({ content });
     } catch (error: any) {
-      console.error("Generate codestart error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to generate codestart.md" });
+      console.error("Generate cascade error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to generate cascade.md" });
     }
   });
 
@@ -1799,7 +1799,7 @@ Generate the codestart.md content for this project based on both the plan and th
         const paths = files.map((f: { path: string }) => f.path);
         const webSignatures = new Set([
           "/project/index.html", "/project/style.css", "/project/app.js",
-          "/project/script.js", "/project/codestart.md",
+          "/project/script.js", "/project/cascade.md",
         ]);
         const hasOnlyWebFiles = paths.length > 0 && paths.every((p: string) => webSignatures.has(p));
         if (hasOnlyWebFiles) {
