@@ -127,7 +127,7 @@ export function buildExpoSnackUrl(
   const snackFiles = buildExpoSnackFiles(files);
   const params = new URLSearchParams();
   params.set("platform", "ios");
-  params.set("name", name || "CodeStart Preview");
+  params.set("name", name || "Cascade AI Preview");
   params.set("theme", "dark");
   params.set("preview", "true");
   params.set("supportedPlatforms", "ios,android,web");

@@ -295,7 +295,7 @@ ${vendorCode}
         msg.indexOf('indexed property') !== -1) {
       return; // RNW style injection noise — non-fatal, don't surface in error panel
     }
-    try { window.parent.postMessage({ type: '__codestart_console__', level: 'error', message: msg }, '*'); } catch(_) {}
+    try { window.parent.postMessage({ type: '__cascade_console__', level: 'error', message: msg }, '*'); } catch(_) {}
     // Surface React minified errors (e.g. #130 "Element type invalid") in the IDE error panel
     if (msg.indexOf('Minified React error') !== -1) {
       showError('React render error: ' + msg + '\\n\\nHint: A component is null/undefined. Check all our imports and make sure every component used in JSX is properly defined and exported.');
@@ -305,7 +305,7 @@ ${vendorCode}
   console.warn = function() {
     var msg = Array.prototype.slice.call(arguments).join(' ');
     _origConsoleWarn.apply(console, arguments);
-    try { window.parent.postMessage({ type: '__codestart_console__', level: 'warn', message: msg }, '*'); } catch(_) {}
+    try { window.parent.postMessage({ type: '__cascade_console__', level: 'warn', message: msg }, '*'); } catch(_) {}
   };
   var _origConsoleLog = console.log.bind(console);
   console.log = function() {
@@ -313,7 +313,7 @@ ${vendorCode}
       return typeof a === 'object' ? JSON.stringify(a) : String(a);
     }).join(' ');
     _origConsoleLog.apply(console, arguments);
-    try { window.parent.postMessage({ type: '__codestart_console__', level: 'log', message: msg }, '*'); } catch(_) {}
+    try { window.parent.postMessage({ type: '__cascade_console__', level: 'log', message: msg }, '*'); } catch(_) {}
   };
 
   // CommonJS-style module registry with caller-context-aware path resolution

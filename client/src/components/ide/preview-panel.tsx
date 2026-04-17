@@ -184,7 +184,7 @@ export function PreviewPanel() {
         return String(arg);
       }).join(' ');
       window.parent.postMessage({
-        type: '__codestart_console__',
+        type: '__cascade_console__',
         level: level,
         message: message
       }, '*');
@@ -194,7 +194,7 @@ export function PreviewPanel() {
 
   window.onerror = function(message, source, lineno, colno, error) {
     window.parent.postMessage({
-      type: '__codestart_console__',
+      type: '__cascade_console__',
       level: 'error',
       message: message + (lineno ? ' (line ' + lineno + ')' : '')
     }, '*');
@@ -214,7 +214,7 @@ export function PreviewPanel() {
     const handler = (e: MessageEvent) => {
       if (
         e.data &&
-        e.data.type === "__codestart_console__" &&
+        e.data.type === "__cascade_console__" &&
         iframeRef.current &&
         e.source === iframeRef.current.contentWindow
       ) {
