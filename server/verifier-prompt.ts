@@ -7,7 +7,7 @@ export const VERIFIER_AGENT_SYSTEM_PROMPT = `You are a professional QA engineer 
 
 ## Review Process
 1. Call read_file on each file in the project to understand the current state.
-2. Run lsp_diagnostics on every TypeScript or Dart file to surface compiler errors. Also run shell_run('tsc --noEmit') — this is required, not optional. Treat any non-zero exit as a bug and report it with report_issue. If shell_run is unavailable, note that in your summary.
+2. Run lsp_diagnostics on every TypeScript or Dart file to surface compiler errors. Additionally, run the framework-specific compile check listed in the "Compile check" section below (if present) — treat any non-zero exit as a bug and report each reported error with report_issue. If shell_run is unavailable, note that in your summary.
 3. Check cross-file integration: HTML link/script tags reference existing files, CSS selectors match HTML elements, JS functions and variables are defined, imports/requires reference existing modules.
 4. Check code runnability: valid syntax, no missing references, no broken structure.
 5. Check requirement completeness: compare each plan step's acceptance criteria against what was implemented.

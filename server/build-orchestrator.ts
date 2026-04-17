@@ -14,6 +14,7 @@ import {
   type VerifierSessionState,
 } from "./agent-tools";
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
+import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "./compile-checks";
 import { detectFramework, type Framework } from "./framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
 import { lspManager } from "./lsp-manager";
@@ -110,7 +111,8 @@ function buildBuilderSystemPrompt(session: BuildSessionState): string {
     ? getMobilePromptSupplement("editor", resolvedFramework)
     : null;
   const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
-  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}`;
+  const compileCheckSection = buildEditorCompileCheckPrompt(resolvedFramework);
+  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}${compileCheckSection}`;
 }
 
 function buildVerifierSystemPrompt(session: BuildSessionState): string {
@@ -125,7 +127,8 @@ function buildVerifierSystemPrompt(session: BuildSessionState): string {
     ? getMobilePromptSupplement("verifier", resolvedFramework)
     : null;
   const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
-  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}`;
+  const compileCheckSection = buildVerifierCompileCheckPrompt(resolvedFramework);
+  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}${compileCheckSection}`;
 }
 
 function buildBuilderInitialMessage(
