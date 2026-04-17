@@ -1384,10 +1384,12 @@ Q3 — LESS IMPORTANT & EASY (low impact, low cost)
            server/__tests__/skill-loader.test.ts
     Effort: ~1 hour
 
-[ ] AG-14: Reduce verifier max_iterations from 30 to 15
-    What: The verifier's job is simpler than the editor's — read files, report issues,
-      submit verdict. 30 iterations is overkill and allows stuck loops to run long.
-    Files: server/build-orchestrator.ts (maxIterations in verifier call)
+[x] AG-14: Reduce verifier max_iterations from 30 to 15 — COMPLETE
+    What: Lowered verifier maxIterations from 30 to 15 in runBuildSession().
+      Verifier work is bounded (read files, report issues, submit_verdict) and
+      reliably finishes in 3-8 turns today, so 30 was overkill and allowed
+      stuck loops to burn tokens. Editor (50) and fixer (50) unchanged.
+    Files: server/build-orchestrator.ts:475
     Effort: 5 minutes
 
 ------------------------------------------------------------

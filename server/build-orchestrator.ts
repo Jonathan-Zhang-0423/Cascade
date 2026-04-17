@@ -472,7 +472,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
           verifierTools.schemas,
           verifierTools.handlers,
           emit,
-          { exitTools: ["submit_verdict"], maxIterations: 30, client, model, partCtx, sessionId: session.id },
+          { exitTools: ["submit_verdict"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
         );
       });
     } catch (err: unknown) {
