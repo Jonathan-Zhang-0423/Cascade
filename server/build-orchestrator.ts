@@ -375,7 +375,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
         plan.summary || "",
         normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
       ].join(" ");
-      detectedSkill = await detectSkillFromText(planText);
+      detectedSkill = await detectSkillFromText(planText, providerChainEditor);
     }
     if (detectedSkill) {
       const skillContent = await loadSkill(detectedSkill);

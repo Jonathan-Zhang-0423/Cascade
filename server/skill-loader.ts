@@ -1,5 +1,6 @@
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
+import { withFallback, type AIProvider } from "./kimi-client";
 
 export interface SkillMeta {
   name: string;
@@ -101,7 +102,12 @@ export function getSkillForFramework(framework: string): string | null {
   return FRAMEWORK_TO_SKILL[framework] ?? null;
 }
 
-export async function detectSkillFromText(text: string): Promise<string | null> {
+/**
+ * AG-12 fallback: naive keyword scoring. Used when the LLM classifier fails
+ * (network error, invalid JSON, unknown skill name returned) or when no
+ * provider chain is supplied. Kept silent — the LLM version is the primary.
+ */
+async function detectSkillByKeywords(text: string): Promise<string | null> {
   const skills = await listSkills();
 
   const scores: Record<string, number> = {};
@@ -123,4 +129,66 @@ export async function detectSkillFromText(text: string): Promise<string | null> 
 
   const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
   return best[0];
+}
+
+/**
+ * AG-12: LLM-based semantic skill detection with keyword fallback.
+ *
+ * Calls a small classifier LLM with the list of registered skills and their
+ * one-line descriptions. Returns the best-matching skill name, or null if no
+ * skill fits. When the LLM call fails for any reason, falls through silently
+ * to keyword scoring so the build pipeline still works.
+ *
+ * If providerChain is omitted or empty, skips the LLM call entirely and uses
+ * keyword scoring only — useful in tests and offline environments.
+ */
+export async function detectSkillFromText(
+  text: string,
+  providerChain?: AIProvider[],
+): Promise<string | null> {
+  if (!providerChain || providerChain.length === 0) {
+    return detectSkillByKeywords(text);
+  }
+
+  const skills = await listSkills();
+  if (skills.length === 0) return null;
+
+  const skillList = skills
+    .map((s) => `- ${s.name}: ${s.description || "(no description)"}`)
+    .join("\n");
+
+  const systemPrompt = `You are a skill classifier. Given a user's build request, pick the ONE skill name from the list below that best matches the technology they want to use, or null if none fit.
+
+Skills:
+${skillList}
+
+Respond with ONLY valid JSON in this shape: {"skill": "<name>"} or {"skill": null}. No prose, no code fences.`;
+
+  try {
+    const completion = await withFallback(providerChain, async (client, model) =>
+      client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: text },
+        ],
+        stream: false,
+        max_tokens: 40,
+      }),
+    );
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+    const parsed = JSON.parse(raw) as { skill: string | null };
+    if (parsed.skill === null) {
+      return detectSkillByKeywords(text);
+    }
+    if (typeof parsed.skill === "string" && skills.some((s) => s.name === parsed.skill)) {
+      return parsed.skill;
+    }
+    console.warn(`[SkillLoader] LLM returned unknown skill '${parsed.skill}', falling back to keywords`);
+    return detectSkillByKeywords(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[SkillLoader] LLM classifier failed (${message}), falling back to keywords`);
+    return detectSkillByKeywords(text);
+  }
 }
