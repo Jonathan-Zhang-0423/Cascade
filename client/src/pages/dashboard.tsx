@@ -143,7 +143,7 @@ export default function DashboardPage() {
           <div className="flex items-center">
             <img
               src={logoSrc}
-              alt="CodeStart"
+              alt="Cascade"
               className="h-9 w-36 object-cover object-center mix-blend-multiply dark:invert dark:mix-blend-screen"
               data-testid="text-dashboard-logo"
             />

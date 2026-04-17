@@ -33,7 +33,7 @@ describe("write_file handler — disk mirror", () => {
   });
 
   it("mirrors written file content to sessionDir on disk", async () => {
-    tmpDir = await mkdtemp(path.join(tmpdir(), "codestart-test-"));
+    tmpDir = await mkdtemp(path.join(tmpdir(), "cascade-test-"));
     const session = makeSession({ sessionDir: tmpDir });
     const { handlers } = buildBuilderTools(session, []);
 
@@ -45,7 +45,7 @@ describe("write_file handler — disk mirror", () => {
   });
 
   it("also updates session.files map", async () => {
-    tmpDir = await mkdtemp(path.join(tmpdir(), "codestart-test-"));
+    tmpDir = await mkdtemp(path.join(tmpdir(), "cascade-test-"));
     const session = makeSession({ sessionDir: tmpDir });
     const { handlers } = buildBuilderTools(session, []);
 
@@ -66,7 +66,7 @@ describe("write_file handler — disk mirror", () => {
   });
 
   it("creates nested directories for deep paths", async () => {
-    tmpDir = await mkdtemp(path.join(tmpdir(), "codestart-test-"));
+    tmpDir = await mkdtemp(path.join(tmpdir(), "cascade-test-"));
     const session = makeSession({ sessionDir: tmpDir });
     const { handlers } = buildBuilderTools(session, []);
 

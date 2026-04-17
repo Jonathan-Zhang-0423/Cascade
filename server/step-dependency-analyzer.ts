@@ -59,7 +59,7 @@ export function groupStepsIntoWaves(steps: BuildStep[]): Wave[] {
   for (const step of steps) {
     const deps = depsByStep.get(step.step) ?? new Set<number>();
     let maxDepWave = -1;
-    for (const depStepNum of deps) {
+    for (const depStepNum of Array.from(deps)) {
       const w = waveByStep.get(depStepNum);
       if (w !== undefined && w > maxDepWave) maxDepWave = w;
     }

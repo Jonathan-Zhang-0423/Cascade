@@ -39,7 +39,7 @@ Sessions are kept alive server-side (stored in memory maps in `routes.ts`). Clie
 
 ### State management
 
-All IDE state lives in Zustand (`client/src/stores/ide-store.ts`) and is debounce-persisted to localStorage under `codestart-project-${projectId}`. On project switch, `loadProject()` restores state from localStorage and falls back to the DB for files.
+All IDE state lives in Zustand (`client/src/stores/ide-store.ts`) and is debounce-persisted to localStorage under `cascade-project-${projectId}`. On project switch, `loadProject()` restores state from localStorage and falls back to the DB for files.
 
 Key fields:
 - `managerMessages[]` — plan-mode message history (user bubbles, plan cards, narration)

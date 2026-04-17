@@ -47,7 +47,7 @@ describe("patch_file handler", () => {
   });
 
   it("mirrors patched content to disk when sessionDir is set", async () => {
-    tmpDir = await mkdtemp(path.join(tmpdir(), "codestart-patch-test-"));
+    tmpDir = await mkdtemp(path.join(tmpdir(), "cascade-patch-test-"));
     const session = makeSession({ sessionDir: tmpDir });
     session.files.set("/project/app.ts", "hello world");
     const { handlers } = buildBuilderTools(session, []);

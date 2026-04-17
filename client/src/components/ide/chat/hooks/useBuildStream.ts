@@ -67,7 +67,7 @@ export function useBuildStream() {
       if (sessionId && currentProjectId) {
         try {
           localStorage.setItem(
-            `codestart-build-session-${currentProjectId}`,
+            `cascade-build-session-${currentProjectId}`,
             sessionId,
           );
         } catch {}
@@ -130,7 +130,7 @@ export function useBuildStream() {
     buildReaderRef.current = null;
     if (projectId) {
       try {
-        localStorage.removeItem(`codestart-build-session-${projectId}`);
+        localStorage.removeItem(`cascade-build-session-${projectId}`);
       } catch {}
     }
     setBuildPhase(null);
@@ -643,7 +643,7 @@ export function useBuildStream() {
     if (projectId) {
       try {
         localStorage.setItem(
-          `codestart-build-session-${projectId}`,
+          `cascade-build-session-${projectId}`,
           sessionId,
         );
       } catch {}
@@ -906,7 +906,7 @@ export function useBuildStream() {
         if (projectId) {
           try {
             localStorage.removeItem(
-              `codestart-build-session-${projectId}`,
+              `cascade-build-session-${projectId}`,
             );
           } catch {}
         }
@@ -1036,7 +1036,7 @@ export function useBuildStream() {
           if (projectId) {
             try {
               localStorage.removeItem(
-                `codestart-build-session-${projectId}`,
+                `cascade-build-session-${projectId}`,
               );
             } catch {}
           }
@@ -1316,7 +1316,7 @@ export function useBuildStream() {
           if (projectId) {
             try {
               localStorage.removeItem(
-                `codestart-build-session-${projectId}`,
+                `cascade-build-session-${projectId}`,
               );
             } catch {}
           }
@@ -1475,7 +1475,7 @@ export function useBuildStream() {
 
     const savedSessionId = (() => {
       try {
-        return localStorage.getItem(`codestart-build-session-${projectId}`);
+        return localStorage.getItem(`cascade-build-session-${projectId}`);
       } catch {
         return null;
       }
@@ -1521,7 +1521,7 @@ export function useBuildStream() {
         if (!data) {
           try {
             localStorage.removeItem(
-              `codestart-build-session-${projectId}`,
+              `cascade-build-session-${projectId}`,
             );
           } catch {}
           return fetch(`/api/build-session/active/${projectId}`)
@@ -1538,7 +1538,7 @@ export function useBuildStream() {
               if (buildSessionIdRef.current) return;
               try {
                 localStorage.setItem(
-                  `codestart-build-session-${projectId}`,
+                  `cascade-build-session-${projectId}`,
                   activeData.sessionId,
                 );
               } catch {}
@@ -1570,7 +1570,7 @@ export function useBuildStream() {
       .catch(() => {
         try {
           localStorage.removeItem(
-            `codestart-build-session-${projectId}`,
+            `cascade-build-session-${projectId}`,
           );
         } catch {}
         useIDEStore.getState().setStreamingSnapshot(null);
@@ -1604,7 +1604,7 @@ export function useBuildStream() {
       const savedBuildSessionId = (() => {
         try {
           return localStorage.getItem(
-            `codestart-build-session-${projectId}`,
+            `cascade-build-session-${projectId}`,
           );
         } catch {
           return null;
@@ -1629,7 +1629,7 @@ export function useBuildStream() {
               useIDEStore.getState().setStreamingSnapshot(null);
               try {
                 localStorage.removeItem(
-                  `codestart-build-session-${projectId}`,
+                  `cascade-build-session-${projectId}`,
                 );
               } catch {}
               setLiveThinkingText("");
@@ -1640,7 +1640,7 @@ export function useBuildStream() {
             useIDEStore.getState().setStreamingSnapshot(null);
             try {
               localStorage.removeItem(
-                `codestart-build-session-${projectId}`,
+                `cascade-build-session-${projectId}`,
               );
             } catch {}
             setLiveThinkingText("");
@@ -1685,7 +1685,7 @@ export function useBuildStream() {
     }
     if (projectId) {
       try {
-        localStorage.removeItem(`codestart-build-session-${projectId}`);
+        localStorage.removeItem(`cascade-build-session-${projectId}`);
       } catch {}
     }
     setIsReconnecting(false);

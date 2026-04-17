@@ -18,6 +18,7 @@ import { detectFramework, type Framework } from "./framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
 import { lspManager } from "./lsp-manager";
 import { shellManager } from "./shell-manager";
+import { groupStepsIntoWaves, hasParallelOpportunity } from "./step-dependency-analyzer";
 
 export interface BuildFile {
   path: string;
@@ -325,6 +326,17 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   }
 
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
+
+  // AG-10: Analyze step dependencies. Currently informational only — execution
+  // stays sequential. The wave structure is logged so we can validate plans
+  // produce useful parallelism before wiring up concurrent agent loops.
+  const waves = groupStepsIntoWaves(normalizedSteps);
+  if (hasParallelOpportunity(waves)) {
+    const waveSummary = waves
+      .map((w) => `wave ${w.index}: [${w.steps.map((s) => s.step).join(", ")}]`)
+      .join(" | ");
+    console.log(`[BuildSession ${session.id}] AG-10 wave analysis: ${waveSummary}`);
+  }
 
   const builderSystemPrompt = buildBuilderSystemPrompt(session);
   const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");

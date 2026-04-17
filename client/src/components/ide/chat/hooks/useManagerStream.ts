@@ -87,7 +87,7 @@ export function useManagerStream() {
       if (sessionId && currentProjectId) {
         try {
           localStorage.setItem(
-            `codestart-mgr-session-${currentProjectId}`,
+            `cascade-mgr-session-${currentProjectId}`,
             sessionId,
           );
         } catch {}
@@ -266,7 +266,7 @@ export function useManagerStream() {
               if (projectId && ev.sessionId) {
                 try {
                   localStorage.setItem(
-                    `codestart-mgr-session-${projectId}`,
+                    `cascade-mgr-session-${projectId}`,
                     ev.sessionId,
                   );
                 } catch {}
@@ -388,7 +388,7 @@ export function useManagerStream() {
               } else if (projectId) {
                 try {
                   const savedRaw = localStorage.getItem(
-                    `codestart-project-${projectId}`,
+                    `cascade-project-${projectId}`,
                   );
                   const saved = savedRaw ? JSON.parse(savedRaw) : null;
                   if (saved) {
@@ -416,7 +416,7 @@ export function useManagerStream() {
                     saved.taskStatuses = statuses;
                     saved.streamingSnapshot = null;
                     localStorage.setItem(
-                      `codestart-project-${projectId}`,
+                      `cascade-project-${projectId}`,
                       JSON.stringify(saved),
                     );
                   }
@@ -429,7 +429,7 @@ export function useManagerStream() {
               if (projectId) {
                 try {
                   localStorage.removeItem(
-                    `codestart-mgr-session-${projectId}`,
+                    `cascade-mgr-session-${projectId}`,
                   );
                 } catch {}
               }
@@ -533,7 +533,7 @@ export function useManagerStream() {
               if (projectId) {
                 try {
                   localStorage.removeItem(
-                    `codestart-mgr-session-${projectId}`,
+                    `cascade-mgr-session-${projectId}`,
                   );
                 } catch {}
               }
@@ -550,7 +550,7 @@ export function useManagerStream() {
               } else if (projectId) {
                 try {
                   const savedRaw = localStorage.getItem(
-                    `codestart-project-${projectId}`,
+                    `cascade-project-${projectId}`,
                   );
                   const saved = savedRaw ? JSON.parse(savedRaw) : null;
                   if (saved) {
@@ -572,7 +572,7 @@ export function useManagerStream() {
                     saved.managerMessages = msgs;
                     saved.streamingSnapshot = null;
                     localStorage.setItem(
-                      `codestart-project-${projectId}`,
+                      `cascade-project-${projectId}`,
                       JSON.stringify(saved),
                     );
                   }
@@ -663,7 +663,7 @@ export function useManagerStream() {
           mgrReconnectRetryRef.current = 0;
           if (projectId) {
             try {
-              localStorage.removeItem(`codestart-mgr-session-${projectId}`);
+              localStorage.removeItem(`cascade-mgr-session-${projectId}`);
             } catch {}
           }
           if (useIDEStore.getState().projectId === projectId) {
@@ -727,7 +727,7 @@ export function useManagerStream() {
           mgrSessionIdRef.current = null;
           if (projectId) {
             try {
-              localStorage.removeItem(`codestart-mgr-session-${projectId}`);
+              localStorage.removeItem(`cascade-mgr-session-${projectId}`);
             } catch {}
           }
           setManagerResponding(false);
@@ -889,7 +889,7 @@ export function useManagerStream() {
           mgrSessionIdRef.current = null;
           if (projectId) {
             try {
-              localStorage.removeItem(`codestart-mgr-session-${projectId}`);
+              localStorage.removeItem(`cascade-mgr-session-${projectId}`);
             } catch {}
           }
           clearMgrLive();
@@ -958,7 +958,7 @@ export function useManagerStream() {
       const snapshot = useIDEStore.getState().streamingSnapshot;
       const savedMgrSessionId = (() => {
         try {
-          return localStorage.getItem(`codestart-mgr-session-${projectId}`);
+          return localStorage.getItem(`cascade-mgr-session-${projectId}`);
         } catch {
           return null;
         }
@@ -993,7 +993,7 @@ export function useManagerStream() {
             }
             try {
               localStorage.setItem(
-                `codestart-mgr-session-${projectId}`,
+                `cascade-mgr-session-${projectId}`,
                 activeData.sessionId,
               );
             } catch {}
@@ -1019,7 +1019,7 @@ export function useManagerStream() {
             ? snapshot.lastEventId
             : (() => {
                 try {
-                  const saved = localStorage.getItem(`codestart-mgr-session-${projectId}`);
+                  const saved = localStorage.getItem(`cascade-mgr-session-${projectId}`);
                   return saved === sessionIdToReconnect ? mgrLastEventIdRef.current : -1;
                 } catch { return -1; }
               })();
@@ -1038,7 +1038,7 @@ export function useManagerStream() {
               setIsMgrReconnecting(false);
               try {
                 localStorage.removeItem(
-                  `codestart-mgr-session-${projectId}`,
+                  `cascade-mgr-session-${projectId}`,
                 );
               } catch {}
               fallbackToActiveEndpoint();
@@ -1047,7 +1047,7 @@ export function useManagerStream() {
           .catch(() => {
             setIsMgrReconnecting(false);
             try {
-              localStorage.removeItem(`codestart-mgr-session-${projectId}`);
+              localStorage.removeItem(`cascade-mgr-session-${projectId}`);
             } catch {}
             fallbackToActiveEndpoint();
           });
