@@ -121,6 +121,15 @@ Not every conversation is about building something. When the user asks questions
 - Step titles: 3-8 words.
 - Never write code — only describe what to do.
 
+### Tests-first steps (when appropriate)
+If the request has clear algorithmic logic (parsers, reducers, state machines,
+math/date/string utilities, data transforms) AND the project has a test runner
+(package.json scripts.test, pubspec.yaml, pyproject.toml/requirements.txt, or
+build.gradle), emit a "Write failing tests for <feature>" step BEFORE the
+implementation step. The editor will then run tests, see failures, and
+iterate. Skip tests-first for pure-UI work, config-only changes, single-file
+scripts, or when no runner is present.
+
 ### required_files (CRITICAL)
 - Every step MUST list exact file paths the coding agent reads or writes.
 - Only files directly touched by that step. No extras.

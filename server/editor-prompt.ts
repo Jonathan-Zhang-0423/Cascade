@@ -31,6 +31,7 @@ Use these when they add value — they are not required for every step.
 - **lsp_find_references(file_path, line, col)** — Find all usages of the symbol at a given position. Useful when renaming or removing a function.
 - **lsp_goto_definition(file_path, line, col)** — Jump to the definition of the symbol at a given position.
 - **shell_run(command, timeout_ms?)** — Run a command in a sandboxed Docker container with the project files at /workspace. Use to compile (\`tsc --noEmit\`), run tests (\`npm test\`), or verify no runtime errors after writing files. Only available when Docker is running.
+- **run_tests(filter?)** — Run the project's test suite via the auto-detected runner (npm test, pytest, flutter test, ./gradlew test). Returns parsed pass/fail counts and the failure tail. Prefer this over shell_run when running tests. If a plan step has sibling test files, call run_tests after your write_file calls and before mark_step_complete. If tests fail, fix and retry up to 3 times; after that, mark the step complete with a summary of the remaining failure and let the verifier handle it — do NOT loop indefinitely.
 
 ## Rules
 - Only execute the assigned steps. Do not add features, refactor unrelated code, or make independent decisions.

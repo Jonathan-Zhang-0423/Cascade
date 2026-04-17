@@ -1396,14 +1396,17 @@ Q3 — LESS IMPORTANT & EASY (low impact, low cost)
 Q4 — LESS IMPORTANT & HARD (low impact, high cost)
 ------------------------------------------------------------
 
-[ ] AG-15: TDD loop integration
-    What: Manager can generate a plan that includes "write tests first" steps.
-      Add a test_runner tool that runs the project's test suite and returns
-      pass/fail output. Editor uses test output as feedback to iterate.
-    Why: True TDD loop like Devin. Best accuracy for algorithmic code.
-         Complex to implement correctly without infinite loops.
-    Files: server/agent-tools.ts, server/editor-prompt.ts, server/manager-prompt.ts
-    Effort: 1–2 days
+[x] AG-15: TDD loop integration — COMPLETE
+    What: Added run_tests tool that auto-detects npm/pytest/flutter/gradle from
+      manifest files and runs the suite in the sandbox with parsed pass/fail
+      counts and failure tails. Wired into builder (inherits to fixer).
+      Manager prompt now emits "write failing tests first" steps for
+      algorithmic work when a test runner is present. Editor prompt loops on
+      run_tests → fix → retry (capped at 3 attempts) before mark_step_complete.
+    Files: server/test-tools.ts (new), server/agent-tools.ts,
+           server/manager-prompt.ts, server/editor-prompt.ts,
+           server/__tests__/test-tools.test.ts (new, 22 cases)
+    Effort: ~1 day
 
 [ ] AG-16: Hash-anchored verified diff tool (PROMOTED TO Q2 — transformational)
     Decision (2026-04-17): AG-9 (external OmO) canceled. AG-16 is now the

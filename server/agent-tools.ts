@@ -6,6 +6,7 @@ import { buildAstTools } from "./ast-tools";
 import { buildLspTools } from "./lsp-tools";
 import { lspManager } from "./lsp-manager";
 import { buildShellTools } from "./shell-tools";
+import { buildTestTools } from "./test-tools";
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
@@ -305,6 +306,11 @@ export function buildBuilderTools(
   const shellTools = buildShellTools(session);
   schemas.push(...shellTools.schemas);
   Object.assign(handlers, shellTools.handlers);
+
+  // AG-15: Add run_tests tool with auto-detected test runner
+  const testTools = buildTestTools(session);
+  schemas.push(...testTools.schemas);
+  Object.assign(handlers, testTools.handlers);
 
   return { schemas, handlers };
 }
