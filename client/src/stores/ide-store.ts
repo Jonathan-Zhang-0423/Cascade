@@ -445,7 +445,7 @@ export function computeFilesHash(files: FileNode[]): string {
 
 function getPersistedState(projectId: string) {
   try {
-    const data = localStorage.getItem(`codestart-project-${projectId}`);
+    const data = localStorage.getItem(`cascade-project-${projectId}`);
     if (data) return JSON.parse(data);
   } catch {}
   return null;
@@ -483,7 +483,7 @@ function persistState(state: IDEState) {
     codeVisible: state.codeVisible,
   };
   localStorage.setItem(
-    `codestart-project-${state.projectId}`,
+    `cascade-project-${state.projectId}`,
     JSON.stringify(toSave)
   );
 }
@@ -536,7 +536,7 @@ async function fetchFilesFromServer(projectId: string): Promise<{ path: string; 
 
 function loadCheckpoints(projectId: string): Checkpoint[] {
   try {
-    const data = localStorage.getItem(`codestart-checkpoints-${projectId}`);
+    const data = localStorage.getItem(`cascade-checkpoints-${projectId}`);
     if (data) {
       const parsed: Checkpoint[] = JSON.parse(data);
       if (parsed.length > 0 && !parsed[parsed.length - 1].snapshot) {
@@ -551,7 +551,7 @@ function loadCheckpoints(projectId: string): Checkpoint[] {
 function persistCheckpoints(projectId: string, checkpoints: Checkpoint[]) {
   try {
     localStorage.setItem(
-      `codestart-checkpoints-${projectId}`,
+      `cascade-checkpoints-${projectId}`,
       JSON.stringify(checkpoints)
     );
   } catch (e: any) {
@@ -633,13 +633,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   selectedProvider: (() => {
     try {
-      const saved = localStorage.getItem("codestart-selected-provider") as AIProvider | null;
+      const saved = localStorage.getItem("cascade-selected-provider") as AIProvider | null;
       if (saved === "doubao" || saved === "kimi" || saved === "minimax") return saved;
     } catch {}
     return "doubao";
   })(),
   setSelectedProvider: (provider) => {
-    try { localStorage.setItem("codestart-selected-provider", provider); } catch {}
+    try { localStorage.setItem("cascade-selected-provider", provider); } catch {}
     set({ selectedProvider: provider });
   },
 

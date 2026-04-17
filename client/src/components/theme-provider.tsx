@@ -15,7 +15,7 @@ const ThemeContext = createContext<ThemeContextType>({
   setThemeId: () => {},
 });
 
-const STORAGE_KEY = "codestart-theme-id";
+const STORAGE_KEY = "cascade-theme-id";
 
 const ALL_CSS_VAR_KEYS: Set<string> = new Set(
   Object.values(THEMES).flatMap((t) => Object.keys(t.cssVars ?? {}))

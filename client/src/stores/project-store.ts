@@ -117,11 +117,11 @@ function generateId(): string {
 }
 
 export function migrateOldState() {
-  if (localStorage.getItem("codestart-migrated")) return;
+  if (localStorage.getItem("cascade-migrated")) return;
 
-  const oldData = localStorage.getItem("codestart-ide-state");
+  const oldData = localStorage.getItem("cascade-ide-state");
   if (!oldData) {
-    localStorage.setItem("codestart-migrated", "1");
+    localStorage.setItem("cascade-migrated", "1");
     return;
   }
 
@@ -129,8 +129,8 @@ export function migrateOldState() {
     const parsed = JSON.parse(oldData);
     const state = parsed.state;
     if (!state || !state.files) {
-      localStorage.setItem("codestart-migrated", "1");
-      localStorage.removeItem("codestart-ide-state");
+      localStorage.setItem("cascade-migrated", "1");
+      localStorage.removeItem("cascade-ide-state");
       return;
     }
 
@@ -146,11 +146,11 @@ export function migrateOldState() {
     };
 
     localStorage.setItem(
-      `codestart-project-${projectId}`,
+      `cascade-project-${projectId}`,
       JSON.stringify(projectState)
     );
 
-    const projectsData = localStorage.getItem("codestart-projects");
+    const projectsData = localStorage.getItem("cascade-projects");
     let projects: ProjectEntry[] = [];
     if (projectsData) {
       try {
@@ -166,14 +166,14 @@ export function migrateOldState() {
     });
 
     localStorage.setItem(
-      "codestart-projects",
+      "cascade-projects",
       JSON.stringify({ state: { projects }, version: 0 })
     );
 
-    localStorage.removeItem("codestart-ide-state");
-    localStorage.setItem("codestart-migrated", "1");
+    localStorage.removeItem("cascade-ide-state");
+    localStorage.setItem("cascade-migrated", "1");
   } catch {
-    localStorage.setItem("codestart-migrated", "1");
+    localStorage.setItem("cascade-migrated", "1");
   }
 }
 
@@ -216,7 +216,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         const isWeb = !framework || framework === "web";
         const state = getDefaultProjectState(initialPrompt, framework);
         localStorage.setItem(
-          `codestart-project-${id}`,
+          `cascade-project-${id}`,
           JSON.stringify(state)
         );
 
@@ -253,7 +253,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       },
 
       deleteProject: (id: string) => {
-        localStorage.removeItem(`codestart-project-${id}`);
+        localStorage.removeItem(`cascade-project-${id}`);
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
         }));
@@ -300,7 +300,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           for (const p of localOnlyProjects) {
             await syncProjectToServer(p.id, p.name, p.emoji, p.framework);
 
-            const projectStateRaw = localStorage.getItem(`codestart-project-${p.id}`);
+            const projectStateRaw = localStorage.getItem(`cascade-project-${p.id}`);
             if (projectStateRaw) {
               try {
                 const projectState = JSON.parse(projectStateRaw) as { files?: StoredFileNode[]; state?: { files?: StoredFileNode[] } };
@@ -331,7 +331,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       },
     }),
     {
-      name: "codestart-projects",
+      name: "cascade-projects",
     }
   )
 );

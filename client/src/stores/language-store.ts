@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 export type Lang = "zh" | "en";
 
-const STORAGE_KEY = "codestart-lang";
+const STORAGE_KEY = "cascade-lang";
 
 interface LanguageState {
   lang: Lang;
