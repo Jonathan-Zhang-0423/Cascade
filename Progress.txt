@@ -1408,22 +1408,28 @@ Q4 — LESS IMPORTANT & HARD (low impact, high cost)
            server/__tests__/test-tools.test.ts (new, 22 cases)
     Effort: ~1 day
 
-[ ] AG-16: Hash-anchored verified diff tool (PROMOTED TO Q2 — transformational)
+[x] AG-16: Hash-anchored verified diff tool — COMPLETE
     Decision (2026-04-17): AG-9 (external OmO) canceled. AG-16 is now the
       headline improvement for edit accuracy — this IS how we replicate
       Hephaestus natively.
-    What: Implement hash-anchored edits:
+    What: Implemented hash-anchored edits:
         hash_patch_file(path, region_hash, new_content)
-        - On file read, hash each function/block; return hash→line-range map
-        - Find block matching region_hash
-        - Replace with new_content (reject if hash not found — no silent failures)
-      This is Hephaestus's core primitive, natively.
-    Why: Achieves the ~68% edit accuracy improvement. Unlike AG-6's verbatim
-         match, hash-anchoring is unambiguous for files with repeated patterns
-         and survives whitespace changes between read and write.
-    Files: server/agent-tools.ts (new tool + extend read_file response),
-           server/editor-prompt.ts (tool schema + usage guidance)
-    Effort: 1–2 days
+      New server/block-hash.ts extracts top-level blocks (function/class/
+      interface/type/enum/variable/export) via ast-grep for TS/JS/TSX/JSX and
+      via a line-regex fallback for Python/Dart/Kotlin/Swift. Each block gets
+      a deterministic 8-char sha256 hash (trailing whitespace normalized).
+      read_file responses now append a "--- Block hashes ---" section listing
+      each block's hash + kind/name + line range. hash_patch_file finds the
+      block by hash, splices the replacement into its line range, mirrors to
+      disk, and runs inline LSP diagnostics. On miss it returns the top-5
+      available hashes so the editor can self-correct.
+      Editor prompt teaches the hierarchy: hash_patch_file (whole block) >
+      patch_file (sub-block / unparseable) > write_file (new file / rewrite).
+    Files: server/block-hash.ts (new), server/agent-tools.ts,
+           server/editor-prompt.ts,
+           server/__tests__/block-hash.test.ts (new, 9 cases),
+           server/__tests__/hash-patch.test.ts (new, 6 cases)
+    Effort: ~1 day
 
 [ ] AG-17: Agent telemetry and accuracy tracking
     What: Log per-session metrics:

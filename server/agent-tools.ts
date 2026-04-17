@@ -7,6 +7,7 @@ import { buildLspTools } from "./lsp-tools";
 import { lspManager } from "./lsp-manager";
 import { buildShellTools } from "./shell-tools";
 import { buildTestTools } from "./test-tools";
+import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "./block-hash";
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
@@ -131,6 +132,32 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "hash_patch_file",
+        description:
+          "Replace a named block (function, class, interface, variable, etc.) in an existing file by its hash. More reliable than patch_file when the file contains repeated patterns or may have shifted whitespace since the last read. The block hash comes from the '--- Block hashes ---' section appended to read_file output. Fails loudly if the hash is not found — re-read the file and retry.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to patch, e.g. /project/app.ts",
+            },
+            region_hash: {
+              type: "string",
+              description: "The 8-char hash of the block to replace, from read_file output",
+            },
+            new_content: {
+              type: "string",
+              description: "The replacement text for the block (include matching indentation)",
+            },
+          },
+          required: ["path", "region_hash", "new_content"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "request_review",
         description: "Signal that you are done implementing all steps and the project is ready for quality review. Call this ONLY when all plan steps are complete.",
         parameters: {
@@ -247,6 +274,75 @@ export function buildBuilderTools(
       return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
     },
 
+    hash_patch_file: async (args, emit) => {
+      const path_ = args.path as string;
+      const regionHash = args.region_hash as string;
+      const newContent = args.new_content as string;
+      if (!path_ || typeof regionHash !== "string" || typeof newContent !== "string") {
+        return "Error: path, region_hash, and new_content are required";
+      }
+      const current = session.files.get(path_);
+      if (current === undefined) {
+        return `Error: file not found: ${path_}. Use write_file to create new files.`;
+      }
+
+      let blocks;
+      try {
+        blocks = await extractBlocks(path_, current);
+      } catch (err) {
+        return `Error extracting blocks from ${path_}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      if (blocks.length === 0) {
+        return `Error: no blocks could be extracted from ${path_}. Use patch_file or write_file instead.`;
+      }
+      const match = blocks.find((b) => b.hash === regionHash);
+      if (!match) {
+        const available = blocks.slice(0, 5).map((b) => {
+          const label = b.name ? `${b.kind} ${b.name}` : b.kind;
+          return `  [${b.hash}] ${label} (lines ${b.startLine}-${b.endLine})`;
+        }).join("\n");
+        return `Error: block hash ${regionHash} not found in ${path_}. Re-read the file and retry.\nAvailable blocks:\n${available}`;
+      }
+
+      const patched = applyBlockReplacement(current, match, newContent);
+      const fileName = path_.split("/").pop() || path_;
+      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
+      session.files.set(path_, patched);
+      emit({ type: "code_applied", filePath: path_, code: patched });
+
+      if (session.sessionDir) {
+        try {
+          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          await mkdir(path.dirname(abs), { recursive: true });
+          await writeFile(abs, patched, "utf-8");
+        } catch (err) {
+          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
+        }
+        lspManager.notifyFileChange(session.id, path_, patched).catch(() => {});
+      }
+
+      let diagSuffix = "";
+      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
+        try {
+          const diags = await lspManager.getDiagnostics(session.id, path_);
+          if (diags.length > 0) {
+            const lines = diags.map(d => {
+              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
+              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
+            });
+            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
+          } else {
+            diagSuffix = "\n\nLSP: no errors.";
+          }
+        } catch {
+          // LSP not available — silent
+        }
+      }
+
+      const label = match.name ? `${match.kind} ${match.name}` : match.kind;
+      return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
+    },
+
     read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
@@ -256,7 +352,16 @@ export function buildBuilderTools(
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }
-      return `File: ${path}\n\n${content}`;
+      // AG-16: Append block hash index so the editor can use hash_patch_file.
+      let blockSuffix = "";
+      try {
+        const blocks = await extractBlocks(path, content);
+        const formatted = formatBlockIndex(blocks);
+        if (formatted) blockSuffix = `\n\n${formatted}`;
+      } catch {
+        // silent — block indexing is best-effort
+      }
+      return `File: ${path}\n\n${content}${blockSuffix}`;
     },
 
     mark_step_complete: async (args, emit) => {
