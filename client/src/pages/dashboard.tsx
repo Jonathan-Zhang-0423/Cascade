@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, CheckSquare, Square, CheckCheck } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
-import logoSrc from "@assets/CodeStart_Logo_EN_v1_1773815402242.png";
+import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { LangToggle } from "@/components/lang-toggle";
@@ -141,12 +141,7 @@ export default function DashboardPage() {
       <header className="border-b border-border/50 bg-sidebar">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 h-14">
           <div className="flex items-center">
-            <img
-              src={logoSrc}
-              alt="Cascade"
-              className="h-9 w-36 object-cover object-center mix-blend-multiply dark:invert dark:mix-blend-screen"
-              data-testid="text-dashboard-logo"
-            />
+            <CascadeLogo width={36} height={36} />
           </div>
           <div className="flex items-center gap-2">
             <LangToggle />
