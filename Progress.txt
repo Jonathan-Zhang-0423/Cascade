@@ -1289,25 +1289,23 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
     See: docs/superpowers/specs/2026-04-11-opencode-backend-design.md (revised)
     Replacement path: AG-10 → AG-11 → AG-12 → AG-13 → AG-16 (native parity)
 
-[~] AG-10: Parallel step execution for independent plan steps — PHASE 1 DONE
-    Phase 1 (complete, commits 4338f95 + 677db87):
+[x] AG-10: Parallel step execution for independent plan steps — COMPLETE
+    Phase 1 (commits 4338f95, 677db87):
       - server/step-dependency-analyzer.ts: groupStepsIntoWaves() groups plan
         steps into parallel-safe waves based on required_files overlap
-      - 12 unit tests covering disjoint/shared files, transitive deps,
-        missing required_files, within-wave order preservation
-      - Wired into runBuildSession() as informational telemetry; logs wave
-        structure when plans have parallel opportunities
-      - Execution remains sequential (deliberately — see Phase 2)
+      - 12 unit tests; wave analysis logged for every build session
 
-    Phase 2 (pending): actual concurrent agent loops
-      Risks to audit before enabling:
-        - session.files / session.parts concurrent mutation
-        - SSE emit ordering (interleaved step_starting / step_completed)
-        - mark_step_complete "next step starting" logic with out-of-order done
-        - LSP notifyFileChange race conditions
-        - Token cost: each wave boots its own agent loop
-      Strategy: observe wave analysis in real build sessions first, then gate
-      parallel execution behind an opt-in config flag.
+    Phase 2 (commit c23576c):
+      - runBuilderParallelWaves() executes waves sequentially with intra-wave
+        concurrency via Promise.all()
+      - Each step gets a scoped agent loop (buildBuilderTools([step])) so
+        mark_step_complete can't jump across waves
+      - Gated behind AG10_PARALLEL=1 env flag — off by default
+      - Every build logs "parallel=on|off" for observability
+
+    Rollout plan: run with the flag off by default. Enable AG10_PARALLEL=1 in
+    staging to validate wall-clock improvement and absence of state races on
+    real plans, then flip the default.
 
     What: In build-orchestrator.ts, analyze plan step dependencies
       (steps that don't share required_files can run concurrently).
@@ -1316,22 +1314,37 @@ Q2 — IMPORTANT & HARD (high impact, significant implementation)
          sequentially. Parallelizing independent steps could cut build time by 40–60%.
     Files: server/step-dependency-analyzer.ts (new),
            server/__tests__/step-dependency-analyzer.test.ts (new),
-           server/build-orchestrator.ts (logging integration)
-    Effort: Phase 1: 2 hours done. Phase 2: 6–10 hours pending.
+           server/build-orchestrator.ts (wave analysis + parallel executor)
+    Effort: Phase 1: 2 hours. Phase 2: 1 hour. Total: 3 hours.
 
 ------------------------------------------------------------
 Q3 — LESS IMPORTANT & EASY (low impact, low cost)
 ------------------------------------------------------------
 
-[ ] AG-11: Add shell_run auto-check for non-TypeScript frameworks
+[x] AG-11: Framework-specific compile checks — COMPLETE (commit b7c2588)
+    Implementation:
+      - server/compile-checks.ts: getCompileCheck(framework) returns the
+        right command per framework:
+          web / rn-expo  → tsc --noEmit
+          flutter        → flutter analyze
+          kotlin         → ./gradlew compileKotlin
+          swiftui        → null (no sandbox CLI; rely on LSP + review)
+      - buildEditorCompileCheckPrompt / buildVerifierCompileCheckPrompt
+        produce prompt fragments injected by the system-prompt builders
+      - Hardcoded "tsc --noEmit" removed from editor-prompt.ts and
+        verifier-prompt.ts (they now reference the injected section)
+      - 11 unit tests covering all frameworks + prompt fragment generation
     What: Extend AG-2/AG-3 to run framework-specific checks:
       - Flutter: shell_run('flutter analyze')
       - Python: shell_run('python -m py_compile <files>')
       - Java/Kotlin: shell_run('kotlinc <files> -include-runtime -d app.jar')
     Why: Currently only TypeScript gets tsc compile-check. Other frameworks
          skip static analysis and go straight to verifier review.
-    Files: server/editor-prompt.ts, server/mobile-prompt-supplements.ts
-    Effort: 1–2 hours
+    Files: server/compile-checks.ts (new),
+           server/__tests__/compile-checks.test.ts (new),
+           server/build-orchestrator.ts (prompt injection),
+           server/editor-prompt.ts, server/verifier-prompt.ts
+    Effort: 1 hour
 
 [ ] AG-12: Smarter skill detection (semantic vs keyword)
     What: Replace keyword scoring in skill-loader.ts with an LLM classification
