@@ -1346,14 +1346,27 @@ Q3 — LESS IMPORTANT & EASY (low impact, low cost)
            server/editor-prompt.ts, server/verifier-prompt.ts
     Effort: 1 hour
 
-[ ] AG-12: Smarter skill detection (semantic vs keyword)
+[x] AG-12: Smarter skill detection (semantic vs keyword) — COMPLETE (commit d663141)
+    Implementation:
+      - server/skill-loader.ts: new LLM-backed detectSkillFromText(text,
+        providerChain?) that asks a small classifier to pick one of the
+        registered skills from a system-prompt list (name + description)
+      - Existing keyword scorer renamed detectSkillByKeywords() and kept
+        internal; used as silent fallback on any LLM failure (network,
+        bad JSON, unknown skill name, null skill, or no providerChain)
+      - Call site in build-orchestrator passes providerChainEditor — reuses
+        the same resilience as the communicator summary call
+      - Prompt mirrors classifyIntent pattern (stream:false, max_tokens:40)
+      - 9 unit tests covering happy path + every fallback branch
     What: Replace keyword scoring in skill-loader.ts with an LLM classification
       call (small model, 1 API call) that reads the user request and returns
       the best-matching skill. Fallback to keyword if LLM call fails.
     Why: Current keyword matching misses indirect skill indicators
          ("I want to build a game" doesn't mention "React" or "canvas").
-    Files: server/skill-loader.ts
-    Effort: 2–3 hours
+    Files: server/skill-loader.ts (LLM classifier + keyword fallback),
+           server/build-orchestrator.ts (pass providerChainEditor),
+           server/__tests__/skill-loader.test.ts (new, 9 cases)
+    Effort: 1.5 hours
 
 [ ] AG-13: Multi-skill injection
     What: Allow skill-loader to return and inject multiple matching skills
