@@ -318,8 +318,8 @@ export function checkFlutterOnStartup(): void {
   }
 }
 
-const MINIMAL_PUBSPEC = `name: codestart_preview
-description: CodeStart Flutter Preview
+const MINIMAL_PUBSPEC = `name: cascade_preview
+description: Cascade AI Flutter Preview
 publish_to: 'none'
 version: 1.0.0+1
 

@@ -1971,7 +1971,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
 
     const tmpId = randomBytes(8).toString("hex");
-    const tmpBase = join(tmpdir(), `codestart_${tmpId}`);
+    const tmpBase = join(tmpdir(), `cascade_${tmpId}`);
     await mkdir(tmpBase, { recursive: true });
 
     try {
@@ -1989,7 +1989,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         const srcFile = join(tmpBase, "main.go");
         const binFile = join(tmpBase, "main");
         await writeFile(srcFile, content, "utf8");
-        await writeFile(join(tmpBase, "go.mod"), "module codestart_run\n\ngo 1.21\n", "utf8");
+        await writeFile(join(tmpBase, "go.mod"), "module cascade_run\n\ngo 1.21\n", "utf8");
         const compileRes = await spawnProcess(
           "go", ["build", "-o", binFile, "."], { cwd: tmpBase, timeout: 30_000 }
         );

@@ -275,7 +275,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const userProvider = session.provider ?? "doubao";
 
   // Create session directory and seed existing files onto disk
-  const sessionDir = `/tmp/codestart-sessions/${session.id}`;
+  const sessionDir = `/tmp/cascade-sessions/${session.id}`;
   try {
     await mkdir(sessionDir, { recursive: true });
     session.sessionDir = sessionDir;
