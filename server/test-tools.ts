@@ -1,6 +1,7 @@
 import type { ToolSchema, ToolHandler } from "./agent-loop";
 import type { BuildSessionState } from "./build-orchestrator";
 import { shellManager } from "./shell-manager";
+import type { BuildTelemetry } from "./telemetry";
 
 export type TestRunner = "npm" | "pytest" | "flutter" | "gradle" | null;
 
@@ -113,7 +114,7 @@ function tailLines(text: string, n: number): string {
 
 const TEST_TIMEOUT_MS = 120_000;
 
-export function buildTestTools(session: BuildSessionState): {
+export function buildTestTools(session: BuildSessionState, telemetry?: BuildTelemetry): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
 } {
@@ -155,6 +156,7 @@ export function buildTestTools(session: BuildSessionState): {
 
       emit({ type: "action_log", actionType: "file_write", label: "Tests", detail: command });
 
+      telemetry?.incr("runTestsCount");
       const result = await shellManager.runCommand(session.id, command, TEST_TIMEOUT_MS);
       const { passed, failed } = parseTestOutput(runner, result.stdout, result.stderr);
 

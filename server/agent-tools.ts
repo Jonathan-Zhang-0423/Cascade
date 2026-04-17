@@ -8,6 +8,7 @@ import { lspManager } from "./lsp-manager";
 import { buildShellTools } from "./shell-tools";
 import { buildTestTools } from "./test-tools";
 import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "./block-hash";
+import type { BuildTelemetry } from "./telemetry";
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
@@ -34,6 +35,7 @@ export interface ManagerSessionState {
 export function buildBuilderTools(
   session: BuildSessionState,
   planSteps?: BuildStep[],
+  telemetry?: BuildTelemetry,
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
@@ -205,6 +207,8 @@ export function buildBuilderTools(
         try {
           const diags = await lspManager.getDiagnostics(session.id, path_);
           if (diags.length > 0) {
+            const errCount = diags.filter((d) => d.severity === 1).length;
+            if (errCount > 0) telemetry?.incrLspErrors(errCount);
             const lines = diags.map(d => {
               const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
               return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
@@ -218,6 +222,8 @@ export function buildBuilderTools(
         }
       }
 
+      telemetry?.incr("writeFileCount");
+      telemetry?.addFileWritten(path_);
       return `File written successfully: ${path_} (${content.length} chars)${diagSuffix}`;
     },
 
@@ -271,6 +277,8 @@ export function buildBuilderTools(
         }
       }
 
+      telemetry?.incr("patchFileCount");
+      telemetry?.addFileWritten(path_);
       return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
     },
 
@@ -301,6 +309,7 @@ export function buildBuilderTools(
           const label = b.name ? `${b.kind} ${b.name}` : b.kind;
           return `  [${b.hash}] ${label} (lines ${b.startLine}-${b.endLine})`;
         }).join("\n");
+        telemetry?.incr("hashPatchMissCount");
         return `Error: block hash ${regionHash} not found in ${path_}. Re-read the file and retry.\nAvailable blocks:\n${available}`;
       }
 
@@ -340,6 +349,8 @@ export function buildBuilderTools(
       }
 
       const label = match.name ? `${match.kind} ${match.name}` : match.kind;
+      telemetry?.incr("hashPatchFileCount");
+      telemetry?.addFileWritten(path_);
       return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
     },
 
@@ -413,7 +424,7 @@ export function buildBuilderTools(
   Object.assign(handlers, shellTools.handlers);
 
   // AG-15: Add run_tests tool with auto-detected test runner
-  const testTools = buildTestTools(session);
+  const testTools = buildTestTools(session, telemetry);
   schemas.push(...testTools.schemas);
   Object.assign(handlers, testTools.handlers);
 
@@ -670,9 +681,9 @@ export function buildManagerTools(
   return { schemas, handlers };
 }
 
-export function buildFixerTools(session: BuildSessionState, planSteps?: BuildStep[]): {
+export function buildFixerTools(session: BuildSessionState, planSteps?: BuildStep[], telemetry?: BuildTelemetry): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
 } {
-  return buildBuilderTools(session, planSteps);
+  return buildBuilderTools(session, planSteps, telemetry);
 }

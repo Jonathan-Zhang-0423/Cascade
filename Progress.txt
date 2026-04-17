@@ -1431,15 +1431,24 @@ Q4 — LESS IMPORTANT & HARD (low impact, high cost)
            server/__tests__/hash-patch.test.ts (new, 6 cases)
     Effort: ~1 day
 
-[ ] AG-17: Agent telemetry and accuracy tracking
-    What: Log per-session metrics:
-      - Build success rate (verifier pass on first attempt)
-      - Fix cycles used (0, 1, 2, 3)
-      - Files written vs files that triggered fixer
-      - Time per phase (plan, build, verify, fix)
-    Why: Can't improve what you don't measure. Needed to validate AG-1 through AG-9.
-    Files: server/routes.ts or new server/telemetry.ts, storage layer
-    Effort: 1 day
+[x] AG-17: Agent telemetry and accuracy tracking — COMPLETE
+    What: Per-session JSONL telemetry captured in ./telemetry/sessions-YYYY-MM-DD.jsonl.
+      Records: stepCount, parallelWavesUsed, fixCycles, verifierFirstPassed,
+      finalStatus, writeFileCount, patchFileCount, hashPatchFileCount,
+      hashPatchMissCount, filesWritten, filesInFixerScope, runTestsCount,
+      phase timings (builder/verifier/fixer), lspDiagnosticErrorCount,
+      plus session metadata (id, projectId, framework, provider, lang).
+    Implementation: new server/telemetry.ts BuildTelemetry accumulator with
+      incr/addFileWritten/addFixerScope/time/setFinalStatus/flush. Threaded
+      through buildBuilderTools/buildFixerTools/buildTestTools. runBuildSession
+      wraps builder/verifier/fixer loops in telemetry.time(), sets final status
+      on each exit path (pass/fail/aborted/error), flushes once before done.
+      DISABLE_TELEMETRY=1 skips writes; TELEMETRY_DIR overrides location.
+      File I/O wrapped in try/catch — never blocks a build.
+    Files: server/telemetry.ts (new), server/build-orchestrator.ts,
+           server/agent-tools.ts, server/test-tools.ts,
+           server/__tests__/telemetry.test.ts (new, 6 cases), .gitignore
+    Effort: ~1 day
 
 ------------------------------------------------------------
 RECOMMENDED EXECUTION ORDER

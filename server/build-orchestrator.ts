@@ -7,6 +7,7 @@ import { detectSkillsFromText, loadSkills, getSkillForFramework } from "./skill-
 import { runAgentLoop } from "./agent-loop";
 import { buildFallbackChain, withFallback, type AIProvider } from "./kimi-client";
 import { storage } from "./storage";
+import { BuildTelemetry } from "./telemetry";
 import {
   buildBuilderTools,
   buildVerifierTools,
@@ -335,6 +336,16 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
   const userProvider = session.provider ?? "doubao";
 
+  // AG-17: Telemetry accumulator. Writes one JSONL record on exit via
+  // finally-block flush. Counter wiring happens inside tool handlers.
+  const telemetry = new BuildTelemetry({
+    id: session.id,
+    projectId: session.projectId,
+    framework: session.framework,
+    provider: session.provider,
+    userLang: session.userLang,
+  });
+
   // Create session directory and seed existing files onto disk
   const sessionDir = `/tmp/cascade-sessions/${session.id}`;
   try {
@@ -401,6 +412,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const waves = groupStepsIntoWaves(normalizedSteps);
   const parallelEnabled = process.env.AG10_PARALLEL === "1";
   const shouldRunParallel = parallelEnabled && hasParallelOpportunity(waves) && waves.length > 1;
+  telemetry.setStepCount(totalSteps, hasParallelOpportunity(waves));
   if (hasParallelOpportunity(waves)) {
     const waveSummary = waves
       .map((w) => `wave ${w.index}: [${w.steps.map((s) => s.step).join(", ")}]`)
@@ -414,31 +426,37 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const builderSystemPrompt = buildBuilderSystemPrompt(session);
 
   try {
-    if (shouldRunParallel) {
-      await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit);
-    } else {
-      const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
-      const builderTools = buildBuilderTools(session, normalizedSteps);
-      await withFallback(providerChainEditor, async (client, model) => {
-        await runAgentLoop(
-          builderSystemPrompt,
-          [{ role: "user", content: builderInitialMessage }],
-          builderTools.schemas,
-          builderTools.handlers,
-          emit,
-          { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
-        );
-      });
-    }
+    await telemetry.time("builder", async () => {
+      if (shouldRunParallel) {
+        await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit);
+      } else {
+        const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
+        const builderTools = buildBuilderTools(session, normalizedSteps, telemetry);
+        await withFallback(providerChainEditor, async (client, model) => {
+          await runAgentLoop(
+            builderSystemPrompt,
+            [{ role: "user", content: builderInitialMessage }],
+            builderTools.schemas,
+            builderTools.handlers,
+            emit,
+            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+          );
+        });
+      }
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     emit({ type: "build_error", message });
     emit({ type: "done" });
+    telemetry.setFinalStatus("error", message);
+    await telemetry.flush();
     return;
   }
 
   if (session.aborted) {
     emit({ type: "done" });
+    telemetry.setFinalStatus("aborted");
+    await telemetry.flush();
     return;
   }
 
@@ -465,15 +483,17 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     const verifierTools = buildVerifierTools(session, verifierState);
 
     try {
-      await withFallback(providerChainVerifier, async (client, model) => {
-        await runAgentLoop(
-          verifierSystemPrompt,
-          [{ role: "user", content: verifierInitialMessage }],
-          verifierTools.schemas,
-          verifierTools.handlers,
-          emit,
-          { exitTools: ["submit_verdict"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
-        );
+      await telemetry.time("verifier", async () => {
+        await withFallback(providerChainVerifier, async (client, model) => {
+          await runAgentLoop(
+            verifierSystemPrompt,
+            [{ role: "user", content: verifierInitialMessage }],
+            verifierTools.schemas,
+            verifierTools.handlers,
+            emit,
+            { exitTools: ["submit_verdict"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
+          );
+        });
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -504,6 +524,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
     if (verdict.status === "pass") {
       passed = true;
+      telemetry.setFinalStatus("pass", verdict.summary);
       emit({
         type: "review_passed",
         summary: verdict.summary,
@@ -532,20 +553,32 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       const affectedSteps = getAffectedSteps(verifierState.issues, currentPlanSteps);
       const targetedPlanSteps = buildTargetedFixPlan(affectedSteps, issuesSummary);
 
+      // AG-17: Capture fixer scope for telemetry
+      const fixerScopeFiles = Array.from(
+        new Set(
+          verifierState.issues
+            .map((i) => i.affected_file)
+            .filter((f): f is string => !!f),
+        ),
+      );
+      if (fixerScopeFiles.length > 0) telemetry.addFixerScope(fixerScopeFiles);
+
       const fixerSystemPrompt = buildBuilderSystemPrompt(session);
       const fixerInitialMessage = buildBuilderInitialMessage(session, targetedPlanSteps, "fix", issuesSummary);
-      const fixerTools = buildFixerTools(session, targetedPlanSteps);
+      const fixerTools = buildFixerTools(session, targetedPlanSteps, telemetry);
 
       try {
-        await withFallback(providerChainFixer, async (client, model) => {
-          await runAgentLoop(
-            fixerSystemPrompt,
-            [{ role: "user", content: fixerInitialMessage }],
-            fixerTools.schemas,
-            fixerTools.handlers,
-            emit,
-            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
-          );
+        await telemetry.time("fixer", async () => {
+          await withFallback(providerChainFixer, async (client, model) => {
+            await runAgentLoop(
+              fixerSystemPrompt,
+              [{ role: "user", content: fixerInitialMessage }],
+              fixerTools.schemas,
+              fixerTools.handlers,
+              emit,
+              { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+            );
+          });
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -598,5 +631,8 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   }
 
   session.status = { type: "idle" };
+  if (!passed) telemetry.setFinalStatus(session.aborted ? "aborted" : "fail");
+  telemetry.setFixCycle(currentCycle);
+  await telemetry.flush();
   emit({ type: "done" });
 }
