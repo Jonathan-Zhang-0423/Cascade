@@ -3,7 +3,7 @@ import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "./communicator-prompt";
-import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
+import { detectSkillsFromText, loadSkills, getSkillForFramework } from "./skill-loader";
 import { runAgentLoop } from "./agent-loop";
 import { buildFallbackChain, withFallback, type AIProvider } from "./kimi-client";
 import { storage } from "./storage";
@@ -367,18 +367,25 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   session.status = { type: "busy", agent: "editor" };
 
   if (!session.skillContent) {
+    // AG-13: Multi-skill injection. Framework skill is always primary when
+    // known; we still ask the LLM for a complementary secondary so full-stack
+    // projects (e.g., rn-expo frontend + node-express backend) get both
+    // skill docs.
     const frameworkSkill = session.framework ? getSkillForFramework(session.framework) : null;
-    let detectedSkill = frameworkSkill;
-    if (!detectedSkill) {
-      const planText = [
-        userRequest,
-        plan.summary || "",
-        normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
-      ].join(" ");
-      detectedSkill = await detectSkillFromText(planText, providerChainEditor);
+    const planText = [
+      userRequest,
+      plan.summary || "",
+      normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
+    ].join(" ");
+    const detected = await detectSkillsFromText(planText, providerChainEditor);
+    const merged: string[] = [];
+    if (frameworkSkill) merged.push(frameworkSkill);
+    for (const name of detected) {
+      if (!merged.includes(name)) merged.push(name);
     }
-    if (detectedSkill) {
-      const skillContent = await loadSkill(detectedSkill);
+    const finalSkills = merged.slice(0, 2);
+    if (finalSkills.length > 0) {
+      const skillContent = await loadSkills(finalSkills);
       if (skillContent) {
         session.skillContent = skillContent;
       }

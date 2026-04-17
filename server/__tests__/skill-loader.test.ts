@@ -5,7 +5,7 @@ vi.mock("../kimi-client", () => ({
   withFallback: vi.fn(),
 }));
 
-import { detectSkillFromText, listSkills } from "../skill-loader";
+import { detectSkillFromText, detectSkillsFromText, loadSkills, listSkills } from "../skill-loader";
 import { withFallback } from "../kimi-client";
 
 function mockLLMResponse(content: string | null) {
@@ -25,23 +25,22 @@ describe("AG-12 detectSkillFromText (LLM with keyword fallback)", () => {
     vi.clearAllMocks();
   });
 
-  it("returns the LLM's valid skill pick when JSON is well-formed", async () => {
-    mockLLMResponse(JSON.stringify({ skill: "react" }));
+  it("returns the LLM's valid primary pick when JSON is well-formed", async () => {
+    mockLLMResponse(JSON.stringify({ primary: "react", secondary: null }));
     const result = await detectSkillFromText("I want to build a thing", ["doubao"]);
     expect(result).toBe("react");
   });
 
-  it("falls through to keyword scoring when LLM returns null", async () => {
-    mockLLMResponse(JSON.stringify({ skill: null }));
-    // "Express REST API" has strong keywords → keyword scorer picks node-express
+  it("falls through to keyword scoring when LLM returns null primary", async () => {
+    mockLLMResponse(JSON.stringify({ primary: null, secondary: null }));
     const result = await detectSkillFromText("Express REST API backend", ["doubao"]);
     expect(result).toBe("node-express");
   });
 
   it("falls through when LLM returns a skill name not in the registered list", async () => {
-    mockLLMResponse(JSON.stringify({ skill: "not-a-real-skill" }));
+    mockLLMResponse(JSON.stringify({ primary: "not-a-real-skill", secondary: null }));
     const result = await detectSkillFromText("build me a React app", ["doubao"]);
-    expect(result).toBe("react"); // keyword fallback detects it
+    expect(result).toBe("react");
   });
 
   it("falls through when the LLM call throws", async () => {
@@ -69,8 +68,71 @@ describe("AG-12 detectSkillFromText (LLM with keyword fallback)", () => {
   });
 
   it("returns null when no skill matches and LLM says null", async () => {
-    mockLLMResponse(JSON.stringify({ skill: null }));
+    mockLLMResponse(JSON.stringify({ primary: null, secondary: null }));
     const result = await detectSkillFromText("asdfjkl qwerty", ["doubao"]);
+    expect(result).toBeNull();
+  });
+});
+
+describe("AG-13 detectSkillsFromText (multi-skill)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns both primary and secondary when LLM picks two", async () => {
+    mockLLMResponse(JSON.stringify({ primary: "react-native-expo", secondary: "node-express" }));
+    const result = await detectSkillsFromText("RN Expo app with an Express backend", ["doubao"]);
+    expect(result).toEqual(["react-native-expo", "node-express"]);
+  });
+
+  it("returns only primary when secondary is null", async () => {
+    mockLLMResponse(JSON.stringify({ primary: "react", secondary: null }));
+    const result = await detectSkillsFromText("React SPA", ["doubao"]);
+    expect(result).toEqual(["react"]);
+  });
+
+  it("dedups when LLM returns the same skill twice", async () => {
+    mockLLMResponse(JSON.stringify({ primary: "react", secondary: "react" }));
+    const result = await detectSkillsFromText("React app", ["doubao"]);
+    expect(result).toEqual(["react"]);
+  });
+
+  it("drops an unknown secondary but keeps a valid primary", async () => {
+    mockLLMResponse(JSON.stringify({ primary: "react", secondary: "not-real" }));
+    const result = await detectSkillsFromText("React app", ["doubao"]);
+    expect(result).toEqual(["react"]);
+  });
+
+  it("falls through to keyword scoring when both fields are null", async () => {
+    mockLLMResponse(JSON.stringify({ primary: null, secondary: null }));
+    const result = await detectSkillsFromText("Express REST API", ["doubao"]);
+    expect(result[0]).toBe("node-express");
+  });
+
+  it("uses keyword fallback (capped at 2) when no provider chain", async () => {
+    const result = await detectSkillsFromText("Flutter app with material widgets");
+    expect(result.length).toBeLessThanOrEqual(2);
+    expect(result[0]).toBe("flutter");
+    expect(withFallback).not.toHaveBeenCalled();
+  });
+});
+
+describe("AG-13 loadSkills", () => {
+  it("returns null for an empty name list", async () => {
+    const result = await loadSkills([]);
+    expect(result).toBeNull();
+  });
+
+  it("concatenates multiple skill contents with separator and headers", async () => {
+    const result = await loadSkills(["react", "node-express"]);
+    expect(result).not.toBeNull();
+    expect(result).toContain("### Skill: react");
+    expect(result).toContain("### Skill: node-express");
+    expect(result).toContain("\n\n---\n\n");
+  });
+
+  it("returns null when none of the names resolve", async () => {
+    const result = await loadSkills(["not-a-skill-xyz"]);
     expect(result).toBeNull();
   });
 });

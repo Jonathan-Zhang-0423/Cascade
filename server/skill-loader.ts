@@ -106,8 +106,11 @@ export function getSkillForFramework(framework: string): string | null {
  * AG-12 fallback: naive keyword scoring. Used when the LLM classifier fails
  * (network error, invalid JSON, unknown skill name returned) or when no
  * provider chain is supplied. Kept silent — the LLM version is the primary.
+ *
+ * Returns skills in descending score order. The first entry is the best
+ * keyword match (what detectSkillByKeywords used to return).
  */
-async function detectSkillByKeywords(text: string): Promise<string | null> {
+async function detectSkillsByKeywords(text: string): Promise<string[]> {
   const skills = await listSkills();
 
   const scores: Record<string, number> = {};
@@ -125,44 +128,67 @@ async function detectSkillByKeywords(text: string): Promise<string | null> {
     }
   }
 
-  if (Object.keys(scores).length === 0) return null;
+  return Object.entries(scores)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+}
 
-  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-  return best[0];
+async function detectSkillByKeywords(text: string): Promise<string | null> {
+  const names = await detectSkillsByKeywords(text);
+  return names[0] ?? null;
 }
 
 /**
  * AG-12: LLM-based semantic skill detection with keyword fallback.
  *
- * Calls a small classifier LLM with the list of registered skills and their
- * one-line descriptions. Returns the best-matching skill name, or null if no
- * skill fits. When the LLM call fails for any reason, falls through silently
- * to keyword scoring so the build pipeline still works.
- *
- * If providerChain is omitted or empty, skips the LLM call entirely and uses
- * keyword scoring only — useful in tests and offline environments.
+ * Single-skill variant — preserved for callers/tests that want a scalar
+ * answer. Delegates to detectSkillsFromText and returns the first result.
  */
 export async function detectSkillFromText(
   text: string,
   providerChain?: AIProvider[],
 ): Promise<string | null> {
+  const skills = await detectSkillsFromText(text, providerChain);
+  return skills[0] ?? null;
+}
+
+/**
+ * AG-13: Multi-skill detection. Returns up to 2 skill names ranked by
+ * relevance — primary first, secondary second (or empty second slot). The
+ * LLM is asked to pick a primary and optional secondary complementary
+ * skill; falls through to keyword scoring on any failure.
+ *
+ * We cap at 2 skills to bound prompt size — full-stack projects typically
+ * need one frontend + one backend skill, rarely more. If the cap needs to
+ * grow, bump MAX_SKILLS.
+ */
+const MAX_SKILLS = 2;
+
+export async function detectSkillsFromText(
+  text: string,
+  providerChain?: AIProvider[],
+): Promise<string[]> {
   if (!providerChain || providerChain.length === 0) {
-    return detectSkillByKeywords(text);
+    return (await detectSkillsByKeywords(text)).slice(0, MAX_SKILLS);
   }
 
   const skills = await listSkills();
-  if (skills.length === 0) return null;
+  if (skills.length === 0) return [];
 
   const skillList = skills
     .map((s) => `- ${s.name}: ${s.description || "(no description)"}`)
     .join("\n");
 
-  const systemPrompt = `You are a skill classifier. Given a user's build request, pick the ONE skill name from the list below that best matches the technology they want to use, or null if none fit.
+  const systemPrompt = `You are a skill classifier. Given a user's build request, pick the skill name(s) from the list below that best match the technology they want to use.
+
+- Always pick a "primary" skill if any fits, or null if none fit.
+- Pick a "secondary" skill only when the project genuinely needs two complementary skills (e.g., a full-stack project needing one frontend skill and one backend skill). Otherwise set secondary to null.
+- Never pick the same skill twice.
 
 Skills:
 ${skillList}
 
-Respond with ONLY valid JSON in this shape: {"skill": "<name>"} or {"skill": null}. No prose, no code fences.`;
+Respond with ONLY valid JSON in this shape: {"primary": "<name>" | null, "secondary": "<name>" | null}. No prose, no code fences.`;
 
   try {
     const completion = await withFallback(providerChain, async (client, model) =>
@@ -173,22 +199,49 @@ Respond with ONLY valid JSON in this shape: {"skill": "<name>"} or {"skill": nul
           { role: "user", content: text },
         ],
         stream: false,
-        max_tokens: 40,
+        max_tokens: 80,
       }),
     );
     const raw = completion.choices[0]?.message?.content?.trim() ?? "";
-    const parsed = JSON.parse(raw) as { skill: string | null };
-    if (parsed.skill === null) {
-      return detectSkillByKeywords(text);
+    const parsed = JSON.parse(raw) as { primary: string | null; secondary: string | null };
+    const knownNames = new Set(skills.map((s) => s.name));
+
+    const picked: string[] = [];
+    for (const candidate of [parsed.primary, parsed.secondary]) {
+      if (candidate === null || candidate === undefined) continue;
+      if (typeof candidate !== "string") continue;
+      if (!knownNames.has(candidate)) {
+        console.warn(`[SkillLoader] LLM returned unknown skill '${candidate}', ignoring`);
+        continue;
+      }
+      if (picked.includes(candidate)) continue;
+      picked.push(candidate);
     }
-    if (typeof parsed.skill === "string" && skills.some((s) => s.name === parsed.skill)) {
-      return parsed.skill;
+
+    if (picked.length === 0) {
+      return (await detectSkillsByKeywords(text)).slice(0, MAX_SKILLS);
     }
-    console.warn(`[SkillLoader] LLM returned unknown skill '${parsed.skill}', falling back to keywords`);
-    return detectSkillByKeywords(text);
+    return picked;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[SkillLoader] LLM classifier failed (${message}), falling back to keywords`);
-    return detectSkillByKeywords(text);
+    return (await detectSkillsByKeywords(text)).slice(0, MAX_SKILLS);
   }
+}
+
+/**
+ * AG-13: Load multiple skill contents and join them with clear separators so
+ * the editor/verifier prompt sees each skill as its own section.
+ */
+export async function loadSkills(names: string[]): Promise<string | null> {
+  if (names.length === 0) return null;
+  const parts: string[] = [];
+  for (const name of names) {
+    const content = await loadSkill(name);
+    if (content) {
+      parts.push(`### Skill: ${name}\n\n${content}`);
+    }
+  }
+  if (parts.length === 0) return null;
+  return parts.join("\n\n---\n\n");
 }

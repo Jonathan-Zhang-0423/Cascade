@@ -1368,13 +1368,21 @@ Q3 — LESS IMPORTANT & EASY (low impact, low cost)
            server/__tests__/skill-loader.test.ts (new, 9 cases)
     Effort: 1.5 hours
 
-[ ] AG-13: Multi-skill injection
-    What: Allow skill-loader to return and inject multiple matching skills
-      (e.g., react + node-express for a full-stack project).
-    Why: Currently returns only the single highest-scoring skill.
-         Full-stack projects that need both frontend and backend guidance get only one.
-    Files: server/skill-loader.ts, server/build-orchestrator.ts
-    Effort: 1–2 hours
+[x] AG-13: Multi-skill injection — COMPLETE
+    What: skill-loader now returns up to 2 matching skills (primary + optional
+      complementary secondary) and joins their content with `### Skill: <name>`
+      headers separated by `---`.
+    Implementation:
+      - Added detectSkillsFromText(text, providerChain?) → string[] with LLM
+        JSON shape {primary, secondary}; keyword fallback on any failure.
+      - Added loadSkills(names) that concatenates multiple SKILL.md contents.
+      - detectSkillFromText kept as thin wrapper returning first result.
+      - build-orchestrator merges framework skill (primary) with LLM-detected
+        secondary, dedupes, caps at 2, passes joined content to editor/verifier.
+      - 12 new tests for multi-skill, dedup, unknown-secondary-drop, loadSkills.
+    Files: server/skill-loader.ts, server/build-orchestrator.ts,
+           server/__tests__/skill-loader.test.ts
+    Effort: ~1 hour
 
 [ ] AG-14: Reduce verifier max_iterations from 30 to 15
     What: The verifier's job is simpler than the editor's — read files, report issues,
