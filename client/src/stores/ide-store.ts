@@ -827,7 +827,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       if (currentState.projectId !== id) return;
 
       const allPaths = serverFiles.map((f) => f.path);
-      const validOpenFiles = baseState.openFiles.filter((f) => allPaths.includes(f));
+      const validOpenFiles = baseState.openFiles.filter((f: string) => allPaths.includes(f));
       const entryFile = getMainEntryFile(framework);
       const fallbackFile = allPaths.find((p) => p === entryFile) || allPaths.find((p) => p.endsWith(".html")) || allPaths[0] || entryFile;
       const openFiles = validOpenFiles.length > 0 ? validOpenFiles : [fallbackFile];

@@ -231,13 +231,15 @@ export const useProjectStore = create<ProjectStoreState>()(
 
         if (isWeb) {
           const flatFiles: { path: string; content: string }[] = [];
-          function flattenNode(nodes: typeof BLANK_FILES) {
+          type FileNode = { name: string; path: string; type: "file"; content?: string };
+          type FolderNode = { name: string; path: string; type: "folder"; children: (FileNode | FolderNode)[] };
+          function flattenNode(nodes: readonly (FileNode | FolderNode)[]) {
             for (const n of nodes) {
-              if (n.type === "file" && "content" in n) {
+              if (n.type === "file") {
                 flatFiles.push({ path: n.path, content: n.content || "" });
               }
-              if ("children" in n && n.children) {
-                flattenNode(n.children as typeof BLANK_FILES);
+              if (n.type === "folder" && n.children) {
+                flattenNode(n.children);
               }
             }
           }

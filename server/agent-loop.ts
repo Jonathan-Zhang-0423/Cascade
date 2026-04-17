@@ -137,7 +137,7 @@ export async function runAgentLoop(
     let textPart: Part | undefined;
     let reasoningPart: Part | undefined;
 
-    for await (const chunk of response) {
+    for await (const chunk of response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
       const choice = chunk.choices[0];
       if (!choice) continue;
 
