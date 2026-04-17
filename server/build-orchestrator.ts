@@ -18,7 +18,7 @@ import { detectFramework, type Framework } from "./framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
 import { lspManager } from "./lsp-manager";
 import { shellManager } from "./shell-manager";
-import { groupStepsIntoWaves, hasParallelOpportunity } from "./step-dependency-analyzer";
+import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-dependency-analyzer";
 
 export interface BuildFile {
   path: string;
@@ -267,6 +267,63 @@ function buildTargetedFixPlan(
   }));
 }
 
+/**
+ * AG-10 Phase 2: Execute plan waves with intra-wave parallelism.
+ *
+ * Each wave runs sequentially (wave N+1 waits for wave N to finish). Within
+ * a wave, each step runs in its own agent loop via Promise.all(). Every
+ * sub-loop shares the same session state (session.files, partCtx), but since
+ * steps in a wave touch disjoint required_files, file-level writes do not
+ * collide. Event emission and Part mutation go through the existing emit()
+ * and partCtx infrastructure — any interleaving is cosmetic, not correctness.
+ *
+ * Gated behind AG10_PARALLEL=1. Off by default.
+ */
+async function runBuilderParallelWaves(
+  session: BuildSessionState,
+  waves: Wave[],
+  builderSystemPrompt: string,
+  providerChainEditor: AIProvider[],
+  partCtx: PartEmitContext,
+  emit: SseEmit,
+): Promise<void> {
+  for (const wave of waves) {
+    if (session.aborted) return;
+
+    const concurrent = wave.steps.length > 1;
+    console.log(
+      `[BuildSession ${session.id}] AG-10 running wave ${wave.index} ` +
+        `with ${wave.steps.length} step(s) ${concurrent ? "in parallel" : "sequentially"}`,
+    );
+
+    await Promise.all(
+      wave.steps.map(async (step) => {
+        const subInitialMessage = buildBuilderInitialMessage(session, [step], "build");
+        // Each sub-loop gets tools scoped to just this step, so mark_step_complete
+        // does not try to auto-advance to a different wave's step.
+        const subTools = buildBuilderTools(session, [step]);
+        await withFallback(providerChainEditor, async (client, model) => {
+          await runAgentLoop(
+            builderSystemPrompt,
+            [{ role: "user", content: subInitialMessage }],
+            subTools.schemas,
+            subTools.handlers,
+            emit,
+            {
+              exitTools: ["request_review", "mark_step_complete"],
+              maxIterations: 30,
+              client,
+              model,
+              partCtx,
+              sessionId: session.id,
+            },
+          );
+        });
+      }),
+    );
+  }
+}
+
 export async function runBuildSession(session: BuildSessionState, emit: SseEmit): Promise<void> {
   const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
@@ -327,32 +384,42 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
 
-  // AG-10: Analyze step dependencies. Currently informational only — execution
-  // stays sequential. The wave structure is logged so we can validate plans
-  // produce useful parallelism before wiring up concurrent agent loops.
+  // AG-10: Analyze step dependencies. By default execution stays sequential
+  // (one agent loop over the full plan). When AG10_PARALLEL=1 is set, each
+  // wave is executed as an independent agent loop, with steps inside a wave
+  // concurrent via Promise.all().
   const waves = groupStepsIntoWaves(normalizedSteps);
+  const parallelEnabled = process.env.AG10_PARALLEL === "1";
+  const shouldRunParallel = parallelEnabled && hasParallelOpportunity(waves) && waves.length > 1;
   if (hasParallelOpportunity(waves)) {
     const waveSummary = waves
       .map((w) => `wave ${w.index}: [${w.steps.map((s) => s.step).join(", ")}]`)
       .join(" | ");
-    console.log(`[BuildSession ${session.id}] AG-10 wave analysis: ${waveSummary}`);
+    console.log(
+      `[BuildSession ${session.id}] AG-10 wave analysis: ${waveSummary} ` +
+        `(parallel=${shouldRunParallel ? "on" : "off"})`,
+    );
   }
 
   const builderSystemPrompt = buildBuilderSystemPrompt(session);
-  const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
-  const builderTools = buildBuilderTools(session, normalizedSteps);
 
   try {
-    await withFallback(providerChainEditor, async (client, model) => {
-      await runAgentLoop(
-        builderSystemPrompt,
-        [{ role: "user", content: builderInitialMessage }],
-        builderTools.schemas,
-        builderTools.handlers,
-        emit,
-        { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
-      );
-    });
+    if (shouldRunParallel) {
+      await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit);
+    } else {
+      const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
+      const builderTools = buildBuilderTools(session, normalizedSteps);
+      await withFallback(providerChainEditor, async (client, model) => {
+        await runAgentLoop(
+          builderSystemPrompt,
+          [{ role: "user", content: builderInitialMessage }],
+          builderTools.schemas,
+          builderTools.handlers,
+          emit,
+          { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+        );
+      });
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     emit({ type: "build_error", message });
