@@ -1569,6 +1569,32 @@ ${mode === "manager" ? "- This is a planning conversation, so the response shoul
     }
   });
 
+  app.post("/api/generate-project-name", async (req, res) => {
+    try {
+      const { idea, framework } = req.body as { idea?: string; framework?: string };
+      if (!idea) {
+        res.status(400).json({ error: "idea is required" });
+        return;
+      }
+      const { client: nameClient } = getOptimalClient("planning", "doubao");
+      const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
+      const completion = await nameClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: `Generate a short project name (2-4 words, title case) for this app idea${frameworkHint}:\n\n"${idea}"\n\nRespond with ONLY the project name, nothing else.`,
+          },
+        ],
+        max_tokens: 20,
+      });
+      const name = (completion.choices[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "");
+      res.json({ name: name || "New Project" });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to generate name" });
+    }
+  });
+
   app.post("/api/generate-cascade", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {

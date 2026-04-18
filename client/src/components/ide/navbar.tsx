@@ -11,14 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw, ChevronLeft, Loader2, EyeOff, Eye } from "lucide-react";
+import { RefreshCw, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { LangToggle } from "@/components/lang-toggle";
 import { useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
-
 interface NavbarProps {
   projectName: string;
 }
@@ -86,8 +84,6 @@ export function Navbar({ projectName }: NavbarProps) {
     isConsoleOpen,
     toggleConsole,
     projectId,
-    codeVisible,
-    toggleCodeVisible,
   } = useIDEStore();
   const { projects } = useProjectStore();
   const { themeId, setThemeId } = useTheme();
@@ -257,19 +253,6 @@ export function Navbar({ projectName }: NavbarProps) {
 
       {/* Right */}
       <div className="flex items-center gap-2 flex-1 justify-end">
-        <button
-          className={cn(
-            "flex items-center justify-center w-7 h-7 rounded-md border [transition:var(--transition-fast)]",
-            !codeVisible
-              ? "bg-[rgba(79,130,255,0.10)] border-[rgba(79,130,255,0.20)] text-[#4f82ff]"
-              : "bg-[#0c0c14] border-[rgba(255,255,255,0.07)] text-[#8888a8] hover:text-[#eeeef6] hover:bg-[#14141e]"
-          )}
-          onClick={toggleCodeVisible}
-          title={codeVisible ? "Hide code" : "Show code"}
-          data-testid="button-toggle-code-visible"
-        >
-          {codeVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-        </button>
         <Select value={themeId} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-[#0c0c14] border-[rgba(255,255,255,0.07)] text-[#8888a8]" data-testid="select-theme">
             <SelectValue />

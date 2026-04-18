@@ -496,6 +496,205 @@ export function renderBoldMarkdown(str: string) {
   });
 }
 
+function renderInlineMarkdown(line: string): React.ReactNode[] {
+  const tokens: Array<{ type: "text" | "bold" | "italic" | "code"; content: string }> = [];
+  let i = 0;
+  let current = "";
+
+  while (i < line.length) {
+    if (line[i] === "`" && line[i + 1] !== "`") {
+      if (current) tokens.push({ type: "text", content: current });
+      current = "";
+      let j = i + 1;
+      while (j < line.length && line[j] !== "`") {
+        current += line[j];
+        j++;
+      }
+      if (j < line.length) {
+        tokens.push({ type: "code", content: current });
+        current = "";
+        i = j + 1;
+      } else {
+        current = "`" + current;
+        i++;
+      }
+      continue;
+    }
+
+    if (line[i] === "*" && line[i + 1] === "*" && line[i + 2] !== "*") {
+      if (current) tokens.push({ type: "text", content: current });
+      current = "";
+      let j = i + 2;
+      while (j < line.length - 1) {
+        if (line[j] === "*" && line[j + 1] === "*") {
+          tokens.push({ type: "bold", content: current });
+          current = "";
+          i = j + 2;
+          break;
+        }
+        current += line[j];
+        j++;
+      }
+      if (j >= line.length - 1 && current) {
+        tokens.push({ type: "text", content: "**" + current });
+        current = "";
+        i = line.length;
+      }
+      continue;
+    }
+
+    if ((line[i] === "*" || line[i] === "_") && line[i + 1] !== "*" && line[i + 1] !== "_") {
+      const marker = line[i];
+      if (current) tokens.push({ type: "text", content: current });
+      current = "";
+      let j = i + 1;
+      while (j < line.length) {
+        if (line[j] === marker) {
+          tokens.push({ type: "italic", content: current });
+          current = "";
+          i = j + 1;
+          break;
+        }
+        current += line[j];
+        j++;
+      }
+      if (j >= line.length && current) {
+        tokens.push({ type: "text", content: marker + current });
+        current = "";
+        i = line.length;
+      }
+      continue;
+    }
+
+    current += line[i];
+    i++;
+  }
+
+  if (current) tokens.push({ type: "text", content: current });
+
+  return tokens.map((token, idx) => {
+    switch (token.type) {
+      case "bold":
+        return (
+          <strong key={idx} className="font-semibold text-foreground">
+            {token.content}
+          </strong>
+        );
+      case "italic":
+        return (
+          <em key={idx} className="italic text-foreground/80">
+            {token.content}
+          </em>
+        );
+      case "code":
+        return (
+          <code key={idx} className="font-mono text-[11px] bg-[rgba(255,255,255,0.07)] px-1 py-0.5 rounded text-[#a8c4ff]">
+            {token.content}
+          </code>
+        );
+      default:
+        return <span key={idx}>{token.content}</span>;
+    }
+  });
+}
+
+export function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
+      elements.push(<hr key={`hr-${i}`} className="border-border/20 my-2" />);
+      i++;
+      continue;
+    }
+
+    const h1Match = trimmed.match(/^# +(.+)$/);
+    if (h1Match) {
+      elements.push(
+        <h1 key={`h1-${i}`} className="text-[15px] font-semibold text-foreground mt-3 mb-1">
+          {renderInlineMarkdown(h1Match[1])}
+        </h1>
+      );
+      i++;
+      continue;
+    }
+
+    const h2Match = trimmed.match(/^## +(.+)$/);
+    if (h2Match) {
+      elements.push(
+        <h2 key={`h2-${i}`} className="text-[13px] font-semibold text-foreground/90 mt-2.5 mb-0.5">
+          {renderInlineMarkdown(h2Match[1])}
+        </h2>
+      );
+      i++;
+      continue;
+    }
+
+    const h3Match = trimmed.match(/^### +(.+)$/);
+    if (h3Match) {
+      elements.push(
+        <h3 key={`h3-${i}`} className="text-[12px] font-medium text-foreground/75 uppercase tracking-wide mt-2 mb-0.5">
+          {renderInlineMarkdown(h3Match[1])}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+
+    if (trimmed.match(/^[-*] +/)) {
+      const ulItems: string[] = [];
+      while (i < lines.length && lines[i].trim().match(/^[-*] +/)) {
+        ulItems.push(lines[i].trim().slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="ml-4 list-disc text-[13px] leading-[1.6] mb-1">
+          {ulItems.map((item, idx) => (
+            <li key={idx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    const olMatch = trimmed.match(/^\d+\. +/);
+    if (olMatch) {
+      const olItems: string[] = [];
+      while (i < lines.length && lines[i].trim().match(/^\d+\. +/)) {
+        olItems.push(lines[i].trim().replace(/^\d+\. +/, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="ml-4 list-decimal text-[13px] leading-[1.6] mb-1">
+          {olItems.map((item, idx) => (
+            <li key={idx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    elements.push(
+      <p key={`p-${i}`} className="text-[13px] leading-[1.65] text-foreground/90 mb-1">
+        {renderInlineMarkdown(trimmed)}
+      </p>
+    );
+    i++;
+  }
+
+  return <div className="space-y-0">{elements}</div>;
+}
+
 export function splitSummaryBody(text: string): { body: string; trailing: string } {
   const lines = text.split("\n");
   let bulletStarted = false;

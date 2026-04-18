@@ -584,7 +584,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   ],
   consoleEntries: [],
   activeTool: "files" as ToolPanel,
-  isConsoleOpen: true,
+  isConsoleOpen: false,
   isSidebarOpen: true,
   isChatOpen: false,
   isAiResponding: false,
@@ -601,7 +601,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   layoutMode: "code",
   setLayoutMode: (mode) => { set({ layoutMode: mode }); debouncedPersist(get()); },
-  codeVisible: true,
+  codeVisible: false,
   toggleCodeVisible: () => { set((s) => ({ codeVisible: !s.codeVisible })); debouncedPersist(get()); },
 
   chatMode: "build",
@@ -806,7 +806,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       customDeviceWidth: 390,
       customDeviceHeight: 844,
       layoutMode: "code" as "preview" | "code",
-      codeVisible: true,
+      codeVisible: false,
     };
 
     set(baseState);

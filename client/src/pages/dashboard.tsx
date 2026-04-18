@@ -70,6 +70,18 @@ export default function DashboardPage() {
     setSelectedFramework("web");
     setShowNewDialog(false);
     navigate(`/project/${id}`);
+    // Auto-name the project based on the idea — fire and forget
+    const framework = selectedFramework;
+    fetch("/api/generate-project-name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea, framework }),
+    })
+      .then((r) => r.json())
+      .then((data: { name?: string }) => {
+        if (data.name) renameProject(id, data.name);
+      })
+      .catch(() => {});
   };
 
   const handleDelete = () => {

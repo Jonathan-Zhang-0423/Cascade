@@ -1,6 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
-import { FolderClosed, Sparkles, Radio, History } from "lucide-react";
+import { FolderClosed, Sparkles, Radio, History, Code2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -37,7 +37,7 @@ function DockButton({
 }
 
 export function ToolsDock() {
-  const { activeTool, setActiveTool } = useIDEStore();
+  const { activeTool, setActiveTool, codeVisible, toggleCodeVisible } = useIDEStore();
   const isMonitorOpen = useIDEStore((s) => s.isLLMMonitorOpen);
   const toggleMonitor = useIDEStore((s) => s.toggleLLMMonitor);
   const monitorEventCount = useLLMMonitorStore((s) => s.eventCount);
@@ -69,6 +69,13 @@ export function ToolsDock() {
           isActive={activeTool === "history"}
           onClick={() => setActiveTool(activeTool === "history" ? null : "history")}
           testId="dock-history"
+        />
+        <DockButton
+          icon={<Code2 className="w-[18px] h-[18px]" />}
+          label="Toggle code"
+          isActive={codeVisible}
+          onClick={toggleCodeVisible}
+          testId="dock-code-visible"
         />
       </div>
 

@@ -83,35 +83,63 @@ export function ActionLogLiveRow({
 }) {
   const color = getActionLogColor(entry.type);
   const icon = getActionLogIcon(entry.type);
-  const label =
-    entry.label.length > 50 ? entry.label.slice(0, 50) + "…" : entry.label;
   const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
   const isWrite = entry.type === "file_write";
+  const isRead = entry.type === "file_read";
 
-  const writeStatusLabel = isWrite ? "written" : null;
+  // Extract filename from path
+  const fileName = entry.filePath
+    ? entry.filePath.split("/").pop() || entry.filePath
+    : entry.label;
+
+  const displayLabel = isFileEntry
+    ? fileName
+    : entry.label.length > 50
+      ? entry.label.slice(0, 50) + "…"
+      : entry.label;
+
+  const actionType = isWrite ? "written" : isRead ? "read" : null;
 
   return (
     <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
       <div
         className={cn(
-          "flex items-center gap-1.5 py-[5px] text-[12px]",
+          "flex items-center gap-2 py-2 px-2.5 rounded-md text-[12px] border",
           isWrite
-            ? "border-l-2 border-[#34d68a] bg-[rgba(52,214,138,0.05)] px-2 rounded-r-[4px]"
-            : color,
+            ? "border-[rgba(52,214,138,0.25)] bg-[rgba(52,214,138,0.08)] shadow-sm"
+            : isRead
+            ? "border-[rgba(129,140,248,0.15)] bg-[rgba(129,140,248,0.05)]"
+            : "border-border/20 bg-[rgba(255,255,255,0.02)]"
         )}
         style={isWrite ? { animation: "file-flash 600ms ease-out, fade-up 150ms ease" } : undefined}
       >
-        {icon}
-        <span className={cn("truncate leading-tight font-medium", isWrite ? "text-[#4ddc96] font-medium" : "")}>
-          {label}
-        </span>
-        {isWrite && writeStatusLabel && (
-          <span className="ml-auto shrink-0 text-[#2a7a4e] text-[11px]">{writeStatusLabel}</span>
-        )}
-        {!isWrite && isFileEntry && entry.filePath && (
-          <span className="ml-auto shrink-0 text-muted-foreground/40 text-[10px] font-mono">
-            {entry.filePath}
-          </span>
+        <div className={cn(
+          "flex items-center justify-center rounded-md p-1.5 shrink-0",
+          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-[rgba(255,255,255,0.05)]"
+        )}>
+          <div className={isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-muted-foreground/60"}>
+            {icon}
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={cn("font-medium truncate leading-tight",
+            isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-foreground/80"
+          )}>
+            {displayLabel}
+          </div>
+          {isFileEntry && entry.filePath && (
+            <div className="text-[10px] text-muted-foreground/40 truncate font-mono mt-0.5">
+              {entry.filePath}
+            </div>
+          )}
+        </div>
+        {actionType && (
+          <div className={cn(
+            "shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded",
+            isWrite ? "bg-[rgba(52,214,138,0.15)] text-[#5fe8a0]" : "bg-[rgba(129,140,248,0.1)] text-[#818cf8]"
+          )}>
+            {actionType}
+          </div>
         )}
       </div>
       {showCodePreview &&
@@ -234,71 +262,74 @@ export function CollapsedThinking({ text }: { text: string }) {
 function GroupedActionRow({ group }: { group: ActionGroup }) {
   const [expanded, setExpanded] = useState(false);
   const count = group.entries.length;
-  const color = getActionLogColor(group.type);
 
+  // Single entry: just render it directly, no grouping
   if (count === 1) {
     return <ActionLogLiveRow entry={group.entries[0]} />;
   }
 
-  // Collapsed view for consecutive file reads
+  // Multiple file reads: show as collapsible list
   if (group.type === "file_read" && count > 1) {
     const fileNames = group.entries
       .map(e => e.filePath?.split("/").pop() || e.label)
       .filter(Boolean)
       .slice(0, 4)
       .join(", ");
+
     return (
-      <div
-        className="flex items-center gap-1.5 py-[5px] px-1 text-[12px] rounded-md"
-        style={{ animation: "fade-up 150ms ease" }}
-      >
-        {getActionLogIcon("file_read")}
-        <span className="text-muted-foreground/60">Read {count} files</span>
-        {fileNames && (
-          <span className="text-muted-foreground/30 text-[11px] truncate ml-1">{fileNames}</span>
+      <div className="space-y-1">
+        {expanded ? (
+          <>
+            {group.entries.map((entry, i) => (
+              <ActionLogLiveRow key={i} entry={entry} />
+            ))}
+            <button
+              className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors flex items-center gap-1 mt-1"
+              onClick={() => setExpanded(false)}
+            >
+              <ChevronUp className="w-3 h-3" />
+              Collapse
+            </button>
+          </>
+        ) : (
+          <button
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[12px] border border-[rgba(129,140,248,0.15)] bg-[rgba(129,140,248,0.04)] hover:bg-[rgba(129,140,248,0.08)] transition-colors text-left text-[#818cf8]"
+            onClick={() => setExpanded(true)}
+            style={{ animation: "fade-up 150ms ease" }}
+          >
+            <div className="flex items-center justify-center rounded p-1.5 bg-[rgba(129,140,248,0.1)]">
+              <FileSearch className="w-3 h-3 text-[#818cf8]" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium">Read {count} files</div>
+              {fileNames && (
+                <div className="text-[10px] text-muted-foreground/40 truncate font-mono mt-0.5">{fileNames}</div>
+              )}
+            </div>
+            <ChevronDown className="w-3 h-3 text-muted-foreground/40" />
+          </button>
         )}
       </div>
     );
   }
 
-  const label = getGroupLabel(group.type, count);
-  // Show up to 3 icons from individual entries to give a glanceable signature
-  const previewIcons = group.entries.slice(0, 3);
+  // Multiple file writes: show all distinct rows, no grouping
+  if (group.type === "file_write") {
+    return (
+      <div className="space-y-1">
+        {group.entries.map((entry, i) => (
+          <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === group.entries.length - 1} />
+        ))}
+      </div>
+    );
+  }
 
+  // Other types: render all entries in a list
   return (
-    <div className="border border-border/20 rounded-md overflow-hidden" style={{ animation: "fade-up 150ms ease" }}>
-      <button
-        className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
-          color,
-        )}
-        onClick={() => setExpanded((e) => !e)}
-        data-testid={`grouped-action-${group.type}`}
-      >
-        {/* Multi-icon strip: shows distinct entry icons side-by-side */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          {previewIcons.map((entry, i) => (
-            <span key={i} className="opacity-80">
-              {getActionLogIcon(entry.type, true)}
-            </span>
-          ))}
-        </div>
-        <span className="flex-1 truncate leading-tight font-medium">{label}</span>
-        <span className="shrink-0 text-muted-foreground/40">
-          {expanded ? (
-            <ChevronDown className="w-2.5 h-2.5" />
-          ) : (
-            <ChevronRight className="w-2.5 h-2.5" />
-          )}
-        </span>
-      </button>
-      {expanded && (
-        <div className="border-t border-border/15 px-2 py-1 space-y-0.5">
-          {group.entries.map((entry, i) => (
-            <ActionLogLiveRow key={i} entry={entry} showCodePreview={i === group.entries.length - 1} />
-          ))}
-        </div>
-      )}
+    <div className="space-y-1">
+      {group.entries.map((entry, i) => (
+        <ActionLogLiveRow key={i} entry={entry} />
+      ))}
     </div>
   );
 }
@@ -327,13 +358,19 @@ export function ActionLogLive({
         ))}
       {narrationText && !thinkingText && (
         <div
-          className="flex items-start gap-1.5 py-0.5 text-[11px]"
+          className="rounded-md border-l-2 border-[#34d68a] bg-[rgba(52,214,138,0.04)] px-3 py-2 mb-1"
+          style={{ animation: "fade-up 150ms ease" }}
           data-testid="narration-live-text"
         >
-          <MessageSquare className="w-3 h-3 shrink-0 mt-0.5 text-muted-foreground/50" />
-          <span className="leading-relaxed text-foreground/70 line-clamp-3">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#34d68a] animate-pulse shrink-0" />
+            <span className="text-[10px] font-medium text-[#34d68a]/70 uppercase tracking-wide">
+              Live
+            </span>
+          </div>
+          <p className="text-[12px] leading-relaxed text-foreground/85 font-mono">
             {narrationText}
-          </span>
+          </p>
         </div>
       )}
       {groups.map((group, i) => (
@@ -353,48 +390,90 @@ export function ActionLogChip({
   const [expanded, setExpanded] = useState(false);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const lastBuildFileDiffs = useIDEStore((s) => s.lastBuildFileDiffs);
-  const color = getActionLogColor(entry.type);
   const icon = getActionLogIcon(entry.type);
-  const label =
-    entry.label.length > 45 ? entry.label.slice(0, 45) + "…" : entry.label;
+  const isCodeEntry = entry.type === "file_write" || entry.type === "file_read";
+  const isWrite = entry.type === "file_write";
+  const isRead = entry.type === "file_read";
   const hasDetail = entry.detail && entry.detail.trim().length > 0;
 
-  const isCodeEntry = entry.type === "file_write" || entry.type === "file_read";
+  const fileName = entry.filePath
+    ? entry.filePath.split("/").pop() || entry.filePath
+    : entry.label;
+  const displayLabel = isCodeEntry
+    ? fileName
+    : entry.label.length > 45
+      ? entry.label.slice(0, 45) + "…"
+      : entry.label;
+
   const fileDiff = entry.type === "file_write" && entry.filePath
     ? lastBuildFileDiffs[entry.filePath]
     : undefined;
 
+  const actionType = isWrite ? "written" : isRead ? "read" : null;
+
   return (
     <div
-      className="border border-border/30 rounded-md overflow-hidden animate-in fade-in duration-200"
+      className={cn(
+        "rounded-md overflow-hidden animate-in fade-in duration-200 border",
+        isWrite
+          ? "border-[rgba(52,214,138,0.25)] bg-[rgba(52,214,138,0.05)]"
+          : isRead
+          ? "border-[rgba(129,140,248,0.15)] bg-[rgba(129,140,248,0.04)]"
+          : "border-border/30 bg-card/20"
+      )}
       data-testid={`action-chip-${index}`}
     >
       <button
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
-          color,
+          "w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] hover:bg-[rgba(255,255,255,0.08)] transition-colors text-left group"
         )}
         onClick={() => hasDetail && setExpanded((e) => !e)}
         disabled={!hasDetail && !fileDiff}
         data-testid={`button-action-chip-${index}`}
       >
-        {icon}
-        <span className="flex-1 truncate leading-tight">{label}</span>
+        <div className={cn(
+          "flex items-center justify-center rounded p-1 shrink-0",
+          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-[rgba(255,255,255,0.05)]"
+        )}>
+          <div className={isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-muted-foreground/60"}>
+            {icon}
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={cn("font-medium truncate leading-tight",
+            isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-foreground/80"
+          )}>
+            {displayLabel}
+          </div>
+          {isCodeEntry && entry.filePath && (
+            <div className="text-[9px] text-muted-foreground/35 truncate font-mono mt-0.5">
+              {entry.filePath}
+            </div>
+          )}
+        </div>
+        {actionType && (
+          <div className={cn(
+            "shrink-0 text-[9px] font-medium px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity",
+            isWrite ? "bg-[rgba(52,214,138,0.15)] text-[#5fe8a0]" : "bg-[rgba(129,140,248,0.1)] text-[#818cf8]"
+          )}>
+            {actionType}
+          </div>
+        )}
         {fileDiff && (
           <button
-            className="shrink-0 flex items-center gap-0.5 text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors px-1"
+            className="shrink-0 flex items-center justify-center p-1 rounded hover:bg-[rgba(255,255,255,0.1)] transition-colors"
             onClick={(e) => { e.stopPropagation(); setDiffExpanded((d) => !d); }}
             data-testid={`button-diff-${index}`}
           >
-            <GitCompare className="w-2.5 h-2.5" />
+            <GitCompare className="w-3 h-3 text-muted-foreground/50 hover:text-foreground" />
           </button>
         )}
-        {hasDetail && (
-          <span className="shrink-0 text-muted-foreground/40">
-            {expanded ? (
-              <ChevronDown className="w-2.5 h-2.5" />
+        {(hasDetail || fileDiff) && (
+          <span className="shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">
+            {expanded || diffExpanded ? (
+              <ChevronDown className="w-3 h-3" />
             ) : (
-              <ChevronRight className="w-2.5 h-2.5" />
+              <ChevronRight className="w-3 h-3" />
             )}
           </span>
         )}

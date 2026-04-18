@@ -33,11 +33,12 @@ import {
   PenLine,
   Play,
   Search,
+  Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang } from "./chat-types";
 import { PREVIEW_STEP_COUNT } from "./chat-types";
-import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
+import { t, usePlanCardLang, normalizeSteps, renderMarkdown } from "./chat-utils";
 
 function StepItem({
   task,
@@ -65,8 +66,9 @@ function StepItem({
           <div
             className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
             style={{
-              background: "#1a5e3a",
-              border: "1px solid rgba(52,214,138,0.25)",
+              background: "#2d6a4a",
+              border: "1px solid rgba(52,214,138,0.35)",
+              boxShadow: !isCompleted ? "0 0 8px rgba(52,214,138,0.25)" : "none",
               ...((!isCompleted) ? { animation: "step-complete 200ms var(--transition-spring)" } : {}),
             }}
           >
@@ -77,7 +79,10 @@ function StepItem({
         );
       case "running":
         return (
-          <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] bg-[#0d1422] flex items-center justify-center shrink-0">
+          <div
+            className="w-4 h-4 rounded-full border-2 border-[#4f82ff] bg-[#0d1422] flex items-center justify-center shrink-0"
+            style={isRunning ? { animation: "step-pulse 1.5s ease-in-out infinite" } : {}}
+          >
             <div className="w-[6px] h-[6px] rounded-full bg-[#4f82ff]" />
           </div>
         );
@@ -107,9 +112,10 @@ function StepItem({
     <div
       className={cn(
         "flex gap-[10px] items-start py-[6px] px-[6px] rounded-md -mx-1.5",
-        "transition-colors",
-        isRunning && "bg-[#121a2e]",
+        "transition-all",
+        isRunning && "bg-[rgba(79,130,255,0.08)] border-l-2 border-l-[#4f82ff] pl-[8px]",
       )}
+      style={isRunning ? { boxShadow: "0 2px 8px rgba(0,0,0,0.3)" } : {}}
       data-testid={`step-${task.step}`}
     >
       {/* Dot + connector column */}
@@ -149,7 +155,8 @@ function StepItem({
         </span>
         {isRunning && (
           <span
-            className="text-[10px] bg-[rgba(79,130,255,0.12)] text-[#4f82ff] border border-[rgba(79,130,255,0.25)] rounded px-1.5 py-0.5 shrink-0 font-medium"
+            className="text-[10px] text-[#4f82ff] border border-[rgba(79,130,255,0.25)] rounded px-1.5 py-0.5 shrink-0 font-medium"
+            style={{ animation: "badge-pulse 1.5s ease-in-out infinite" }}
             data-testid={`step-building-${task.step}`}
           >
             Building…
@@ -299,9 +306,9 @@ export function NarrationBubble({
       {message.thinking && <ThinkingToggle thinking={message.thinking} />}
       {content && (
         <>
-          <p className="text-foreground/90 whitespace-pre-wrap">
-            {displayContent}
-          </p>
+          <div className="text-foreground/90">
+            {renderMarkdown(displayContent)}
+          </div>
           {needsTruncation && (
             <button
               className="text-[11px] text-primary/70 hover:text-primary transition-colors mt-1"
@@ -465,42 +472,53 @@ export function TaskPlanCard({
                 </div>
               </div>
             )}
-            <div className="px-3 pt-2 pb-2 border-b border-border/20">
-              <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">
-                {t(lang, "whatAndWhy")}
-              </p>
+            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#4f82ff] bg-[rgba(79,130,255,0.03)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Lightbulb className="w-3.5 h-3.5 text-[#4f82ff] shrink-0" />
+                <p className="text-[10px] font-semibold text-[#4f82ff] uppercase tracking-wide">
+                  {t(lang, "whatAndWhy")}
+                </p>
+              </div>
               <p className="text-[12px] text-foreground/80 leading-relaxed">
                 {whatAndWhy || t(lang, "whatAndWhyNone")}
               </p>
             </div>
-            <div className="px-3 py-2 border-b border-border/20">
-              <p className="text-[10px] font-semibold text-green-500/70 uppercase tracking-wide mb-1">
-                {t(lang, "doneLooksLike")}
-              </p>
+            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#34d68a] bg-[rgba(52,214,138,0.03)]">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#34d68a] shrink-0" />
+                <p className="text-[10px] font-semibold text-[#34d68a] uppercase tracking-wide">
+                  {t(lang, "doneLooksLike")}
+                </p>
+              </div>
               <p className="text-[12px] text-foreground/80 leading-relaxed">
                 {doneLooksLike || t(lang, "doneLooksLikeNone")}
               </p>
             </div>
-            <div className="px-3 py-2 border-b border-border/20">
-              <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">
-                {t(lang, "outOfScope")}
-              </p>
-              <p className="text-[12px] text-muted-foreground leading-relaxed">
+            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#8888a8] bg-[rgba(136,136,168,0.03)]">
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="w-3.5 h-3.5 text-[#8888a8] shrink-0" />
+                <p className="text-[10px] font-semibold text-[#8888a8] uppercase tracking-wide">
+                  {t(lang, "outOfScope")}
+                </p>
+              </div>
+              <p className="text-[12px] text-foreground/80 leading-relaxed">
                 {outOfScope || t(lang, "outOfScopeNone")}
               </p>
             </div>
 
             <div
               className={cn(
-                "px-3 py-2",
+                "px-3 py-2 border-b border-border/20 border-l-2 border-l-[#a78bfa] bg-[rgba(167,139,250,0.03)]",
                 !(relevantFiles && relevantFiles.length > 0) && "border-b-0",
-                "border-b border-border/20",
               )}
             >
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wide">
-                  {t(lang, "tasks")}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Hammer className="w-3.5 h-3.5 text-[#a78bfa] shrink-0" />
+                  <p className="text-[10px] font-semibold text-[#a78bfa] uppercase tracking-wide">
+                    {t(lang, "tasks")}
+                  </p>
+                </div>
                 {isExecuting && total > 0 ? (
                   <span
                     className="text-[10px] font-mono text-muted-foreground/60"
@@ -559,10 +577,13 @@ export function TaskPlanCard({
             </div>
 
             {relevantFiles && relevantFiles.length > 0 && (
-              <div className="px-3 py-2">
-                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">
-                  {t(lang, "relevantFiles")}
-                </p>
+              <div className="px-3 py-2 border-l-2 border-l-[#fb923c] bg-[rgba(251,146,60,0.03)]">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileCode className="w-3.5 h-3.5 text-[#fb923c] shrink-0" />
+                  <p className="text-[10px] font-semibold text-[#fb923c] uppercase tracking-wide">
+                    {t(lang, "relevantFiles")}
+                  </p>
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {relevantFiles.map((f, i) => (
                     <span

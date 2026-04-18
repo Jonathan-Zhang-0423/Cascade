@@ -1,0 +1,74 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - button "Switch to English" [ref=e13] [cursor=pointer]: EN
+            - button "切换到中文" [ref=e15] [cursor=pointer]: 中
+          - combobox [ref=e16] [cursor=pointer]:
+            - img [ref=e17]
+            - generic: Dark+
+            - img [ref=e23]
+          - button "新建项目" [ref=e25] [cursor=pointer]:
+            - img
+            - text: 新建项目
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - heading "我的项目" [level=1] [ref=e28]
+        - button "选择" [ref=e29] [cursor=pointer]:
+          - img
+          - text: 选择
+      - paragraph [ref=e30]: 创建新项目或打开已有项目开始构建。
+      - generic [ref=e31]:
+        - generic [ref=e32] [cursor=pointer]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: 🐦
+            - generic [ref=e35]:
+              - button [ref=e36]:
+                - img
+              - button [ref=e37]:
+                - img
+          - heading "新建项目" [level=3] [ref=e38]
+          - generic [ref=e39]:
+            - img [ref=e40]
+            - generic [ref=e42]: 4/18/2026
+        - generic [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]:
+            - generic [ref=e45]: 💻
+            - generic [ref=e46]:
+              - button [ref=e47]:
+                - img
+              - button [ref=e48]:
+                - img
+          - heading "新建项目" [level=3] [ref=e49]
+          - generic [ref=e50]:
+            - img [ref=e51]
+            - generic [ref=e53]: 4/16/2026
+        - generic [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]:
+            - generic [ref=e56]: 👋
+            - generic [ref=e57]:
+              - button [ref=e58]:
+                - img
+              - button [ref=e59]:
+                - img
+          - heading "新建项目" [level=3] [ref=e60]
+          - generic [ref=e61]:
+            - img [ref=e62]
+            - generic [ref=e64]: 4/14/2026
+        - generic [ref=e65] [cursor=pointer]:
+          - generic [ref=e66]:
+            - generic [ref=e67]: 🔢
+            - generic [ref=e68]:
+              - button [ref=e69]:
+                - img
+              - button [ref=e70]:
+                - img
+          - heading "2048" [level=3] [ref=e71]
+          - generic [ref=e72]:
+            - img [ref=e73]
+            - generic [ref=e75]: 4/10/2026

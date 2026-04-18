@@ -101,11 +101,12 @@ export function ChatInputArea({
           }, 0);
         }}
         className={cn(
-          "rounded-xl border bg-[#0c0c14] overflow-hidden transition-[border-color,box-shadow]",
+          "rounded-lg border border-l-4 overflow-hidden transition-all",
           inputFocused
-            ? "border-[#4f82ff] ring-2 ring-[rgba(79,130,255,0.25)]"
-            : "border-[rgba(255,255,255,0.07)]",
+            ? "border-[#4f82ff]/30 border-l-[#4f82ff] ring-2 ring-[#4f82ff]/40 shadow-lg bg-[#0c0c14]"
+            : "border-[rgba(255,255,255,0.07)] border-l-[#4f82ff] bg-[#0c0c14]",
         )}
+        style={inputFocused ? { backgroundImage: "linear-gradient(135deg, rgba(79,130,255,0.02) 0%, transparent 100%)" } : {}}
       >
         <Textarea
           ref={textareaRef}
@@ -129,9 +130,9 @@ export function ChatInputArea({
           className="resize-none text-[13px] min-h-[60px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
           data-testid="input-chat"
         />
-        <div className="flex items-center gap-1 px-2 pb-2">
+        <div className="flex items-center gap-2 px-2 pb-2">
           <button
-            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] transition-colors group"
+            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[rgba(79,130,255,0.08)] transition-colors group"
             onClick={onToggleMode}
             data-testid="toggle-plan-mode"
             title={
@@ -142,7 +143,7 @@ export function ChatInputArea({
           >
             <div
               className={cn(
-                "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0",
+                "w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0",
                 chatMode === "manager"
                   ? "bg-primary border-primary"
                   : "border-[#484860] group-hover:border-[#8888a8]",
@@ -152,7 +153,7 @@ export function ChatInputArea({
                 <Check className="w-2.5 h-2.5 text-primary-foreground" />
               )}
             </div>
-            <span className="text-[11px] text-[#8888a8] font-medium group-hover:text-foreground transition-colors">
+            <span className="text-[12px] text-[#8888a8] font-medium group-hover:text-foreground transition-colors">
               {tGlobal("chat.planMode")}
             </span>
           </button>
@@ -162,7 +163,7 @@ export function ChatInputArea({
             data-testid="select-model-provider"
           >
             <SelectTrigger
-              className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[10px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-[rgba(255,255,255,0.06)] text-[#8888a8] hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
+              className="h-7 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[11px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-[rgba(79,130,255,0.08)] text-[#8888a8] hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
               data-testid="select-model-provider"
             >
               <SelectValue>
@@ -213,32 +214,32 @@ export function ChatInputArea({
           <Button
             size="icon"
             variant="ghost"
-            className="h-7 w-7 rounded-lg shrink-0"
+            className="h-8 w-8 rounded-lg shrink-0 hover:bg-[rgba(79,130,255,0.12)] hover:text-[#4f82ff] transition-colors"
             onClick={onSmartResponse}
             disabled={isBusy || smartResponseLoading || !hasAssistantMsg}
             title={tGlobal("chat.smartResponse")}
             data-testid="button-smart-response"
           >
             {smartResponseLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Lightbulb className="w-3.5 h-3.5" />
+              <Lightbulb className="w-4 h-4" />
             )}
           </Button>
           {isBusy ? (
             <Button
               size="icon"
               variant="destructive"
-              className="h-7 w-7 rounded-lg shrink-0"
+              className="h-8 w-8 rounded-lg shrink-0 shadow-[0_2px_8px_rgba(239,68,68,0.25)]"
               onClick={onStop}
               data-testid="button-stop-chat"
             >
-              <Square className="w-3 h-3 fill-current" />
+              <Square className="w-3.5 h-3.5 fill-current" />
             </Button>
           ) : (
             <Button
               size="icon"
-              className="h-7 w-7 rounded-lg shrink-0 bg-gradient-to-br from-[#5585ff] to-[#2a5ce0] hover:from-[#6693ff] hover:to-[#3b6de8] border-0 shadow-[0_1px_6px_rgba(79,130,255,0.30),inset_0_1px_0_rgba(255,255,255,0.12)]"
+              className="h-8 w-8 rounded-lg shrink-0 bg-gradient-to-br from-[#4f82ff] to-[#2563eb] hover:from-[#5fa3ff] hover:to-[#3a7bed] border-0 shadow-[0_2px_8px_rgba(79,130,255,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all"
               onClick={onSend}
               disabled={
                 !input.trim() &&
@@ -246,7 +247,7 @@ export function ChatInputArea({
               }
               data-testid="button-send-chat"
             >
-              <ArrowUp className="w-3.5 h-3.5" />
+              <ArrowUp className="w-4 h-4" />
             </Button>
           )}
         </div>

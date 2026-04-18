@@ -87,14 +87,18 @@ export function ChatMessageList({
           return msg.role === "checkpoint" ? (
             <CheckpointMarker key={`c-${msg.id}`} message={msg} />
           ) : (
-            <MessageBubble
+            <div
               key={`c-${msg.id}`}
-              message={msg}
-              autoApplied={autoAppliedMessageIds.has(msg.id)}
-              appliedBlockIndices={
-                isLastAssistant ? appliedBlockIndices : undefined
-              }
-            />
+              className="mx-2 px-3 py-2 rounded-lg border-l-4 border-l-[#4f82ff] bg-[rgba(79,130,255,0.02)] border border-[rgba(79,130,255,0.1)]"
+            >
+              <MessageBubble
+                message={msg}
+                autoApplied={autoAppliedMessageIds.has(msg.id)}
+                appliedBlockIndices={
+                  isLastAssistant ? appliedBlockIndices : undefined
+                }
+              />
+            </div>
           );
         } else {
           const { msg } = item;
@@ -140,32 +144,34 @@ export function ChatMessageList({
           const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
           return (
             <div key={`m-${msg.id}`} className="space-y-2">
-              <ManagerMessageBubble
-                message={msg}
-                taskStatuses={isLastPlan ? taskStatuses : {}}
-                taskFailureReasons={
-                  isLastPlan ? taskFailureReasons : undefined
-                }
-                onExecute={isLastPlan ? handleExecutePlan : undefined}
-                onRevise={isLastPlan ? handleRevisePlan : undefined}
-                isExecuting={isLastPlan ? isExecuting : undefined}
-                onStop={isLastPlan ? handleStopExecution : undefined}
-                onContinueWithInput={
-                  isLastPlan ? handleContinueExecution : undefined
-                }
-                pendingConfirmation={
-                  isLastPlan ? pendingConfirmation : undefined
-                }
-                confirmationInput={
-                  isLastPlan ? userConfirmationInput : undefined
-                }
-                onConfirmationInputChange={
-                  isLastPlan ? setUserConfirmationInput : undefined
-                }
-                reviewPhase={isLastPlan ? reviewPhase : undefined}
-                holisticReview={isLastPlan ? holisticReview : undefined}
-                fixCycle={isLastPlan ? fixCycle : undefined}
-              />
+              <div className="mx-2 px-3 py-2 rounded-lg border-l-4 border-l-[#4f82ff] bg-[rgba(79,130,255,0.02)] border border-[rgba(79,130,255,0.1)]">
+                <ManagerMessageBubble
+                  message={msg}
+                  taskStatuses={isLastPlan ? taskStatuses : {}}
+                  taskFailureReasons={
+                    isLastPlan ? taskFailureReasons : undefined
+                  }
+                  onExecute={isLastPlan ? handleExecutePlan : undefined}
+                  onRevise={isLastPlan ? handleRevisePlan : undefined}
+                  isExecuting={isLastPlan ? isExecuting : undefined}
+                  onStop={isLastPlan ? handleStopExecution : undefined}
+                  onContinueWithInput={
+                    isLastPlan ? handleContinueExecution : undefined
+                  }
+                  pendingConfirmation={
+                    isLastPlan ? pendingConfirmation : undefined
+                  }
+                  confirmationInput={
+                    isLastPlan ? userConfirmationInput : undefined
+                  }
+                  onConfirmationInputChange={
+                    isLastPlan ? setUserConfirmationInput : undefined
+                  }
+                  reviewPhase={isLastPlan ? reviewPhase : undefined}
+                  holisticReview={isLastPlan ? holisticReview : undefined}
+                  fixCycle={isLastPlan ? fixCycle : undefined}
+                />
+              </div>
               {msg.buildResult && (
                 <>
                   {msg.buildResult.actionLog.length > 0 && (
