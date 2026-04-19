@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -61,9 +61,11 @@ export const userSkills = pgTable("user_skills", {
   description: text("description").notNull().default(""),
   type: text("type").notNull().default("knowledge"), // "knowledge" | "tool"
   content: text("content").notNull().default(""),
-  enabled: integer("enabled").notNull().default(1), // 1=true 0=false
+  enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (t) => ({
+  userNameUnique: uniqueIndex("user_skills_user_name_unique").on(t.userId, t.name),
+}));
 
 export const insertUserSkillSchema = createInsertSchema(userSkills).omit({ createdAt: true });
 export type InsertUserSkill = z.infer<typeof insertUserSkillSchema>;
@@ -77,9 +79,11 @@ export const projectSkills = pgTable("project_skills", {
   description: text("description").notNull().default(""),
   type: text("type").notNull().default("knowledge"), // "knowledge" | "tool"
   content: text("content").notNull().default(""),
-  enabled: integer("enabled").notNull().default(1),
+  enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (t) => ({
+  projectNameUnique: uniqueIndex("project_skills_project_name_unique").on(t.projectId, t.name),
+}));
 
 export const insertProjectSkillSchema = createInsertSchema(projectSkills).omit({ createdAt: true });
 export type InsertProjectSkill = z.infer<typeof insertProjectSkillSchema>;
