@@ -2,17 +2,7 @@ import { useState, useEffect } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { X, BookOpen, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type SkillType = "knowledge" | "tool";
-
-interface Skill {
-  id?: number;
-  name: string;
-  description: string;
-  type: SkillType;
-  content: string;
-  enabled: boolean;
-}
+import type { Skill, SkillType } from "./skill-types";
 
 interface SkillsModalProps {
   skill: Skill | null;
@@ -48,13 +38,23 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
   const [description, setDescription] = useState(skill?.description ?? "");
   const [type, setType] = useState<SkillType>(skill?.type ?? "knowledge");
   const [content, setContent] = useState(skill?.content ?? "");
+  const [enabled, setEnabled] = useState(skill?.enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Only auto-populate content when opening a fresh "new skill" form
+  const isNew = !skill?.id;
   useEffect(() => {
-    if (!skill && type === "tool" && !content) setContent(DEFAULT_TOOL_JSON);
-    if (!skill && type === "knowledge") setContent("");
-  }, [type]);
+    if (!isNew) return;
+    if (type === "tool") {
+      setContent((prev) => prev || DEFAULT_TOOL_JSON);
+    } else {
+      // Don't wipe user-edited content when switching away from tool
+      setContent((prev) => prev === DEFAULT_TOOL_JSON ? "" : prev);
+    }
+    setJsonError(null);
+  }, [type, isNew]);
 
   const validateJson = (val: string) => {
     try { JSON.parse(val); setJsonError(null); } catch (e) { setJsonError(String(e)); }
@@ -64,8 +64,9 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
     if (!name.trim()) return;
     if (type === "tool") { try { JSON.parse(content); } catch { return; } }
     setSaving(true);
+    setSaveError(null);
     try {
-      const body = { name: name.trim(), description, type, content, enabled: true, userId };
+      const body = { name: name.trim(), description, type, content, enabled, userId };
       let url: string;
       let method: string;
       if (skill?.id) {
@@ -84,7 +85,13 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (res.ok) { onSaved(); onClose(); }
+      if (res.ok) {
+        onSaved();
+        onClose();
+      } else {
+        const resBody = await res.json().catch(() => ({}));
+        setSaveError((resBody as { error?: string }).error || "Failed to save skill");
+      }
     } finally {
       setSaving(false);
     }
@@ -134,7 +141,7 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
               {(["knowledge", "tool"] as SkillType[]).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setType(t)}
+                  onClick={() => { setType(t); setJsonError(null); }}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border",
                     type === t
@@ -174,7 +181,8 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-[rgba(255,255,255,0.06)]">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[rgba(255,255,255,0.06)]">
+          {saveError && <p className="text-[10px] text-red-400 mr-auto">{saveError}</p>}
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-md text-xs text-[rgba(255,255,255,0.5)] hover:text-white border border-[rgba(255,255,255,0.08)]"
