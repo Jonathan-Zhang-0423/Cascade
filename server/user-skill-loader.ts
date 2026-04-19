@@ -30,7 +30,7 @@ function interpolate(template: string, args: Record<string, unknown>): string {
     const val = args[key];
     if (val === undefined) return "";
     // Shell-escape: wrap in single quotes, escape internal single quotes
-    return String(val).replace(/'/g, "'\\''");
+    return "'" + String(val).replace(/'/g, "'\\''") + "'";
   });
 }
 
