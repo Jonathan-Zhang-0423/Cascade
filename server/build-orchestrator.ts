@@ -21,6 +21,7 @@ import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
 import { lspManager } from "./lsp-manager";
 import { shellManager } from "./shell-manager";
 import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-dependency-analyzer";
+import { loadUserSkills } from "./user-skill-loader";
 
 export interface BuildFile {
   path: string;
@@ -50,6 +51,7 @@ export interface BufferedEvent {
 export interface BuildSessionState {
   id: string;
   projectId?: string;
+  userId?: string;
   aborted: boolean;
   files: Map<string, string>;
   plan: BuildPlan;
@@ -403,6 +405,19 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     }
   }
 
+  // Load user-defined skills (knowledge packs + tool plugins) from project files and DB
+  const userSkillsLoaded = await loadUserSkills(
+    session,
+    session.projectId ?? "",
+    session.userId ?? "",
+  );
+  if (userSkillsLoaded.knowledgePacks.length > 0) {
+    const userKnowledge = userSkillsLoaded.knowledgePacks.join("\n\n---\n\n");
+    session.skillContent = session.skillContent
+      ? `${session.skillContent}\n\n---\n\n${userKnowledge}`
+      : userKnowledge;
+  }
+
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
 
   // AG-10: Analyze step dependencies. By default execution stays sequential
@@ -432,6 +447,9 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       } else {
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
         const builderTools = buildBuilderTools(session, normalizedSteps, telemetry);
+        // Merge user-defined tool plugins into builder tools
+        builderTools.schemas.push(...userSkillsLoaded.toolSchemas);
+        Object.assign(builderTools.handlers, userSkillsLoaded.toolHandlers);
         await withFallback(providerChainEditor, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,
