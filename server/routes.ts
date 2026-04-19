@@ -2372,7 +2372,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       const skills = await db.select().from(userSkills).where(eq(userSkills.userId, userId));
       res.json(skills);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2386,7 +2387,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       const [created] = await db.insert(userSkills).values(parsed.data).returning();
       res.status(201).json(created);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2395,16 +2397,20 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userId = (req.query.userId as string) || (req.body?.userId as string);
       if (!userId) return res.status(400).json({ error: "userId is required" });
       const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
       const { name, description, type, content, enabled } = req.body;
+      const updateData = { name, description, type, content, enabled };
+      const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
       const [updated] = await db
         .update(userSkills)
-        .set({ name, description, type, content, enabled })
+        .set(cleanUpdate)
         .where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)))
         .returning();
       if (!updated) return res.status(404).json({ error: "Not found" });
       res.json(updated);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2413,10 +2419,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userId = (req.query.userId as string) || (req.body?.userId as string);
       if (!userId) return res.status(400).json({ error: "userId is required" });
       const id = parseInt(req.params.id, 10);
-      await db.delete(userSkills).where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)));
+      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
+      const [deleted] = await db
+        .delete(userSkills)
+        .where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ error: "Not found" });
       res.status(204).end();
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2431,7 +2443,8 @@ Generate the cascade.md content for this project based on both the plan and the 
         .where(and(eq(projectSkills.projectId, req.params.projectId), eq(projectSkills.userId, userId)));
       res.json(skills);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2453,7 +2466,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       const [created] = await db.insert(projectSkills).values(parsed.data).returning();
       res.status(201).json(created);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2462,10 +2476,13 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userId = (req.query.userId as string) || (req.body?.userId as string);
       if (!userId) return res.status(400).json({ error: "userId is required" });
       const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
       const { name, description, type, content, enabled } = req.body;
+      const updateData = { name, description, type, content, enabled };
+      const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
       const [updated] = await db
         .update(projectSkills)
-        .set({ name, description, type, content, enabled })
+        .set(cleanUpdate)
         .where(
           and(
             eq(projectSkills.id, id),
@@ -2477,7 +2494,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!updated) return res.status(404).json({ error: "Not found" });
       res.json(updated);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -2486,7 +2504,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userId = (req.query.userId as string) || (req.body?.userId as string);
       if (!userId) return res.status(400).json({ error: "userId is required" });
       const id = parseInt(req.params.id, 10);
-      await db
+      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
+      const [deleted] = await db
         .delete(projectSkills)
         .where(
           and(
@@ -2494,10 +2513,13 @@ Generate the cascade.md content for this project based on both the plan and the 
             eq(projectSkills.projectId, req.params.projectId),
             eq(projectSkills.userId, userId),
           ),
-        );
+        )
+        .returning();
+      if (!deleted) return res.status(404).json({ error: "Not found" });
       res.status(204).end();
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      console.error("[SkillsAPI]", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
