@@ -86,6 +86,15 @@ export function ChatMessageList({
             msg.role === "assistant" && idx === lastChatIdx;
           return msg.role === "checkpoint" ? (
             <CheckpointMarker key={`c-${msg.id}`} message={msg} />
+          ) : msg.role === "user" ? (
+            <MessageBubble
+              key={`c-${msg.id}`}
+              message={msg}
+              autoApplied={autoAppliedMessageIds.has(msg.id)}
+              appliedBlockIndices={
+                isLastAssistant ? appliedBlockIndices : undefined
+              }
+            />
           ) : (
             <div
               key={`c-${msg.id}`}

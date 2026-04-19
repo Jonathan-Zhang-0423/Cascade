@@ -378,18 +378,18 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
             "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md transition-all text-[11px] font-medium",
             restored
               ? "bg-green-500/15 text-green-500 border border-green-500/30"
-              : "bg-[rgba(79,130,255,0.1)] text-[#4f82ff] border border-[#4f82ff]/30 hover:bg-[rgba(79,130,255,0.15)] hover:border-[#4f82ff]/50",
+              : "bg-[rgba(79,130,255,0.12)] text-[#4f82ff] border border-[#4f82ff]/40 hover:bg-[rgba(79,130,255,0.18)] hover:border-[#4f82ff]/60",
           )}
           data-testid={`button-restore-${message.checkpointId}`}
         >
           {restored ? (
             <>
-              <Check className="w-3 h-3" />
+              <Check className="w-3.5 h-3.5" />
               {tCp("chat.restored")}
             </>
           ) : (
             <>
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3.5 h-3.5" />
               {tCp("chat.restore")}
             </>
           )}
