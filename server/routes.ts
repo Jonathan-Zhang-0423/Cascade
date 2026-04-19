@@ -2401,6 +2401,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       const { name, description, type, content, enabled } = req.body;
       const updateData = { name, description, type, content, enabled };
       const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
+      if (Object.keys(cleanUpdate).length === 0) {
+        return res.status(400).json({ error: "No fields to update" });
+      }
       const [updated] = await db
         .update(userSkills)
         .set(cleanUpdate)
@@ -2480,6 +2483,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       const { name, description, type, content, enabled } = req.body;
       const updateData = { name, description, type, content, enabled };
       const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
+      if (Object.keys(cleanUpdate).length === 0) {
+        return res.status(400).json({ error: "No fields to update" });
+      }
       const [updated] = await db
         .update(projectSkills)
         .set(cleanUpdate)
