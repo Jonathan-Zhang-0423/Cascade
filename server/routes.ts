@@ -13,7 +13,9 @@ import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { withRetry } from "./retry";
 import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
-import { insertProjectSchema } from "@shared/schema";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema } from "@shared/schema";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
 import { getTemplateFiles } from "./templates";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "./framework-detector";
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
@@ -2357,6 +2359,145 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (error: any) {
       console.error("Flutter/Web compile error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Compilation failed" });
+    }
+  });
+
+  // === SKILLS API ===
+
+  // User Skills
+  app.get("/api/skills/user", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const skills = await db.select().from(userSkills).where(eq(userSkills.userId, userId));
+      res.json(skills);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/skills/user", async (req, res) => {
+    try {
+      const userId = req.body?.userId as string;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const { name, description, type, content, enabled } = req.body;
+      const parsed = insertUserSkillSchema.safeParse({ userId, name, description, type, content, enabled });
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+      const [created] = await db.insert(userSkills).values(parsed.data).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.put("/api/skills/user/:id", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const id = parseInt(req.params.id, 10);
+      const { name, description, type, content, enabled } = req.body;
+      const [updated] = await db
+        .update(userSkills)
+        .set({ name, description, type, content, enabled })
+        .where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)))
+        .returning();
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete("/api/skills/user/:id", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const id = parseInt(req.params.id, 10);
+      await db.delete(userSkills).where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)));
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Project Skills
+  app.get("/api/skills/project/:projectId", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const skills = await db
+        .select()
+        .from(projectSkills)
+        .where(and(eq(projectSkills.projectId, req.params.projectId), eq(projectSkills.userId, userId)));
+      res.json(skills);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/skills/project/:projectId", async (req, res) => {
+    try {
+      const userId = req.body?.userId as string;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const { name, description, type, content, enabled } = req.body;
+      const parsed = insertProjectSkillSchema.safeParse({
+        projectId: req.params.projectId,
+        userId,
+        name,
+        description,
+        type,
+        content,
+        enabled,
+      });
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+      const [created] = await db.insert(projectSkills).values(parsed.data).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.put("/api/skills/project/:projectId/:id", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const id = parseInt(req.params.id, 10);
+      const { name, description, type, content, enabled } = req.body;
+      const [updated] = await db
+        .update(projectSkills)
+        .set({ name, description, type, content, enabled })
+        .where(
+          and(
+            eq(projectSkills.id, id),
+            eq(projectSkills.projectId, req.params.projectId),
+            eq(projectSkills.userId, userId),
+          ),
+        )
+        .returning();
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete("/api/skills/project/:projectId/:id", async (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || (req.body?.userId as string);
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      const id = parseInt(req.params.id, 10);
+      await db
+        .delete(projectSkills)
+        .where(
+          and(
+            eq(projectSkills.id, id),
+            eq(projectSkills.projectId, req.params.projectId),
+            eq(projectSkills.userId, userId),
+          ),
+        );
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
     }
   });
 
