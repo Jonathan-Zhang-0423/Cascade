@@ -1,14 +1,16 @@
 import { db } from "./db";
 import { userSkills, projectSkills } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import type { ToolSchema, ToolHandler } from "./agent-loop";
+import { readdir, readFile } from "fs/promises";
+import { join } from "path";
+import type { ToolSchema, ToolHandler, ToolHandlers } from "./agent-loop";
 import type { BuildSessionState, SseEmit } from "./build-orchestrator";
 import { shellManager } from "./shell-manager";
 
 export interface LoadedSkills {
   knowledgePacks: string[];
   toolSchemas: ToolSchema[];
-  toolHandlers: Record<string, ToolHandler>;
+  toolHandlers: ToolHandlers;
 }
 
 const PROTECTED_TOOL_NAMES = new Set([
@@ -58,7 +60,7 @@ function buildToolPlugin(
     const commandTemplate = def.handler.command;
     handler = async (args, emit) => {
       const command = interpolate(commandTemplate, args);
-      emit({ type: "action_log", actionType: "file_write", label: "Skill", detail: command });
+      emit({ type: "action_log", actionType: "tool_call", label: "Skill", detail: command });
       const result = await shellManager.runCommand(sessionId, command);
       const parts: string[] = [];
       if (result.stdout.trim()) parts.push(`stdout:\n${result.stdout.trim()}`);
@@ -73,8 +75,14 @@ function buildToolPlugin(
       console.warn(`[UserSkillLoader] Tool '${def.name}' has non-HTTPS URL — skipping`);
       return null;
     }
+    // Block RFC1918 private addresses and localhost
+    const privatePattern = /^https:\/\/(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/i;
+    if (privatePattern.test(url)) {
+      console.warn(`[UserSkillLoader] Tool '${def.name}' targets a private/internal URL — skipping`);
+      return null;
+    }
     handler = async (args, emit) => {
-      emit({ type: "action_log", actionType: "file_write", label: "Skill", detail: `POST ${url}` });
+      emit({ type: "action_log", actionType: "tool_call", label: "Skill", detail: `POST ${url}` });
       try {
         const resp = await fetch(url, {
           method: "POST",
@@ -151,7 +159,7 @@ export async function loadUserSkills(
     parseSkillContent(skill.name, skill.type, skill.content, session.id, result);
   }
 
-  // 3. DB user skills (lowest priority)
+  // 3. DB user skills
   const uSkills = await db
     .select()
     .from(userSkills)
@@ -161,6 +169,29 @@ export async function loadUserSkills(
     if (seen.has(skill.name)) continue;
     seen.add(skill.name);
     parseSkillContent(skill.name, skill.type, skill.content, session.id, result);
+  }
+
+  // 4. Built-in skills from server/skills/ (lowest priority)
+  const skillsDir = join(process.cwd(), "server", "skills");
+  try {
+    const dirents = await readdir(skillsDir, { withFileTypes: true });
+    for (const d of dirents) {
+      if (!d.isDirectory()) continue;
+      if (seen.has(d.name)) continue;
+      try {
+        const content = await readFile(join(skillsDir, d.name, "SKILL.md"), "utf-8");
+        seen.add(d.name);
+        parseSkillContent(d.name, "knowledge", content, session.id, result);
+      } catch {
+        // skill directory exists but SKILL.md is missing/unreadable — skip
+      }
+    }
+  } catch {
+    // skills directory doesn't exist — skip silently
+  }
+
+  if (result.knowledgePacks.length > 0 || result.toolSchemas.length > 0) {
+    console.log(`[UserSkillLoader] Loaded ${result.knowledgePacks.length} knowledge pack(s), ${result.toolSchemas.length} tool plugin(s) for session ${session.id}`);
   }
 
   return result;
