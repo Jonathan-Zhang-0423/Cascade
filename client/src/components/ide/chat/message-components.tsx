@@ -309,7 +309,13 @@ export function MessageBubble({
     const hasCodeBlocks = message.content.includes('```');
     return (
       <div
-        className="px-3 text-[13px] leading-[1.65] text-foreground"
+        className="my-1 text-[13px] leading-[1.65] text-foreground"
+        style={{
+          paddingLeft: '12px',
+          marginLeft: '12px',
+          marginRight: '12px',
+          borderLeft: '2px solid rgba(255,255,255,0.06)',
+        }}
         data-testid={`chat-message-${message.id}`}
       >
         {hasCodeBlocks ? (
@@ -330,7 +336,7 @@ export function MessageBubble({
       className="flex justify-end px-3"
       data-testid={`chat-message-${message.id}`}
     >
-      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-[#1a1a2e] text-foreground max-w-[85%]">
+      <div className="rounded-lg px-3.5 py-1.5 text-[13px] leading-relaxed bg-[rgba(79,130,255,0.12)] border border-[rgba(79,130,255,0.25)] text-[#c0d4ff] max-w-[85%]">
         <MessageContent content={message.content} />
       </div>
     </div>
