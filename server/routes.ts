@@ -520,7 +520,7 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework, projectId: reqProjectId } = req.body as {
+      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId } = req.body as {
         sessionId: string;
         plan: any;
         userRequest: string;
@@ -531,6 +531,7 @@ export async function registerRoutes(
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
+        userId?: string;
       };
       if (!sessionId || !plan || !userRequest) {
         res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
@@ -555,6 +556,7 @@ export async function registerRoutes(
       const session: BuildSessionState & { _startedAt: number } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
+        userId: reqUserId || undefined,
         aborted: false,
         files: fileMap,
         plan,

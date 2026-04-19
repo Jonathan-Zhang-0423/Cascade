@@ -292,6 +292,7 @@ async function runBuilderParallelWaves(
   providerChainEditor: AIProvider[],
   partCtx: PartEmitContext,
   emit: SseEmit,
+  userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
 ): Promise<void> {
   for (const wave of waves) {
     if (session.aborted) return;
@@ -308,6 +309,8 @@ async function runBuilderParallelWaves(
         // Each sub-loop gets tools scoped to just this step, so mark_step_complete
         // does not try to auto-advance to a different wave's step.
         const subTools = buildBuilderTools(session, [step]);
+        subTools.schemas.push(...userSkillsLoaded.toolSchemas);
+        Object.assign(subTools.handlers, userSkillsLoaded.toolHandlers);
         await withFallback(providerChainEditor, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,
@@ -443,7 +446,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   try {
     await telemetry.time("builder", async () => {
       if (shouldRunParallel) {
-        await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit);
+        await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit, userSkillsLoaded);
       } else {
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
         const builderTools = buildBuilderTools(session, normalizedSteps, telemetry);
