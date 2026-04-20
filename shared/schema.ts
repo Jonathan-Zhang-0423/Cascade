@@ -56,7 +56,7 @@ export type ProjectFile = typeof projectFiles.$inferSelect;
 
 export const userSkills = pgTable("user_skills", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   type: text("type").notNull().default("knowledge"), // "knowledge" | "tool"
@@ -74,7 +74,7 @@ export type UserSkill = typeof userSkills.$inferSelect;
 export const projectSkills = pgTable("project_skills", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   type: text("type").notNull().default("knowledge"), // "knowledge" | "tool"
