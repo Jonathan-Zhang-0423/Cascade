@@ -165,7 +165,7 @@ export function SkillsPanel({ onEdit }: SkillsPanelProps) {
   };
 
   const deleteSkill = async (skill: Skill, scope: "user" | "project") => {
-    if (deletingSkillId !== skill.id) {
+    if (!skill.id || deletingSkillId !== skill.id) {
       setDeletingSkillId(skill.id ?? null);
       return;
     }
@@ -173,7 +173,7 @@ export function SkillsPanel({ onEdit }: SkillsPanelProps) {
       ? `/api/skills/user/${skill.id}?userId=${encodeURIComponent(userId ?? "")}`
       : `/api/skills/project/${projectId}/${skill.id}?userId=${encodeURIComponent(userId ?? "")}`;
     const res = await fetch(url, { method: "DELETE" });
-    if (!res.ok) { console.error("[SkillsPanel] delete failed", res.status); return; }
+    if (!res.ok) { console.error("[SkillsPanel] delete failed", res.status); setDeletingSkillId(null); return; }
     setDeletingSkillId(null);
     fetchSkills();
   };
