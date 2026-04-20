@@ -1,9 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import OpenAI from "openai";
+import bcrypt from "bcryptjs";
+import "express-session";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { randomBytes } from "crypto";
@@ -2362,6 +2364,70 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // === AUTH ===
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { username, password, experienceLevel = "intermediate" } = req.body as {
+        username: string; password: string; experienceLevel?: string;
+      };
+      if (!username?.trim() || !password) return res.status(400).json({ error: "username and password required" });
+      const existing = await storage.getUserByUsername(username.trim());
+      if (existing) return res.status(409).json({ error: "Username already taken" });
+
+      const hashed = await bcrypt.hash(password, 10);
+      const user = await storage.createUser({ username: username.trim(), password: hashed, experienceLevel: experienceLevel as "beginner" | "intermediate" | "advanced" });
+
+      // Seed starter skill based on experience level
+      const starterPath = join(process.cwd(), "server", "skills", "starters", `${experienceLevel}.md`);
+      if (existsSync(starterPath)) {
+        const content = readFileSync(starterPath, "utf-8");
+        await db.insert(userSkills).values({
+          userId: user.id,
+          name: `starter-${experienceLevel}`,
+          description: `Starter guidance for ${experienceLevel} developers`,
+          type: "knowledge",
+          content,
+          enabled: true,
+        }).onConflictDoNothing();
+      }
+
+      (req.session as any).userId = user.id;
+      res.status(201).json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+    } catch (err) {
+      console.error("[auth/register]", err);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body as { username: string; password: string };
+      if (!username || !password) return res.status(400).json({ error: "username and password required" });
+      const user = await storage.getUserByUsername(username.trim());
+      if (!user) return res.status(401).json({ error: "Invalid credentials" });
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) return res.status(401).json({ error: "Invalid credentials" });
+      (req.session as any).userId = user.id;
+      res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+    } catch (err) {
+      console.error("[auth/login]", err);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => res.status(204).end());
+  });
+
   // === SKILLS API ===
 
   // User Skills
@@ -2526,6 +2592,35 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[SkillsAPI]", err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // === BUILTIN SKILLS ===
+
+  app.get("/api/skills/builtin", (_req, res) => {
+    try {
+      const skillsDir = join(process.cwd(), "server", "skills");
+      const entries: Array<{ name: string; description: string; type: "knowledge" }> = [];
+
+      const scanDir = (dir: string) => {
+        if (!existsSync(dir)) return;
+        for (const file of readdirSync(dir)) {
+          const full = join(dir, file);
+          const stat = statSync(full);
+          if (stat.isDirectory()) { scanDir(full); continue; }
+          if (!file.endsWith(".md")) continue;
+          const name = file.replace(/\.md$/, "");
+          const content = readFileSync(full, "utf-8");
+          const firstLine = content.split("\n").find((l) => l.startsWith("# "));
+          const description = firstLine ? firstLine.replace(/^#\s*/, "") : name;
+          entries.push({ name, description, type: "knowledge" });
+        }
+      };
+
+      scanDir(skillsDir);
+      res.json(entries);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
     }
   });
 
