@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import "express-session";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
-import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { randomBytes } from "crypto";
@@ -2379,13 +2379,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const user = await storage.createUser({ username: username.trim(), password: hashed, experienceLevel: experienceLevel as "beginner" | "intermediate" | "advanced" });
 
       // Seed starter skill based on experience level
-      const starterPath = join(process.cwd(), "server", "skills", "starters", `${experienceLevel}.md`);
+      const safeLevel = ["beginner", "intermediate", "advanced"].includes(experienceLevel)
+        ? experienceLevel
+        : "intermediate";
+      const starterPath = join(process.cwd(), "server", "skills", "starters", `${safeLevel}.md`);
       if (existsSync(starterPath)) {
         const content = readFileSync(starterPath, "utf-8");
         await db.insert(userSkills).values({
           userId: user.id,
-          name: `starter-${experienceLevel}`,
-          description: `Starter guidance for ${experienceLevel} developers`,
+          name: `starter-${safeLevel}`,
+          description: `Starter guidance for ${safeLevel} developers`,
           type: "knowledge",
           content,
           enabled: true,
@@ -2425,7 +2428,10 @@ Generate the cascade.md content for this project based on both the plan and the 
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy(() => res.status(204).end());
+    req.session.destroy((err) => {
+      if (err) console.error("[auth/logout]", err);
+      res.status(204).end();
+    });
   });
 
   // === SKILLS API ===
@@ -2607,11 +2613,19 @@ Generate the cascade.md content for this project based on both the plan and the 
         for (const file of readdirSync(dir)) {
           const full = join(dir, file);
           const stat = statSync(full);
-          if (stat.isDirectory()) { scanDir(full); continue; }
+          if (stat.isDirectory()) {
+            if (file === "starters") continue; // skip internal seeding files
+            scanDir(full);
+            continue;
+          }
           if (!file.endsWith(".md")) continue;
           const name = file.replace(/\.md$/, "");
-          const content = readFileSync(full, "utf-8");
-          const firstLine = content.split("\n").find((l) => l.startsWith("# "));
+          // Read only first 200 bytes to find the heading — avoids loading full file
+          const fd = openSync(full, "r");
+          const buf = Buffer.alloc(200);
+          const bytesRead = readSync(fd, buf, 0, 200, 0);
+          closeSync(fd);
+          const firstLine = buf.subarray(0, bytesRead).toString("utf-8").split("\n").find((l) => l.startsWith("# "));
           const description = firstLine ? firstLine.replace(/^#\s*/, "") : name;
           entries.push({ name, description, type: "knowledge" });
         }
