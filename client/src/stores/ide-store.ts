@@ -295,9 +295,6 @@ interface IDEState {
   setLLMMonitorOpen: (v: boolean) => void;
   toggleLLMMonitor: () => void;
 
-  userId: string;
-  setUserId: (id: string) => void;
-
   selectedProvider: AIProvider;
   setSelectedProvider: (provider: AIProvider) => void;
 
@@ -627,8 +624,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
   toggleLLMMonitor: () => set((s) => ({ isLLMMonitorOpen: !s.isLLMMonitorOpen })),
 
-  userId: "",
-  setUserId: (id) => set({ userId: id }),
 
   selectedDevice: "iphone-16-pro",
   deviceOrientation: "portrait" as const,
