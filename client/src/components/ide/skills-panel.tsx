@@ -127,8 +127,7 @@ function Section({ title, skills, scope, deletingSkillId, onToggle, onEdit, onDe
 
 export function SkillsPanel({ onEdit }: SkillsPanelProps) {
   const projectId = useIDEStore((s) => s.projectId);
-  // TODO (Task 7): replace with real userId from store once added
-  const userId: string | null = null;
+  const userId = useIDEStore((s) => s.userId ?? "");
   const [userSkillsList, setUserSkillsList] = useState<Skill[]>([]);
   const [projectSkillsList, setProjectSkillsList] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);

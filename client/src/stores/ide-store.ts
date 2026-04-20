@@ -26,7 +26,7 @@ export interface ConsoleEntry {
   timestamp: number;
 }
 
-export type ToolPanel = "files" | "chat" | "history" | null;
+export type ToolPanel = "files" | "chat" | "history" | "skills" | null;
 export type ChatMode = "build" | "manager";
 export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
 
@@ -294,6 +294,9 @@ interface IDEState {
   isLLMMonitorOpen: boolean;
   setLLMMonitorOpen: (v: boolean) => void;
   toggleLLMMonitor: () => void;
+
+  userId: string;
+  setUserId: (id: string) => void;
 
   selectedProvider: AIProvider;
   setSelectedProvider: (provider: AIProvider) => void;
@@ -623,6 +626,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isLLMMonitorOpen: false,
   setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
   toggleLLMMonitor: () => set((s) => ({ isLLMMonitorOpen: !s.isLLMMonitorOpen })),
+
+  userId: "",
+  setUserId: (id) => set({ userId: id }),
 
   selectedDevice: "iphone-16-pro",
   deviceOrientation: "portrait" as const,

@@ -1,6 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
-import { FolderClosed, Sparkles, Radio, History, Code2 } from "lucide-react";
+import { FolderClosed, Sparkles, Radio, History, Code2, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -69,6 +69,13 @@ export function ToolsDock() {
           isActive={activeTool === "history"}
           onClick={() => setActiveTool(activeTool === "history" ? null : "history")}
           testId="dock-history"
+        />
+        <DockButton
+          icon={<Blocks className="w-[18px] h-[18px]" />}
+          label="Skills"
+          isActive={activeTool === "skills"}
+          onClick={() => setActiveTool(activeTool === "skills" ? null : "skills")}
+          testId="dock-skills"
         />
         <DockButton
           icon={<Code2 className="w-[18px] h-[18px]" />}

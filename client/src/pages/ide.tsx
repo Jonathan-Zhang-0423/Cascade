@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
@@ -11,6 +11,9 @@ import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
 import { CheckpointPanel } from "@/components/ide/CheckpointPanel";
+import { SkillsPanel } from "@/components/ide/skills-panel";
+import { SkillsModal } from "@/components/ide/skills-modal";
+import type { Skill } from "@/components/ide/skill-types";
 import { CommandPalette } from "@/components/ide/command-palette";
 import { LLMMonitor } from "@/components/ide/llm-monitor";
 import {
@@ -25,8 +28,10 @@ export default function IDEPage() {
   const [, navigate] = useLocation();
   const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible } =
     useIDEStore();
+  const userId = useIDEStore((s) => s.userId ?? "");
   const { projects } = useProjectStore();
   const { toast } = useToast();
+  const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
 
   const project = projects.find((p) => p.id === id);
 
@@ -101,6 +106,11 @@ export default function IDEPage() {
                   {activeTool === "files" && <FileTree />}
                   {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
                   {activeTool === "history" && <CheckpointPanel />}
+                  {activeTool === "skills" && (
+                    <SkillsPanel
+                      onEdit={(skill, scope) => setSkillsModal({ skill, scope })}
+                    />
+                  )}
                 </ResizablePanel>
                 <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
               </>
@@ -157,6 +167,15 @@ export default function IDEPage() {
         </div>
       </div>
       <LLMMonitor />
+      {skillsModal && (
+        <SkillsModal
+          skill={skillsModal.skill}
+          scope={skillsModal.scope}
+          userId={userId}
+          onClose={() => setSkillsModal(null)}
+          onSaved={() => setSkillsModal(null)}
+        />
+      )}
     </div>
   );
 }
