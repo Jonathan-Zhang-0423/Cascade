@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileIDE } from "@/components/mobile/MobileIDE";
 import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
@@ -26,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
+  const isMobile = useIsMobile();
   const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible } =
     useIDEStore();
   const userId = useIDEStore((s) => s.projectId ?? "");
@@ -54,6 +57,7 @@ export default function IDEPage() {
   }, [id, project, projectId, loadProject, navigate]);
 
   useEffect(() => {
+    if (isMobile) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
@@ -74,7 +78,7 @@ export default function IDEPage() {
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeFile, toggleSidebar, toggleConsole, toast]);
+  }, [activeFile, toggleSidebar, toggleConsole, toast, isMobile]);
 
   if (!project || projectId !== id) {
     return (
@@ -82,6 +86,10 @@ export default function IDEPage() {
         <div className="text-muted-foreground text-sm">Loading project...</div>
       </div>
     );
+  }
+
+  if (isMobile) {
+    return <MobileIDE projectId={id!} />;
   }
 
   return (
