@@ -6,6 +6,7 @@ import type { Skill } from "./skill-types";
 
 interface SkillsPanelProps {
   onEdit: (skill: Skill | null, scope: "user" | "project") => void;
+  refreshKey?: number;
 }
 
 interface SkillRowProps {
@@ -125,9 +126,9 @@ function Section({ title, skills, scope, deletingSkillId, onToggle, onEdit, onDe
   );
 }
 
-export function SkillsPanel({ onEdit }: SkillsPanelProps) {
+export function SkillsPanel({ onEdit, refreshKey }: SkillsPanelProps) {
   const projectId = useIDEStore((s) => s.projectId);
-  const userId = useIDEStore((s) => s.userId ?? "");
+  const userId = useIDEStore((s) => s.projectId ?? "");
   const [userSkillsList, setUserSkillsList] = useState<Skill[]>([]);
   const [projectSkillsList, setProjectSkillsList] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +149,7 @@ export function SkillsPanel({ onEdit }: SkillsPanelProps) {
     }
   };
 
-  useEffect(() => { fetchSkills(); }, [projectId, userId]);
+  useEffect(() => { fetchSkills(); }, [projectId, userId, refreshKey]);
 
   const toggleSkill = async (skill: Skill, scope: "user" | "project") => {
     const url = scope === "user"

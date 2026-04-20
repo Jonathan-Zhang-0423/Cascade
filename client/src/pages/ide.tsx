@@ -28,10 +28,11 @@ export default function IDEPage() {
   const [, navigate] = useLocation();
   const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible } =
     useIDEStore();
-  const userId = useIDEStore((s) => s.userId ?? "");
+  const userId = useIDEStore((s) => s.projectId ?? "");
   const { projects } = useProjectStore();
   const { toast } = useToast();
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
+  const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
 
   const project = projects.find((p) => p.id === id);
 
@@ -109,6 +110,7 @@ export default function IDEPage() {
                   {activeTool === "skills" && (
                     <SkillsPanel
                       onEdit={(skill, scope) => setSkillsModal({ skill, scope })}
+                      refreshKey={skillsRefreshKey}
                     />
                   )}
                 </ResizablePanel>
@@ -173,7 +175,7 @@ export default function IDEPage() {
           scope={skillsModal.scope}
           userId={userId}
           onClose={() => setSkillsModal(null)}
-          onSaved={() => setSkillsModal(null)}
+          onSaved={() => { setSkillsModal(null); setSkillsRefreshKey((k) => k + 1); }}
         />
       )}
     </div>
