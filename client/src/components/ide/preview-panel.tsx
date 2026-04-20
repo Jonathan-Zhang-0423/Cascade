@@ -335,7 +335,7 @@ export function PreviewPanel() {
 
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
-      <div className="flex items-center gap-1.5 px-2 h-[38px] border-b border-[rgba(255,255,255,0.07)] bg-[#101018] shrink-0 flex-wrap">
+      <div className="preview-toolbar flex items-center gap-1.5 px-2 h-[38px] border-b border-[rgba(255,255,255,0.07)] bg-[#101018] shrink-0 flex-wrap">
         <span
           className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
           data-testid="badge-framework"
