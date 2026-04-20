@@ -300,7 +300,13 @@ export function NarrationBubble({
 
   return (
     <div
-      className="px-3 text-[13px] leading-relaxed text-foreground"
+      className="my-1 text-[13px] leading-relaxed text-foreground"
+      style={{
+        paddingLeft: '12px',
+        marginLeft: '12px',
+        marginRight: '12px',
+        borderLeft: '2px solid rgba(255,255,255,0.06)',
+      }}
       data-testid="plan-message-bubble"
     >
       {message.thinking && <ThinkingToggle thinking={message.thinking} />}
