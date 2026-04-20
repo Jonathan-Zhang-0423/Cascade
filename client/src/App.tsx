@@ -6,14 +6,17 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
-import { lazy, Suspense } from "react";
+import AuthPage from "@/pages/auth";
+import { lazy, Suspense, useEffect } from "react";
 import { AgentStreamProvider } from "@/components/ide/AgentStreamProvider";
+import { useIDEStore } from "@/stores/ide-store";
 
 const ABTestPage = lazy(() => import("@/pages/ab-test"));
 
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={AuthPage} />
       <Route path="/" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
       {import.meta.env.DEV && (
@@ -28,6 +31,15 @@ function Router() {
 }
 
 function App() {
+  const setUserId = useIDEStore((s) => s.setUserId);
+
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => {
+      if (r.ok) r.json().then((u) => setUserId(u.id));
+      else if (window.location.pathname !== "/login") window.location.href = "/login";
+    });
+  }, []);
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>

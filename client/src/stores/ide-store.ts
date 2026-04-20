@@ -353,6 +353,9 @@ interface IDEState {
   setFixCycle: (cycle: number) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
+
+  userId: string | null;
+  setUserId: (id: string | null) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -623,6 +626,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isLLMMonitorOpen: false,
   setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
   toggleLLMMonitor: () => set((s) => ({ isLLMMonitorOpen: !s.isLLMMonitorOpen })),
+
+  userId: (() => {
+    try {
+      const stored = localStorage.getItem("cascade-auth");
+      return stored ? JSON.parse(stored).userId : null;
+    } catch { return null; }
+  })(),
+  setUserId: (id) => {
+    set({ userId: id });
+    localStorage.setItem("cascade-auth", JSON.stringify({ userId: id }));
+  },
 
 
   selectedDevice: "iphone-16-pro",
