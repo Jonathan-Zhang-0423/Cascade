@@ -635,7 +635,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   })(),
   setUserId: (id) => {
     set({ userId: id });
-    localStorage.setItem("cascade-auth", JSON.stringify({ userId: id }));
+    if (id) {
+      localStorage.setItem("cascade-auth", JSON.stringify({ userId: id }));
+    } else {
+      localStorage.removeItem("cascade-auth");
+    }
   },
 
 

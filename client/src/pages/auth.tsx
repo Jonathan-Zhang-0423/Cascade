@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 
 type Mode = "login" | "register";
@@ -12,6 +13,7 @@ const LEVEL_OPTIONS: Array<{ value: ExperienceLevel; label: string; description:
 
 export default function AuthPage() {
   const setUserId = useIDEStore((s) => s.setUserId);
+  const [, setLocation] = useLocation();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,6 +24,10 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!username.trim()) { setError("Username is required"); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
+
     setLoading(true);
     try {
       const body = mode === "register"
@@ -33,9 +39,17 @@ export default function AuthPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Something went wrong"); return; }
+      if (!res.ok) {
+        const knownErrors: Record<string, string> = {
+          "Username already taken": "That username is already in use. Try another.",
+          "Invalid credentials": "Incorrect username or password.",
+          "username and password required": "Please fill in both fields.",
+        };
+        setError(knownErrors[data.error] ?? "Something went wrong. Please try again.");
+        return;
+      }
       setUserId(data.id);
-      window.location.href = "/";
+      setLocation("/");
     } finally {
       setLoading(false);
     }
