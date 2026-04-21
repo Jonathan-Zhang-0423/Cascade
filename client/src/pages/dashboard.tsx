@@ -171,12 +171,15 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background" data-testid="dashboard-page">
       <header className="border-b border-border/50 bg-sidebar">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-6 h-14">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
           <div className="flex items-center">
             <CascadeLogo width={36} height={36} />
           </div>
           <div className="flex items-center gap-2">
-            <LangToggle />
+            {/* Theme selector — hidden on mobile, shown in user menu there */}
+            <div className="hidden sm:block">
+              <LangToggle />
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -186,14 +189,33 @@ export default function DashboardPage() {
                   data-testid="button-user-menu"
                 >
                   <User className="w-3.5 h-3.5" />
-                  {username ?? "…"}
+                  <span className="hidden sm:inline">{username ?? "…"}</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                  {t("dashboard.account")}
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs font-semibold text-foreground">
+                  {username ?? "…"}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {/* Theme selector — only shown here on mobile */}
+                <div className="sm:hidden px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground mb-1">{t("dashboard.account")}</p>
+                  <div className="flex items-center gap-2">
+                    <LangToggle />
+                    <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
+                      <SelectTrigger className="h-7 text-xs flex-1" data-testid="select-theme-mobile">
+                        <Palette className="w-3 h-3 mr-1 shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {THEME_LIST.map((th) => (
+                          <SelectItem key={th.id} value={th.id}>{th.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="sm:hidden"><DropdownMenuSeparator /></div>
                 <DropdownMenuItem
                   className="text-xs cursor-pointer gap-2"
                   data-testid="menu-item-sign-out"
@@ -204,8 +226,9 @@ export default function DashboardPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* Theme selector — desktop only */}
             <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
-              <SelectTrigger className="w-[150px] h-8 text-xs" data-testid="select-theme">
+              <SelectTrigger className="hidden sm:flex w-[150px] h-8 text-xs" data-testid="select-theme">
                 <Palette className="w-3.5 h-3.5 mr-1 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
@@ -223,7 +246,7 @@ export default function DashboardPage() {
               data-testid="button-new-project"
             >
               <Plus className="w-4 h-4" />
-              {t("dashboard.newProject")}
+              <span className="hidden sm:inline">{t("dashboard.newProject")}</span>
             </Button>
           </div>
         </div>
