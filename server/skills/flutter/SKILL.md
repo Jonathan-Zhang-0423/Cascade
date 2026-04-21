@@ -5,70 +5,220 @@
 /project/
   lib/
     main.dart             # App entry point, runApp(), MaterialApp/CupertinoApp
+    app.dart              # App widget with theme, routing
     screens/              # Screen-level widgets (one per route)
     widgets/              # Reusable widget components
     models/               # Data classes / model objects
     services/             # API calls, database helpers
-    providers/            # State management (ChangeNotifier, Riverpod, etc.)
-    utils/                # Helper functions, constants
-    routes.dart           # Named route definitions
+    providers/            # Riverpod providers or ChangeNotifiers
+    utils/                # Helper functions, extensions
+    constants/            # Colors, sizes, API endpoints
+    routes.dart           # Named route or go_router definitions
   pubspec.yaml            # Dependencies and assets
   assets/                 # Images, fonts, JSON data
   test/                   # Widget and unit tests
 ```
 
+## Essential Dependencies (`pubspec.yaml`)
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^13.0.0          # Declarative routing
+  flutter_riverpod: ^2.x      # State management
+  dio: ^5.x                   # HTTP client
+  cached_network_image: ^3.x  # Image caching
+  shared_preferences: ^2.x    # Key-value storage
+  flutter_secure_storage: ^9.x # Secure token storage
+  freezed_annotation: ^2.x    # Immutable data classes
+
+dev_dependencies:
+  freezed: ^2.x
+  build_runner: ^2.x
+  flutter_test:
+    sdk: flutter
+```
+
 ## Idiomatic Patterns
 
-### Widget Tree
-- Everything is a widget. Build UI by composing small, focused widgets.
-- Use `StatelessWidget` for UI that doesn't change. Use `StatefulWidget` when local mutable state is needed.
-- Keep the `build()` method clean — extract complex sub-trees into helper methods or separate widgets.
+### Widget structure
+```dart
+// Stateless widget — no local mutable state
+class UserCard extends StatelessWidget {
+  const UserCard({
+    super.key,
+    required this.user,
+    this.onTap,
+  });
 
-### Navigation
-- Use `Navigator.push` / `Navigator.pop` for basic stack navigation.
-- Define named routes in `MaterialApp(routes: { ... })` for cleaner navigation.
-- Use `go_router` for declarative, URL-based routing (recommended for complex apps).
-- Pass data via constructor parameters or route arguments.
+  final User user;
+  final VoidCallback? onTap;
 
-### State Management
-- For simple local state, use `setState()` inside a `StatefulWidget`.
-- For shared state, use `Provider` / `ChangeNotifier` (built-in pattern) or `Riverpod`.
-- Avoid deeply nesting `setState` calls — lift state up or use a state management solution.
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(user.name, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(user.email, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+```
 
-### Layout
-- Use `Column` (vertical), `Row` (horizontal), and `Stack` (layered) for layout.
-- Wrap children in `Expanded` or `Flexible` to control how they share available space.
-- Use `Padding`, `SizedBox`, and `Container` for spacing and sizing.
-- `ListView` and `GridView` for scrollable lists.
+### State management with Riverpod
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-### Material / Cupertino
-- Use `MaterialApp` + Material widgets for Android-style UI.
-- Use `CupertinoApp` + Cupertino widgets for iOS-style UI.
-- Use `Platform.isIOS` / `Platform.isAndroid` for platform-specific behavior.
-- Wrap screens in `Scaffold` (Material) for app bar, floating action button, drawer, and bottom navigation.
+// Provider for a data fetch
+final usersProvider = FutureProvider<List<User>>((ref) async {
+  final repo = ref.read(userRepositoryProvider);
+  return repo.getUsers();
+});
 
-### Data and Networking
-- Use the `http` or `dio` package for REST API calls.
-- Parse JSON with `jsonDecode()` and map to model classes with `fromJson()` / `toJson()` factory constructors.
-- Use `FutureBuilder` or `StreamBuilder` to render async data in the widget tree.
+// StateNotifier for mutable state
+@riverpod
+class CartNotifier extends _$CartNotifier {
+  @override
+  List<CartItem> build() => [];
 
-### Theming
-- Define a `ThemeData` in `MaterialApp(theme: ...)` for consistent colors, typography, and shapes.
-- Access theme values with `Theme.of(context)`.
+  void add(CartItem item) => state = [...state, item];
+  void remove(String id) => state = state.where((i) => i.id != id).toList();
+}
+
+// In a ConsumerWidget:
+class UsersScreen extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final usersAsync = ref.watch(usersProvider);
+    return usersAsync.when(
+      loading: () => const CircularProgressIndicator(),
+      error: (e, _) => Text('Error: $e'),
+      data: (users) => ListView.builder(
+        itemCount: users.length,
+        itemBuilder: (_, i) => UserCard(user: users[i]),
+      ),
+    );
+  }
+}
+```
+
+### Navigation with go_router
+```dart
+final router = GoRouter(
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/users/:id',
+      builder: (context, state) => UserDetailScreen(
+        userId: state.pathParameters['id']!,
+      ),
+    ),
+  ],
+);
+
+// Navigate:
+context.go('/users/123');          // replace
+context.push('/users/123');        // push onto stack
+context.pop();                     // pop back
+```
+
+### Layout essentials
+```dart
+// Horizontal layout
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Text('Left'),
+    Expanded(child: Text('Fills remaining space')),
+    Text('Right'),
+  ],
+)
+
+// Scrollable list
+ListView.builder(
+  itemCount: items.length,
+  itemBuilder: (context, index) => ListTile(title: Text(items[index])),
+)
+
+// Responsive sizing
+SizedBox(
+  width: MediaQuery.of(context).size.width * 0.8,
+  child: child,
+)
+```
+
+### Data classes with Freezed
+```dart
+// user.dart
+import 'package:freezed_annotation/freezed_annotation.dart';
+part 'user.freezed.dart';
+part 'user.g.dart';
+
+@freezed
+class User with _$User {
+  const factory User({
+    required String id,
+    required String name,
+    required String email,
+    String? avatarUrl,
+  }) = _User;
+
+  factory User.fromJson(Map<String, Object?> json) => _$UserFromJson(json);
+}
+
+// Generate: dart run build_runner build
+```
+
+### HTTP with Dio
+```dart
+class ApiService {
+  final _dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
+
+  ApiService() {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        options.headers['Authorization'] = 'Bearer $token';
+        handler.next(options);
+      },
+    ));
+  }
+
+  Future<List<User>> getUsers() async {
+    final response = await _dio.get('/users');
+    return (response.data as List).map((j) => User.fromJson(j)).toList();
+  }
+}
+```
 
 ## Common Pitfalls
 - Unbounded height inside a `Column` inside a `ListView` — wrap in `Expanded` or set `shrinkWrap: true`.
 - Forgetting `const` constructors — Flutter reuses const widgets for performance.
-- Mutating state without calling `setState()` — the UI won't rebuild.
-- Using `BuildContext` after an `async` gap — check `mounted` before using context in async callbacks.
-- Nesting `ListView` inside `Column` without `Expanded` — causes overflow errors.
+- Mutating state without notifying Riverpod — always update `state = ...` with a new value.
+- Using `BuildContext` after an `async` gap without checking `mounted`.
+- Nesting `ListView` inside `Column` without `Expanded` — overflow errors.
 - Missing `pubspec.yaml` asset declarations — images and fonts must be listed under `flutter.assets`.
-- Hot reload doesn't apply changes to `main()` or `initState()` — use hot restart for those.
+- Hot reload doesn't apply changes to `main()` or `initState()` — use hot restart.
+- Calling `setState()` after `dispose()` — always check `mounted` in async callbacks.
 
 ## Code Style
 - File names: `snake_case` for all Dart files (`home_screen.dart`, `user_card.dart`).
-- Class names: `PascalCase` (`HomeScreen`, `UserCard`).
+- Class names: `PascalCase`.
 - Variables and functions: `camelCase`.
-- One widget per file for top-level screen/component widgets.
-- Use trailing commas in widget trees for cleaner formatting.
-- Prefer `const` wherever possible for performance.
+- One widget per file for screen/component widgets.
+- Use trailing commas in widget trees for cleaner formatting with `dart format`.
+- Prefer `const` wherever possible.
+- Run `dart format .` and `dart analyze` before committing.
