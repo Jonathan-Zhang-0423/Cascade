@@ -15,7 +15,7 @@ import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { withRetry } from "./retry";
 import { compressMessages } from "./context-compressor";
 import { storage } from "./storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema } from "@shared/schema";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
 import { getTemplateFiles } from "./templates";
@@ -2368,35 +2368,18 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { username, password, experienceLevel = "intermediate" } = req.body as {
-        username: string; password: string; experienceLevel?: string;
+      const { username, password } = req.body as {
+        username: string; password: string;
       };
       if (!username?.trim() || !password) return res.status(400).json({ error: "username and password required" });
       const existing = await storage.getUserByUsername(username.trim());
       if (existing) return res.status(409).json({ error: "Username already taken" });
 
       const hashed = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ username: username.trim(), password: hashed, experienceLevel: experienceLevel as "beginner" | "intermediate" | "advanced" });
-
-      // Seed starter skill based on experience level
-      const safeLevel = ["beginner", "intermediate", "advanced"].includes(experienceLevel)
-        ? experienceLevel
-        : "intermediate";
-      const starterPath = join(process.cwd(), "server", "skills", "starters", `${safeLevel}.md`);
-      if (existsSync(starterPath)) {
-        const content = readFileSync(starterPath, "utf-8");
-        await db.insert(userSkills).values({
-          userId: user.id,
-          name: `starter-${safeLevel}`,
-          description: `Starter guidance for ${safeLevel} developers`,
-          type: "knowledge",
-          content,
-          enabled: true,
-        }).onConflictDoNothing();
-      }
+      const user = await storage.createUser({ username: username.trim(), password: hashed });
 
       (req.session as any).userId = user.id;
-      res.status(201).json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+      res.status(201).json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
     } catch (err) {
       console.error("[auth/register]", err);
       res.status(500).json({ error: "Registration failed" });
@@ -2412,7 +2395,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
       (req.session as any).userId = user.id;
-      res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+      res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
     } catch (err) {
       console.error("[auth/login]", err);
       res.status(500).json({ error: "Login failed" });
@@ -2424,7 +2407,41 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel });
+    res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
+  });
+
+  app.put("/api/auth/me/experience", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { experienceLevel } = req.body as { experienceLevel?: string };
+      const safeLevel = ["beginner", "intermediate", "advanced"].includes(experienceLevel ?? "")
+        ? (experienceLevel as string) : "intermediate";
+
+      await db.update(users)
+        .set({ experienceLevel: safeLevel, hasSetExperienceLevel: true })
+        .where(eq(users.id, userId));
+
+      // Seed starter skill
+      const starterPath = join(process.cwd(), "server", "skills", "starters", `${safeLevel}.md`);
+      if (existsSync(starterPath)) {
+        const content = readFileSync(starterPath, "utf-8");
+        await db.insert(userSkills).values({
+          userId,
+          name: `starter-${safeLevel}`,
+          description: `Starter guidance for ${safeLevel} developers`,
+          type: "knowledge",
+          content,
+          enabled: true,
+        }).onConflictDoNothing();
+      }
+
+      const user = await storage.getUser(userId);
+      res.json({ id: user!.id, username: user!.username, experienceLevel: safeLevel, hasSetExperienceLevel: true });
+    } catch (err) {
+      console.error("[auth/experience]", err);
+      res.status(500).json({ error: "Failed to set experience level" });
+    }
   });
 
   app.post("/api/auth/logout", (req, res) => {
