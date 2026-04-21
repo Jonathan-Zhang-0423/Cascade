@@ -3,13 +3,6 @@ import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 
 type Mode = "login" | "register";
-type ExperienceLevel = "beginner" | "intermediate" | "advanced";
-
-const LEVEL_OPTIONS: Array<{ value: ExperienceLevel; label: string; description: string }> = [
-  { value: "beginner", label: "Beginner", description: "I'm new to coding or just getting started" },
-  { value: "intermediate", label: "Intermediate", description: "I can build projects but still learning best practices" },
-  { value: "advanced", label: "Advanced", description: "I write production code and know my way around a codebase" },
-];
 
 export default function AuthPage() {
   const setUserId = useIDEStore((s) => s.setUserId);
@@ -17,7 +10,6 @@ export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [level, setLevel] = useState<ExperienceLevel>("intermediate");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,13 +22,10 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      const body = mode === "register"
-        ? { username, password, experienceLevel: level }
-        : { username, password };
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -90,38 +79,6 @@ export default function AuthPage() {
               required
             />
           </div>
-
-          {mode === "register" && (
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-2">
-                How much programming experience do you have?
-              </label>
-              <div className="flex flex-col gap-2">
-                {LEVEL_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setLevel(opt.value)}
-                    className={[
-                      "flex items-start gap-3 px-4 py-3 rounded-lg border text-left transition-colors",
-                      level === opt.value
-                        ? "border-blue-500/60 bg-blue-600/10"
-                        : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.2)]",
-                    ].join(" ")}
-                  >
-                    <span className={[
-                      "w-4 h-4 rounded-full border-2 shrink-0 mt-0.5",
-                      level === opt.value ? "border-blue-400 bg-blue-400" : "border-[rgba(255,255,255,0.3)]",
-                    ].join(" ")} />
-                    <div>
-                      <p className="text-sm font-medium text-white">{opt.label}</p>
-                      <p className="text-[11px] text-[rgba(255,255,255,0.4)]">{opt.description}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
