@@ -7,7 +7,7 @@ import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { tmpdir } from "os";
-import { join, resolve } from "path";
+import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
 import archiver from "archiver";
 import { z } from "zod";
@@ -2619,7 +2619,9 @@ Generate the cascade.md content for this project based on both the plan and the 
             continue;
           }
           if (!file.endsWith(".md")) continue;
-          const name = file.replace(/\.md$/, "");
+          const stem = file.replace(/\.md$/, "");
+          // Use parent directory name when filename is a generic placeholder like "SKILL"
+          const name = stem === "SKILL" ? basename(dir) : stem;
           // Read only first 200 bytes to find the heading — avoids loading full file
           const fd = openSync(full, "r");
           const buf = Buffer.alloc(200);
