@@ -356,6 +356,8 @@ interface IDEState {
 
   userId: string | null;
   setUserId: (id: string | null) => void;
+  username: string | null;
+  setUsername: (name: string | null) => void;
 }
 
 const defaultFiles: FileNode[] = [
@@ -636,10 +638,32 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setUserId: (id) => {
     set({ userId: id });
     if (id) {
-      localStorage.setItem("cascade-auth", JSON.stringify({ userId: id }));
+      const stored = localStorage.getItem("cascade-auth");
+      const parsed = stored ? JSON.parse(stored) : {};
+      localStorage.setItem("cascade-auth", JSON.stringify({ ...parsed, userId: id }));
     } else {
       localStorage.removeItem("cascade-auth");
     }
+  },
+
+  username: (() => {
+    try {
+      const stored = localStorage.getItem("cascade-auth");
+      return stored ? JSON.parse(stored).username ?? null : null;
+    } catch { return null; }
+  })(),
+  setUsername: (name) => {
+    set({ username: name });
+    try {
+      const stored = localStorage.getItem("cascade-auth");
+      const parsed = stored ? JSON.parse(stored) : {};
+      if (name) {
+        localStorage.setItem("cascade-auth", JSON.stringify({ ...parsed, username: name }));
+      } else {
+        const { username: _, ...rest } = parsed;
+        localStorage.setItem("cascade-auth", JSON.stringify(rest));
+      }
+    } catch {}
   },
 
 

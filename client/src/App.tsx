@@ -36,6 +36,7 @@ function Router() {
 
 function App() {
   const setUserId = useIDEStore((s) => s.setUserId);
+  const setUsername = useIDEStore((s) => s.setUsername);
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ function App() {
       if (r.ok) {
         r.json().then((u) => {
           setUserId(u.id);
+          setUsername(u.username);
           setAuthChecked(true);
           if (!u.hasSetExperienceLevel && window.location.pathname !== "/onboarding") {
             window.location.href = "/onboarding";

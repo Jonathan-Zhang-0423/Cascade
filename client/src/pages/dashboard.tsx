@@ -28,13 +28,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, CheckSquare, Square, CheckCheck } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { LangToggle } from "@/components/lang-toggle";
 import { useT } from "@/lib/i18n";
+import { useIDEStore } from "@/stores/ide-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 migrateOldState();
 
@@ -60,6 +69,17 @@ export default function DashboardPage() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const t = useT();
+
+  const username = useIDEStore((s) => s.username);
+  const setUserId = useIDEStore((s) => s.setUserId);
+  const setUsername = useIDEStore((s) => s.setUsername);
+
+  const handleSignOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUserId(null);
+    setUsername(null);
+    window.location.href = "/login";
+  };
 
   const handleCreate = async () => {
     const idea = ideaText.trim();
@@ -157,6 +177,33 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <LangToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  data-testid="button-user-menu"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  {username ?? "…"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  {t("dashboard.account")}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs cursor-pointer gap-2"
+                  data-testid="menu-item-sign-out"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  {t("dashboard.signOut")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
               <SelectTrigger className="w-[150px] h-8 text-xs" data-testid="select-theme">
                 <Palette className="w-3.5 h-3.5 mr-1 shrink-0" />

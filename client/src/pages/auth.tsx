@@ -6,6 +6,7 @@ type Mode = "login" | "register";
 
 export default function AuthPage() {
   const setUserId = useIDEStore((s) => s.setUserId);
+  const setStoredUsername = useIDEStore((s) => s.setUsername);
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
@@ -38,6 +39,7 @@ export default function AuthPage() {
         return;
       }
       setUserId(data.id);
+      setStoredUsername(data.username);
       setLocation("/");
     } finally {
       setLoading(false);

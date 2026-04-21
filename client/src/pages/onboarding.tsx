@@ -13,6 +13,7 @@ const LEVEL_OPTIONS: Array<{ value: ExperienceLevel; label: string; description:
 export default function OnboardingPage() {
   const [, setLocation] = useLocation();
   const setUserId = useIDEStore((s) => s.setUserId);
+  const setUsername = useIDEStore((s) => s.setUsername);
   const [level, setLevel] = useState<ExperienceLevel>("intermediate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export default function OnboardingPage() {
       }
       const data = await res.json();
       setUserId(data.id);
+      setUsername(data.username);
       setLocation("/");
     } finally {
       setLoading(false);
