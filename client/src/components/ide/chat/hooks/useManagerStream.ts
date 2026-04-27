@@ -331,7 +331,8 @@ export function useManagerStream() {
             } else if (evType === "plan_ready") {
               planEmitted = true;
               if (isCurrentProject) {
-                setMgrPreparingPlan(false);
+                // Keep mgrPreparingPlan=true until manager_done so the status
+                // indicator stays active through the narration phase
                 // Remove any stale typing bubbles (e.g. from reconnect path)
                 removeTypingBubble();
 
@@ -582,10 +583,12 @@ export function useManagerStream() {
           },
         });
 
-        // Post-stream: if a plan was emitted but commAccumulated still has content
-        // (i.e. plan_ready handler didn't consume it — shouldn't happen normally),
-        // write the comm message now. This is a safety net only.
+        // Post-stream safety net: only write leftover comm content when no plan was
+        // emitted. If a plan was emitted, plan_ready already consumed commAccumulated
+        // (and reset it to ""). Any tokens that arrived after plan_ready are
+        // post-plan commentary and should be discarded to avoid an orphaned bubble.
         if (
+          !planEmitted &&
           useIDEStore.getState().projectId === projectId &&
           commAccumulated
         ) {
@@ -804,12 +807,11 @@ export function useManagerStream() {
             } else if (evType === "plan_ready") {
               if (isCurrentProject) {
                 const msgs = useIDEStore.getState().managerMessages;
-                const typingIdx = msgs.findIndex((m) => m.typing === true);
-                if (typingIdx !== -1) {
-                  useIDEStore.setState({
-                    managerMessages: msgs.filter((_, i) => i !== typingIdx),
-                  });
-                }
+                // Remove typing bubbles and any stale plan cards — a reconnect
+                // replay re-emits plan_ready, so we'd get duplicates otherwise
+                useIDEStore.setState({
+                  managerMessages: msgs.filter((m) => !m.typing && !m.plan),
+                });
                 const plan = ev.plan;
                 if (plan) {
                   planEmittedInReconnect = true;

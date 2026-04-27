@@ -473,24 +473,14 @@ export function useBuildStream() {
         actionLog: finalLog,
         completionData: { changedFiles, userLang },
       };
-      const curMsgs = useIDEStore.getState().managerMessages;
-      const planMsg = [...curMsgs].reverse().find((m) => m.plan);
-      if (planMsg) {
-        const updated = curMsgs.map((m) =>
-          m.id === planMsg.id ? { ...m, buildResult } : m,
-        );
-        useIDEStore.setState({ managerMessages: updated });
-        buildResultMsgIdRef.current = planMsg.id;
-      } else {
-        addManagerMessage({
-          role: "assistant",
-          content: "",
-          source: "communicator",
-          buildResult,
-        });
-        const msgs = useIDEStore.getState().managerMessages;
-        buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
-      }
+      addManagerMessage({
+        role: "assistant",
+        content: "",
+        source: "communicator",
+        buildResult,
+      });
+      const msgs = useIDEStore.getState().managerMessages;
+      buildResultMsgIdRef.current = msgs[msgs.length - 1]?.id || null;
     },
     [projectId, addManagerMessage],
   );
@@ -524,6 +514,9 @@ export function useBuildStream() {
             useIDEStore.setState({ managerMessages: updated });
           }
         }
+        // Reset after writing so re-entrant calls (e.g. finally block) are no-ops
+        commAccumulated = "";
+        commMsgIndex = -1;
       };
 
       const flushThinkingToStore = () => {
@@ -622,8 +615,9 @@ export function useBuildStream() {
     const firstUserMsg = useIDEStore
       .getState()
       .managerMessages.find((m) => m.role === "user");
-    const userRequest = firstUserMsg?.content || "";
-    const userLang = firstUserMsg ? detectLanguage(userRequest) : "English";
+    // Use plan summary as canonical user request — it reflects confirmed intent after multi-turn planning
+    const userRequest = plan.summary || firstUserMsg?.content || "";
+    const userLang = firstUserMsg ? detectLanguage(firstUserMsg.content) : "English";
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const filesForServer = allFiles
@@ -746,6 +740,7 @@ export function useBuildStream() {
             }
             const changedFiles = ev.changedFiles || [];
             const finalLog = [...actionLogRef.current];
+            helpers.resetNarration(); // discard verifier's raw streaming text
             saveBuildResult(finalLog, changedFiles, userLang);
 
             const targetMsgId = buildResultMsgIdRef.current;
@@ -769,6 +764,7 @@ export function useBuildStream() {
               );
               useIDEStore.setState({ managerMessages: updated });
             }
+            return;
           }
 
           if (type === "done") {
@@ -827,11 +823,7 @@ export function useBuildStream() {
             return;
           }
 
-          if (type !== "all_complete" && type !== "done") {
-            await processBuildEvent(ev, ctx);
-          } else if (type === "all_complete") {
-            await processBuildEvent(ev, ctx);
-          }
+          await processBuildEvent(ev, ctx);
         },
       });
 
@@ -1195,7 +1187,21 @@ export function useBuildStream() {
                 setReviewPhase("review_passed");
                 const changedFiles = ev.changedFiles || [];
                 const finalLog = [...actionLogRef.current];
+                helpers.resetNarration();
                 saveBuildResult(finalLog, changedFiles, userLang);
+                const replayTargetId = buildResultMsgIdRef.current;
+                const replaySummary = (ev as any).summaryText || "";
+                if (replaySummary && replayTargetId) {
+                  const curMsgs = useIDEStore.getState().managerMessages;
+                  useIDEStore.setState({
+                    managerMessages: curMsgs.map((m) =>
+                      m.id === replayTargetId && m.buildResult
+                        ? { ...m, buildResult: { ...m.buildResult, completionData: { ...m.buildResult.completionData, summary: replaySummary } } }
+                        : m,
+                    ),
+                  });
+                }
+                return;
               } else if (type === "done") {
                 return;
               }
@@ -1211,7 +1217,29 @@ export function useBuildStream() {
               }
               const changedFiles = ev.changedFiles || [];
               const finalLog = [...actionLogRef.current];
+              helpers.resetNarration();
               saveBuildResult(finalLog, changedFiles, userLang);
+              const targetMsgId2 = buildResultMsgIdRef.current;
+              const summaryText2 = (ev as any).summaryText || "";
+              if (summaryText2 && targetMsgId2) {
+                const curMsgs = useIDEStore.getState().managerMessages;
+                const updated = curMsgs.map((m) =>
+                  m.id === targetMsgId2 && m.buildResult
+                    ? {
+                        ...m,
+                        buildResult: {
+                          ...m.buildResult,
+                          completionData: {
+                            ...m.buildResult.completionData,
+                            summary: summaryText2,
+                          },
+                        },
+                      }
+                    : m,
+                );
+                useIDEStore.setState({ managerMessages: updated });
+              }
+              return;
             }
 
             if (type === "done") {
@@ -1232,11 +1260,7 @@ export function useBuildStream() {
               return;
             }
 
-            if (type !== "all_complete") {
-              await processBuildEvent(ev, ctx);
-            } else {
-              await processBuildEvent(ev, ctx);
-            }
+            await processBuildEvent(ev, ctx);
           },
         });
 
@@ -1697,6 +1721,14 @@ export function useBuildStream() {
     setLiveThinkingText("");
     setLiveNarrationText("");
     setLiveActionLog([]);
+    // Clear any stuck typing:true flags left on manager messages
+    const msgs = useIDEStore.getState().managerMessages;
+    const hasTyping = msgs.some((m) => m.typing);
+    if (hasTyping) {
+      useIDEStore.setState({
+        managerMessages: msgs.map((m) => (m.typing ? { ...m, typing: false } : m)),
+      });
+    }
   }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, projectId]);
 
   return {
