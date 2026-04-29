@@ -7,6 +7,7 @@ import { Sparkles, X } from "lucide-react";
 
 import { normalizeSteps } from "./chat/chat-utils";
 import { ActionLogLive } from "./chat/action-log";
+import { BuildLivePanel } from "./chat/BuildLivePanel";
 import { TypingIndicator } from "./chat/message-components";
 import { ChatMessageList } from "./chat/ChatMessageList";
 import { ChatInputArea } from "./chat/ChatInputArea";
@@ -51,6 +52,7 @@ export function ChatPanel() {
     reviewPhase,
     holisticReview,
     fixCycle,
+    completionData,
   } = useIDEStore();
 
   const tGlobal = useT();
@@ -73,9 +75,10 @@ export function ChatPanel() {
     liveThinkingText,
     liveNarrationText,
     isReconnecting,
+    thinkingElapsedSec,
     handleExecutePlan,
     handleStopExecution,
-    userConfirmationRef,
+    buildSessionIdRef,
   } = build;
 
   const {
@@ -160,9 +163,6 @@ export function ChatPanel() {
       const inputText = userInput || useIDEStore.getState().userConfirmationInput || "";
       if (inputText.trim()) {
         addChatMessage({ role: "user", content: inputText.trim() });
-        userConfirmationRef.current = inputText.trim();
-      } else {
-        userConfirmationRef.current = "";
       }
       setPendingConfirmation(null);
       setUserConfirmationInput("");
@@ -172,9 +172,17 @@ export function ChatPanel() {
           useIDEStore.getState().updateTaskStatus(key, "pending");
         }
       }
-      handleExecutePlan();
+      // POST input to the running session — do NOT restart the build
+      const sessionId = buildSessionIdRef.current;
+      if (sessionId) {
+        fetch(`/api/build-session/${sessionId}/input`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userInput: inputText.trim() }),
+        }).catch(() => {});
+      }
     },
-    [handleExecutePlan, addChatMessage, setPendingConfirmation, setUserConfirmationInput, userConfirmationRef],
+    [addChatMessage, setPendingConfirmation, setUserConfirmationInput, buildSessionIdRef],
   );
 
   useEffect(() => { pendingHandled.current = false; }, [projectId]);
@@ -288,6 +296,8 @@ export function ChatPanel() {
           reviewPhase={reviewPhase}
           holisticReview={holisticReview}
           fixCycle={fixCycle}
+          liveNarrationText={liveNarrationText}
+          completionData={completionData}
           handleExecutePlan={handleExecutePlan}
           handleRevisePlan={handleRevisePlan}
           handleStopExecution={handleStopExecution}
@@ -297,7 +307,7 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {!isExecuting && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 ? (
+        {(isManagerResponding || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 ? (
           <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
             <ActionLogLive
               entries={mgrLiveActionLog}
@@ -307,13 +317,12 @@ export function ChatPanel() {
           </div>
         ) : null)}
         {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
-          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-            <ActionLogLive
-              entries={liveActionLog}
-              thinkingText={liveThinkingText || undefined}
-              narrationText={liveNarrationText || undefined}
-            />
-          </div>
+          <BuildLivePanel
+            entries={liveActionLog}
+            thinkingText={liveThinkingText || undefined}
+            narrationText={liveNarrationText || undefined}
+            thinkingElapsedSec={thinkingElapsedSec}
+          />
         )}
       </div>
       <ChatInputArea
