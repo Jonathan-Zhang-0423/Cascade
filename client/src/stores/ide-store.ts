@@ -93,6 +93,7 @@ export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | 
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
   completionData: { changedFiles: string[]; userLang?: string; summary?: string };
+  nextStepSuggestion?: string;
 }
 
 export interface ManagerMessage {
@@ -290,6 +291,7 @@ interface IDEState {
   reviewPhase: ReviewPhase;
   holisticReview: HolisticReviewResult | null;
   fixCycle: number;
+  completionData: { changedFiles: string[]; summary: string } | null;
 
   isLLMMonitorOpen: boolean;
   setLLMMonitorOpen: (v: boolean) => void;
@@ -351,6 +353,7 @@ interface IDEState {
   setReviewPhase: (phase: ReviewPhase) => void;
   setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
+  setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
 
@@ -624,6 +627,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   reviewPhase: "idle",
   holisticReview: null,
   fixCycle: 0,
+  completionData: null,
 
   isLLMMonitorOpen: false,
   setLLMMonitorOpen: (v) => set({ isLLMMonitorOpen: v }),
@@ -1270,6 +1274,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       reviewPhase: "idle",
       holisticReview: null,
       fixCycle: 0,
+      completionData: null,
     }),
 
   updateVerificationResult: (subTaskId, result) =>
@@ -1291,6 +1296,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setFixCycle: (cycle) =>
     set({ fixCycle: cycle }),
+
+  setCompletionData: (data: { changedFiles: string[]; summary: string } | null) =>
+    set({ completionData: data }),
 
   updateManagerMessageThinking: (index, thinking) =>
     set((state) => {

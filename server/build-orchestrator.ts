@@ -73,6 +73,9 @@ export interface BuildSessionState {
   status: SessionStatus;
   /** Absolute path to the session's temp directory on disk — set at build start */
   sessionDir?: string;
+  /** Pending user input for needs_input pause/resume */
+  pendingUserInput?: string;
+  pendingUserInputResolve?: () => void;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -564,6 +567,13 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
 
       if (currentCycle >= MAX_FIX_CYCLES) break;
 
+      // Pause and ask user for input before fixing
+      emit({ type: "needs_input", items: [verdict.summary] });
+      await new Promise<void>((resolve) => {
+        session.pendingUserInputResolve = resolve;
+      });
+      if (session.aborted) break;
+
       emit({ type: "fixing", fixCycle: currentCycle });
 
       session.status = { type: "busy", agent: "fixer" };
@@ -640,7 +650,14 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       summaryText = summaryCompletion.choices[0]?.message?.content || "";
     } catch {}
 
-    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText });
+    let nextStepSuggestion = "";
+    const nextStepMatch = summaryText.match(/^NEXT_STEP:\s*(.+)$/m);
+    if (nextStepMatch) {
+      nextStepSuggestion = nextStepMatch[1].trim();
+      summaryText = summaryText.replace(/\nNEXT_STEP:.*$/m, "").trim();
+    }
+
+    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
 
     if (session.projectId) {
       storage.updateProjectBuildResult(session.projectId, {
