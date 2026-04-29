@@ -1,0 +1,5 @@
+[     155ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:3000/@fs/Users/jonathanzhang/Desktop/CodeStart/CodeStart/node_modules/.vite/deps/chunk-LPF6KSF2.js?v=d3fac6af:21608
+[     178ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ http://localhost:3000/:0
+[     185ms] [WARNING] Error while trying to use the following icon from the Manifest: http://localhost:3000/icons/icon-192.png (Resource size is not correct - typo in the Manifest?) @ http://localhost:3000/:0
+[   14599ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ about:srcdoc:0
+[   14603ms] [LOG] 卡路里记录应用已初始化 @ about:srcdoc:21

@@ -54,6 +54,7 @@ export function useBuildStream() {
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
+  const narrationBubbleAddedRef = useRef(false);
   const userConfirmationRef = useRef<string>("");
   const beforeBuildCheckpointCreatedRef = useRef(false);
   const buildCompleteCheckpointCreatedRef = useRef(false);
@@ -486,6 +487,11 @@ export function useBuildStream() {
   const saveBuildResult = useCallback(
     (finalLog: ActionLogEntry[], changedFiles: string[], userLang: string) => {
       if (useIDEStore.getState().projectId !== projectId) return;
+      // Idempotency: if we already saved a result for this build session, skip
+      if (buildResultMsgIdRef.current) {
+        const msgs = useIDEStore.getState().managerMessages;
+        if (msgs.some((m) => m.id === buildResultMsgIdRef.current)) return;
+      }
       const buildResult: BuildResultData = {
         actionLog: finalLog,
         completionData: { changedFiles, userLang },
@@ -653,6 +659,7 @@ export function useBuildStream() {
     setThinkingElapsedSec(null);
     thinkingStartTimeRef.current = null;
     buildResultMsgIdRef.current = null;
+    narrationBubbleAddedRef.current = false;
 
     const helpers = createBuildHelpers(userLang);
 
@@ -752,7 +759,8 @@ export function useBuildStream() {
               ? `${summaryText}\n\n→ ${nextStepSuggestion}`
               : summaryText;
 
-            if (narrationContent.trim()) {
+            if (!narrationBubbleAddedRef.current && narrationContent.trim()) {
+              narrationBubbleAddedRef.current = true;
               addManagerMessage({
                 role: "assistant",
                 source: "communicator",
@@ -993,6 +1001,7 @@ export function useBuildStream() {
         setLiveActionLog([]);
         setLiveThinkingText("");
         buildResultMsgIdRef.current = null;
+        narrationBubbleAddedRef.current = false;
       }
 
       const helpers = createBuildHelpers(userLang);

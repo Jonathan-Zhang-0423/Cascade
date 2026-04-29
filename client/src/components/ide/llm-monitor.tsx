@@ -4,6 +4,7 @@ import { useLLMMonitorStore, type LLMEvent, type LLMEventType } from "@/stores/l
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { X, Trash2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 const TYPE_STYLES: Record<string, { color: string; label: string }> = {
   thinking_token: { color: "text-zinc-500 italic", label: "THINK" },
@@ -83,6 +84,7 @@ export function LLMMonitor() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const userScrolledRef = useRef(false);
+  const t = useT();
 
   const virtualizer = useVirtualizer({
     count: events.length,
@@ -129,7 +131,7 @@ export function LLMMonitor() {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-semibold text-zinc-300">LLM Monitor</span>
+          <span className="text-xs font-semibold text-zinc-300">{t("monitor.title")}</span>
           <span className="text-[10px] text-zinc-600 tabular-nums" data-testid="llm-event-count">{eventCount}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -137,7 +139,7 @@ export function LLMMonitor() {
             <button
               className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors"
               onClick={scrollToBottom}
-              aria-label="Scroll to bottom"
+              aria-label={t("monitor.scrollBottom")}
               data-testid="llm-monitor-scroll-bottom"
             >
               <ChevronDown className="w-3.5 h-3.5" />
@@ -146,7 +148,7 @@ export function LLMMonitor() {
           <button
             className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors"
             onClick={clearEvents}
-            aria-label="Clear log"
+            aria-label={t("monitor.clearLog")}
             data-testid="llm-monitor-clear"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -154,7 +156,7 @@ export function LLMMonitor() {
           <button
             className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors"
             onClick={() => setOpen(false)}
-            aria-label="Close monitor"
+            aria-label={t("monitor.close")}
             data-testid="llm-monitor-close"
           >
             <X className="w-3.5 h-3.5" />
@@ -170,7 +172,7 @@ export function LLMMonitor() {
       >
         {events.length === 0 ? (
           <div className="flex items-center justify-center h-full text-zinc-600 text-xs">
-            No events yet — start an AI session to see output here
+            {t("monitor.empty")}
           </div>
         ) : (
           <div style={{ height: `${virtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>

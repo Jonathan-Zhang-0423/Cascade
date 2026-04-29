@@ -72,14 +72,14 @@ export function ToolsDock() {
         />
         <DockButton
           icon={<Blocks className="w-[18px] h-[18px]" />}
-          label="Skills"
+          label={t("dock.skills")}
           isActive={activeTool === "skills"}
           onClick={() => setActiveTool(activeTool === "skills" ? null : "skills")}
           testId="dock-skills"
         />
         <DockButton
           icon={<Code2 className="w-[18px] h-[18px]" />}
-          label="Toggle code"
+          label={t("dock.toggleCode")}
           isActive={codeVisible}
           onClick={toggleCodeVisible}
           testId="dock-code-visible"
@@ -96,7 +96,7 @@ export function ToolsDock() {
           )}
           style={isMonitorOpen ? { filter: "drop-shadow(0 0 5px rgba(79,130,255,0.40))" } : undefined}
           onClick={toggleMonitor}
-          aria-label="LLM Monitor"
+          aria-label={t("monitor.title")}
           data-testid="dock-llm-monitor"
         >
           <Radio className="w-[18px] h-[18px]" />

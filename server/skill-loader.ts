@@ -21,6 +21,7 @@ const BUILTIN_KEYWORDS: Record<string, string[]> = {
   "swiftui": ["swiftui", "swift ui", "swift app", "ios app", "swiftui view", "xcode", "ios development", "apple app", "uikit", "swift mobile"],
   "kotlin-compose": ["jetpack compose", "kotlin compose", "compose ui", "android app", "kotlin app", "composable", "material design android", "android development", "kotlin mobile", "android compose"],
   "mobile-common": ["mobile app", "push notification", "deep link", "mobile development", "app permissions", "mobile ux", "touch gesture", "app lifecycle", "mobile storage", "mobile camera"],
+  "wechat-miniprogram": ["wechat mini program", "weixin", "wxml", "wxss", "miniprogram", "wx.", "小程序", "wechat", "mini program", "wechat app"],
 };
 
 function wordBoundaryMatch(text: string, keyword: string): boolean {
@@ -96,6 +97,7 @@ const FRAMEWORK_TO_SKILL: Record<string, string> = {
   "flutter": "flutter",
   "swiftui": "swiftui",
   "kotlin": "kotlin-compose",
+  "wechat": "wechat-miniprogram",
 };
 
 export function getSkillForFramework(framework: string): string | null {

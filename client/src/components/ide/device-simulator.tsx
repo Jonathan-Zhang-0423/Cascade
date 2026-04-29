@@ -6,6 +6,7 @@ interface DeviceSimulatorProps {
   orientation: Orientation;
   frameStyle: "light" | "dark";
   platformOverride?: "ios" | "android";
+  bypass?: boolean;
   children: ReactNode;
 }
 
@@ -230,8 +231,12 @@ export function DeviceSimulator({
   orientation,
   frameStyle,
   platformOverride,
+  bypass = false,
   children,
 }: DeviceSimulatorProps) {
+  if (bypass) {
+    return <div className="w-full h-full">{children}</div>;
+  }
   const specW = deviceSpec.width;
   const specH = deviceSpec.height;
   const deviceW = orientation === "landscape" ? specH : specW;

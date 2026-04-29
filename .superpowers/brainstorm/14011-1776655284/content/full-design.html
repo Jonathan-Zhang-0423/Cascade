@@ -1,0 +1,65 @@
+<h2>Full design overview</h2>
+<p class="subtitle">Here's the complete layout architecture for both platforms</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">📱 Mobile (≤ 768px) — PWA</div>
+    <div class="mockup-body" style="font-size:11px;display:flex;flex-direction:column;gap:6px;">
+      <div style="background:#0c0c14;padding:6px 10px;border-radius:6px;color:#aaa;">
+        <strong style="color:#e0e0e0;">Header</strong> — Back · Project name · Framework tag · ⋯ menu
+      </div>
+      <div style="background:#0c0c14;padding:6px 10px;border-radius:6px;">
+        <div style="display:flex;gap:12px;font-size:10px;">
+          <span style="color:#2563eb;border-bottom:2px solid #2563eb;padding-bottom:2px;font-weight:700;">Chat</span>
+          <span style="color:#555;">Preview</span>
+        </div>
+      </div>
+      <div style="background:#1a1a2e;padding:8px;border-radius:6px;color:#90caf9;font-size:10px;flex:1;min-height:80px;">
+        Chat panel (full height)<br/>
+        <span style="color:#555;font-size:9px;">Messages · Build stream · CascadeLoader</span>
+      </div>
+      <div style="background:#2563eb;color:#fff;font-size:10px;padding:5px 12px;border-radius:20px;text-align:center;font-weight:600;">▶ Preview (appears on build complete)</div>
+      <div style="background:#0c0c14;padding:6px 10px;border-radius:6px;color:#555;font-size:10px;">
+        Input bar (sticky bottom)
+      </div>
+      <div style="margin-top:4px;color:#aaa;font-size:9px;">⟵ swipe to Preview panel ⟶</div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">🖥️ Desktop (> 768px) — unchanged</div>
+    <div class="mockup-body" style="font-size:11px;display:flex;flex-direction:column;gap:4px;">
+      <div style="background:#0c0c14;padding:5px 8px;border-radius:4px;color:#aaa;font-size:10px;">Navbar</div>
+      <div style="display:flex;gap:4px;flex:1;">
+        <div style="background:#0c0c14;padding:5px;border-radius:4px;width:28px;font-size:9px;color:#555;text-align:center;">Dock</div>
+        <div style="background:#1a1a2e;padding:5px;border-radius:4px;flex:1;font-size:9px;color:#555;">Tool panel<br/>(Files/Chat/History)</div>
+        <div style="background:#1a1a2e;padding:5px;border-radius:4px;flex:1;font-size:9px;color:#555;">Editor</div>
+        <div style="background:#1a1a2e;padding:5px;border-radius:4px;flex:1;font-size:9px;color:#555;">Preview</div>
+      </div>
+      <div style="background:#0c0c14;padding:5px 8px;border-radius:4px;color:#555;font-size:9px;">Console (optional)</div>
+      <div style="margin-top:4px;color:#aaa;font-size:9px;">ResizablePanels · unchanged</div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:16px;">
+  <h3>PWA additions</h3>
+  <ul style="font-size:12px;color:#aaa;line-height:1.8;">
+    <li><code>manifest.json</code> — name, icons, theme color, <code>display: standalone</code></li>
+    <li>Service worker (Workbox via vite-plugin-pwa) — offline shell, cache API responses</li>
+    <li><code>&lt;meta name="apple-mobile-web-app-capable"&gt;</code> — iOS fullscreen</li>
+    <li><code>useIsMobile()</code> hook — <code>window.innerWidth ≤ 768</code>, updates on resize</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>New files</h3>
+  <ul style="font-size:12px;color:#aaa;line-height:1.8;">
+    <li><code>client/src/components/mobile/MobileIDE.tsx</code> — root mobile shell</li>
+    <li><code>client/src/components/mobile/MobileChatPanel.tsx</code> — chat tab</li>
+    <li><code>client/src/components/mobile/MobilePreviewPanel.tsx</code> — full-bleed preview tab</li>
+    <li><code>client/src/hooks/useIsMobile.ts</code> — breakpoint hook</li>
+    <li><code>public/manifest.json</code> — PWA manifest</li>
+    <li>Service worker via <code>vite-plugin-pwa</code></li>
+  </ul>
+</div>

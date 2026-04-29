@@ -1,6 +1,12 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { tr } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
+
+function t(key: string) {
+  return tr(useLanguageStore.getState().lang, key);
+}
 
 interface Props {
   children: ReactNode;
@@ -39,7 +45,7 @@ export class ChatErrorBoundary extends Component<Props, State> {
         >
           <AlertTriangle className="w-8 h-8 text-destructive/70" />
           <p className="text-sm text-muted-foreground max-w-[240px]">
-            {this.props.fallbackMessage || "Something went wrong in the chat panel."}
+            {this.props.fallbackMessage || t("error.chatPanel")}
           </p>
           <Button
             size="sm"
@@ -49,7 +55,7 @@ export class ChatErrorBoundary extends Component<Props, State> {
             data-testid="button-retry-chat"
           >
             <RotateCcw className="w-3 h-3" />
-            Retry
+            {t("error.retry")}
           </Button>
         </div>
       );

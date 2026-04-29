@@ -24,6 +24,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
+import { useT } from "@/lib/i18n";
 
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export default function IDEPage() {
   const userId = useIDEStore((s) => s.projectId ?? "");
   const { projects } = useProjectStore();
   const { toast } = useToast();
+  const t = useT();
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
 
@@ -62,8 +64,8 @@ export default function IDEPage() {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         toast({
-          title: "File saved",
-          description: activeFile ? activeFile.split("/").pop() : "All files saved",
+          title: t("ide.fileSaved"),
+          description: activeFile ? activeFile.split("/").pop() : t("ide.allFilesSaved"),
           duration: 1500,
         });
       }
@@ -83,7 +85,7 @@ export default function IDEPage() {
   if (!project || projectId !== id) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground text-sm">Loading project...</div>
+        <div className="text-muted-foreground text-sm">{t("ide.loading")}</div>
       </div>
     );
   }

@@ -47,6 +47,7 @@ export function getCompileCheck(framework: Framework): CompileCheck | null {
           "Compiles all Kotlin sources. Fix any compilation errors (missing imports, type mismatches, unresolved references).",
       };
     case "swiftui":
+    case "wechat":
       // No standard CLI compile check available in our sandbox.
       // Rely on LSP diagnostics and verifier review.
       return null;

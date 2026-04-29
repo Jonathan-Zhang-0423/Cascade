@@ -155,11 +155,11 @@ export function Navbar({ projectName }: NavbarProps) {
       clearConsole();
       const hint =
         ["css", "scss", "sass", "less"].includes(ext)
-          ? "Stylesheet files are used by HTML pages — open the HTML file to see the result."
+          ? t("navbar.cssHint")
           : ["json", "yaml", "yml", "toml", "ini", "cfg"].includes(ext)
-          ? "This is a data or configuration file and cannot be run directly."
-          : "This file type cannot be executed.";
-      addConsoleEntry({ level: "warn", message: `Cannot run .${ext} files. ${hint}` });
+          ? t("navbar.dataFileHint")
+          : t("navbar.noRunHint");
+      addConsoleEntry({ level: "warn", message: t("navbar.cannotRun", { ext, hint }) });
       return;
     }
 
@@ -170,7 +170,7 @@ export function Navbar({ projectName }: NavbarProps) {
     setIsRunning(true);
     if (!isConsoleOpen) toggleConsole();
     clearConsole();
-    addConsoleEntry({ level: "info", message: `Running ${activeFile}…` });
+    addConsoleEntry({ level: "info", message: t("navbar.running", { file: activeFile }) });
 
     try {
       const resp = await fetch("/api/run-file", {
@@ -181,14 +181,14 @@ export function Navbar({ projectName }: NavbarProps) {
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        addConsoleEntry({ level: "error", message: `Server error ${resp.status}: ${err.error ?? "Unknown error"}` });
+        addConsoleEntry({ level: "error", message: t("navbar.serverError", { status: String(resp.status), msg: err.error ?? "Unknown error" }) });
         return;
       }
 
       const data = await resp.json();
 
       if (data.cannotRun) {
-        addConsoleEntry({ level: "warn", message: `.${ext} files cannot be run directly.` });
+        addConsoleEntry({ level: "warn", message: t("navbar.cannotRunDirect", { ext }) });
         return;
       }
 
@@ -206,15 +206,15 @@ export function Navbar({ projectName }: NavbarProps) {
 
       // Final status
       if (data.timedOut) {
-        addConsoleEntry({ level: "warn", message: "Process timed out after the allowed limit and was stopped." });
+        addConsoleEntry({ level: "warn", message: t("navbar.timedOut") });
       } else {
         addConsoleEntry({
           level: data.exitCode === 0 ? "info" : "warn",
-          message: `Exited with code ${data.exitCode}`,
+          message: t("navbar.exitCode", { code: String(data.exitCode) }),
         });
       }
     } catch (err: any) {
-      addConsoleEntry({ level: "error", message: `Failed to run: ${err.message}` });
+      addConsoleEntry({ level: "error", message: t("navbar.failedToRun", { msg: err.message }) });
     } finally {
       setIsRunning(false);
     }
@@ -231,7 +231,7 @@ export function Navbar({ projectName }: NavbarProps) {
           className="flex items-center justify-center w-7 h-7 rounded-md bg-[#0c0c14] border border-[rgba(255,255,255,0.07)] text-[#8888a8] hover:text-[#eeeef6] hover:bg-[#14141e] [transition:var(--transition-fast)] shrink-0"
           onClick={handleBack}
           data-testid="button-back"
-          aria-label="Back"
+          aria-label={t("navbar.backLabel")}
         >
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>

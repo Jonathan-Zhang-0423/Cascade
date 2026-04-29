@@ -496,6 +496,7 @@ export function useManagerStream() {
                       role: "assistant",
                       content: friendlyComm,
                       source: "communicator",
+                      thinking: managerThinkingAccumulated || undefined,
                     });
                   }
                   commAccumulated = "";
@@ -598,6 +599,7 @@ export function useManagerStream() {
               role: "assistant",
               content: friendlyComm,
               source: "communicator",
+              thinking: managerThinkingAccumulated || undefined,
             });
           }
           commAccumulated = "";

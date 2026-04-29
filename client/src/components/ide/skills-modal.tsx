@@ -3,6 +3,7 @@ import { useIDEStore } from "@/stores/ide-store";
 import { X, BookOpen, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Skill, SkillType } from "./skill-types";
+import { useT } from "@/lib/i18n";
 
 interface SkillsModalProps {
   skill: Skill | null;
@@ -38,10 +39,11 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
   const [description, setDescription] = useState(skill?.description ?? "");
   const [type, setType] = useState<SkillType>(skill?.type ?? "knowledge");
   const [content, setContent] = useState(skill?.content ?? "");
-  const [enabled, setEnabled] = useState(skill?.enabled ?? true);
+  const [enabled] = useState(skill?.enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const t = useT();
 
   // Only auto-populate content when opening a fresh "new skill" form
   const isNew = !skill?.id;
@@ -100,66 +102,60 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="w-[560px] max-h-[80vh] flex flex-col bg-[#0d1525] border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.06)]">
           <h2 className="text-sm font-semibold text-white">
-            {skill?.id ? "Edit Skill" : "New Skill"}
+            {skill?.id ? t("skillsModal.editTitle") : t("skillsModal.newTitle")}
           </h2>
           <button onClick={onClose} className="text-[rgba(255,255,255,0.4)] hover:text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex flex-col gap-4 px-5 py-4 overflow-y-auto">
-          {/* Name */}
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">Name</label>
+            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelName")}</label>
             <input
               className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="my-skill"
+              placeholder={t("skillsModal.placeholderName")}
             />
           </div>
 
-          {/* Description */}
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">Description</label>
+            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelDesc")}</label>
             <input
               className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this skill do?"
+              placeholder={t("skillsModal.placeholderDesc")}
             />
           </div>
 
-          {/* Type selector */}
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">Type</label>
+            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelType")}</label>
             <div className="flex gap-2">
-              {(["knowledge", "tool"] as SkillType[]).map((t) => (
+              {(["knowledge", "tool"] as SkillType[]).map((tp) => (
                 <button
-                  key={t}
-                  onClick={() => { setType(t); setJsonError(null); }}
+                  key={tp}
+                  onClick={() => { setType(tp); setJsonError(null); }}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border",
-                    type === t
+                    type === tp
                       ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
                       : "border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.4)] hover:text-white"
                   )}
                 >
-                  {t === "knowledge" ? <BookOpen className="w-3 h-3" /> : <Wrench className="w-3 h-3" />}
-                  {t === "knowledge" ? "Knowledge Pack" : "Tool Plugin"}
+                  {tp === "knowledge" ? <BookOpen className="w-3 h-3" /> : <Wrench className="w-3 h-3" />}
+                  {tp === "knowledge" ? t("skillsModal.typeKnowledge") : t("skillsModal.typeTool")}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Content */}
           <div className="flex-1">
             <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">
-              {type === "knowledge" ? "Markdown Content" : "Tool Definition (JSON)"}
+              {type === "knowledge" ? t("skillsModal.labelMarkdown") : t("skillsModal.labelJson")}
             </label>
             <textarea
               className={cn(
@@ -171,7 +167,7 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
                 setContent(e.target.value);
                 if (type === "tool") validateJson(e.target.value);
               }}
-              placeholder={type === "knowledge" ? "# My Skill\n\nWrite your guidance here..." : ""}
+              placeholder={type === "knowledge" ? t("skillsModal.placeholderMarkdown") : ""}
               spellCheck={false}
             />
             {jsonError && (
@@ -180,21 +176,20 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[rgba(255,255,255,0.06)]">
           {saveError && <p className="text-[10px] text-red-400 mr-auto">{saveError}</p>}
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-md text-xs text-[rgba(255,255,255,0.5)] hover:text-white border border-[rgba(255,255,255,0.08)]"
           >
-            Cancel
+            {t("skillsModal.cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !name.trim() || (type === "tool" && !!jsonError)}
             className="px-4 py-1.5 rounded-md text-xs bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40"
           >
-            {saving ? "Saving…" : "Save Skill"}
+            {saving ? t("skillsModal.saving") : t("skillsModal.save")}
           </button>
         </div>
       </div>

@@ -1,0 +1,4 @@
+{"type":"server-started","port":58949,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:58949","screen_dir":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/24842-1776849201/content","state_dir":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/24842-1776849201/state"}
+{"type":"screen-added","file":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/24842-1776849201/content/directions.html"}
+{"type":"screen-added","file":"/Users/jonathanzhang/Desktop/CodeStart/CodeStart/.superpowers/brainstorm/24842-1776849201/content/editorial-full.html"}
+{"type":"server-stopped","reason":"idle timeout"}

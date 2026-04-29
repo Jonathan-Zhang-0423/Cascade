@@ -1,0 +1,122 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e76]:
+    - banner [ref=e77]:
+      - generic [ref=e78]:
+        - button "Back" [ref=e79] [cursor=pointer]:
+          - img [ref=e80]
+        - generic [ref=e82]:
+          - generic [ref=e83]: 🐦
+          - generic [ref=e84]: Flappy Bird with Header
+          - generic [ref=e85]: ·
+          - generic [ref=e86]: Web
+      - generic [ref=e87]:
+        - combobox [ref=e88] [cursor=pointer]:
+          - generic: Dark+
+          - img [ref=e89]
+        - generic [ref=e91]:
+          - button "Switch to English" [ref=e92] [cursor=pointer]: EN
+          - button "切换到中文" [ref=e94] [cursor=pointer]: 中
+        - button "刷新" [ref=e95] [cursor=pointer]:
+          - img
+          - text: 刷新
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]:
+          - button "文件" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+          - button "AI 对话" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+          - button "历史记录" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+          - button "Skills" [ref=e110] [cursor=pointer]:
+            - img [ref=e111]
+          - button "Toggle code" [ref=e114] [cursor=pointer]:
+            - img [ref=e115]
+        - button "LLM Monitor" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+      - generic [ref=e128]:
+        - generic [ref=e385]:
+          - generic [ref=e386]:
+            - generic [ref=e387]:
+              - generic [ref=e388]: Project Skills
+              - button "New" [ref=e389] [cursor=pointer]:
+                - img [ref=e390]
+                - text: New
+            - paragraph [ref=e391]: No skills yet
+          - generic [ref=e392]:
+            - generic [ref=e393]:
+              - generic [ref=e394]: My Skills
+              - button "New" [ref=e395] [cursor=pointer]:
+                - img [ref=e396]
+                - text: New
+            - paragraph [ref=e397]: No skills yet
+        - separator [ref=e335]
+        - generic [ref=e341]:
+          - generic [ref=e342]:
+            - generic [ref=e343]: Web
+            - generic [ref=e344]:
+              - button "iOS" [ref=e345] [cursor=pointer]
+              - button "Android" [ref=e346] [cursor=pointer]
+            - combobox [ref=e347] [cursor=pointer]:
+              - generic: iPhone 16 Pro
+              - img [ref=e348]
+            - button "Toggle orientation" [ref=e350] [cursor=pointer]:
+              - img [ref=e351]
+            - button "Toggle frame style" [ref=e355] [cursor=pointer]:
+              - img [ref=e356]
+            - button "QR Preview" [ref=e358] [cursor=pointer]:
+              - img [ref=e359]
+            - button "刷新预览" [ref=e365] [cursor=pointer]:
+              - img [ref=e366]
+            - button "Show terminal" [ref=e371] [cursor=pointer]:
+              - img [ref=e372]
+          - generic [ref=e382]:
+            - generic:
+              - generic:
+                - generic:
+                  - generic: 9:41
+                  - generic:
+                    - img
+                    - img
+                    - img
+            - iframe [ref=e384] [cursor=pointer]:
+              - generic [active] [ref=f2e1]:
+                - banner [ref=f2e2]:
+                  - heading "飞翔的小鸟" [level=1] [ref=f2e3]
+                  - button "How to Play" [ref=f2e4] [cursor=pointer]
+                - generic [ref=f2e5]:
+                  - generic: "0"
+                  - generic [ref=f2e7]:
+                    - heading "Flappy Bird" [level=1] [ref=f2e8]
+                    - paragraph [ref=f2e9]: 按空格键或点击屏幕控制小鸟飞行
+                    - button "开始游戏" [ref=f2e10] [cursor=pointer]
+    - generic [ref=e399]:
+      - generic [ref=e400]:
+        - heading "New Skill" [level=2] [ref=e401]
+        - button [ref=e402] [cursor=pointer]:
+          - img [ref=e403]
+      - generic [ref=e406]:
+        - generic [ref=e407]:
+          - generic [ref=e408]: Name
+          - textbox "my-skill" [ref=e409]: test-knowledge
+        - generic [ref=e410]:
+          - generic [ref=e411]: Description
+          - textbox "What does this skill do?" [ref=e412]: A test knowledge pack skill
+        - generic [ref=e413]:
+          - generic [ref=e414]: Type
+          - generic [ref=e415]:
+            - button "Knowledge Pack" [ref=e416] [cursor=pointer]:
+              - img [ref=e417]
+              - text: Knowledge Pack
+            - button "Tool Plugin" [ref=e419] [cursor=pointer]:
+              - img [ref=e420]
+              - text: Tool Plugin
+        - generic [ref=e422]:
+          - generic [ref=e423]: Markdown Content
+          - textbox "# My Skill Write your guidance here..." [active] [ref=e424]:
+            - /placeholder: "# My Skill\n\nWrite your guidance here..."
+      - generic [ref=e425]:
+        - button "Cancel" [ref=e426] [cursor=pointer]
+        - button "Save Skill" [ref=e427] [cursor=pointer]

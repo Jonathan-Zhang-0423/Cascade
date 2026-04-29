@@ -1,0 +1,38 @@
+<h2>Three approaches to dual-layout</h2>
+<p class="subtitle">How should the desktop and mobile layouts coexist?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>CSS breakpoint split (Recommended)</h3>
+      <p>One codebase, one router. <code>useIsMobile()</code> hook gates which layout renders. Desktop keeps the resizable panel IDE. Mobile renders a completely separate component tree: full-screen chat, swipe-to-preview, floating pill. PWA manifest + service worker added at the app level.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Single deployment, single URL</li><li>No state sync needed — same Zustand store</li><li>Clean separation: mobile components are new files</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Two component trees to maintain long-term</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Responsive panels (adapt existing layout)</h3>
+      <p>Add Tailwind responsive classes to the existing <code>ide.tsx</code> and panels. On narrow screens, hide the editor, stack panels vertically, collapse the dock into a bottom bar. No new component files — everything adapts in place.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Fewest new files</li><li>No branching logic</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>ResizablePanels don't support touch well</li><li>Mobile UX will feel like a shrunk desktop app</li><li>Hard to achieve the "native phone feel" goal</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Separate mobile route</h3>
+      <p>Add a <code>/m/project/:id</code> route that serves a fully independent mobile app shell. Desktop keeps <code>/project/:id</code> unchanged. Server detects user-agent and redirects mobile browsers automatically.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Zero risk to desktop layout</li><li>Mobile can be iterated independently</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Two routes = two state sync problems</li><li>PWA manifest tied to one URL — split URLs complicate install</li><li>User-agent detection is fragile</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

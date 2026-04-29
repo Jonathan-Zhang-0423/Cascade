@@ -1,0 +1,290 @@
+<style>
+  body { background: #0e0e11; color: #e1e1e6; font-family: -apple-system, sans-serif; }
+  h2 { margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 13px; margin-bottom: 20px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+
+  .phone { background: #13131a; border: 1.5px solid #2a2a3a; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+  .phone-header { padding: 10px 14px 8px; border-bottom: 1px solid #1e1e2a; display: flex; align-items: center; justify-content: space-between; }
+  .phone-title { font-size: 12px; font-weight: 600; color: #c0c0d0; display: flex; align-items: center; gap: 6px; }
+  .phone-messages { padding: 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .phone-input { padding: 8px 10px; border-top: 1px solid #1e1e2a; }
+
+  .msg-user { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 75%; }
+
+  /* Collapsed plan line */
+  .plan-line { display: flex; align-items: center; gap: 7px; background: #141420; border: 1px solid #2a2a3a; border-radius: 8px; padding: 7px 10px; }
+  .plan-line-icon { color: #4a8a4a; font-size: 12px; }
+  .plan-line-text { font-size: 10px; color: #a0a0c0; flex: 1; }
+  .plan-line-text strong { color: #c8c8e8; }
+  .plan-line-meta { font-size: 9px; color: #4a4a6a; }
+  .plan-line-files { display: flex; gap: 3px; }
+  .pc-file { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 5px; font-size: 9px; color: #6a9a6a; font-family: monospace; }
+  .expand-arrow { font-size: 10px; color: #4a4a70; }
+
+  /* Checkpoint */
+  .chk { display: flex; align-items: center; gap: 6px; padding: 1px 0; opacity: .4; }
+  .chk-line { flex: 1; height: 1px; background: #2a2a3a; }
+  .chk-text { font-size: 9px; color: #666; white-space: nowrap; }
+
+  /* === LIVE PANEL === */
+  .live-panel { background: #0f1020; border: 1px solid #2a2a4a; border-top: 2px solid #5050cc; border-radius: 10px; overflow: hidden; }
+  .live-panel-header { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid #1a1a30; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #5a5ae0; box-shadow: 0 0 4px #5a5ae080; flex-shrink: 0; }
+  .live-step-label { font-size: 10px; font-weight: 500; color: #b0b0e0; flex: 1; }
+  .live-step-count { font-size: 9px; color: #4a4a70; }
+
+  /* Thinking — collapsed state (after narration starts) */
+  .thinking-collapsed { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid #1a1a2a; cursor: pointer; }
+  .thinking-icon { font-size: 9px; color: #6060a0; }
+  .thinking-summary { font-size: 9px; color: #5a5a90; flex: 1; }
+  .thinking-toggle { font-size: 9px; color: #4a4a70; }
+
+  /* Thinking — expanded state (while streaming, before narration) */
+  .thinking-expanded { padding: 7px 10px; border-bottom: 1px solid #1a1a2a; background: #0c0c1a; }
+  .thinking-expanded-label { font-size: 9px; color: #5050a0; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+  .thinking-pulse { display: flex; gap: 3px; }
+  .thinking-pulse span { width: 4px; height: 4px; border-radius: 50%; background: #4444aa; }
+  .thinking-text { font-size: 10px; color: #7070a8; line-height: 1.5; font-style: italic; }
+
+  /* Narration */
+  .live-narration { padding: 6px 10px; font-size: 10px; color: #b8b8d8; line-height: 1.5; border-left: 2px solid #4444aa; margin: 5px 10px; border-radius: 2px; background: #0d0d1c; }
+
+  /* Action log */
+  .live-log { padding: 5px 10px 7px; display: flex; flex-direction: column; gap: 3px; }
+  .log-item { display: flex; gap: 5px; align-items: center; font-size: 9px; color: #5a5a80; }
+  .log-dot-r { width: 5px; height: 5px; border-radius: 50%; background: #3a3a9a; flex-shrink: 0; }
+  .log-dot-w { width: 5px; height: 5px; border-radius: 50%; background: #2a7a2a; flex-shrink: 0; }
+  .log-file { font-family: monospace; color: #6a6a9a; }
+
+  /* Input */
+  .input-row { display: flex; gap: 5px; align-items: center; }
+  .mode-badge { font-size: 9px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px 6px; color: #6060a0; }
+  .input-mock { flex: 1; background: #0d0d16; border: 1px solid #202030; border-radius: 8px; padding: 6px 9px; font-size: 10px; color: #505070; }
+  .input-send { background: #2a3aaa; border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #c0ccf0; font-size: 11px; flex-shrink: 0; }
+  .status-line { display: flex; align-items: center; gap: 5px; padding: 4px 2px 6px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #5050cc; }
+  .status-text { font-size: 10px; color: #5a5a90; }
+
+  /* Annotation panel */
+  .annotations { display: flex; flex-direction: column; gap: 16px; }
+  .ann { display: flex; gap: 10px; }
+  .ann-num { width: 20px; height: 20px; border-radius: 50%; background: #1a1a30; border: 1px solid #3a3a5a; font-size: 10px; color: #8080c0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .ann-body h4 { font-size: 12px; font-weight: 600; color: #c0c0e0; margin: 0 0 3px; }
+  .ann-body p { font-size: 11px; color: #666; margin: 0; line-height: 1.5; }
+  .ann-body .tag { display: inline-block; background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 6px; font-size: 9px; color: #4a8a4a; margin-top: 4px; }
+  .ann-body .tag.blue { background: #1a1a2a; border-color: #2a2a5a; color: #6060c0; }
+
+  .section-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #666; margin-bottom: 6px; }
+</style>
+
+<h2>Approach B — Refined with thinking stream</h2>
+<p class="subtitle">Left: the live working state · Right: the resting state after build completes</p>
+
+<div class="split">
+
+  <!-- LEFT: LIVE STATE -->
+  <div>
+    <div class="section-tag">Live — agent working</div>
+    <div class="phone">
+      <div class="phone-header">
+        <div class="phone-title">✦ AI 对话</div>
+        <span style="font-size:10px;color:#555">✕</span>
+      </div>
+      <div class="phone-messages">
+
+        <div class="msg-user">修改WXML触摸事件绑定</div>
+
+        <!-- Previous build collapsed -->
+        <div class="plan-line">
+          <span class="plan-line-icon">✓</span>
+          <span class="plan-line-text"><strong>修改触摸绑定</strong> · 2 files</span>
+          <span class="expand-arrow">›</span>
+        </div>
+
+        <!-- Only last checkpoint -->
+        <div class="chk">
+          <div class="chk-line"></div>
+          <div class="chk-text">restore point · 1hr ago</div>
+          <div class="chk-line"></div>
+        </div>
+
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- === LIVE PANEL === -->
+        <div class="live-panel">
+          <!-- Header: step title + count -->
+          <div class="live-panel-header">
+            <div class="live-dot"></div>
+            <div class="live-step-label">优化 handleTouch 方法逻辑</div>
+            <div class="live-step-count">1 / 2</div>
+          </div>
+
+          <!-- Thinking — streaming (before narration) -->
+          <div class="thinking-expanded">
+            <div class="thinking-expanded-label">
+              Thinking
+              <div class="thinking-pulse"><span></span><span></span><span></span></div>
+            </div>
+            <div class="thinking-text">
+              Looking at the handleTouch method — the current implementation calculates relative coordinates incorrectly when the element has a scroll offset. I need to read the current file to understand the full context before making changes...
+            </div>
+          </div>
+
+          <!-- (narration not yet started — no narration block shown) -->
+          <div class="live-log">
+            <div class="log-item"><div class="log-dot-r"></div><span class="log-file">pages/index/index.js</span><span style="color:#3a3a60">· reading</span></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="phone-input">
+        <div class="status-line">
+          <div class="status-dot"></div>
+          <div class="status-text">Thinking · step 1 of 2</div>
+        </div>
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: AFTER NARRATION STARTS + RESTING STATE -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div>
+      <div class="section-tag">Live — narration started (thinking collapses)</div>
+      <div class="phone">
+        <div class="phone-header">
+          <div class="phone-title">✦ AI 对话</div>
+          <span style="font-size:10px;color:#555">✕</span>
+        </div>
+        <div class="phone-messages">
+          <div class="msg-user">看起来不错，按计划继续</div>
+
+          <div class="live-panel">
+            <div class="live-panel-header">
+              <div class="live-dot"></div>
+              <div class="live-step-label">优化 handleTouch 方法逻辑</div>
+              <div class="live-step-count">1 / 2</div>
+            </div>
+
+            <!-- Thinking collapsed once narration begins -->
+            <div class="thinking-collapsed">
+              <div class="thinking-icon">💭</div>
+              <div class="thinking-summary">Thought for 8s</div>
+              <div class="thinking-toggle">› expand</div>
+            </div>
+
+            <!-- Narration now streaming -->
+            <div class="live-narration">
+              修正了 handleTouch 中的坐标计算，将 clientX/Y 替换为相对于容器的偏移量...
+            </div>
+
+            <div class="live-log">
+              <div class="log-item"><div class="log-dot-r"></div><span class="log-file">index.js</span><span style="color:#3a3a60">· read</span></div>
+              <div class="log-item"><div class="log-dot-w"></div><span class="log-file">index.js</span><span style="color:#2a5a2a">· written ✓</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-input">
+          <div class="status-line">
+            <div class="status-dot" style="background:#3a9a3a"></div>
+            <div class="status-text">Working · step 1 of 2</div>
+          </div>
+          <div class="input-row">
+            <div class="mode-badge">Build</div>
+            <div class="input-mock">输入消息...</div>
+            <div class="input-send">↑</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-tag">Resting — build complete</div>
+      <div class="phone">
+        <div class="phone-header">
+          <div class="phone-title">✦ AI 对话</div>
+          <span style="font-size:10px;color:#555">✕</span>
+        </div>
+        <div class="phone-messages">
+          <div class="msg-user">看起来不错，按计划继续</div>
+
+          <!-- Collapsed result line -->
+          <div class="plan-line">
+            <span class="plan-line-icon">✓</span>
+            <span class="plan-line-text"><strong>优化handleTouch逻辑</strong> · 2 files</span>
+            <div class="plan-line-files">
+              <span class="pc-file">index.js</span>
+              <span class="pc-file">index.wxml</span>
+            </div>
+            <span class="expand-arrow">›</span>
+          </div>
+
+          <!-- Subtle checkpoint -->
+          <div class="chk">
+            <div class="chk-line"></div>
+            <div class="chk-text">restore point · just now</div>
+            <div class="chk-line"></div>
+          </div>
+        </div>
+        <div class="phone-input">
+          <div class="input-row">
+            <div class="mode-badge">Build</div>
+            <div class="input-mock">输入消息...</div>
+            <div class="input-send">↑</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Annotations -->
+<div class="annotations" style="margin-top:28px">
+  <div class="ann">
+    <div class="ann-num">1</div>
+    <div class="ann-body">
+      <h4>Thinking stream — active phase</h4>
+      <p>While the agent is reasoning (before narration starts), the thinking text streams inside the panel with a subtle indented style and pulsing dots. Not a separate floating box — contained within the step's live panel.</p>
+      <span class="tag blue">streams inline</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">2</div>
+    <div class="ann-body">
+      <h4>Thinking collapses when narration begins</h4>
+      <p>As soon as the agent starts narrating its work, the thinking block collapses to a single "Thought for Xs ›" chip. Tapping expands it to read the full reasoning. The narration takes over as the primary live signal.</p>
+      <span class="tag blue">collapsible · tap to read</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">3</div>
+    <div class="ann-body">
+      <h4>File log — compact, below narration</h4>
+      <p>File reads (indigo dot) and writes (green dot) appear as compact log rows at the bottom of the panel. No flashing, no separate action log component. Max ~5 most recent entries.</p>
+      <span class="tag">read · write · no flash</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">4</div>
+    <div class="ann-body">
+      <h4>Resting state — one collapsed line per build</h4>
+      <p>After build completes, the entire live panel is replaced by a single collapsed result line: checkmark, summary title, file chips, expand arrow. Tapping expands to show full step list, thinking traces, and file diffs.</p>
+      <span class="tag">collapsed by default · expandable</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">5</div>
+    <div class="ann-body">
+      <h4>Checkpoint — subtle divider only</h4>
+      <p>Checkpoints render as a thin horizontal rule with "restore point · Xhr ago" in small dim text. Only the most recent one is shown. No restore button visible — accessible via long-press or a history panel.</p>
+      <span class="tag">thin divider · last only</span>
+    </div>
+  </div>
+</div>

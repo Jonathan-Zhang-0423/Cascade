@@ -1,0 +1,133 @@
+<style>
+  body { background: #0e0e11; color: #e1e1e6; font-family: -apple-system, sans-serif; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+  .section-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #666; margin-bottom: 8px; }
+
+  .phone { background: #13131a; border: 1.5px solid #2a2a3a; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+  .phone-header { padding: 10px 14px 8px; border-bottom: 1px solid #1e1e2a; display: flex; align-items: center; justify-content: space-between; }
+  .phone-title { font-size: 12px; font-weight: 600; color: #c0c0d0; }
+  .phone-messages { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .phone-input { padding: 8px 10px; border-top: 1px solid #1e1e2a; }
+
+  .msg-user { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 78%; }
+
+  /* Done card — standalone artifact */
+  .result-card { background: #141420; border: 1px solid #2a2a3a; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; gap: 7px; }
+  .result-icon { color: #4a8a4a; font-size: 12px; flex-shrink: 0; }
+  .result-text { font-size: 10px; color: #a0a0c0; flex: 1; }
+  .result-text strong { color: #c8c8e8; }
+  .pc-file { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 5px; font-size: 9px; color: #6a9a6a; font-family: monospace; }
+  .result-files { display: flex; gap: 3px; }
+  .expand-arrow { font-size: 10px; color: #4a4a70; }
+
+  /* Agent message bubble — separate, below the card */
+  .msg-agent { background: #1a1a24; border-left: 2px solid #4a4a7a; border-radius: 3px 10px 10px 10px; padding: 8px 11px; font-size: 11px; color: #b8b8d8; align-self: flex-start; max-width: 90%; line-height: 1.55; }
+  .msg-agent .next { margin-top: 6px; font-size: 10px; color: #7070a0; display: flex; gap: 5px; align-items: flex-start; }
+  .msg-agent .next-arrow { flex-shrink: 0; }
+  .msg-agent .next-text { font-style: italic; }
+  .msg-agent .next-text strong { color: #9090c0; font-style: normal; }
+
+  /* Checkpoint */
+  .chk { display: flex; align-items: center; gap: 6px; padding: 1px 0; opacity: .4; }
+  .chk-line { flex: 1; height: 1px; background: #2a2a3a; }
+  .chk-text { font-size: 9px; color: #666; white-space: nowrap; }
+
+  .input-row { display: flex; gap: 5px; align-items: center; }
+  .mode-badge { font-size: 9px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px 6px; color: #6060a0; }
+  .input-mock { flex: 1; background: #0d0d16; border: 1px solid #202030; border-radius: 8px; padding: 6px 9px; font-size: 10px; color: #505070; }
+  .input-send { background: #2a3aaa; border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #c0ccf0; font-size: 11px; flex-shrink: 0; }
+
+  .vs-label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+  .badge-before { background: #2a1a1a; border: 1px solid #4a2a2a; color: #9a5a5a; }
+  .badge-after  { background: #1a2a1a; border: 1px solid #2a4a2a; color: #4a8a4a; }
+
+  code { font-size: 9px; background: #1a1a2a; padding: 1px 4px; border-radius: 3px; color: #9090cc; font-family: monospace; }
+</style>
+
+<h2>Resting state — summary as a separate agent bubble</h2>
+<p class="subtitle">Done card stays a clean artifact. The agent's summary + next step suggestion flows below it as a normal message.</p>
+
+<div class="split">
+
+  <!-- BEFORE -->
+  <div>
+    <div class="vs-label"><span class="badge badge-before">Before</span></div>
+    <div class="phone">
+      <div class="phone-header"><div class="phone-title">✦ AI 对话</div><span style="font-size:10px;color:#555">✕</span></div>
+      <div class="phone-messages">
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <div class="result-card">
+          <span class="result-icon">✓</span>
+          <span class="result-text"><strong>优化handleTouch逻辑</strong> · 2 files</span>
+          <div class="result-files"><span class="pc-file">index.js</span><span class="pc-file">index.wxml</span></div>
+          <span class="expand-arrow">›</span>
+        </div>
+
+        <!-- Summary awkwardly crammed inside the card -->
+        <div style="background:#111118;border:1px solid #2a2a3a;border-radius:8px;padding:8px 10px;font-size:10px;color:#7070a0;line-height:1.5;font-style:italic">
+          ← summary bolted onto the card — feels wrong, hard to read, no clear conversation thread
+        </div>
+
+        <div class="chk"><div class="chk-line"></div><div class="chk-text">restore · just now</div><div class="chk-line"></div></div>
+      </div>
+      <div class="phone-input">
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AFTER -->
+  <div>
+    <div class="vs-label"><span class="badge badge-after">After</span></div>
+    <div class="phone">
+      <div class="phone-header"><div class="phone-title">✦ AI 对话</div><span style="font-size:10px;color:#555">✕</span></div>
+      <div class="phone-messages">
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- Done card: pure artifact, no text -->
+        <div class="result-card">
+          <span class="result-icon">✓</span>
+          <span class="result-text"><strong>优化handleTouch逻辑</strong> · 2 files</span>
+          <div class="result-files"><span class="pc-file">index.js</span><span class="pc-file">index.wxml</span></div>
+          <span class="expand-arrow">›</span>
+        </div>
+
+        <!-- Agent message bubble — independent, below the card -->
+        <div class="msg-agent">
+          Fixed the touch coordinate calculation in <code>handleTouch</code> — replaced absolute <code>clientX/Y</code> with container-relative offsets so touch events work correctly when the page is scrolled. Updated both the JS logic and the WXML event binding.
+          <div class="next">
+            <span class="next-arrow">→</span>
+            <span class="next-text"><strong>Want to test this?</strong> Try scrolling the page and tapping, or I can add boundary clamping so touches stay within the element.</span>
+          </div>
+        </div>
+
+        <div class="chk"><div class="chk-line"></div><div class="chk-text">restore · just now</div><div class="chk-line"></div></div>
+
+        <!-- User naturally picks up from the suggestion -->
+        <div class="msg-user">好的，帮我加边界限制</div>
+      </div>
+      <div class="phone-input">
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:24px;background:#111118;border:1px solid #2a2a3a;border-radius:10px;padding:14px 16px;font-size:11px;color:#888;line-height:1.6">
+  <strong style="color:#c0c0e0;font-size:12px">Summary of the full resting state sequence</strong><br><br>
+  1. <strong style="color:#aaa">Done card</strong> — collapsed artifact (title, file chips, expand arrow). Pure record, no words.<br>
+  2. <strong style="color:#aaa">Agent bubble</strong> — communicator-generated summary of what changed + one concrete next-step suggestion. Normal chat bubble, left-aligned.<br>
+  3. <strong style="color:#aaa">Restore divider</strong> — thin horizontal rule, "restore · X ago", dim, last one only.<br>
+  4. Conversation continues naturally from the suggestion.
+</div>

@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export type AgentStatus =
   | "planning"
@@ -25,20 +26,18 @@ export type AgentStatus =
   | null;
 
 interface StatusConfig {
-  label: string;
   color: string;
-  /** Tailwind pulse/ping class for the indicator dot */
   dotAnim: string;
 }
 
 const STATUS_CONFIG: Record<Exclude<AgentStatus, null>, StatusConfig> = {
-  planning:     { label: "Planning",       color: "#4f82ff", dotAnim: "animate-pulse" },
-  preparing:    { label: "Preparing plan", color: "#818cf8", dotAnim: "animate-pulse" },
-  thinking:     { label: "Thinking",       color: "#818cf8", dotAnim: "animate-pulse" },
-  working:      { label: "Working",        color: "#f59e0b", dotAnim: "animate-ping"  },
-  verifying:    { label: "Verifying",      color: "#34d68a", dotAnim: "animate-pulse" },
-  fixing:       { label: "Fixing",         color: "#f97316", dotAnim: "animate-ping"  },
-  reconnecting: { label: "Reconnecting",   color: "#f59e0b", dotAnim: "animate-ping"  },
+  planning:     { color: "#4f82ff", dotAnim: "animate-pulse" },
+  preparing:    { color: "#818cf8", dotAnim: "animate-pulse" },
+  thinking:     { color: "#818cf8", dotAnim: "animate-pulse" },
+  working:      { color: "#f59e0b", dotAnim: "animate-ping"  },
+  verifying:    { color: "#34d68a", dotAnim: "animate-pulse" },
+  fixing:       { color: "#f97316", dotAnim: "animate-ping"  },
+  reconnecting: { color: "#f59e0b", dotAnim: "animate-ping"  },
 };
 
 interface AgentStatusLineProps {
@@ -49,10 +48,20 @@ interface AgentStatusLineProps {
 }
 
 export function AgentStatusLine({ status, elapsed, className }: AgentStatusLineProps) {
-  // Keep the last non-null status visible during cross-fade
   const [shown, setShown] = useState<AgentStatus>(status);
   const [fading, setFading] = useState(false);
   const [cursorOn, setCursorOn] = useState(true);
+  const t = useT();
+
+  const STATUS_LABELS: Record<Exclude<AgentStatus, null>, string> = {
+    planning:     t("agent.planning"),
+    preparing:    t("agent.preparing"),
+    thinking:     t("agent.thinking"),
+    working:      t("agent.working"),
+    verifying:    t("agent.verifying"),
+    fixing:       t("agent.fixing"),
+    reconnecting: t("agent.reconnecting"),
+  };
 
   // Cross-fade when phase changes
   useEffect(() => {
@@ -113,7 +122,7 @@ export function AgentStatusLine({ status, elapsed, className }: AgentStatusLineP
           )}
           style={{ color: cfg.color }}
         >
-          {cfg.label}
+          {STATUS_LABELS[shown]}
           {/* Block cursor — the single detail that makes this feel "live" */}
           <span
             style={{

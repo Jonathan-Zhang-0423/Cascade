@@ -1,0 +1,208 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e76]:
+    - banner [ref=e77]:
+      - generic [ref=e78]:
+        - button "Back" [ref=e79] [cursor=pointer]:
+          - img [ref=e80]
+        - generic [ref=e82]:
+          - generic [ref=e83]: 🐦
+          - generic [ref=e84]: Flappy Bird with Header
+          - generic [ref=e85]: ·
+          - generic [ref=e86]: Web
+      - generic [ref=e87]:
+        - combobox [ref=e88] [cursor=pointer]:
+          - generic: Dark+
+          - img [ref=e89]
+        - generic [ref=e91]:
+          - button "Switch to English" [ref=e92] [cursor=pointer]: EN
+          - button "切换到中文" [ref=e94] [cursor=pointer]: 中
+        - button "刷新" [ref=e95] [cursor=pointer]:
+          - img
+          - text: 刷新
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]:
+          - button "文件" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+          - button "AI 对话" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+          - button "历史记录" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+          - button "Skills" [ref=e110] [cursor=pointer]:
+            - img [ref=e111]
+          - button "Toggle code" [ref=e114] [cursor=pointer]:
+            - img [ref=e115]
+        - button "LLM Monitor" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+      - generic [ref=e128]:
+        - generic [ref=e130]:
+          - generic [ref=e131]:
+            - generic [ref=e132]:
+              - img [ref=e133]
+              - generic [ref=e135]: AI 对话
+            - button "关闭面板" [ref=e136] [cursor=pointer]:
+              - img
+          - generic [ref=e137]:
+            - paragraph [ref=e142]: 你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。
+            - generic [ref=e143]:
+              - generic [ref=e144]:
+                - generic [ref=e145]:
+                  - paragraph [ref=e146]: 搭建网页版Flappy Bird游戏，包含小鸟控制、管道障碍、碰撞检测和计分系统
+                  - button "查看完整方案文档" [ref=e147] [cursor=pointer]:
+                    - img [ref=e148]
+                - generic [ref=e151]:
+                  - generic [ref=e152]:
+                    - img [ref=e153]
+                    - paragraph [ref=e155]: 任务目标
+                  - paragraph [ref=e156]: 构建一个经典的Flappy Bird网页游戏，玩家通过点击或按键控制小鸟飞行并躲避管道。作为学习HTML5 Canvas游戏开发的实践项目，包含游戏循环、物理模拟和碰撞检测等核心概念。
+                - generic [ref=e157]:
+                  - generic [ref=e158]:
+                    - img [ref=e159]
+                    - paragraph [ref=e162]: 完成后是什么样
+                  - paragraph [ref=e163]: 打开网页后显示开始界面，点击开始后小鸟下落，按空格键或点击屏幕小鸟向上飞。管道从右侧持续生成，通过管道得分增加。碰到管道或地面游戏结束，显示最终分数和重新开始按钮。
+                - generic [ref=e164]:
+                  - generic [ref=e165]:
+                    - img [ref=e166]
+                    - paragraph [ref=e170]: 暂不包含
+                  - paragraph [ref=e171]: 不包含音效、本地存储最高分、移动端适配优化、多种难度级别
+                - generic [ref=e172]:
+                  - generic [ref=e174]:
+                    - img [ref=e175]
+                    - paragraph [ref=e179]: 任务步骤
+                  - generic [ref=e180]:
+                    - generic [ref=e185]:
+                      - generic [ref=e186]: "1."
+                      - generic [ref=e187]: 更新HTML结构和游戏画布
+                    - generic [ref=e192]:
+                      - generic [ref=e193]: "2."
+                      - generic [ref=e194]: 添加游戏样式和布局
+                    - generic [ref=e199]:
+                      - generic [ref=e200]: "3."
+                      - generic [ref=e201]: 实现游戏核心类和游戏循环
+                    - generic [ref=e206]:
+                      - generic [ref=e207]: "4."
+                      - generic [ref=e208]: 实现管道系统和碰撞检测
+                    - generic [ref=e213]:
+                      - generic [ref=e214]: "5."
+                      - generic [ref=e215]: 实现分数系统和游戏状态
+                    - generic [ref=e219]:
+                      - generic [ref=e220]: "6."
+                      - generic [ref=e221]: 添加用户控制和交互
+                - generic [ref=e222]:
+                  - generic [ref=e223]:
+                    - img [ref=e224]
+                    - paragraph [ref=e229]: 相关文件
+                  - generic [ref=e230]:
+                    - generic [ref=e231]:
+                      - img [ref=e232]
+                      - text: index.html
+                    - generic [ref=e237]:
+                      - img [ref=e238]
+                      - text: style.css
+                    - generic [ref=e243]:
+                      - img [ref=e244]
+                      - text: app.js
+                - generic [ref=e250]:
+                  - button "修改方案" [ref=e251] [cursor=pointer]:
+                    - img
+                    - text: 修改方案
+                  - button "立即构建" [ref=e252] [cursor=pointer]:
+                    - img
+                    - text: 立即构建
+              - generic [ref=e253]:
+                - generic [ref=e254]:
+                  - generic [ref=e255]:
+                    - img [ref=e257]
+                    - generic [ref=e259]: Done
+                  - paragraph [ref=e262]: 搭建网页版Flappy Bird游戏，包含小鸟控制、管道障碍、碰撞检测和计分系统
+                - generic [ref=e263]:
+                  - generic [ref=e264]:
+                    - img [ref=e265]
+                    - paragraph [ref=e270]: Files Changed
+                  - generic [ref=e271]:
+                    - generic [ref=e272]: app.js
+                    - generic [ref=e273]: cascade.md
+                    - generic [ref=e274]: index.html
+                    - generic [ref=e275]: style.css
+                - generic [ref=e277]:
+                  - paragraph [ref=e278]: What should we build next?
+                  - img [ref=e279]
+            - paragraph [ref=e285]: Add a header and a button to the page
+            - generic [ref=e287]:
+              - generic [ref=e290]:
+                - paragraph [ref=e291]: I'll help you add a header and a button to the page. Let's first check the current HTML structure to see what we're working with.Now let's check the CSS to ensure we can style the new elements properly.
+                - paragraph [ref=e292]: Now I'll add a header and a new button to the page. Let's modify both HTML and CSS files.
+                - paragraph [ref=e293]: "First, let's update the HTML structure:"
+                - paragraph [ref=e294]: "Now let's update the CSS to style our new elements:"
+                - paragraph [ref=e295]: "Now let's add a small JavaScript snippet to handle the help modal interaction:"
+                - paragraph [ref=e296]: "Let's add the JavaScript code to handle the help modal at the end of app.js:"
+                - paragraph [ref=e297]: I've successfully added a header and a button to the…
+              - button "Show more" [ref=e298] [cursor=pointer]
+            - generic [ref=e299]:
+              - generic [ref=e300]:
+                - generic [ref=e301]:
+                  - img [ref=e302]
+                  - generic [ref=e306]: AI response
+                - generic [ref=e307]: 2天前
+              - button "还原" [ref=e308] [cursor=pointer]:
+                - img [ref=e309]
+                - text: 还原
+            - paragraph [ref=e316]: Add a loading spinner to the game
+            - generic [ref=e320]:
+              - paragraph [ref=e321]: I'll add a loading spinner to the game. Let's modify the HTML, CSS, and JavaScript files to implement this.
+              - paragraph [ref=e322]: "First, let's update the HTML to add the spinner element:"
+          - generic [ref=e324]:
+            - textbox "按 Enter 开始构建你的方案..." [ref=e325]
+            - generic [ref=e326]:
+              - button "规划" [ref=e327] [cursor=pointer]:
+                - generic [ref=e329]: 规划
+              - combobox [ref=e330] [cursor=pointer]:
+                - generic:
+                  - generic: Doubao
+                - img [ref=e331]
+              - button "智能回复 — 让 AI 建议回复内容" [ref=e333] [cursor=pointer]:
+                - img
+              - button [ref=e334] [cursor=pointer]:
+                - img
+        - separator [ref=e335]
+        - generic [ref=e341]:
+          - generic [ref=e342]:
+            - generic [ref=e343]: Web
+            - generic [ref=e344]:
+              - button "iOS" [ref=e345] [cursor=pointer]
+              - button "Android" [ref=e346] [cursor=pointer]
+            - combobox [ref=e347] [cursor=pointer]:
+              - generic: iPhone 16 Pro
+              - img [ref=e348]
+            - button "Toggle orientation" [ref=e350] [cursor=pointer]:
+              - img [ref=e351]
+            - button "Toggle frame style" [ref=e355] [cursor=pointer]:
+              - img [ref=e356]
+            - button "QR Preview" [ref=e358] [cursor=pointer]:
+              - img [ref=e359]
+            - button "刷新预览" [ref=e365] [cursor=pointer]:
+              - img [ref=e366]
+            - button "Show terminal" [ref=e371] [cursor=pointer]:
+              - img [ref=e372]
+          - generic [ref=e382]:
+            - generic:
+              - generic:
+                - generic:
+                  - generic: 9:41
+                  - generic:
+                    - img
+                    - img
+                    - img
+            - iframe [ref=e384] [cursor=pointer]:
+              - generic [active] [ref=f2e1]:
+                - banner [ref=f2e2]:
+                  - heading "飞翔的小鸟" [level=1] [ref=f2e3]
+                  - button "How to Play" [ref=f2e4] [cursor=pointer]
+                - generic [ref=f2e5]:
+                  - generic: "0"
+                  - generic [ref=f2e7]:
+                    - heading "Flappy Bird" [level=1] [ref=f2e8]
+                    - paragraph [ref=f2e9]: 按空格键或点击屏幕控制小鸟飞行
+                    - button "开始游戏" [ref=f2e10] [cursor=pointer]

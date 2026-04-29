@@ -4,6 +4,7 @@ import { generateRNExpoTemplate } from "./rn-expo-template";
 import { generateFlutterTemplate } from "./flutter-template";
 import { generateSwiftUITemplate } from "./swiftui-template";
 import { generateKotlinTemplate } from "./kotlin-template";
+import { generateWeChatTemplate } from "./wechat-template";
 
 export interface TemplateFile {
   path: string;
@@ -20,6 +21,8 @@ export function getTemplateFiles(framework: Framework): TemplateFile[] {
       return generateSwiftUITemplate();
     case "kotlin":
       return generateKotlinTemplate();
+    case "wechat":
+      return generateWeChatTemplate();
     case "web":
     default:
       return generateWebTemplate();

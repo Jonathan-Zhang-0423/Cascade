@@ -599,6 +599,10 @@ export async function registerRoutes(
           // Stop LSP servers and shell session
           lspManager.stop(session.id).catch(() => {});
           shellManager.destroyShell(session.id).catch(() => {});
+          // Evict session from memory after 30 minutes to prevent unbounded growth
+          setTimeout(() => {
+            buildSessions.delete(session.id);
+          }, 30 * 60 * 1000);
         });
 
       buildPromise.catch(() => {});
@@ -655,6 +659,19 @@ export async function registerRoutes(
     if (session) {
       session.aborted = true;
     }
+    res.json({ ok: true });
+  });
+
+  app.post("/api/build-session/:sessionId/input", (req, res) => {
+    const session = buildSessions.get(req.params.sessionId);
+    if (!session || session.done || session.aborted) {
+      res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    const { userInput } = req.body as { userInput?: string };
+    session.userConfirmation = userInput || "";
+    session.pendingUserInputResolve?.();
+    session.pendingUserInputResolve = undefined;
     res.json({ ok: true });
   });
 
@@ -920,14 +937,7 @@ export async function registerRoutes(
         return;
       }
 
-      const userMsgCount = processedMessages.filter(m => m.role === "user").length;
-      // The manager prompt has its own 3-stage flow (Explore → Confirm → Plan)
-      // that controls when the model uses tools. The model natively understands
-      // whether the user is confirming, asking questions, or making a new request
-      // — no hardcoded keyword list needed. We only use message count as a light
-      // heuristic to save tokens on the very first turn (disable extended thinking,
-      // limit to 1 iteration) since the first turn is almost always exploratory.
-      const isFirstTurn = userMsgCount <= 1;
+
 
       const activeTools = managerTools.schemas;
       const activeHandlers = managerTools.handlers;
@@ -952,10 +962,9 @@ export async function registerRoutes(
           emitRawToken,
           {
             exitTools: activeExitTools,
-            maxIterations: isFirstTurn ? 1 : 10,
+            maxIterations: 10,
             client: activeAIClient,
             model: activeAIModel,
-            disableThinking: isFirstTurn,
           },
         );
 

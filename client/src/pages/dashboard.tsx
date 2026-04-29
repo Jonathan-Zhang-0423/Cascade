@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Calendar, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
@@ -47,6 +47,19 @@ import {
 
 migrateOldState();
 
+function relativeDate(ms: number): string {
+  const diff = Date.now() - ms;
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  if (days >= 30) return `${Math.floor(days / 30)}mo ago`;
+  if (days >= 7) return `${Math.floor(days / 7)}w ago`;
+  if (days >= 1) return `${days}d ago`;
+  if (hours >= 1) return `${hours}h ago`;
+  if (mins >= 1) return `${mins}m ago`;
+  return "just now";
+}
+
 export default function DashboardPage() {
   const { projects, createProject, deleteProject, renameProject, syncFromServer } = useProjectStore();
   const [, navigate] = useLocation();
@@ -61,7 +74,7 @@ export default function DashboardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "swiftui" | "kotlin">("web");
+  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "swiftui" | "kotlin" | "wechat">("web");
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -173,7 +186,7 @@ export default function DashboardPage() {
       <header className="border-b border-border/50 bg-sidebar">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
           <div className="flex items-center">
-            <CascadeLogo width={36} height={36} />
+            <CascadeLogo width={28} height={28} />
           </div>
           <div className="flex items-center gap-2">
             {/* Theme selector — hidden on mobile, shown in user menu there */}
@@ -254,7 +267,7 @@ export default function DashboardPage() {
 
       <main className="max-w-5xl mx-auto px-6 py-8 pb-28">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-bold text-foreground" data-testid="text-dashboard-title">
+          <h1 className="font-lora text-xl font-bold tracking-tight text-foreground" data-testid="text-dashboard-title">
             {t("dashboard.myProjects")}
           </h1>
           {sorted.length > 0 && !selectMode && (
@@ -293,18 +306,20 @@ export default function DashboardPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="project-grid">
-            {sorted.map((project) => {
+          <div className="flex flex-col border border-border/40 rounded-xl overflow-hidden" data-testid="project-list">
+            {sorted.map((project, idx) => {
               const isSelected = selectedIds.has(project.id);
+              const fw = project.framework ?? "web";
+              const fwLabel: Record<string, string> = {
+                web: "Web", "rn-expo": "RN", flutter: "Flutter", swiftui: "SwiftUI", kotlin: "Kotlin", wechat: "WeChat",
+              };
               return (
                 <div
                   key={project.id}
-                  className={`group relative bg-card border rounded-xl p-5 transition-all cursor-pointer
+                  className={`group relative flex items-center gap-3 px-4 py-3 border-b border-border/40 last:border-b-0 transition-colors cursor-pointer
                     ${selectMode
-                      ? isSelected
-                        ? "border-primary shadow-md ring-2 ring-primary/30 bg-primary/5"
-                        : "border-card-border hover:border-primary/40 hover:shadow-md"
-                      : "border-card-border hover:border-primary/40 hover:shadow-md"
+                      ? isSelected ? "bg-primary/5" : "hover:bg-muted/30"
+                      : "hover:bg-muted/30"
                     }`}
                   onClick={() => {
                     if (selectMode) {
@@ -315,65 +330,76 @@ export default function DashboardPage() {
                   }}
                   data-testid={`card-project-${project.id}`}
                 >
-                  {/* Checkbox overlay in select mode */}
+                  {/* Select checkbox */}
                   {selectMode && (
                     <div
-                      className="absolute top-3 left-3 z-10"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelect(project.id);
-                      }}
+                      className="shrink-0"
+                      onClick={(e) => { e.stopPropagation(); toggleSelect(project.id); }}
                       data-testid={`checkbox-project-${project.id}`}
                     >
-                      {isSelected ? (
-                        <CheckCheck className="w-5 h-5 text-primary" />
-                      ) : (
-                        <Square className="w-5 h-5 text-muted-foreground" />
-                      )}
+                      {isSelected
+                        ? <CheckCheck className="w-4 h-4 text-primary" />
+                        : <Square className="w-4 h-4 text-muted-foreground" />}
                     </div>
                   )}
 
-                  <div className={`flex items-start justify-between mb-3 ${selectMode ? "pl-7" : ""}`}>
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-2xl leading-none select-none" data-testid={`emoji-project-${project.id}`}>
-                      {project.emoji ?? getProjectEmoji(project.name)}
+                  {/* Row number */}
+                  {!selectMode && (
+                    <span className="font-lora text-sm font-bold text-muted-foreground/30 w-6 shrink-0 text-right select-none tabular-nums">
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
+                  )}
+
+                  {/* Emoji */}
+                  <span className="text-xl leading-none shrink-0 select-none" data-testid={`emoji-project-${project.id}`}>
+                    {project.emoji ?? getProjectEmoji(project.name)}
+                  </span>
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-foreground truncate" data-testid={`text-project-name-${project.id}`}>
+                      {project.name}
                     </div>
-                    {!selectMode && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRenameId(project.id);
-                            setRenameName(project.name);
-                          }}
-                          data-testid={`button-rename-${project.id}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteId(project.id);
-                          }}
-                          data-testid={`button-delete-${project.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/10 text-primary/70">
+                        {fwLabel[fw] ?? fw}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground/50">
+                        {relativeDate(project.createdAt)}
+                      </span>
+                    </div>
                   </div>
-                  <h3 className={`font-semibold text-foreground mb-1 truncate ${selectMode ? "pl-7" : ""}`} data-testid={`text-project-name-${project.id}`}>
-                    {project.name}
-                  </h3>
-                  <div className={`flex items-center gap-1.5 text-xs text-muted-foreground ${selectMode ? "pl-7" : ""}`}>
-                    <Calendar className="w-3 h-3" />
-                    <span>{new Date(project.createdAt).toLocaleDateString()}</span>
-                  </div>
+
+                  {/* Actions — show on hover in normal mode */}
+                  {!selectMode && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenameId(project.id);
+                          setRenameName(project.name);
+                        }}
+                        data-testid={`button-rename-${project.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(project.id);
+                        }}
+                        data-testid={`button-delete-${project.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -462,6 +488,7 @@ export default function DashboardPage() {
                 <SelectItem value="flutter">Flutter</SelectItem>
                 <SelectItem value="swiftui">SwiftUI (iOS)</SelectItem>
                 <SelectItem value="kotlin">Kotlin Compose (Android)</SelectItem>
+                <SelectItem value="wechat">WeChat Mini Program</SelectItem>
               </SelectContent>
             </Select>
           </div>

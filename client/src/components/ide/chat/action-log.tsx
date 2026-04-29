@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  MessageSquare,
   TerminalSquare,
   GitCompare,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import type { ActionLogEntry } from "./chat-types";
 import { getActionLogColor } from "./chat-utils";
 import { useIDEStore } from "@/stores/ide-store";
 import { InlineDiffView } from "./InlineDiffView";
+import { useT } from "@/lib/i18n";
 
 function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
   const cls = small ? "w-2.5 h-2.5 shrink-0" : "w-3 h-3 shrink-0";
@@ -41,18 +41,18 @@ function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
   }
 }
 
-function getGroupLabel(type: ActionLogEntry["type"], count: number): string {
+function getGroupLabel(type: ActionLogEntry["type"], count: number, t: (k: string, v?: Record<string,string>) => string): string {
   switch (type) {
     case "file_write":
-      return count === 1 ? "Wrote 1 file" : `Wrote ${count} files`;
+      return count === 1 ? t("action.wroteFile") : t("action.wroteFiles", { count: String(count) });
     case "file_read":
-      return count === 1 ? "Read 1 file" : `Read ${count} files`;
+      return count === 1 ? t("action.readFile") : t("action.readFiles", { count: String(count) });
     case "tool_call":
-      return count === 1 ? "1 tool call" : `${count} tool calls`;
+      return count === 1 ? t("action.toolCall") : t("action.toolCalls", { count: String(count) });
     case "terminal_command":
-      return count === 1 ? "1 command" : `${count} commands`;
+      return count === 1 ? t("action.command") : t("action.commands", { count: String(count) });
     default:
-      return count === 1 ? "1 action" : `${count} actions`;
+      return count === 1 ? t("action.action") : t("action.actions", { count: String(count) });
   }
 }
 
@@ -81,6 +81,7 @@ export function ActionLogLiveRow({
   entry: ActionLogEntry;
   showCodePreview?: boolean;
 }) {
+  const t = useT();
   const color = getActionLogColor(entry.type);
   const icon = getActionLogIcon(entry.type);
   const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
@@ -98,7 +99,7 @@ export function ActionLogLiveRow({
       ? entry.label.slice(0, 50) + "…"
       : entry.label;
 
-  const actionType = isWrite ? "written" : isRead ? "read" : null;
+  const actionType = isWrite ? t("action.written") : isRead ? t("action.read") : null;
 
   return (
     <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
@@ -189,6 +190,7 @@ export function ActionLogLiveRow({
 
 export function ThinkingStream({ text }: { text: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const t = useT();
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -209,7 +211,7 @@ export function ThinkingStream({ text }: { text: string }) {
       <div className="flex items-center gap-1.5 mb-1.5">
         <Brain className="w-3 h-3 shrink-0 text-[#818cf8]" />
         <span className="text-[11px] font-medium text-[#818cf8] uppercase tracking-wide flex-1">
-          Thinking
+          {t("action.thinking")}
         </span>
         <div className="flex items-center gap-[3px]">
           <span className="w-[4px] h-[4px] rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: "0ms" }} />
@@ -226,6 +228,7 @@ export function ThinkingStream({ text }: { text: string }) {
 
 export function CollapsedThinking({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   return (
     <div
       className="rounded-md border border-blue-400/15 overflow-hidden"
@@ -238,7 +241,7 @@ export function CollapsedThinking({ text }: { text: string }) {
       >
         <Brain className="w-3 h-3 shrink-0" />
         <span className="flex-1 truncate leading-tight font-medium">
-          Thinking
+          {t("action.thinking")}
         </span>
         <span className="shrink-0 text-muted-foreground/40">
           {expanded ? (
@@ -262,6 +265,7 @@ export function CollapsedThinking({ text }: { text: string }) {
 function GroupedActionRow({ group }: { group: ActionGroup }) {
   const [expanded, setExpanded] = useState(false);
   const count = group.entries.length;
+  const t = useT();
 
   // Single entry: just render it directly, no grouping
   if (count === 1) {
@@ -288,7 +292,7 @@ function GroupedActionRow({ group }: { group: ActionGroup }) {
               onClick={() => setExpanded(false)}
             >
               <ChevronUp className="w-3 h-3" />
-              Collapse
+              {t("action.collapse")}
             </button>
           </>
         ) : (
@@ -301,7 +305,7 @@ function GroupedActionRow({ group }: { group: ActionGroup }) {
               <FileSearch className="w-3 h-3 text-[#818cf8]" />
             </div>
             <div className="flex-1">
-              <div className="font-medium">Read {count} files</div>
+              <div className="font-medium">{t("action.readFilesGroup", { count: String(count) })}</div>
               {fileNames && (
                 <div className="text-[10px] text-muted-foreground/40 truncate font-mono mt-0.5">{fileNames}</div>
               )}
@@ -344,6 +348,7 @@ export function ActionLogLive({
   narrationText?: string;
 }) {
   const last5 = entries.slice(-5);
+  const t = useT();
 
   const thinkingEntries = entries.filter((e) => e.type === "thinking");
   const nonThinkingEntries = last5.filter((e) => e.type !== "thinking");
@@ -365,7 +370,7 @@ export function ActionLogLive({
           <div className="flex items-center gap-2 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d68a] animate-pulse shrink-0" />
             <span className="text-[10px] font-medium text-[#34d68a]/70 uppercase tracking-wide">
-              Live
+              {t("action.live")}
             </span>
           </div>
           <p className="text-[12px] leading-relaxed text-foreground/85 font-mono">
@@ -387,6 +392,7 @@ export function ActionLogChip({
   entry: ActionLogEntry;
   index: number;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const lastBuildFileDiffs = useIDEStore((s) => s.lastBuildFileDiffs);
@@ -409,7 +415,7 @@ export function ActionLogChip({
     ? lastBuildFileDiffs[entry.filePath]
     : undefined;
 
-  const actionType = isWrite ? "written" : isRead ? "read" : null;
+  const actionType = isWrite ? t("action.written") : isRead ? t("action.read") : null;
 
   return (
     <div
@@ -529,7 +535,7 @@ export function ActionLogChip({
 function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startIndex: number }) {
   const [expanded, setExpanded] = useState(false);
   const count = group.entries.length;
-  const color = getActionLogColor(group.type);
+  const t = useT();
 
   if (count === 1) {
     return group.entries[0].type === "thinking" ? (
@@ -539,7 +545,7 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
     );
   }
 
-  const label = getGroupLabel(group.type, count);
+  const label = getGroupLabel(group.type, count, t);
   const previewIcons = group.entries.slice(0, 3);
 
   return (
@@ -550,7 +556,7 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
       <button
         className={cn(
           "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
-          color,
+          getActionLogColor(group.type),
         )}
         onClick={() => setExpanded((e) => !e)}
       >
@@ -586,6 +592,7 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
   const groups = groupConsecutiveEntries(entries);
   const displayGroups = showAll ? groups : groups.slice(0, 6);
   const hasMore = groups.length > 6;
+  const t = useT();
 
   let runningIndex = 0;
 
@@ -594,7 +601,7 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
       <div className="flex items-center gap-1.5 mb-1.5">
         <ListChecks className="w-3 h-3 text-muted-foreground/60" />
         <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide">
-          Actions ({entries.length})
+          {t("action.actions2", { count: String(entries.length) })}
         </span>
       </div>
       {displayGroups.map((group, i) => {
@@ -609,7 +616,7 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
           data-testid="button-show-all-actions"
         >
           <ChevronDown className="w-3 h-3" />
-          Show {groups.length - 6} more groups
+          {t("action.showMore", { count: String(groups.length - 6) })}
         </button>
       )}
       {showAll && hasMore && (
@@ -619,7 +626,7 @@ export function ActionLogCollapsed({ entries }: { entries: ActionLogEntry[] }) {
           data-testid="button-collapse-actions"
         >
           <ChevronUp className="w-3 h-3" />
-          Collapse
+          {t("action.collapse")}
         </button>
       )}
     </div>

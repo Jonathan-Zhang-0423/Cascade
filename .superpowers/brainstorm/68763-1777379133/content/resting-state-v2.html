@@ -1,0 +1,187 @@
+<style>
+  body { background: #0e0e11; color: #e1e1e6; font-family: -apple-system, sans-serif; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+  .section-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #666; margin-bottom: 8px; }
+
+  .phone { background: #13131a; border: 1.5px solid #2a2a3a; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+  .phone-header { padding: 10px 14px 8px; border-bottom: 1px solid #1e1e2a; display: flex; align-items: center; justify-content: space-between; }
+  .phone-title { font-size: 12px; font-weight: 600; color: #c0c0d0; }
+  .phone-messages { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .phone-input { padding: 8px 10px; border-top: 1px solid #1e1e2a; }
+
+  .msg-user { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 78%; }
+
+  /* Collapsed result line */
+  .result-line { display: flex; align-items: center; gap: 7px; background: #141420; border: 1px solid #2a2a3a; border-radius: 8px 8px 0 0; padding: 7px 10px; border-bottom: none; }
+  .result-icon { color: #4a8a4a; font-size: 12px; flex-shrink: 0; }
+  .result-text { font-size: 10px; color: #a0a0c0; flex: 1; }
+  .result-text strong { color: #c8c8e8; }
+  .pc-file { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 5px; font-size: 9px; color: #6a9a6a; font-family: monospace; }
+  .result-files { display: flex; gap: 3px; }
+  .expand-arrow { font-size: 10px; color: #4a4a70; }
+
+  /* Agent summary block — attached below result line */
+  .agent-summary { background: #111118; border: 1px solid #2a2a3a; border-top: 1px solid #1e1e2a; border-radius: 0 0 8px 8px; padding: 8px 11px; display: flex; flex-direction: column; gap: 6px; }
+  .summary-text { font-size: 10px; color: #a0a0b8; line-height: 1.55; }
+  .next-steps { display: flex; gap: 6px; align-items: flex-start; margin-top: 1px; }
+  .next-steps-icon { font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .next-steps-text { font-size: 10px; color: #7070a0; line-height: 1.5; font-style: italic; }
+  .next-steps-text strong { color: #9090c0; font-style: normal; }
+
+  /* Follow-up user message */
+  .msg-user-followup { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 78%; }
+
+  /* Checkpoint */
+  .chk { display: flex; align-items: center; gap: 6px; padding: 1px 0; opacity: .4; }
+  .chk-line { flex: 1; height: 1px; background: #2a2a3a; }
+  .chk-text { font-size: 9px; color: #666; white-space: nowrap; }
+
+  /* OLD version */
+  .old-result-line { display: flex; align-items: center; gap: 7px; background: #141420; border: 1px solid #2a2a3a; border-radius: 8px; padding: 7px 10px; }
+
+  .input-row { display: flex; gap: 5px; align-items: center; }
+  .mode-badge { font-size: 9px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px 6px; color: #6060a0; }
+  .input-mock { flex: 1; background: #0d0d16; border: 1px solid #202030; border-radius: 8px; padding: 6px 9px; font-size: 10px; color: #505070; }
+  .input-send { background: #2a3aaa; border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #c0ccf0; font-size: 11px; flex-shrink: 0; }
+
+  .vs-label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .vs-label .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+  .badge-before { background: #2a1a1a; border: 1px solid #4a2a2a; color: #9a5a5a; }
+  .badge-after { background: #1a2a1a; border: 1px solid #2a4a2a; color: #4a8a4a; }
+
+  .annotations { display: flex; flex-direction: column; gap: 14px; margin-top: 28px; }
+  .ann { display: flex; gap: 10px; }
+  .ann-num { width: 20px; height: 20px; border-radius: 50%; background: #1a1a30; border: 1px solid #3a3a5a; font-size: 10px; color: #8080c0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .ann-body h4 { font-size: 12px; font-weight: 600; color: #c0c0e0; margin: 0 0 3px; }
+  .ann-body p { font-size: 11px; color: #666; margin: 0; line-height: 1.5; }
+  .tag { display: inline-block; background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 6px; font-size: 9px; color: #4a8a4a; margin-top: 4px; }
+</style>
+
+<h2>Resting state — with agent summary + next steps</h2>
+<p class="subtitle">Comparing before (plain collapsed line) vs after (collapsed line + summary + suggestion)</p>
+
+<div class="split">
+
+  <!-- BEFORE -->
+  <div>
+    <div class="vs-label"><span class="badge badge-before">Before</span><span style="font-size:10px;color:#666">missing context after build</span></div>
+    <div class="phone">
+      <div class="phone-header">
+        <div class="phone-title">✦ AI 对话</div>
+        <span style="font-size:10px;color:#555">✕</span>
+      </div>
+      <div class="phone-messages">
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <div class="old-result-line">
+          <span style="color:#4a8a4a;font-size:12px">✓</span>
+          <span style="font-size:10px;color:#a0a0c0;flex:1"><strong style="color:#c8c8e8">优化handleTouch逻辑</strong> · 2 files</span>
+          <div style="display:flex;gap:3px">
+            <span class="pc-file">index.js</span>
+            <span class="pc-file">index.wxml</span>
+          </div>
+          <span class="expand-arrow">›</span>
+        </div>
+
+        <div class="chk">
+          <div class="chk-line"></div>
+          <div class="chk-text">restore point · just now</div>
+          <div class="chk-line"></div>
+        </div>
+
+        <!-- User is left with no context, has to guess next steps -->
+        <div style="font-size:10px;color:#444;text-align:center;padding:8px 0;font-style:italic">... user must guess what to do next</div>
+      </div>
+      <div class="phone-input">
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AFTER -->
+  <div>
+    <div class="vs-label"><span class="badge badge-after">After</span><span style="font-size:10px;color:#666">grounded, conversation continues naturally</span></div>
+    <div class="phone">
+      <div class="phone-header">
+        <div class="phone-title">✦ AI 对话</div>
+        <span style="font-size:10px;color:#555">✕</span>
+      </div>
+      <div class="phone-messages">
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- Result line — top of the card -->
+        <div style="display:flex;flex-direction:column">
+          <div class="result-line">
+            <span class="result-icon">✓</span>
+            <span class="result-text"><strong>优化handleTouch逻辑</strong> · 2 files</span>
+            <div class="result-files">
+              <span class="pc-file">index.js</span>
+              <span class="pc-file">index.wxml</span>
+            </div>
+            <span class="expand-arrow">›</span>
+          </div>
+
+          <!-- Agent summary + next steps — attached below -->
+          <div class="agent-summary">
+            <div class="summary-text">
+              Fixed the touch coordinate calculation in <code style="font-size:9px;background:#1a1a2a;padding:1px 4px;border-radius:3px;color:#9090cc">handleTouch</code> — replaced absolute <code style="font-size:9px;background:#1a1a2a;padding:1px 4px;border-radius:3px;color:#9090cc">clientX/Y</code> with container-relative offsets so touch events work correctly when the page is scrolled.
+            </div>
+            <div class="next-steps">
+              <span class="next-steps-icon">→</span>
+              <span class="next-steps-text"><strong>Want to test this?</strong> Try scrolling the page and tapping — or I can add boundary clamping so touches can't go outside the element.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chk">
+          <div class="chk-line"></div>
+          <div class="chk-text">restore point · just now</div>
+          <div class="chk-line"></div>
+        </div>
+
+        <!-- User naturally continues from the suggestion -->
+        <div class="msg-user-followup">好的，帮我加边界限制</div>
+
+      </div>
+      <div class="phone-input">
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="annotations">
+  <div class="ann">
+    <div class="ann-num">1</div>
+    <div class="ann-body">
+      <h4>Result line + summary are one visual unit</h4>
+      <p>The collapsed title line and the agent summary share a single card border — top half shows the title/files (tappable to expand), bottom half shows the agent's text. They're inseparable at rest.</p>
+      <span class="tag">one card · two zones</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">2</div>
+    <div class="ann-body">
+      <h4>Summary: what changed and why</h4>
+      <p>Written by the communicator agent at build completion — 1–3 sentences. Human-readable, not a bullet list. References the specific files/functions that changed so it's grounding, not generic.</p>
+      <span class="tag">communicator-generated · specific</span>
+    </div>
+  </div>
+  <div class="ann">
+    <div class="ann-num">3</div>
+    <div class="ann-body">
+      <h4>Next step suggestion: one sentence, actionable</h4>
+      <p>Presented with a → arrow and italic style to visually distinguish it from the summary. A concrete suggestion ("try scrolling and tapping" or "I can add X") — not a vague "let me know if you need anything".</p>
+      <span class="tag">→ arrow · one sentence · specific CTA</span>
+    </div>
+  </div>
+</div>

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
+import { useT } from "@/lib/i18n";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -31,6 +32,7 @@ export function CommandPalette() {
     setActiveFile,
   } = useIDEStore();
   const { themeId, setThemeId } = useTheme();
+  const t = useT();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -56,11 +58,11 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or search..." data-testid="input-command-palette" />
+      <CommandInput placeholder={t("cmd.placeholder")} data-testid="input-command-palette" />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty>{t("cmd.noResults")}</CommandEmpty>
 
-        <CommandGroup heading="Files">
+        <CommandGroup heading={t("cmd.groupFiles")}>
           {allFiles.map((file) => (
             <CommandItem
               key={file.path}
@@ -76,13 +78,13 @@ export function CommandPalette() {
 
         <CommandSeparator />
 
-        <CommandGroup heading="View">
+        <CommandGroup heading={t("cmd.groupView")}>
           <CommandItem
             onSelect={() => runCommand(() => setActiveTool("files"))}
             data-testid="cmd-toggle-sidebar"
           >
             <FolderClosed className="w-4 h-4" />
-            <span>{activeTool === "files" ? "Hide" : "Show"} Files Panel</span>
+            <span>{activeTool === "files" ? t("cmd.hideFiles") : t("cmd.showFiles")}</span>
             <CommandShortcut>Ctrl+B</CommandShortcut>
           </CommandItem>
 
@@ -91,7 +93,7 @@ export function CommandPalette() {
             data-testid="cmd-toggle-chat"
           >
             <Sparkles className="w-4 h-4" />
-            <span>{activeTool === "chat" ? "Hide" : "Show"} AI Chat</span>
+            <span>{activeTool === "chat" ? t("cmd.hideChat") : t("cmd.showChat")}</span>
           </CommandItem>
 
           <CommandItem
@@ -99,23 +101,23 @@ export function CommandPalette() {
             data-testid="cmd-toggle-console"
           >
             <Terminal className="w-4 h-4" />
-            <span>{isConsoleOpen ? "Hide" : "Show"} Console</span>
+            <span>{isConsoleOpen ? t("cmd.hideConsole") : t("cmd.showConsole")}</span>
             <CommandShortcut>Ctrl+J</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="Theme">
-          {THEME_LIST.map((t) => (
+        <CommandGroup heading={t("cmd.groupTheme")}>
+          {THEME_LIST.map((th) => (
             <CommandItem
-              key={t.id}
-              onSelect={() => runCommand(() => handleSetTheme(t.id))}
-              data-testid={`cmd-theme-${t.id}`}
+              key={th.id}
+              onSelect={() => runCommand(() => handleSetTheme(th.id))}
+              data-testid={`cmd-theme-${th.id}`}
             >
               <Palette className="w-4 h-4" />
-              <span>{t.label}</span>
-              {themeId === t.id && <CommandShortcut>Active</CommandShortcut>}
+              <span>{th.label}</span>
+              {themeId === th.id && <CommandShortcut>{t("cmd.activeTheme")}</CommandShortcut>}
             </CommandItem>
           ))}
         </CommandGroup>

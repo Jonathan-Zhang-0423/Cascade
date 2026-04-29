@@ -36,8 +36,8 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   lastPlan: true,
   lastBuildResult: true,
 }).extend({
-  framework: z.enum(["web", "rn-expo", "flutter", "swiftui", "kotlin"]).optional(),
-  language: z.enum(["html", "typescript", "dart", "swift", "kotlin"]).optional(),
+  framework: z.enum(["web", "rn-expo", "flutter", "swiftui", "kotlin", "wechat"]).optional(),
+  language: z.enum(["html", "typescript", "dart", "swift", "kotlin", "wxml"]).optional(),
   targetPlatform: z.enum(["ios", "android", "both"]).optional(),
 });
 

@@ -2,7 +2,7 @@ import type { Framework } from "./framework-detector";
 
 export type AgentRole = "manager" | "editor" | "verifier" | "communicator";
 
-const MOBILE_FRAMEWORKS: Framework[] = ["rn-expo", "flutter", "swiftui", "kotlin"];
+const MOBILE_FRAMEWORKS: Framework[] = ["rn-expo", "flutter", "swiftui", "kotlin", "wechat"];
 
 export function isMobileFramework(framework: Framework): boolean {
   return MOBILE_FRAMEWORKS.includes(framework);
@@ -48,6 +48,18 @@ const managerSupplements: Record<string, string> = {
 - Native API access (camera, location, notifications) requires AndroidManifest permissions and runtime permission requests — include these steps.
 - Mobile UX patterns to consider: pull-to-refresh, swipe-to-dismiss, bottom sheets, snack bars, FABs.
 - Plan file structure with screens in \`ui/screens/\` and components in \`ui/components/\`.`,
+
+  wechat: `
+## WeChat Mini Program Planning
+- Think in terms of **pages** (not web pages). Each page lives in its own folder under \`pages/\` with four files: \`.wxml\`, \`.wxss\`, \`.js\`, \`.json\`.
+- ALL pages must be registered in \`app.json\` under the \`"pages"\` array — the first entry is the launch page.
+- Plan navigation using \`wx.navigateTo\` (push), \`wx.redirectTo\` (replace), \`wx.navigateBack\` (pop), or \`wx.switchTab\` (tab bar).
+- Use \`rpx\` units for all sizes — 750rpx equals the full screen width on any device.
+- Plan data flow using page \`data\` + \`this.setData()\` — this is the only way to update the view.
+- Consider WeChat-specific UX patterns: pull-to-refresh (\`enablePullDownRefresh\`), tab bar (\`tabBar\` in app.json), loading states (\`wx.showLoading\`), toast feedback (\`wx.showToast\`).
+- Use \`wx.request\` for all HTTP calls — no fetch or XMLHttpRequest.
+- Custom components live in a \`components/\` folder and must be registered in the page's \`.json\` file.
+- Plan file structure: \`app.js\`, \`app.json\`, \`app.wxss\` at root; pages in \`pages/<name>/<name>.{wxml,wxss,js,json}\`.`,
 };
 
 const editorSupplements: Record<string, string> = {
@@ -90,6 +102,24 @@ const editorSupplements: Record<string, string> = {
 - Use \`remember { mutableStateOf() }\` for local state. Use ViewModel + StateFlow for screen-level state.
 - Accept \`modifier: Modifier = Modifier\` as the first optional parameter on reusable composables.
 - Use Material Design 3 components and \`MaterialTheme\` for consistent theming.`,
+
+  wechat: `
+## WeChat Mini Program Development Rules
+- WXML uses XML syntax — all tags must be properly closed. Never use bare HTML elements (div, span, p, etc.).
+- Core layout components: \`<view>\` (block container), \`<text>\` (inline text — only component that can directly wrap text nodes), \`<image>\` (images), \`<scroll-view>\` (scrollable area), \`<swiper>\` (carousel).
+- Form components: \`<input>\`, \`<textarea>\`, \`<button>\`, \`<checkbox>\`, \`<radio>\`, \`<picker>\`, \`<switch>\`, \`<slider>\`.
+- Navigation: \`<navigator url="/pages/detail/detail">\` in WXML, or \`wx.navigateTo({ url: '/pages/detail/detail' })\` in JS.
+- Always use \`rpx\` for sizes — 750rpx is full width. Do NOT use px, em, rem, %, or vw in WXSS.
+- Data binding: \`{{ variableName }}\` in WXML, updated only via \`this.setData({ key: value })\` in JS.
+- List rendering: \`<view wx:for="{{ list }}" wx:key="id">\` — always provide \`wx:key\`.
+- Conditionals: \`wx:if\`, \`wx:elif\`, \`wx:else\` on elements.
+- Event binding: \`bindtap\`, \`bindinput\`, \`bindchange\` — handler name only, no parentheses: \`bindtap="handleTap"\`.
+- HTTP requests: \`wx.request({ url, method, data, success, fail })\` — no fetch/axios.
+- Storage: \`wx.setStorageSync(key, value)\` / \`wx.getStorageSync(key)\` for simple sync access.
+- Every new page must be added to the \`"pages"\` array in \`app.json\` or it won't be accessible.
+- Custom components: define in \`components/<name>/\`, register in page's \`.json\` as \`{ "usingComponents": { "my-comp": "/components/name/name" } }\`.
+- Page lifecycle: \`onLoad(options)\`, \`onShow()\`, \`onReady()\`, \`onHide()\`, \`onUnload()\`.
+- WXSS global styles go in \`app.wxss\`; page-specific styles in the page's \`.wxss\` file.`,
 };
 
 const verifierSupplements: Record<string, string> = {
@@ -137,6 +167,19 @@ const verifierSupplements: Record<string, string> = {
 - Verify reusable composables accept a modifier parameter.
 - Check that runtime permissions are requested before accessing camera, location, or storage.
 - Verify MaterialTheme is used for colors and typography instead of hardcoded values.`,
+
+  wechat: `
+## WeChat Mini Program Checks
+- Verify every page referenced via \`wx.navigateTo\` / \`<navigator>\` is registered in \`app.json\` pages array.
+- Check all WXML tags are properly closed (XML rules, not HTML5 rules).
+- Verify no bare HTML elements are used — only WXML components (view, text, image, etc.).
+- Verify all sizes use \`rpx\` — flag any use of px/em/rem/vw in WXSS.
+- Check all \`wx:for\` loops have a \`wx:key\` attribute.
+- Verify event handlers use \`bind*\` prefix and reference method names only (no inline expressions).
+- Check \`this.setData()\` is used — never directly mutate \`this.data\`.
+- Verify \`wx.request\` is used for HTTP (not fetch/axios/XHR).
+- Check that custom components are declared in the page's \`.json\` \`usingComponents\` before use.
+- Verify page JS files export a valid \`Page({...})\` call and app root exports \`App({...})\`.`,
 };
 
 const communicatorSupplements: Record<string, string> = {
@@ -179,6 +222,17 @@ When narrating mobile app development:
 - Say "the app will ask for permission" when camera/location/notification access is being set up.
 - Say "navigation" when moving between screens.
 - Say "composable" when describing a UI building block — "a piece of the screen that the app draws".`,
+
+  wechat: `
+## Mini Program Vocabulary (WeChat)
+When narrating WeChat Mini Program development:
+- Say "mini program" or "小程序" — not "website" or "app".
+- Say "page" for each screen in the mini program (WeChat uses "page", not "screen").
+- Say "tap" instead of "click" — users tap on mobile.
+- Say "WXML" when referring to the markup/template layer.
+- Say "WXSS" when referring to the style layer.
+- Say "the page's data" when referring to state managed via setData.
+- Say "navigate to" when moving between pages.`,
 };
 
 const supplementsByRole: Record<AgentRole, Record<string, string>> = {

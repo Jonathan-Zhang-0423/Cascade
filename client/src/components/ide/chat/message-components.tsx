@@ -10,7 +10,6 @@ import {
   FileCode,
   Check,
   ExternalLink,
-  History,
   RotateCcw,
 } from "lucide-react";
 import { CascadeLoader } from "./CascadeLoader";
@@ -19,7 +18,6 @@ import type { CodeBlock } from "./chat-types";
 import { THEME_COLORS } from "./chat-types";
 import {
   parseCodeBlocks,
-  parseCompletionSummary,
   escapeHtml,
   tokenizeLine,
   formatRelativeTime,
@@ -362,45 +360,36 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
 
   return (
     <div
-      className="mx-2 my-1 px-3 py-2 rounded-lg border-l-4 border-l-[#4f82ff] bg-[rgba(79,130,255,0.02)] border border-[rgba(79,130,255,0.1)]"
+      className="flex items-center gap-2 mx-3 my-2"
       data-testid={`checkpoint-${message.checkpointId}`}
     >
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <History className="w-3.5 h-3.5 shrink-0 text-[#8888a8]" />
-          <span className="text-[12px] font-medium text-foreground/80 truncate">
-            {message.content}
-          </span>
-        </div>
-        <span className="text-[10px] text-[#8888a8]/60 shrink-0">
-          {formatRelativeTime(message.timestamp)}
+      <div className="flex-1 h-px bg-border/15" />
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[10px] text-muted-foreground/40">
+          {message.content} · {formatRelativeTime(message.timestamp)}
         </span>
+        {isAvailable && (
+          <button
+            onClick={handleRestore}
+            title={tCp("chat.restore")}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] transition-colors",
+              restored
+                ? "text-green-500/70"
+                : "text-muted-foreground/30 hover:text-primary/60",
+            )}
+            data-testid={`button-restore-${message.checkpointId}`}
+          >
+            {restored ? (
+              <Check className="w-3 h-3" />
+            ) : (
+              <RotateCcw className="w-3 h-3" />
+            )}
+            {restored ? tCp("chat.restored") : tCp("chat.restore")}
+          </button>
+        )}
       </div>
-      {isAvailable && (
-        <button
-          onClick={handleRestore}
-          title={tCp("chat.restore")}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md transition-all text-[11px] font-medium",
-            restored
-              ? "bg-green-500/15 text-green-500 border border-green-500/30"
-              : "bg-[rgba(79,130,255,0.12)] text-[#4f82ff] border border-[#4f82ff]/40 hover:bg-[rgba(79,130,255,0.18)] hover:border-[#4f82ff]/60",
-          )}
-          data-testid={`button-restore-${message.checkpointId}`}
-        >
-          {restored ? (
-            <>
-              <Check className="w-3.5 h-3.5" />
-              {tCp("chat.restored")}
-            </>
-          ) : (
-            <>
-              <RotateCcw className="w-3.5 h-3.5" />
-              {tCp("chat.restore")}
-            </>
-          )}
-        </button>
-      )}
+      <div className="flex-1 h-px bg-border/15" />
     </div>
   );
 }
@@ -416,95 +405,6 @@ export function TypingIndicator({ text }: { text?: string }) {
       <span className="text-xs text-[#8888a8]">
         {text || t(lang, "thinking")}
       </span>
-    </div>
-  );
-}
-
-export function BuildCompletionCard({
-  changedFiles,
-  summary,
-  userLang,
-  headline: _headline,
-}: {
-  changedFiles: string[];
-  summary?: string;
-  userLang?: string;
-  headline?: string;
-}) {
-  const parsed = summary ? parseCompletionSummary(summary) : null;
-
-  return (
-    <div
-      className="mx-3 mt-2 mb-1 rounded-lg border border-[rgba(52,214,138,0.25)] bg-[#051410] overflow-hidden shadow-lg"
-      style={{ animation: "fade-up 150ms ease" }}
-      data-testid="build-completion-card"
-    >
-      <div className="px-3 py-3 border-b border-[rgba(52,214,138,0.08)]">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="w-[28px] h-[28px] rounded-full flex items-center justify-center shrink-0"
-            style={{
-              background: "#1a6640",
-              border: "1px solid rgba(52,214,138,0.35)",
-              boxShadow: "0 0 16px rgba(52,214,138,0.4)",
-              animation: "checkmark-bounce 400ms var(--transition-spring)"
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 11 11" fill="none">
-              <polyline points="2,5.5 4.5,8 9,2.5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <span
-            className="text-[16px] font-bold text-[#22c55e] tracking-[-0.01em] leading-snug"
-            data-testid="completion-headline"
-          >
-            Done
-          </span>
-        </div>
-        {summary && (
-          <div className="text-[13px] text-foreground/90 leading-relaxed">
-            {renderMarkdown(summary)}
-          </div>
-        )}
-      </div>
-
-      {(parsed?.fileChanges.length || changedFiles.length) > 0 && (
-        <div className="px-3 py-2.5 border-l-2 border-l-[#34d68a] bg-[rgba(52,214,138,0.02)]">
-          <div className="flex items-center gap-2 mb-1.5">
-            <FileCode className="w-3.5 h-3.5 text-[#34d68a] shrink-0" />
-            <p className="text-[10px] font-semibold text-[#34d68a] uppercase tracking-wide">
-              Files Changed
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {parsed?.fileChanges.map((change, i) => (
-              <span
-                key={`parsed-${i}`}
-                className="bg-[rgba(52,214,138,0.12)] border border-[rgba(52,214,138,0.25)] rounded px-2 py-0.5 text-[11px] font-mono text-[#22c55e] hover:bg-[rgba(52,214,138,0.18)] transition-colors cursor-default"
-                data-testid={`file-change-${i}`}
-              >
-                {change}
-              </span>
-            ))}
-            {changedFiles.map((f, i) => (
-              <span
-                key={`file-${i}`}
-                className="bg-[rgba(52,214,138,0.12)] border border-[rgba(52,214,138,0.25)] rounded px-2 py-0.5 text-[11px] font-mono text-[#22c55e] hover:bg-[rgba(52,214,138,0.18)] transition-colors cursor-default"
-                data-testid={`changed-file-${i}`}
-              >
-                {f.split("/").pop() || f}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="px-3 py-2 border-t border-[rgba(52,214,138,0.12)] hover:bg-[rgba(52,214,138,0.04)] transition-colors">
-        <div className="flex items-center gap-1.5">
-          <p className="text-[12px] text-[#8888a8]">What should we build next?</p>
-          <ChevronRight className="w-3 h-3 text-[#34d68a]/60 shrink-0" />
-        </div>
-      </div>
     </div>
   );
 }

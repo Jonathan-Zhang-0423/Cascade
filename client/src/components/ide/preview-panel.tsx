@@ -26,6 +26,7 @@ import { CodePreview } from "./code-preview";
 import { WasmPreview } from "./wasm-preview";
 import { RnWebPreview } from "./rn-web-preview";
 import { FlutterWebPreview } from "./flutter-web-preview";
+import { WeChatPreview } from "./wechat-preview";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -89,7 +90,7 @@ function inlineExternalFiles(html: string, files: FileNode[], entryPath = "/proj
   return result;
 }
 
-export function PreviewPanel() {
+export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
   const {
     files,
     addConsoleEntry,
@@ -467,7 +468,7 @@ export function PreviewPanel() {
             data-testid="popover-qr-preview"
           >
             <div className="flex flex-col items-center gap-3">
-              <p className="text-xs font-medium text-foreground">Scan to preview on phone</p>
+              <p className="text-xs font-medium text-foreground">{t("preview.scanPhone")}</p>
               {qrLoading ? (
                 <div className="w-[180px] h-[180px] flex items-center justify-center bg-[rgba(255,255,255,0.04)] rounded-md">
                   <RefreshCw className="w-5 h-5 animate-spin text-[#8888a8]" />
@@ -543,7 +544,7 @@ export function PreviewPanel() {
               : "bg-[#14141e] border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] text-[#484860] hover:text-[#8888a8]"
           )}
           onClick={toggleConsole}
-          title={isConsoleOpen ? "Hide terminal" : "Show terminal"}
+          title={isConsoleOpen ? t("preview.hideTerminal") : t("preview.showTerminal")}
           data-testid="button-toggle-console"
         >
           <Terminal className="w-3.5 h-3.5" />
@@ -556,6 +557,7 @@ export function PreviewPanel() {
           orientation={deviceOrientation}
           frameStyle={deviceFrameStyle}
           platformOverride={devicePlatform}
+          bypass={fullscreen}
         >
           {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (
             <WasmPreview
@@ -586,6 +588,11 @@ export function PreviewPanel() {
               projectId={projectId}
               refreshKey={effectiveRefresh}
             />
+          ) : previewMode === "wechat-preview" ? (
+            <WeChatPreview
+              files={files}
+              refreshKey={effectiveRefresh}
+            />
           ) : (
             <>
               {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
@@ -597,7 +604,7 @@ export function PreviewPanel() {
                     <rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" />
                     <path d="M11 10l7 4-7 4V10z" fill="currentColor" />
                   </svg>
-                  <p className="text-[12px] text-[#484860]">Run your project to see the preview</p>
+                  <p className="text-[12px] text-[#484860]">{t("preview.runFirst")}</p>
                 </div>
               ) : (
                 <iframe

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editorial Direction — Full Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #111118;
+  color: #e8e8f0;
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  padding: 40px 24px 80px;
+}
+
+.page-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #55553a;
+  background: rgba(200,160,60,0.1);
+  border: 1px solid rgba(200,160,60,0.18);
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 14px;
+}
+.page-title {
+  font-family: 'Lora', serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #f0ece4;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+.page-sub {
+  font-size: 13px;
+  color: #666655;
+  margin-bottom: 44px;
+  line-height: 1.5;
+}
+
+/* ── Two phones side by side ── */
+.phones-row {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.phone-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 240px;
+}
+
+.screen-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #666655;
+}
+
+/* ── Phone shell ── */
+.phone {
+  width: 240px;
+  height: 500px;
+  border-radius: 38px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow:
+    0 0 0 1px #d8d0c4,
+    0 0 0 3px #b8b0a4,
+    0 32px 80px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.4);
+}
+
+/* ─────────────── SCREEN 1: DASHBOARD ─────────────── */
+.phone-dash { background: #f7f2ea; }
+
+.dash-status {
+  background: #f7f2ea;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.status-time { font-size: 10px; font-weight: 700; color: #2a2010; font-family: 'DM Sans', sans-serif; }
+.status-icons { display: flex; gap: 3px; align-items: center; }
+.status-dot { width: 4px; height: 4px; border-radius: 50%; background: #2a2010; }
+.status-bar { width: 14px; height: 7px; border: 1.5px solid #2a2010; border-radius: 2px; position: relative; }
+.status-bar::after { content: ''; position: absolute; left: 2px; top: 2px; width: 6px; bottom: 2px; background: #2a2010; border-radius: 1px; }
+
+.dash-header {
+  background: #f7f2ea;
+  padding: 8px 20px 14px;
+  border-bottom: 1px solid #e4ddd4;
+  flex-shrink: 0;
+}
+.dash-date {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9a9080;
+  margin-bottom: 3px;
+}
+.dash-wordmark {
+  font-family: 'Lora', serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1510;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.dash-meta {
+  font-size: 9px;
+  color: #9a9080;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dash-avatar {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c8a84a, #8b6020);
+  flex-shrink: 0;
+}
+.dash-uname { font-size: 8.5px; color: #7a7060; font-weight: 500; }
+
+.dash-list { flex: 1; overflow: hidden; background: #f7f2ea; }
+
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 4px;
+}
+.dash-section-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #bbb0a0;
+}
+.dash-new-link {
+  font-size: 8px;
+  font-weight: 600;
+  color: #c8a84a;
+  letter-spacing: 0.04em;
+}
+
+.dash-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 20px;
+  border-bottom: 1px solid #ede6dc;
+  gap: 9px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.dash-item:hover { background: #f0ebe0; }
+
+.dash-num {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d4c8b0;
+  width: 16px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.dash-emoji { font-size: 13px; width: 16px; flex-shrink: 0; }
+.dash-text { flex: 1; min-width: 0; }
+.dash-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: #1a1510;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-sub { font-size: 8px; color: #9a9080; margin-top: 1.5px; display: flex; gap: 5px; align-items: center; }
+.dash-fw {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 1.5px 4px;
+  border-radius: 3px;
+  background: #1a1510;
+  color: #f7f2ea;
+}
+.dash-arrow { font-size: 10px; color: #c8bfb0; padding-top: 2px; }
+
+.dash-footer {
+  padding: 10px 20px;
+  border-top: 1px solid #e4ddd4;
+  background: #f7f2ea;
+  flex-shrink: 0;
+}
+.dash-new-btn {
+  background: #1a1510;
+  border-radius: 8px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.dash-new-icon { font-size: 12px; color: #c8a84a; }
+.dash-new-text { font-size: 9.5px; font-weight: 600; color: #f7f2ea; letter-spacing: 0.04em; }
+
+/* ─────────────── SCREEN 2: IN-PROJECT ─────────────── */
+.phone-project { background: #1a1916; }
+
+.proj-status {
+  background: #1a1916;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.proj-status .status-time { color: #e8e0d0; }
+.proj-status .status-dot { background: #e8e0d0; }
+.proj-status .status-bar { border-color: #e8e0d0; }
+.proj-status .status-bar::after { background: #e8e0d0; }
+
+.proj-header {
+  background: #1a1916;
+  padding: 6px 16px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+.proj-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.proj-back {
+  font-size: 9px;
+  color: #c8a84a;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.proj-back-arrow { font-size: 10px; }
+.proj-name {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0ece4;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.proj-fw-badge {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(200,168,74,0.15);
+  color: #c8a84a;
+  flex-shrink: 0;
+}
+
+.proj-tabs {
+  display: flex;
+  gap: 0;
+}
+.proj-tab {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 5px 10px 7px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #665544;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.proj-tab.active {
+  color: #c8a84a;
+  border-bottom-color: #c8a84a;
+}
+
+/* Chat area */
+.proj-chat { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: #1a1916; }
+
+.chat-scroll { flex: 1; overflow: hidden; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Decorative rule at top */
+.chat-date-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.chat-date-line { flex: 1; height: 1px; background: rgba(255,255,255,0.07); }
+.chat-date-text { font-size: 7.5px; color: #443322; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.bubble-user {
+  align-self: flex-end;
+  background: #c8a84a;
+  color: #1a1510;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 6px 9px;
+  border-radius: 12px 12px 3px 12px;
+  max-width: 75%;
+}
+
+.bubble-ai {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #c8c0b0;
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 6px 9px;
+  border-radius: 12px 12px 12px 3px;
+  max-width: 80%;
+}
+
+.bubble-ai-name {
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c8a84a;
+  margin-bottom: 3px;
+}
+
+/* Plan card */
+.plan-card {
+  background: rgba(200,168,74,0.08);
+  border: 1px solid rgba(200,168,74,0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 8.5px;
+}
+.plan-card-title {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #c8a84a;
+  margin-bottom: 5px;
+}
+.plan-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2.5px 0;
+  font-size: 8.5px;
+  color: #a09070;
+}
+.step-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.step-done { background: #c8a84a; }
+.step-active {
+  background: transparent;
+  border: 1.5px solid #c8a84a;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.step-pending { background: rgba(255,255,255,0.1); }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.step-text-done { color: #665535; text-decoration: line-through; }
+.step-text-active { color: #e8d090; font-weight: 600; }
+
+/* Preview button */
+.preview-float {
+  margin: 6px 14px 10px;
+  background: linear-gradient(135deg, #c8a84a, #a07830);
+  border-radius: 10px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(200,168,74,0.3);
+}
+.preview-icon { font-size: 11px; }
+.preview-text { font-size: 9.5px; font-weight: 700; color: #1a1510; letter-spacing: 0.05em; }
+
+/* Input area */
+.proj-input-area {
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: #161512;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.proj-input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 8.5px;
+  color: #888070;
+}
+.proj-send {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: #c8a84a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* ── Design notes ── */
+.notes-section {
+  margin-top: 52px;
+  max-width: 560px;
+}
+.notes-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #55553a;
+  margin-bottom: 16px;
+}
+.note-item {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 18px;
+  align-items: flex-start;
+}
+.note-num {
+  font-family: 'Lora', serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #c8a84a;
+  flex-shrink: 0;
+  line-height: 1.2;
+  width: 22px;
+}
+.note-body {}
+.note-title { font-size: 13px; font-weight: 600; color: #e0dcd0; margin-bottom: 3px; }
+.note-desc { font-size: 12px; color: #66604a; line-height: 1.5; }
+
+.divider { height: 1px; background: rgba(255,255,255,0.06); margin: 28px 0; }
+</style>
+</head>
+<body>
+
+<div class="page-eyebrow">Direction B — Editorial</div>
+<div class="page-title">Full mobile concept</div>
+<div class="page-sub">Dashboard (left) and in-project panel (right). Warm cream + dark amber. Lora serif headings, DM Sans body.</div>
+
+<div class="phones-row">
+
+  <!-- ── PHONE 1: DASHBOARD ── -->
+  <div class="phone-col">
+    <div class="screen-label">Dashboard</div>
+    <div class="phone phone-dash">
+
+      <div class="dash-status">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <div class="status-dot"></div>
+          <div class="status-dot"></div>
+          <div class="status-dot"></div>
+          <div class="status-bar"></div>
+        </div>
+      </div>
+
+      <div class="dash-header">
+        <div class="dash-date">Tuesday · April 22</div>
+        <div class="dash-wordmark">Cascade</div>
+        <div class="dash-meta">
+          <span>6 projects</span>
+          <div class="dash-user-pill">
+            <div class="dash-avatar"></div>
+            <span class="dash-uname">jonathan ›</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-section-head">
+        <span class="dash-section-label">Recent</span>
+        <span class="dash-new-link">+ New</span>
+      </div>
+
+      <div class="dash-list">
+        <div class="dash-item">
+          <span class="dash-num">01</span>
+          <span class="dash-emoji">🐍</span>
+          <div class="dash-text">
+            <div class="dash-name">Snake Game</div>
+            <div class="dash-sub"><span class="dash-fw">Web</span><span>3 days ago</span></div>
+          </div>
+          <span class="dash-arrow">›</span>
+        </div>
+        <div class="dash-item">
+          <span class="dash-num">02</span>
+          <span class="dash-emoji">📱</span>
+          <div class="dash-text">
+            <div class="dash-name">Todo App</div>
+            <div class="dash-sub"><span class="dash-fw">RN</span><span>1 week ago</span></div>
+          </div>
+          <span class="dash-arrow">›</span>
+        </div>
+        <div class="dash-item">
+          <span class="dash-num">03</span>
+          <span class="dash-emoji">🌐</span>
+          <div class="dash-text">
+            <div class="dash-name">Portfolio Site</div>
+            <div class="dash-sub"><span class="dash-fw">Web</span><span>2 weeks ago</span></div>
+          </div>
+          <span class="dash-arrow">›</span>
+        </div>
+        <div class="dash-item">
+          <span class="dash-num">04</span>
+          <span class="dash-emoji">🎮</span>
+          <div class="dash-text">
+            <div class="dash-name">Pong Clone</div>
+            <div class="dash-sub"><span class="dash-fw">Web</span><span>3 weeks ago</span></div>
+          </div>
+          <span class="dash-arrow">›</span>
+        </div>
+        <div class="dash-item" style="opacity:0.45">
+          <span class="dash-num">05</span>
+          <span class="dash-emoji">🔥</span>
+          <div class="dash-text">
+            <div class="dash-name">Weather App</div>
+            <div class="dash-sub"><span class="dash-fw">Flutter</span><span>1 month ago</span></div>
+          </div>
+          <span class="dash-arrow">›</span>
+        </div>
+      </div>
+
+      <div class="dash-footer">
+        <div class="dash-new-btn">
+          <span class="dash-new-icon">✦</span>
+          <span class="dash-new-text">Start Something New</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── PHONE 2: IN-PROJECT ── -->
+  <div class="phone-col">
+    <div class="screen-label">In-project (Build tab)</div>
+    <div class="phone phone-project">
+
+      <div class="proj-status">
+        <span class="status-time" style="color:#e8e0d0">9:41</span>
+        <div class="status-icons">
+          <div class="status-dot" style="background:#e8e0d0"></div>
+          <div class="status-dot" style="background:#e8e0d0"></div>
+          <div class="status-dot" style="background:#e8e0d0"></div>
+          <div class="status-bar" style="border-color:#e8e0d0">
+            <div style="position:absolute;left:2px;top:2px;width:6px;bottom:2px;background:#e8e0d0;border-radius:1px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="proj-header">
+        <div class="proj-top-row">
+          <div class="proj-back"><span class="proj-back-arrow">‹</span> All</div>
+          <div class="proj-name">Snake Game</div>
+          <div class="proj-fw-badge">Web</div>
+        </div>
+        <div class="proj-tabs">
+          <div class="proj-tab active">Build</div>
+          <div class="proj-tab">Preview</div>
+        </div>
+      </div>
+
+      <div class="proj-chat">
+        <div class="chat-scroll">
+
+          <div class="chat-date-rule">
+            <div class="chat-date-line"></div>
+            <div class="chat-date-text">Today</div>
+            <div class="chat-date-line"></div>
+          </div>
+
+          <div class="bubble-user">
+            Add a high score tracker that saves to localStorage
+          </div>
+
+          <div class="bubble-ai">
+            <div class="bubble-ai-name">Cascade</div>
+            On it. I'll add a high score system with localStorage persistence, displayed in the top-right corner.
+          </div>
+
+          <div class="plan-card">
+            <div class="plan-card-title">Plan · 3 steps</div>
+            <div class="plan-step">
+              <div class="step-dot step-done"></div>
+              <span class="step-text-done">Add highScore state & localStorage load</span>
+            </div>
+            <div class="plan-step">
+              <div class="step-dot step-active"></div>
+              <span class="step-text-active">Render score overlay on canvas…</span>
+            </div>
+            <div class="plan-step">
+              <div class="step-dot step-pending"></div>
+              <span>Save on game over</span>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="preview-float">
+          <span class="preview-icon">▶</span>
+          <span class="preview-text">Preview Result</span>
+        </div>
+
+        <div class="proj-input-area">
+          <div class="proj-input">What should we build next?</div>
+          <div class="proj-send">↑</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="divider"></div>
+
+<div class="notes-section">
+  <div class="notes-eyebrow">Design decisions</div>
+
+  <div class="note-item">
+    <div class="note-num">1</div>
+    <div class="note-body">
+      <div class="note-title">Dashboard: cream on dark shell</div>
+      <div class="note-desc">The light cream phone pops against the dark page background — it reads as premium, like a physical object. The Lora serif wordmark gives Cascade an editorial identity without being precious.</div>
+    </div>
+  </div>
+
+  <div class="note-item">
+    <div class="note-num">2</div>
+    <div class="note-body">
+      <div class="note-title">In-project: dark warm, not cold blue-gray</div>
+      <div class="note-desc">The IDE panel shifts to <code>#1a1916</code> (warm near-black) instead of the current cold <code>#0c0c14</code>. Amber (#c8a84a) replaces blue as the accent — consistent with the dashboard's palette. The AI brand color is now amber throughout both screens.</div>
+    </div>
+  </div>
+
+  <div class="note-item">
+    <div class="note-num">3</div>
+    <div class="note-body">
+      <div class="note-title">Plan card replaces raw step list</div>
+      <div class="note-desc">A bordered card groups the build steps — amber dot for done, pulsing outline for active, dim dot for pending. This gives spatial context at a glance without opening a separate panel.</div>
+    </div>
+  </div>
+
+  <div class="note-item">
+    <div class="note-num">4</div>
+    <div class="note-body">
+      <div class="note-title">Preview CTA becomes a full-width button</div>
+      <div class="note-desc">The floating pill is replaced by a pinned amber gradient bar above the input — can't be obscured by chat messages, and matches the "Start Something New" button energy on the dashboard.</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

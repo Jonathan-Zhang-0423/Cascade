@@ -1,0 +1,71 @@
+<style>
+  body { background: #0e0e11; color: #e1e1e6; font-family: -apple-system, sans-serif; }
+  .phone { background: #13131a; border: 1.5px solid #2a2a3a; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; max-width: 320px; margin: 0 auto; }
+  .phone-header { padding: 10px 14px 8px; border-bottom: 1px solid #1e1e2a; display: flex; align-items: center; justify-content: space-between; }
+  .phone-title { font-size: 12px; font-weight: 600; color: #c0c0d0; }
+  .phone-messages { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .phone-input { padding: 8px 10px; border-top: 1px solid #1e1e2a; }
+
+  .msg-user { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 78%; }
+
+  /* Done card — pure artifact */
+  .result-card { background: #141420; border: 1px solid #2a2a3a; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; gap: 7px; }
+  .pc-file { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 5px; font-size: 9px; color: #6a9a6a; font-family: monospace; }
+
+  /* Narration message — plain left-border, no background */
+  .msg-narration { border-left: 2px solid #4a4a7a; padding: 2px 0 2px 9px; font-size: 11px; color: #b0b0d0; line-height: 1.55; align-self: flex-start; max-width: 92%; }
+  .msg-narration .next { margin-top: 5px; font-size: 10px; color: #6868a0; display: flex; gap: 5px; }
+  .msg-narration .next-text strong { color: #8888c0; }
+
+  /* Checkpoint */
+  .chk { display: flex; align-items: center; gap: 6px; opacity: .4; }
+  .chk-line { flex: 1; height: 1px; background: #2a2a3a; }
+  .chk-text { font-size: 9px; color: #666; white-space: nowrap; }
+
+  .input-row { display: flex; gap: 5px; align-items: center; }
+  .mode-badge { font-size: 9px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px 6px; color: #6060a0; }
+  .input-mock { flex: 1; background: #0d0d16; border: 1px solid #202030; border-radius: 8px; padding: 6px 9px; font-size: 10px; color: #505070; }
+  .input-send { background: #2a3aaa; border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #c0ccf0; font-size: 11px; flex-shrink: 0; }
+  code { font-size: 9px; background: #1a1a2a; padding: 1px 4px; border-radius: 3px; color: #9090cc; font-family: monospace; }
+</style>
+
+<h2>Resting state</h2>
+<p class="subtitle" style="color:#666;font-size:13px;margin-bottom:20px">Done card → plain narration message → restore divider</p>
+
+<div class="phone">
+  <div class="phone-header"><div class="phone-title">✦ AI 对话</div><span style="font-size:10px;color:#555">✕</span></div>
+  <div class="phone-messages">
+
+    <div class="msg-user">看起来不错，按计划继续</div>
+
+    <!-- Done card: pure artifact -->
+    <div class="result-card">
+      <span style="color:#4a8a4a;font-size:12px">✓</span>
+      <span style="font-size:10px;color:#a0a0c0;flex:1"><strong style="color:#c8c8e8">优化handleTouch逻辑</strong> · 2 files</span>
+      <span class="pc-file">index.js</span>
+      <span class="pc-file">index.wxml</span>
+      <span style="font-size:10px;color:#4a4a70">›</span>
+    </div>
+
+    <!-- Summary + next step: plain narration, no background -->
+    <div class="msg-narration">
+      Fixed the touch coordinate calculation in <code>handleTouch</code> — replaced absolute <code>clientX/Y</code> with container-relative offsets so touches work correctly when the page is scrolled. Updated both the JS logic and the WXML event binding.
+      <div class="next">
+        <span>→</span>
+        <span class="next-text"><strong>Want to test it?</strong> Try scrolling and tapping, or I can add boundary clamping to keep touches within the element.</span>
+      </div>
+    </div>
+
+    <div class="chk"><div class="chk-line"></div><div class="chk-text">restore · just now</div><div class="chk-line"></div></div>
+
+    <div class="msg-user">好的，帮我加边界限制</div>
+
+  </div>
+  <div class="phone-input">
+    <div class="input-row">
+      <div class="mode-badge">Build</div>
+      <div class="input-mock">输入消息...</div>
+      <div class="input-send">↑</div>
+    </div>
+  </div>
+</div>

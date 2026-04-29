@@ -1,6 +1,6 @@
-export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview" | "kotlin-wasm" | "swift-wasm" | "rn-web" | "flutter-web";
+export type PreviewMode = "iframe-preview" | "expo-snack" | "dartpad" | "code-preview" | "kotlin-wasm" | "swift-wasm" | "rn-web" | "flutter-web" | "wechat-preview";
 
-export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin";
+export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin" | "wechat";
 
 export function getPreviewMode(framework: Framework | string | undefined): PreviewMode {
   switch (framework) {
@@ -12,6 +12,8 @@ export function getPreviewMode(framework: Framework | string | undefined): Previ
       return "kotlin-wasm";
     case "swiftui":
       return "swift-wasm";
+    case "wechat":
+      return "wechat-preview";
     case "web":
     default:
       return "iframe-preview";
@@ -28,6 +30,8 @@ export function getFrameworkLabel(framework: Framework | string | undefined): st
       return "SwiftUI";
     case "kotlin":
       return "Kotlin";
+    case "wechat":
+      return "WeChat Mini Program";
     case "web":
     default:
       return "Web";
@@ -44,6 +48,8 @@ export function getFrameworkColor(framework: Framework | string | undefined): st
       return "bg-orange-500/15 text-orange-400 border-orange-500/30";
     case "kotlin":
       return "bg-purple-500/15 text-purple-400 border-purple-500/30";
+    case "wechat":
+      return "bg-[#07c160]/15 text-[#07c160] border-[#07c160]/30";
     case "web":
     default:
       return "bg-green-500/15 text-green-400 border-green-500/30";
@@ -60,6 +66,8 @@ export function getMainEntryFile(framework: Framework | string | undefined): str
       return "/project/ContentView.swift";
     case "kotlin":
       return "/project/src/main/kotlin/MainActivity.kt";
+    case "wechat":
+      return "/project/app.js";
     case "web":
     default:
       return "/project/index.html";
@@ -90,6 +98,10 @@ export function getLanguageId(filePath: string): string {
     case "yaml":
     case "yml":
       return "yaml";
+    case "wxml":
+      return "html";
+    case "wxss":
+      return "css";
     case "xml":
       return "xml";
     case "gradle":

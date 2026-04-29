@@ -1,0 +1,305 @@
+<style>
+  body { background: #0e0e11; color: #e1e1e6; font-family: -apple-system, sans-serif; }
+  .approaches { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; padding: 16px 0; }
+  .approach-col { display: flex; flex-direction: column; gap: 0; }
+  .approach-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #888; margin-bottom: 8px; }
+  .phone { background: #13131a; border: 1.5px solid #2a2a3a; border-radius: 16px; overflow: hidden; min-height: 520px; display: flex; flex-direction: column; }
+  .phone-header { padding: 10px 14px; border-bottom: 1px solid #1e1e2a; display: flex; align-items: center; justify-content: space-between; }
+  .phone-header-title { font-size: 12px; font-weight: 600; color: #c0c0d0; display: flex; align-items: center; gap: 6px; }
+  .phone-messages { flex: 1; padding: 10px 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .phone-input { padding: 8px 10px; border-top: 1px solid #1e1e2a; }
+
+  /* Bubbles */
+  .msg-user { background: #1d3a6e; border-radius: 12px 12px 3px 12px; padding: 7px 11px; font-size: 11px; color: #c8d8f8; align-self: flex-end; max-width: 75%; }
+  .msg-agent { background: #1a1a24; border-left: 2px solid #4a4a6a; border-radius: 3px 10px 10px 10px; padding: 7px 10px; font-size: 11px; color: #c0c0d0; align-self: flex-start; max-width: 90%; }
+  .msg-agent .agent-label { font-size: 9px; color: #6060a0; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .07em; }
+
+  /* Checkpoint styles — approach-specific */
+  .chk-noisy { background: #161620; border: 1px solid #2a2a40; border-left: 3px solid #3a3a6a; border-radius: 6px; padding: 7px 10px; font-size: 10px; color: #8888b0; display: flex; align-items: center; justify-content: space-between; }
+  .chk-noisy .chk-restore { background: #1a2040; border: 1px solid #3a3a6a; border-radius: 5px; padding: 2px 7px; font-size: 9px; color: #8899cc; }
+
+  .chk-minimal { display: flex; align-items: center; gap: 6px; padding: 2px 0; opacity: .45; }
+  .chk-minimal-line { flex: 1; height: 1px; background: #2a2a3a; }
+  .chk-minimal-text { font-size: 9px; color: #666; white-space: nowrap; }
+
+  /* Plan card styles */
+  .plan-card-full { background: #141420; border: 1px solid #2a2a3a; border-radius: 10px; padding: 9px 11px; font-size: 11px; }
+  .plan-card-full .pc-title { font-size: 11px; font-weight: 600; color: #c0c0e0; margin-bottom: 6px; }
+  .plan-card-full .pc-steps { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+  .plan-card-full .pc-step { display: flex; gap: 6px; align-items: center; font-size: 10px; color: #888; }
+  .pc-step-dot-done { width: 7px; height: 7px; border-radius: 50%; background: #3a8a3a; flex-shrink: 0; }
+  .pc-step-dot-run  { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid #6060e0; flex-shrink: 0; }
+  .plan-card-full .pc-files { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+  .pc-file { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 4px; padding: 1px 6px; font-size: 9px; color: #6a9a6a; font-family: monospace; }
+  .pc-footer { display: flex; justify-content: flex-end; margin-top: 7px; gap: 5px; }
+  .pc-btn-ghost { border: 1px solid #2a2a4a; border-radius: 5px; padding: 3px 8px; font-size: 9px; color: #6060a0; }
+  .pc-btn-primary { background: #2a3a8a; border-radius: 5px; padding: 3px 8px; font-size: 9px; color: #c0ccf0; }
+  .pc-btn-done { border: 1px solid #2a4a2a; border-radius: 5px; padding: 3px 8px; font-size: 9px; color: #4a8a4a; }
+
+  /* Collapsed plan line — Approach B */
+  .plan-line { display: flex; align-items: center; gap: 6px; background: #141420; border: 1px solid #2a2a3a; border-radius: 8px; padding: 6px 10px; }
+  .plan-line-icon { color: #4a8a4a; font-size: 11px; }
+  .plan-line-text { font-size: 10px; color: #a0a0c0; flex: 1; }
+  .plan-line-text strong { color: #c8c8e8; }
+  .plan-line-expand { font-size: 9px; color: #5050a0; cursor: pointer; }
+  .plan-line-files { display: flex; gap: 3px; }
+
+  /* Live activity — approach B "rich calmer" */
+  .live-panel { background: #0f1020; border: 1px solid #1e1e3a; border-top: 2px solid #3a3aaa; border-radius: 8px; padding: 8px 10px; }
+  .live-panel-header { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #8080c0; margin-bottom: 5px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #5a5ae0; }
+  .live-narration { font-size: 10px; color: #b0b0d8; line-height: 1.4; border-left: 2px solid #3a3a8a; padding-left: 7px; margin-top: 4px; }
+  .live-steps { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+  .live-step { display: flex; gap: 5px; align-items: center; font-size: 9px; }
+  .live-step.done { color: #5a8a5a; }
+  .live-step.active { color: #c0c0f0; }
+  .live-step.pending { color: #444460; }
+
+  /* Approach C — threaded */
+  .thread-row { background: #141420; border: 1px solid #222230; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  .thread-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a8a3a; flex-shrink: 0; }
+  .thread-body { flex: 1; }
+  .thread-title { font-size: 10px; font-weight: 500; color: #b8b8d8; }
+  .thread-meta { font-size: 9px; color: #5a5a7a; margin-top: 1px; }
+  .thread-expand { font-size: 9px; color: #4a4a70; }
+  .thread-expanded { background: #111118; border: 1px solid #2a2a3a; border-radius: 0 0 8px 8px; margin-top: -4px; padding: 8px 10px; border-top: none; font-size: 10px; color: #8080a0; }
+  .thread-expanded .te-step { display: flex; gap: 5px; align-items: center; padding: 2px 0; }
+  .te-step-dot { width: 5px; height: 5px; border-radius: 50%; background: #3a7a3a; }
+
+  /* Input mock */
+  .input-mock { background: #0d0d16; border: 1px solid #2020thirty; border-radius: 8px; padding: 5px 9px; font-size: 10px; color: #505070; display: flex; justify-content: space-between; border-color: #202030; }
+  .input-send { background: #2a3aaa; border-radius: 5px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #c0ccf0; font-size: 10px; }
+  .input-row { display: flex; gap: 5px; align-items: center; }
+  .mode-badge { font-size: 9px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 4px; padding: 1px 5px; color: #6060a0; }
+  .status-line { display: flex; align-items: center; gap: 5px; padding: 4px 0; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #4444cc; }
+  .status-text { font-size: 10px; color: #6060a0; }
+
+  /* Section */
+  .section-title { color: #aaa; font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+  .rec-badge { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 5px; padding: 2px 8px; font-size: 10px; color: #4a8a4a; margin-left: 8px; }
+
+  /* Error msg */
+  .msg-error { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #8a6a4a; padding: 3px 0; }
+  .err-icon { font-size: 11px; }
+
+  /* Action log item */
+  .log-item { display: flex; gap: 5px; align-items: center; font-size: 9px; color: #5a5a80; padding: 1px 0; }
+  .log-dot-read { width: 5px; height: 5px; border-radius: 50%; background: #3a3a8a; flex-shrink: 0; }
+  .log-dot-write { width: 5px; height: 5px; border-radius: 50%; background: #2a6a2a; flex-shrink: 0; }
+</style>
+
+<h2>Three redesign directions</h2>
+<p class="subtitle">All three use "just the conversation" as the resting state — they differ in how the live working state is presented and how the plan card lives</p>
+
+<div class="approaches">
+
+  <!-- APPROACH A -->
+  <div class="approach-col">
+    <div class="approach-label">A — Minimal Live</div>
+    <div class="phone" data-choice="a" onclick="toggleSelect(this)">
+      <div class="phone-header">
+        <div class="phone-header-title">✦ AI 对话</div>
+        <div style="font-size:10px;color:#555">✕</div>
+      </div>
+      <div class="phone-messages">
+        <!-- Past build - collapsed -->
+        <div class="msg-user">修改WXML触摸事件</div>
+        <div class="plan-line">
+          <span class="plan-line-icon">✓</span>
+          <span class="plan-line-text"><strong>修改触摸绑定</strong> · 2 files</span>
+          <span class="plan-line-files">
+            <span class="pc-file">touch.wxml</span>
+          </span>
+          <span class="plan-line-expand">›</span>
+        </div>
+
+        <!-- Only last checkpoint -->
+        <div class="chk-minimal">
+          <div class="chk-minimal-line"></div>
+          <div class="chk-minimal-text">restore point · 1hr ago</div>
+          <div class="chk-minimal-line"></div>
+        </div>
+
+        <!-- New user message -->
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- LIVE: working — only status line + compact narration -->
+        <div class="live-panel">
+          <div class="live-panel-header">
+            <div class="live-dot"></div>
+            Working · Step 1/2
+          </div>
+          <div class="live-steps">
+            <div class="live-step active">◉ 优化handleTouch方法逻辑</div>
+            <div class="live-step pending">○ 更新事件绑定</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-input">
+        <div class="status-line">
+          <div class="status-dot"></div>
+          <div class="status-text">Working on step 1/2...</div>
+        </div>
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock" style="flex:1">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:#666;line-height:1.5">
+      Live: compact step list + phase label only. No thinking stream, no action log during work. Quietest possible while building.<br><br>
+      ✓ Most focused<br>
+      ✗ Least transparent about what agent is doing
+    </div>
+  </div>
+
+  <!-- APPROACH B — RECOMMENDED -->
+  <div class="approach-col">
+    <div class="approach-label">B — Rich but Calmer <span class="rec-badge">Recommended</span></div>
+    <div class="phone" data-choice="b" onclick="toggleSelect(this)">
+      <div class="phone-header">
+        <div class="phone-header-title">✦ AI 对话</div>
+        <div style="font-size:10px;color:#555">✕</div>
+      </div>
+      <div class="phone-messages">
+        <!-- Past build - collapsed -->
+        <div class="msg-user">修改WXML触摸事件</div>
+        <div class="plan-line">
+          <span class="plan-line-icon">✓</span>
+          <span class="plan-line-text"><strong>修改触摸绑定</strong> · 2 files changed</span>
+          <span class="plan-line-expand">›</span>
+        </div>
+
+        <!-- Only last checkpoint — subtle -->
+        <div class="chk-minimal">
+          <div class="chk-minimal-line"></div>
+          <div class="chk-minimal-text">restore · 1hr ago</div>
+          <div class="chk-minimal-line"></div>
+        </div>
+
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- LIVE: rich but calm — narration + compact action log -->
+        <div class="live-panel">
+          <div class="live-panel-header">
+            <div class="live-dot"></div>
+            Step 1/2 · 优化handleTouch方法
+          </div>
+          <div class="live-narration">
+            正在分析handleTouch的触摸坐标计算逻辑...
+          </div>
+          <div class="live-steps" style="margin-top:6px">
+            <div class="log-item"><div class="log-dot-read"></div>Reading: pages/index/index.js</div>
+            <div class="log-item"><div class="log-dot-write"></div>Writing: pages/index/index.js</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-input">
+        <div class="status-line">
+          <div class="status-dot"></div>
+          <div class="status-text">Working · step 1 of 2</div>
+        </div>
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock" style="flex:1">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:#666;line-height:1.5">
+      Live: one contained panel — step title, live narration, compact file read/write log. No separate floating action log or thinking stream box. Resting state: one collapsed result line per build.<br><br>
+      ✓ Transparent but contained<br>
+      ✓ Matches "rich but calmer" preference<br>
+      ✗ Still shows some activity detail
+    </div>
+  </div>
+
+  <!-- APPROACH C -->
+  <div class="approach-col">
+    <div class="approach-label">C — Threaded Builds</div>
+    <div class="phone" data-choice="c" onclick="toggleSelect(this)">
+      <div class="phone-header">
+        <div class="phone-header-title">✦ AI 对话</div>
+        <div style="font-size:10px;color:#555">✕</div>
+      </div>
+      <div class="phone-messages">
+        <div class="msg-user">修改WXML触摸事件</div>
+
+        <!-- Past build as collapsed thread -->
+        <div class="thread-row">
+          <div class="thread-status-dot"></div>
+          <div class="thread-body">
+            <div class="thread-title">修改触摸绑定</div>
+            <div class="thread-meta">2 files · 4hr ago · passed review</div>
+          </div>
+          <div class="thread-expand">▸ details</div>
+        </div>
+
+        <!-- Inline expansion (shown as example) -->
+        <div class="thread-expanded">
+          <div class="te-step"><div class="te-step-dot"></div> 修改WXML触摸事件绑定位置</div>
+          <div class="te-step"><div class="te-step-dot"></div> 优化handleTouch方法逻辑</div>
+          <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">
+            <span class="pc-file">touch.wxml</span>
+            <span class="pc-file">index.js</span>
+          </div>
+        </div>
+
+        <div class="chk-minimal">
+          <div class="chk-minimal-line"></div>
+          <div class="chk-minimal-text">restore · 1hr ago</div>
+          <div class="chk-minimal-line"></div>
+        </div>
+
+        <div class="msg-user">看起来不错，按计划继续</div>
+
+        <!-- New build — thread forming -->
+        <div class="thread-row" style="border-color:#2a2a5a">
+          <div class="thread-status-dot" style="background:#4444cc;box-shadow:0 0 4px #4444cc80"></div>
+          <div class="thread-body">
+            <div class="thread-title">优化handleTouch逻辑</div>
+            <div class="thread-meta">Step 1/2 · working...</div>
+          </div>
+          <div class="thread-expand">▸ live</div>
+        </div>
+      </div>
+      <div class="phone-input">
+        <div class="status-line">
+          <div class="status-dot"></div>
+          <div class="status-text">Building step 1/2...</div>
+        </div>
+        <div class="input-row">
+          <div class="mode-badge">Build</div>
+          <div class="input-mock" style="flex:1">输入消息...</div>
+          <div class="input-send">↑</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:#666;line-height:1.5">
+      Each build is a collapsible "thread row" in the chat. Click to expand/collapse. Clean at rest, full detail on demand.<br><br>
+      ✓ Maximum cleanliness at rest<br>
+      ✓ Scales to long conversations well<br>
+      ✗ More clicks to see details
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:8px">All three approaches: no "Build complete" rows, no duplicate error messages, no noisy checkpoints. Errors appear inline in the live panel only.</p>
+
+<div class="options" style="margin-top:20px">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Minimal Live</h3><p>Quietest — step name + phase label only while working</p></div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Rich but Calmer</h3><p>Step + narration + file log in one contained panel — my recommendation</p></div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content"><h3>Threaded Builds</h3><p>Each build is a collapsible thread row — cleanest at rest</p></div>
+  </div>
+</div>

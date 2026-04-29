@@ -1,9 +1,18 @@
-export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin";
-export type Language = "html" | "typescript" | "dart" | "swift" | "kotlin";
+export type Framework = "web" | "rn-expo" | "flutter" | "swiftui" | "kotlin" | "wechat";
+export type Language = "html" | "typescript" | "dart" | "swift" | "kotlin" | "wxml";
 export type TargetPlatform = "ios" | "android" | "both";
 
 export function detectFramework(files: { path: string }[]): Framework {
   const filePaths = new Set(files.map((f) => f.path.toLowerCase()));
+
+  // Check for WeChat Mini Program
+  if (
+    filePaths.has("/project/app.js") &&
+    filePaths.has("/project/app.json") &&
+    filePaths.has("/project/app.wxss")
+  ) {
+    return "wechat";
+  }
 
   // Check for React Native / Expo
   if (
@@ -52,6 +61,8 @@ export function getLanguageForFramework(framework: Framework): Language {
       return "swift";
     case "kotlin":
       return "kotlin";
+    case "wechat":
+      return "wxml";
     case "web":
     default:
       return "html";
@@ -68,6 +79,7 @@ export function getTargetPlatformForFramework(
       return "android";
     case "rn-expo":
     case "flutter":
+    case "wechat":
       return "both";
     case "web":
     default:
