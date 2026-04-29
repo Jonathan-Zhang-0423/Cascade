@@ -32,6 +32,7 @@ export function useBuildStream() {
     projectId,
     setLastBuildFileDiff,
     clearLastBuildFileDiffs,
+    setCompletionData,
   } = useIDEStore();
 
   const [buildPhase, setBuildPhase] = useState<BuildPhase>(null);
@@ -39,6 +40,7 @@ export function useBuildStream() {
   const [liveThinkingText, setLiveThinkingText] = useState("");
   const [liveNarrationText, setLiveNarrationText] = useState("");
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [thinkingElapsedSec, setThinkingElapsedSec] = useState<number | null>(null);
 
   const buildSessionIdRef = useRef<string | null>(null);
   const buildReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -53,6 +55,9 @@ export function useBuildStream() {
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
   const userConfirmationRef = useRef<string>("");
+  const beforeBuildCheckpointCreatedRef = useRef(false);
+  const buildCompleteCheckpointCreatedRef = useRef(false);
+  const thinkingStartTimeRef = useRef<number | null>(null);
   const connectToBuildStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -223,12 +228,17 @@ export function useBuildStream() {
         }
         if (isCurrentProjectNow) {
           ctx.commAccumulated.value = "";
-          addManagerMessage({
-            role: "assistant",
-            content: stepLabel,
-            source: "communicator",
-            typing: true,
-          });
+          const alreadyAdded = useIDEStore
+            .getState()
+            .managerMessages.some((m) => m.content === stepLabel && m.source === "communicator");
+          if (!alreadyAdded) {
+            addManagerMessage({
+              role: "assistant",
+              content: stepLabel,
+              source: "communicator",
+              typing: true,
+            });
+          }
           ctx.commMsgIndex.value =
             useIDEStore.getState().managerMessages.length - 1;
         }
@@ -236,6 +246,9 @@ export function useBuildStream() {
       } else if (type === "thinking_token") {
         const token = ev.token || "";
         if (token) {
+          if (!thinkingStartTimeRef.current) {
+            thinkingStartTimeRef.current = Date.now();
+          }
           if (thinkingFadeTimerRef.current) {
             clearTimeout(thinkingFadeTimerRef.current);
             thinkingFadeTimerRef.current = null;
@@ -288,6 +301,10 @@ export function useBuildStream() {
           filePath,
         });
       } else if (type === "narration_token") {
+        if (thinkingStartTimeRef.current && thinkingElapsedSec === null) {
+          const elapsed = Math.round((Date.now() - thinkingStartTimeRef.current) / 1000);
+          setThinkingElapsedSec(elapsed);
+        }
         if (ctx.thinkingAccumulated.value) {
           const existing = actionLogRef.current;
           const lastIsThinking =
@@ -493,28 +510,8 @@ export function useBuildStream() {
       let thinkingAccumulated = "";
 
       const flushNarrationToStore = () => {
-        if (!commAccumulated) return;
-        const isCurrentProject2 =
-          useIDEStore.getState().projectId === projectId;
-        if (!isCurrentProject2) return;
-        if (commMsgIndex === -1) {
-          addManagerMessage({
-            role: "assistant",
-            content: commAccumulated,
-            source: "communicator",
-          });
-          commMsgIndex =
-            useIDEStore.getState().managerMessages.length - 1;
-        } else {
-          const msgs = useIDEStore.getState().managerMessages;
-          const target = msgs[commMsgIndex];
-          if (target?.role === "assistant") {
-            const updated = [...msgs];
-            updated[commMsgIndex] = { ...target, content: commAccumulated };
-            useIDEStore.setState({ managerMessages: updated });
-          }
-        }
-        // Reset after writing so re-entrant calls (e.g. finally block) are no-ops
+        // Narration text is now transient, only shown as liveNarrationText during execution
+        // No longer persisted to managerMessages
         commAccumulated = "";
         commMsgIndex = -1;
       };
@@ -608,7 +605,11 @@ export function useBuildStream() {
     setFixCycle(0);
     setHolisticReview(null);
 
-    createCheckpoint("Before build");
+    if (!beforeBuildCheckpointCreatedRef.current) {
+      beforeBuildCheckpointCreatedRef.current = true;
+      buildCompleteCheckpointCreatedRef.current = false;
+      createCheckpoint("Before build");
+    }
     clearLastBuildFileDiffs();
 
     const normalizedSteps2 = normalizeSteps(plan);
@@ -649,6 +650,8 @@ export function useBuildStream() {
     actionLogRef.current = [];
     setLiveActionLog([]);
     setLiveThinkingText("");
+    setThinkingElapsedSec(null);
+    thinkingStartTimeRef.current = null;
     buildResultMsgIdRef.current = null;
 
     const helpers = createBuildHelpers(userLang);
@@ -740,29 +743,21 @@ export function useBuildStream() {
             }
             const changedFiles = ev.changedFiles || [];
             const finalLog = [...actionLogRef.current];
-            helpers.resetNarration(); // discard verifier's raw streaming text
+            helpers.resetNarration();
             saveBuildResult(finalLog, changedFiles, userLang);
 
-            const targetMsgId = buildResultMsgIdRef.current;
-            // Use summaryText from the event (generated server-side) instead of a second fetch
             const summaryText = (ev as any).summaryText || "";
-            if (summaryText && targetMsgId) {
-              const curMsgs = useIDEStore.getState().managerMessages;
-              const updated = curMsgs.map((m) =>
-                m.id === targetMsgId && m.buildResult
-                  ? {
-                      ...m,
-                      buildResult: {
-                        ...m.buildResult,
-                        completionData: {
-                          ...m.buildResult.completionData,
-                          summary: summaryText,
-                        },
-                      },
-                    }
-                  : m,
-              );
-              useIDEStore.setState({ managerMessages: updated });
+            const nextStepSuggestion = (ev as any).nextStepSuggestion || "";
+            const narrationContent = nextStepSuggestion
+              ? `${summaryText}\n\n→ ${nextStepSuggestion}`
+              : summaryText;
+
+            if (narrationContent.trim()) {
+              addManagerMessage({
+                role: "assistant",
+                source: "communicator",
+                content: narrationContent,
+              });
             }
             return;
           }
@@ -872,14 +867,19 @@ export function useBuildStream() {
           return;
         }
         if (useIDEStore.getState().projectId === projectId) {
-          addManagerMessage({
-            role: "assistant",
-            content: tr(
-              useLanguageStore.getState().lang,
-              "chat.errorBuildInterrupted",
-            ),
-            source: "communicator",
-          });
+          const errorContent = tr(
+            useLanguageStore.getState().lang,
+            "chat.errorBuildInterrupted",
+          );
+          const msgs = useIDEStore.getState().managerMessages;
+          const last = msgs[msgs.length - 1];
+          if (!(last && last.role === "assistant" && last.content === errorContent)) {
+            addManagerMessage({
+              role: "assistant",
+              content: errorContent,
+              source: "communicator",
+            });
+          }
         }
       }
     } finally {
@@ -894,6 +894,8 @@ export function useBuildStream() {
         helpers.flushNarrationToStore();
         useIDEStore.getState().setStreamingSnapshot(null);
         buildSessionIdRef.current = null;
+        beforeBuildCheckpointCreatedRef.current = false;
+        buildCompleteCheckpointCreatedRef.current = false;
         buildReaderRef.current = null;
         if (projectId) {
           try {
@@ -1210,7 +1212,8 @@ export function useBuildStream() {
 
             if (type === "all_complete") {
               buildCompleted = true;
-              if (useIDEStore.getState().projectId === projectId) {
+              if (useIDEStore.getState().projectId === projectId && !buildCompleteCheckpointCreatedRef.current) {
+                buildCompleteCheckpointCreatedRef.current = true;
                 createCheckpoint("Build complete", {
                   includeManagerThread: true,
                 });
@@ -1314,14 +1317,19 @@ export function useBuildStream() {
           isReconnectingRef.current = false;
           setIsReconnecting(false);
           if (useIDEStore.getState().projectId === projectId) {
-            addManagerMessage({
-              role: "assistant",
-              content: tr(
-                useLanguageStore.getState().lang,
-                "chat.errorBuildInterrupted",
-              ),
-              source: "communicator",
-            });
+            const errorContent = tr(
+              useLanguageStore.getState().lang,
+              "chat.errorBuildInterrupted",
+            );
+            const msgs = useIDEStore.getState().managerMessages;
+            const last = msgs[msgs.length - 1];
+            if (!(last && last.role === "assistant" && last.content === errorContent)) {
+              addManagerMessage({
+                role: "assistant",
+                content: errorContent,
+                source: "communicator",
+              });
+            }
           }
         }
       } finally {
@@ -1737,6 +1745,7 @@ export function useBuildStream() {
     liveThinkingText,
     liveNarrationText,
     isReconnecting,
+    thinkingElapsedSec,
     handleExecutePlan,
     handleStopExecution,
     userConfirmationRef,
