@@ -4,7 +4,6 @@ import { ActionLogCollapsed } from "./action-log";
 import {
   MessageBubble,
   CheckpointMarker,
-  BuildCompletionCard,
 } from "./message-components";
 import { ManagerMessageBubble } from "./plan-components";
 
@@ -21,6 +20,8 @@ interface ChatMessageListProps {
   reviewPhase: ReviewPhase;
   holisticReview: HolisticReviewResult | null | undefined;
   fixCycle: number;
+  liveNarrationText?: string;
+  completionData?: { changedFiles: string[]; summary: string } | null;
   handleExecutePlan?: () => void;
   handleRevisePlan?: () => void;
   handleStopExecution?: () => void;
@@ -41,6 +42,8 @@ export function ChatMessageList({
   reviewPhase,
   holisticReview,
   fixCycle,
+  liveNarrationText,
+  completionData,
   handleExecutePlan,
   handleRevisePlan,
   handleStopExecution,
@@ -70,6 +73,15 @@ export function ChatMessageList({
     (a, b) => a.msg.seq - b.msg.seq || a.order - b.order,
   );
 
+  const allCheckpointSeqs = merged
+    .filter(
+      (item) =>
+        (item.kind === "chat" && item.msg.role === "checkpoint") ||
+        (item.kind === "manager" && item.msg.role === "checkpoint")
+    )
+    .map((item) => item.msg.seq);
+  const lastCheckpointSeq = allCheckpointSeqs.length > 0 ? Math.max(...allCheckpointSeqs) : -1;
+
   const seenCheckpointIds = new Set<string>();
 
   return (
@@ -79,6 +91,7 @@ export function ChatMessageList({
           const { msg, idx } = item;
           if (msg.hidden) return null;
           if (msg.role === "checkpoint" && msg.checkpointId) {
+            if (msg.seq !== lastCheckpointSeq) return null;
             if (seenCheckpointIds.has(msg.checkpointId)) return null;
             seenCheckpointIds.add(msg.checkpointId);
           }
@@ -108,6 +121,7 @@ export function ChatMessageList({
         } else {
           const { msg } = item;
           if (msg.role === "checkpoint" && msg.checkpointId) {
+            if (msg.seq !== lastCheckpointSeq) return null;
             if (seenCheckpointIds.has(msg.checkpointId)) return null;
             seenCheckpointIds.add(msg.checkpointId);
             return (
@@ -122,28 +136,6 @@ export function ChatMessageList({
                   checkpointId: msg.checkpointId,
                 }}
               />
-            );
-          }
-          if (msg.buildResult && !msg.plan) {
-            return (
-              <div key={`m-${msg.id}`} className="space-y-2">
-                {msg.buildResult.actionLog.length > 0 && (
-                  <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-                    <ActionLogCollapsed
-                      entries={
-                        msg.buildResult.actionLog as ActionLogEntry[]
-                      }
-                    />
-                  </div>
-                )}
-                <BuildCompletionCard
-                  changedFiles={
-                    msg.buildResult.completionData.changedFiles
-                  }
-                  userLang={msg.buildResult.completionData.userLang || "English"}
-                  summary={msg.buildResult.completionData.summary}
-                />
-              </div>
             );
           }
           const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
@@ -174,27 +166,9 @@ export function ChatMessageList({
                 reviewPhase={isLastPlan ? reviewPhase : undefined}
                 holisticReview={isLastPlan ? holisticReview : undefined}
                 fixCycle={isLastPlan ? fixCycle : undefined}
+                liveNarration={isLastPlan ? liveNarrationText : undefined}
+                completionData={isLastPlan ? completionData : undefined}
               />
-              {msg.buildResult && (
-                <>
-                  {msg.buildResult.actionLog.length > 0 && (
-                    <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-                      <ActionLogCollapsed
-                        entries={
-                          msg.buildResult.actionLog as ActionLogEntry[]
-                        }
-                      />
-                    </div>
-                  )}
-                  <BuildCompletionCard
-                    changedFiles={
-                      msg.buildResult.completionData.changedFiles
-                    }
-                    userLang={msg.buildResult.completionData.userLang || "English"}
-                    summary={msg.buildResult.completionData.summary}
-                  />
-                </>
-              )}
             </div>
           );
         }
