@@ -4,8 +4,10 @@ import {
   type ManagerSubTask,
   type HolisticReviewResult,
   type ReviewPhase,
+  type BuildResultData,
 } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
+import { ActionLogCollapsed } from "./action-log";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -17,11 +19,9 @@ import {
 import {
   Send,
   Check,
-  FileCode,
   Loader2,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -37,8 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang } from "./chat-types";
-import { PREVIEW_STEP_COUNT } from "./chat-types";
-import { t, usePlanCardLang, normalizeSteps, renderMarkdown } from "./chat-utils";
+import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 
 function StepItem({
   task,
@@ -47,6 +46,7 @@ function StepItem({
   isCompleted,
   showNumber,
   isLast,
+  liveNarration,
 }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
@@ -54,6 +54,7 @@ function StepItem({
   isCompleted?: boolean;
   showNumber?: boolean;
   isLast?: boolean;
+  liveNarration?: string;
 }) {
   const s = status || "pending";
   const tStep = useT();
@@ -127,48 +128,46 @@ function StepItem({
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex items-center flex-wrap gap-x-2 min-w-0">
-        {showNumber && (
-          <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 w-4 text-right leading-none">
-            {task.step}.
-          </span>
-        )}
-        <span
-          className={cn(
-            "text-[12px] leading-snug flex-1",
-            isCompleted
-              ? "text-[#2e2e42]"
-              : isDone
-                ? "text-[#484860]"
-                : s === "failed"
-                  ? "text-red-400"
-                  : isRunning
-                    ? "text-[#eeeef6] font-medium"
-                    : s === "needs-input"
-                      ? "text-yellow-500"
-                      : s === "bug"
-                        ? "text-orange-500"
-                        : "text-[#2e2e42]",
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex items-center flex-wrap gap-x-2">
+          {showNumber && (
+            <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 w-4 text-right leading-none">
+              {task.step}.
+            </span>
           )}
-        >
-          {task.title}
-        </span>
-        {isRunning && (
           <span
-            className="text-[10px] text-[#4f82ff] border border-[rgba(79,130,255,0.25)] rounded px-1.5 py-0.5 shrink-0 font-medium"
-            style={{ animation: "badge-pulse 1.5s ease-in-out infinite" }}
-            data-testid={`step-building-${task.step}`}
+            className={cn(
+              "text-[12px] leading-snug flex-1",
+              isCompleted
+                ? "text-[#2e2e42]"
+                : isDone
+                  ? "text-[#484860]"
+                  : s === "failed"
+                    ? "text-red-400"
+                    : isRunning
+                      ? "text-[#eeeef6] font-medium"
+                      : s === "needs-input"
+                        ? "text-yellow-500"
+                        : s === "bug"
+                          ? "text-orange-500"
+                          : "text-[#2e2e42]",
+            )}
           >
-            Building…
+            {task.title}
           </span>
-        )}
-        {failureReasonLabel && (
-          <span
-            className="text-[10px] bg-red-500/15 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5 shrink-0"
-            data-testid={`step-failure-reason-${task.step}`}
-          >
-            {failureReasonLabel}
-          </span>
+          {failureReasonLabel && (
+            <span
+              className="text-[10px] bg-red-500/15 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5 shrink-0"
+              data-testid={`step-failure-reason-${task.step}`}
+            >
+              {failureReasonLabel}
+            </span>
+          )}
+        </div>
+        {isRunning && liveNarration && (
+          <div className="text-[11px] text-[#6868a0] mt-0.5 font-mono truncate">
+            {liveNarration}<span className="inline-block w-[1ch] animate-pulse">▋</span>
+          </div>
         )}
       </div>
     </div>
@@ -243,7 +242,7 @@ export function ThinkingToggle({ thinking }: { thinking: string }) {
   return (
     <div className="mb-1.5">
       <button
-        className="flex items-center gap-1 text-[12px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+        className="flex items-center gap-1 text-[12px] text-[#6868a0]/70 hover:text-[#6868a0] transition-colors"
         onClick={() => setOpen((o) => !o)}
         data-testid="button-toggle-thinking"
       >
@@ -252,79 +251,15 @@ export function ThinkingToggle({ thinking }: { thinking: string }) {
         ) : (
           <ChevronRight className="w-3 h-3" />
         )}
-        <span className="italic font-medium">(Thinking)</span>
+        <span className="italic">思考过程</span>
       </button>
       {open && (
         <p
-          className="mt-1 text-muted-foreground/60 italic whitespace-pre-wrap text-[12px] border-l-2 border-muted pl-2"
+          className="mt-1 text-muted-foreground/50 italic whitespace-pre-wrap text-[11px] border-l-2 border-muted/30 pl-2"
           data-testid="text-thinking-content"
         >
           {thinking}
         </p>
-      )}
-    </div>
-  );
-}
-
-const NARRATION_TRUNCATE_LINES = 15;
-const NARRATION_TRUNCATE_CHARS = 600;
-
-export function NarrationBubble({
-  message,
-}: {
-  message: {
-    role: string;
-    content: string;
-    source?: "communicator" | "manager_raw" | "manager";
-    thinking?: string;
-    typing?: boolean;
-  };
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  const content = message.content || "";
-  const lines = content.split("\n");
-  const needsTruncation =
-    lines.length > NARRATION_TRUNCATE_LINES || content.length > NARRATION_TRUNCATE_CHARS;
-  const showFull = !needsTruncation || expanded;
-
-  let displayContent = content;
-  if (!showFull) {
-    const truncatedLines = lines.slice(0, NARRATION_TRUNCATE_LINES);
-    displayContent = truncatedLines.join("\n");
-    if (displayContent.length > NARRATION_TRUNCATE_CHARS) {
-      displayContent = displayContent.slice(0, NARRATION_TRUNCATE_CHARS);
-    }
-    displayContent += "…";
-  }
-
-  return (
-    <div
-      className="my-1 text-[13px] leading-relaxed text-foreground"
-      style={{
-        paddingLeft: '12px',
-        marginLeft: '12px',
-        marginRight: '12px',
-        borderLeft: '2px solid rgba(255,255,255,0.06)',
-      }}
-      data-testid="plan-message-bubble"
-    >
-      {message.thinking && <ThinkingToggle thinking={message.thinking} />}
-      {content && (
-        <>
-          <div className="text-foreground/90">
-            {renderMarkdown(displayContent)}
-          </div>
-          {needsTruncation && (
-            <button
-              className="text-[11px] text-primary/70 hover:text-primary transition-colors mt-1"
-              onClick={() => setExpanded((e) => !e)}
-              data-testid="button-toggle-narration"
-            >
-              {expanded ? "Show less" : "Show more"}
-            </button>
-          )}
-        </>
       )}
     </div>
   );
@@ -346,6 +281,9 @@ export function TaskPlanCard({
   holisticReview,
   fixCycle,
   thinking,
+  liveNarration,
+  completionSummary,
+  changedFiles,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<
@@ -365,6 +303,9 @@ export function TaskPlanCard({
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
   thinking?: string;
+  liveNarration?: string;
+  completionSummary?: string;
+  changedFiles?: string[];
 }) {
   const lang = usePlanCardLang();
   const tCard = useT();
@@ -386,48 +327,73 @@ export function TaskPlanCard({
   const isPreExecution =
     doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
 
-  const [stepsExpanded, setStepsExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Track execution elapsed time
+  // Track execution elapsed time (for future use)
   const executionStartRef = useRef<number | null>(null);
-  const [elapsedLabel, setElapsedLabel] = useState<string | null>(null);
   useEffect(() => {
     if (isExecuting && executionStartRef.current === null) {
       executionStartRef.current = Date.now();
     }
     if (!isExecuting && executionStartRef.current !== null && isFullyComplete) {
-      const secs = Math.round((Date.now() - executionStartRef.current) / 1000);
-      if (secs < 60) {
-        setElapsedLabel(secs <= 1 ? "1 second" : `${secs} seconds`);
-      } else {
-        const mins = Math.round(secs / 60);
-        setElapsedLabel(mins === 1 ? "1 minute" : `${mins} minutes`);
-      }
+      executionStartRef.current = null;
     }
   }, [isExecuting, isFullyComplete]);
-
-  const hasMore = steps.length > PREVIEW_STEP_COUNT;
-  const visibleSteps =
-    isPreExecution && !stepsExpanded
-      ? steps.slice(0, PREVIEW_STEP_COUNT)
-      : steps;
-  const peekSteps =
-    isPreExecution && hasMore && !stepsExpanded
-      ? steps.slice(PREVIEW_STEP_COUNT, PREVIEW_STEP_COUNT + 2)
-      : [];
 
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
-  const relevantFiles = plan.relevant_files;
   const hasRichSections = !!(
     overview ||
     whatAndWhy ||
     doneLooksLike ||
     outOfScope
   );
+
+  // Determine phase states
+  const buildingPhaseStatus = isExecuting ? "active" : isFullyComplete ? "done" : "pending";
+  const verifyingPhaseStatus = phase === "reviewing" || phase === "fixing" ? "active" : phase === "review_passed" ? "done" : phase === "review_failed" ? "failed" : "pending";
+  const showVerifyPhase = phase !== "idle" && phase !== "building";
+
+  // Helper to render phase dot
+  const renderPhaseDot = (status: "active" | "done" | "pending" | "failed") => {
+    switch (status) {
+      case "done":
+        return (
+          <div
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: "#34d68a" }}
+          />
+        );
+      case "active":
+        return (
+          <div
+            className="w-2 h-2 rounded-full shrink-0 animate-pulse"
+            style={{ background: "#4f82ff" }}
+          />
+        );
+      case "failed":
+        return (
+          <div
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: "#ef4444" }}
+          />
+        );
+      default: // pending
+        return (
+          <div
+            className="w-2 h-2 rounded-full shrink-0 border border-[rgba(255,255,255,0.1)]"
+            style={{ background: "transparent" }}
+          />
+        );
+    }
+  };
+
+  // Helper to render connecting line
+  const renderLine = (show: boolean) => show ? (
+    <div className="w-px flex-1 min-h-[8px] bg-[rgba(255,255,255,0.05)]" />
+  ) : null;
 
   return (
     <>
@@ -445,127 +411,89 @@ export function TaskPlanCard({
         )}
         data-testid="task-plan-card"
       >
-        {hasRichSections ? (
-          <>
-            <div className="px-3 pt-2.5 pb-1.5 border-b border-border/20 flex items-center gap-2">
-              <p className="text-[12px] font-medium text-foreground leading-snug flex-1 min-w-0">
-                {plan.summary}
-              </p>
-              <button
-                onClick={() => setModalOpen(true)}
-                className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
-                title={t(lang, "viewPlanDoc")}
-                data-testid="button-view-plan-doc"
-              >
-                <FileText className="w-3 h-3" />
-              </button>
-            </div>
-            {isExecuting && total > 0 && (
-              <div className="px-3 pt-1 pb-2 border-b border-border/20">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] text-primary font-semibold uppercase tracking-wide">
-                    Plan · {doneCount} of {total}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground/60">
-                    {Math.round((doneCount / total) * 100)}%
-                  </span>
-                </div>
-                <div className="h-[2px] rounded-full bg-border/40 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500"
-                    style={{ width: `${(doneCount / total) * 100}%` }}
-                  />
-                </div>
-              </div>
+        {/* Spine timeline */}
+        <div className="flex gap-3 px-3 py-3">
+          {/* Left rail with dots and lines */}
+          <div className="flex flex-col items-center shrink-0" style={{ marginTop: 2 }}>
+            {/* Planning phase dot */}
+            {renderPhaseDot("done")}
+            {renderLine(true)}
+
+            {/* Building phase dot */}
+            {renderPhaseDot(buildingPhaseStatus)}
+            {renderLine(showVerifyPhase)}
+
+            {/* Verifying phase dot (hidden if not applicable) */}
+            {showVerifyPhase && (
+              <>
+                {renderPhaseDot(verifyingPhaseStatus)}
+                {renderLine(isFullyComplete)}
+              </>
             )}
-            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#4f82ff] bg-[rgba(79,130,255,0.03)]">
-              <div className="flex items-center gap-2 mb-1">
-                <Lightbulb className="w-3.5 h-3.5 text-[#4f82ff] shrink-0" />
-                <p className="text-[10px] font-semibold text-[#4f82ff] uppercase tracking-wide">
-                  {t(lang, "whatAndWhy")}
+
+            {/* Done phase dot */}
+            {isFullyComplete && renderPhaseDot("done")}
+          </div>
+
+          {/* Right content column */}
+          <div className="flex-1 min-w-0">
+            {/* ─── Planning phase ─── */}
+            <div className="mb-4">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <p className="text-[9.5px] font-mono text-[#484860] uppercase tracking-wider">
+                  Planning
                 </p>
               </div>
-              <p className="text-[12px] text-foreground/80 leading-relaxed">
-                {whatAndWhy || t(lang, "whatAndWhyNone")}
-              </p>
-            </div>
-            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#34d68a] bg-[rgba(52,214,138,0.03)]">
-              <div className="flex items-center gap-2 mb-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#34d68a] shrink-0" />
-                <p className="text-[10px] font-semibold text-[#34d68a] uppercase tracking-wide">
-                  {t(lang, "doneLooksLike")}
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[12.5px] font-medium text-[#b0b0c8] leading-snug">
+                  {plan.summary}
                 </p>
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="p-0.5 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
+                  title={t(lang, "viewPlanDoc")}
+                  data-testid="button-view-plan-doc"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <p className="text-[12px] text-foreground/80 leading-relaxed">
-                {doneLooksLike || t(lang, "doneLooksLikeNone")}
+              <p className="text-[9.5px] text-[#484860] mt-1">
+                {total} steps
               </p>
-            </div>
-            <div className="px-3 py-2 border-b border-border/20 border-l-2 border-l-[#8888a8] bg-[rgba(136,136,168,0.03)]">
-              <div className="flex items-center gap-2 mb-1">
-                <XCircle className="w-3.5 h-3.5 text-[#8888a8] shrink-0" />
-                <p className="text-[10px] font-semibold text-[#8888a8] uppercase tracking-wide">
-                  {t(lang, "outOfScope")}
-                </p>
-              </div>
-              <p className="text-[12px] text-foreground/80 leading-relaxed">
-                {outOfScope || t(lang, "outOfScopeNone")}
-              </p>
+
+              {/* Collapsed rich sections (What & Why, Done Looks Like) */}
+              {hasRichSections && (
+                <div className="mt-2 space-y-1 text-[11px] text-foreground/70">
+                  {whatAndWhy && (
+                    <div className="flex items-start gap-1">
+                      <Lightbulb className="w-2.5 h-2.5 text-[#4f82ff] mt-0.5 shrink-0" />
+                      <span className="line-clamp-1">{whatAndWhy}</span>
+                    </div>
+                  )}
+                  {doneLooksLike && (
+                    <div className="flex items-start gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-[#34d68a] mt-0.5 shrink-0" />
+                      <span className="line-clamp-1">{doneLooksLike}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div
-              className={cn(
-                "px-3 py-2 border-b border-border/20 border-l-2 border-l-[#a78bfa] bg-[rgba(167,139,250,0.03)]",
-                !(relevantFiles && relevantFiles.length > 0) && "border-b-0",
-              )}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <Hammer className="w-3.5 h-3.5 text-[#a78bfa] shrink-0" />
-                  <p className="text-[10px] font-semibold text-[#a78bfa] uppercase tracking-wide">
-                    {t(lang, "tasks")}
-                  </p>
-                </div>
-                {isExecuting && total > 0 ? (
-                  <span
-                    className="text-[10px] font-mono text-muted-foreground/60"
-                    data-testid="step-progress-counter"
-                  >
-                    {doneCount}/{total}
-                  </span>
-                ) : isPreExecution && hasMore ? (
-                  <button
-                    onClick={() => setStepsExpanded(!stepsExpanded)}
-                    className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
-                    data-testid="button-expand-steps"
-                  >
-                    {stepsExpanded ? (
-                      <ChevronUp className="w-2.5 h-2.5" />
-                    ) : (
-                      <ChevronDown className="w-2.5 h-2.5" />
-                    )}
-                    {stepsExpanded
-                      ? t(lang, "collapse")
-                      : t(lang, "showAllSteps", { n: steps.length })}
-                  </button>
-                ) : null}
+            {/* ─── Building phase ─── */}
+            <div className="mb-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="text-[9.5px] font-mono text-[buildingPhaseStatus === 'active' ? '#4f82ff' : isFullyComplete ? '#34d68a' : '#3a3a58'] uppercase tracking-wider">
+                  Building
+                </p>
               </div>
-              <div className="space-y-0">
-                {visibleSteps.map((task: ManagerSubTask, idx: number) => (
-                  <StepItem
-                    key={task.step}
-                    task={task}
-                    status={taskStatuses[String(task.step)]}
-                    failureReason={taskFailureReasons?.[String(task.step)]}
-                    isCompleted={isFullyComplete}
-                    showNumber
-                    isLast={idx === visibleSteps.length - 1}
-                  />
-                ))}
-              </div>
-              {peekSteps.length > 0 && !stepsExpanded && (
-                <div className="relative mt-0">
-                  <div className="space-y-0 blur-[2px] select-none pointer-events-none opacity-50">
-                    {peekSteps.map((task: ManagerSubTask) => (
+
+              {/* Steps box */}
+              <div className="bg-[#0e0e1a] border border-[rgba(255,255,255,0.07)] rounded-lg overflow-hidden">
+                <div className="space-y-0">
+                  {steps.map((task: ManagerSubTask, idx: number) => {
+                    const isActive = taskStatuses[String(task.step)] === "running";
+                    return (
                       <StepItem
                         key={task.step}
                         task={task}
@@ -573,220 +501,129 @@ export function TaskPlanCard({
                         failureReason={taskFailureReasons?.[String(task.step)]}
                         isCompleted={isFullyComplete}
                         showNumber
-                        isLast={false}
+                        isLast={idx === steps.length - 1}
+                        liveNarration={isActive ? liveNarration : undefined}
                       />
-                    ))}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Confirmation input (if needed, inside Building phase) */}
+              {showConfirmation && pendingConfirmation && onContinueWithInput && (
+                <div className="mt-2 rounded-lg border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] p-2">
+                  <Textarea
+                    placeholder={
+                      pendingConfirmation.stepKey === "review"
+                        ? t(lang, "confirmationPlaceholder")
+                        : pendingConfirmation.items[0]
+                    }
+                    value={confirmationInput || ""}
+                    onChange={(e) => onConfirmationInputChange?.(e.target.value)}
+                    className="resize-none text-[12px] min-h-[60px]"
+                  />
+                  <div className="flex gap-2 mt-1.5">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        onContinueWithInput?.(confirmationInput)
+                      }
+                      className="h-7 text-[11px]"
+                      data-testid="button-submit-confirmation"
+                    >
+                      {t(lang, "submitInput")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        onContinueWithInput?.("")
+                      }
+                      className="h-7 text-[11px]"
+                    >
+                      {t(lang, "skip")}
+                    </Button>
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
                 </div>
               )}
             </div>
 
-            {relevantFiles && relevantFiles.length > 0 && (
-              <div className="px-3 py-2 border-l-2 border-l-[#fb923c] bg-[rgba(251,146,60,0.03)]">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileCode className="w-3.5 h-3.5 text-[#fb923c] shrink-0" />
-                  <p className="text-[10px] font-semibold text-[#fb923c] uppercase tracking-wide">
-                    {t(lang, "relevantFiles")}
+            {/* ─── Verifying phase ─── */}
+            {showVerifyPhase && (
+              <div className="mb-4">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <p className={cn(
+                    "text-[9.5px] font-mono uppercase tracking-wider",
+                    verifyingPhaseStatus === "active" ? "text-[#4f82ff]" : verifyingPhaseStatus === "done" ? "text-[#34d68a]" : verifyingPhaseStatus === "failed" ? "text-red-400" : "text-[#3a3a58]"
+                  )}>
+                    Verifying
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {relevantFiles.map((f, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)] text-[10px] text-[#8888a8] font-mono"
-                      data-testid={`file-badge-${i}`}
-                    >
-                      <FileCode className="w-2.5 h-2.5 shrink-0" />
-                      {f.split("/").pop() || f}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : isPreExecution ? (
-          <>
-            <div className="px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
-              <p className="text-[13px] leading-snug min-w-0 flex-1 text-foreground">
-                {plan.summary || (plan as unknown as Record<string, string>).user_requirement || ""}
-              </p>
-              <button
-                onClick={() => setModalOpen(true)}
-                className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
-                title={t(lang, "viewPlanDoc")}
-                data-testid="button-view-plan-doc-preexec"
-              >
-                <FileText className="w-3 h-3" />
-              </button>
-            </div>
-            <div className="relative px-3 pb-2">
-              <div className="space-y-0">
-                {visibleSteps.map((task: ManagerSubTask, idx: number) => (
-                  <StepItem
-                    key={task.step}
-                    task={task}
-                    status={taskStatuses[String(task.step)]}
-                    failureReason={taskFailureReasons?.[String(task.step)]}
-                    isCompleted={isFullyComplete}
-                    isLast={idx === visibleSteps.length - 1}
-                  />
-                ))}
-              </div>
-              {peekSteps.length > 0 && (
-                <div className="relative mt-0">
-                  <div className="space-y-0 blur-[2px] select-none pointer-events-none opacity-50">
-                    {peekSteps.map((task: ManagerSubTask) => (
-                      <StepItem
-                        key={task.step}
-                        task={task}
-                        status={taskStatuses[String(task.step)]}
-                        failureReason={taskFailureReasons?.[String(task.step)]}
-                        isCompleted={isFullyComplete}
-                        isLast={false}
-                      />
+
+                <ReviewStatusBadge
+                  phase={phase}
+                  fixCycle={fixCycle || 0}
+                  review={holisticReview || null}
+                  lang={lang}
+                />
+
+                {holisticReview && phase === "review_failed" && (
+                  <div className="mt-2 space-y-1">
+                    {holisticReview.bugs?.map((bug, i) => (
+                      <div key={bug.id || i} className="flex items-start gap-1.5">
+                        <XCircle className="w-2.5 h-2.5 text-red-400 mt-0.5 shrink-0" />
+                        <span className="text-[10px] text-red-400/80 leading-snug">
+                          <span className="font-medium">[{bug.severity}]</span> {bug.description}
+                        </span>
+                      </div>
                     ))}
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card/90 pointer-events-none" />
-                  <button
-                    onClick={() => setStepsExpanded(true)}
-                    className="flex items-center gap-1 mt-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
-                    data-testid="button-expand-steps"
-                  >
-                    <ChevronDown className="w-3 h-3" />
-                    {t(lang, "showAllSteps", { n: steps.length })}
-                  </button>
-                </div>
-              )}
-              {stepsExpanded && hasMore && (
-                <button
-                  onClick={() => setStepsExpanded(false)}
-                  className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="button-collapse-steps"
-                >
-                  <ChevronUp className="w-3 h-3" />
-                  {t(lang, "collapse")}
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="px-3 pb-2">
-            {(plan.summary || (plan as unknown as Record<string, string>).user_requirement) && (
-              <div className="flex items-start justify-between gap-2 pt-2.5 pb-1">
-                <p className="text-[12px] text-foreground/70 leading-snug flex-1 min-w-0">
-                  {plan.summary || (plan as unknown as Record<string, string>).user_requirement}
-                </p>
-                <button
-                  onClick={() => setModalOpen(true)}
-                  className="p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors text-[#8888a8] hover:text-foreground shrink-0"
-                  title={t(lang, "viewPlanDoc")}
-                  data-testid="button-view-plan-doc-completed"
-                >
-                  <FileText className="w-3 h-3" />
-                </button>
-              </div>
-            )}
-            {isExecuting && total > 0 && (
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold text-foreground/50 uppercase tracking-wide">
-                  Steps
-                </span>
-                <span
-                  className="text-[10px] font-mono text-muted-foreground/60"
-                  data-testid="step-progress-counter"
-                >
-                  {doneCount}/{total}
-                </span>
-              </div>
-            )}
-            <div className="space-y-0">
-              {steps.map((task: ManagerSubTask, idx: number) => (
-                <StepItem
-                  key={task.step}
-                  task={task}
-                  status={taskStatuses[String(task.step)]}
-                  failureReason={taskFailureReasons?.[String(task.step)]}
-                  isCompleted={isFullyComplete}
-                  isLast={idx === steps.length - 1}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {doneCount > 0 && !isFullyComplete && (
-          <div className="px-3 pb-2 flex items-center gap-1.5">
-            <span className="text-[10px] text-muted-foreground">
-              {allDone
-                ? t(lang, "allStepsBuilt", { n: total })
-                : t(lang, "stepsDone", { done: doneCount, total })}
-            </span>
-          </div>
-        )}
-
-        <ReviewStatusBadge
-          phase={phase}
-          fixCycle={fixCycle || 0}
-          review={holisticReview || null}
-          lang={lang}
-        />
-
-        {isFullyComplete && (
-          <div className="px-3 pb-2 flex items-center gap-1.5">
-            <ShieldCheck className="w-3 h-3 text-green-500" />
-            <span className="text-[10px] text-green-500 font-medium">
-              {t(lang, "allVerified")}
-            </span>
-          </div>
-        )}
-
-        {holisticReview &&
-          phase === "review_failed" && (
-            <div className="px-3 pb-1.5" data-testid="review-summary-row">
-              <div className="flex items-center gap-2 text-[10px] font-medium rounded-md border border-red-500/20 bg-red-500/5 px-2 py-1">
-                <XCircle className="w-3 h-3 text-red-500 shrink-0" />
-                <span className="text-red-400">Validation failed</span>
-                {holisticReview.requirement_match_percent !== undefined && (
-                  <>
-                    <span className="text-muted-foreground/40">·</span>
-                    <span className="text-green-500">{holisticReview.requirement_match_percent}% matched</span>
-                  </>
-                )}
-                {holisticReview.bugs?.length > 0 && (
-                  <>
-                    <span className="text-muted-foreground/40">·</span>
-                    <span className="text-red-400">{holisticReview.bugs.length} {holisticReview.bugs.length === 1 ? "issue" : "issues"}</span>
-                  </>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
-        {holisticReview &&
-          phase === "review_failed" &&
-          holisticReview.bugs.length > 0 && (
-            <div className="px-3 pb-2" data-testid="review-bugs-list">
-              {holisticReview.bugs.map((bug, i) => (
-                <div
-                  key={bug.id || i}
-                  className="flex items-start gap-1.5 py-0.5"
-                >
-                  <XCircle className="w-2.5 h-2.5 text-red-400 mt-0.5 shrink-0" />
-                  <span className="text-[10px] text-red-400/80 leading-snug">
-                    <span className="font-medium">[{bug.severity}]</span>{" "}
-                    {bug.description}
-                  </span>
+            {/* ─── Done phase ─── */}
+            {isFullyComplete && (
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="text-[9.5px] font-mono text-[#34d68a] uppercase tracking-wider">
+                    Done
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
 
+                {/* File chips */}
+                {changedFiles && changedFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {changedFiles.map((f, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono text-[#34d68a] bg-[rgba(52,214,138,0.08)] border border-[rgba(52,214,138,0.2)]"
+                        data-testid={`completion-file-chip-${i}`}
+                      >
+                        <Check className="w-2.5 h-2.5" />
+                        {f.split("/").pop() || f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Summary */}
+                {completionSummary && (
+                  <p className="text-[11px] text-[rgba(238,238,246,0.55)] leading-relaxed">
+                    {completionSummary}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer: needs-input notice */}
         {(() => {
           const inputs: string[] =
             plan.needs_input || (plan as unknown as Record<string, string[]>).user_confirmation_needed || [];
           return inputs.length > 0 && inputs[0] !== "" ? (
-            <div className="px-3 pb-2">
+            <div className="px-3 py-2 border-t border-border/30">
               <div className="flex items-center gap-1 mb-0.5">
                 <AlertTriangle className="w-3 h-3 text-yellow-500" />
                 <span className="text-[10px] font-medium text-yellow-500">
@@ -805,39 +642,17 @@ export function TaskPlanCard({
           ) : null;
         })()}
 
+        {/* Footer: confirmation input */}
         {showConfirmation && pendingConfirmation && onContinueWithInput && (
-          <div
-            className="px-3 pb-2 space-y-2"
-            data-testid="confirmation-input-area"
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <HelpCircle className="w-3 h-3 text-yellow-500" />
-              <span className="text-[10px] font-medium text-yellow-500">
-                {t(lang, "pleaseRespond")}
-              </span>
-            </div>
-            {pendingConfirmation.items.map((item, i) => (
-              <p
-                key={i}
-                className="text-[11px] text-foreground/80 pl-4 leading-snug"
-              >
-                • {item}
-              </p>
-            ))}
+          <div className="px-3 py-2 border-t border-border/30 space-y-1.5">
             <Textarea
+              placeholder={
+                pendingConfirmation.stepKey === "review"
+                  ? t(lang, "confirmationPlaceholder")
+                  : pendingConfirmation.items[0]
+              }
               value={confirmationInput || ""}
               onChange={(e) => onConfirmationInputChange?.(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing
-                ) {
-                  e.preventDefault();
-                  onContinueWithInput(confirmationInput || "");
-                }
-              }}
-              placeholder={t(lang, "inputPlaceholder")}
               className="resize-none text-[11px] min-h-[32px] max-h-[60px] bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)]"
               rows={1}
               data-testid="input-confirmation"
@@ -867,75 +682,68 @@ export function TaskPlanCard({
           </div>
         )}
 
-        {isFullyComplete ? (
-          <div className="px-3 py-2 border-t border-green-500/20 space-y-1.5">
-            {elapsedLabel && (
-              <p className="text-[10px] text-muted-foreground/50 text-center">
-                Worked for {elapsedLabel}
-              </p>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full h-7 text-[11px] border-green-500/30 text-green-500 cursor-default pointer-events-none"
-              disabled
-              data-testid="button-plan-completed"
-            >
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              {t(lang, "completed")}
-            </Button>
-          </div>
-        ) : (
-          onExecute && (
-            <div className="px-3 py-2 border-t border-border/30">
-              {isExecuting ? (
+        {/* Footer: action buttons */}
+        {!showConfirmation && (
+          <div className="px-3 py-2 border-t border-border/30">
+            {isFullyComplete ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full h-7 text-[11px] border-green-500/30 text-green-500 cursor-default pointer-events-none"
+                disabled
+                data-testid="button-plan-completed"
+              >
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                {t(lang, "completed")}
+              </Button>
+            ) : isExecuting ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full h-7 text-[11px]"
+                onClick={onStop}
+                data-testid="button-stop-execution"
+              >
+                <StopCircle className="w-3 h-3 mr-1" />
+                {t(lang, "stop")}
+              </Button>
+            ) : isPreExecution ? (
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  variant="destructive"
-                  className="w-full h-7 text-[11px]"
-                  onClick={onStop}
-                  data-testid="button-stop-execution"
+                  variant="outline"
+                  className="h-7 text-[11px] gap-1.5"
+                  onClick={onRevise}
+                  data-testid="button-revise-plan"
                 >
-                  <StopCircle className="w-3 h-3 mr-1" />
-                  {t(lang, "stop")}
+                  <PenLine className="w-3 h-3" />
+                  {t(lang, "revisePlan")}
                 </Button>
-              ) : showConfirmation ? null : isPreExecution ? (
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-[11px] gap-1.5"
-                    onClick={onRevise}
-                    data-testid="button-revise-plan"
-                  >
-                    <PenLine className="w-3 h-3" />
-                    {t(lang, "revisePlan")}
-                  </Button>
-                  <div className="flex-1" />
-                  <Button
-                    size="sm"
-                    className="h-7 text-[11px] gap-1.5"
-                    onClick={onExecute}
-                    data-testid="button-execute-plan"
-                  >
-                    <Hammer className="w-3 h-3" />
-                    {t(lang, "buildNow")}
-                  </Button>
-                </div>
-              ) : (
+                <div className="flex-1" />
                 <Button
                   size="sm"
-                  className="w-full h-7 text-[11px]"
+                  className="h-7 text-[11px] gap-1.5"
                   onClick={onExecute}
                   data-testid="button-execute-plan"
                 >
-                  <Play className="w-3 h-3 mr-1" />
-                  {t(lang, "startBuilding")}
+                  <Hammer className="w-3 h-3" />
+                  {t(lang, "buildNow")}
                 </Button>
-              )}
-            </div>
-          )
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                className="w-full h-7 text-[11px]"
+                onClick={onExecute}
+                data-testid="button-execute-plan"
+              >
+                <Play className="w-3 h-3 mr-1" />
+                {t(lang, "startBuilding")}
+              </Button>
+            )}
+          </div>
         )}
+
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -1055,6 +863,67 @@ export function TaskPlanCard({
   );
 }
 
+export function BuildResultCard({
+  buildResult,
+}: {
+  buildResult: BuildResultData;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { changedFiles } = buildResult.completionData;
+  const summary = buildResult.completionData.summary || "";
+  const fileChips = changedFiles.slice(0, 3);
+  const extraCount = changedFiles.length - 3;
+
+  return (
+    <div className="mx-3">
+      <button
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left"
+        style={{
+          background: "#141420",
+          border: "1px solid #2a2a3a",
+          borderRadius: "8px",
+        }}
+        onClick={() => setExpanded((e) => !e)}
+        data-testid="build-result-card"
+      >
+        <span className="text-[#4a8a4a] text-[13px] shrink-0">✓</span>
+        <span className="flex-1 min-w-0 text-[12px] text-foreground/70 truncate">
+          <strong className="text-foreground/90">{summary || "Build complete"}</strong>
+          {changedFiles.length > 0 && (
+            <span className="text-muted-foreground/50"> · {changedFiles.length} file{changedFiles.length !== 1 ? "s" : ""}</span>
+          )}
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {fileChips.map((f, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+              style={{
+                background: "#1a2a1a",
+                border: "1px solid #2a4a2a",
+                color: "#6a9a6a",
+              }}
+            >
+              {f.split("/").pop()}
+            </span>
+          ))}
+          {extraCount > 0 && (
+            <span className="text-[9px] text-muted-foreground/50">+{extraCount}</span>
+          )}
+          <ChevronRight
+            className={cn("w-3 h-3 text-muted-foreground/40 transition-transform", expanded && "rotate-90")}
+          />
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-1 px-3 py-2 rounded-lg border border-border/20 bg-card/20 space-y-1">
+          <ActionLogCollapsed entries={buildResult.actionLog as any} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ManagerMessageBubble({
   message,
   taskStatuses,
@@ -1070,6 +939,8 @@ export function ManagerMessageBubble({
   reviewPhase,
   holisticReview,
   fixCycle,
+  liveNarration,
+  completionData,
 }: {
   message: {
     role: string;
@@ -1078,6 +949,7 @@ export function ManagerMessageBubble({
     source?: "communicator" | "manager_raw" | "manager";
     typing?: boolean;
     thinking?: string;
+    buildResult?: BuildResultData;
   };
   taskStatuses: Record<
     string,
@@ -1095,6 +967,8 @@ export function ManagerMessageBubble({
   reviewPhase?: ReviewPhase;
   holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
+  liveNarration?: string;
+  completionData?: { changedFiles: string[]; summary: string } | null;
 }) {
   if (message.role === "user") {
     return (
@@ -1104,6 +978,10 @@ export function ManagerMessageBubble({
         </div>
       </div>
     );
+  }
+
+  if ((message as any).buildResult) {
+    return <BuildResultCard buildResult={(message as any).buildResult} />;
   }
 
   if (message.plan) {
@@ -1124,6 +1002,9 @@ export function ManagerMessageBubble({
         holisticReview={holisticReview}
         fixCycle={fixCycle}
         thinking={message.thinking}
+        liveNarration={liveNarration}
+        completionSummary={completionData?.summary}
+        changedFiles={completionData?.changedFiles}
       />
     );
   }
@@ -1132,5 +1013,14 @@ export function ManagerMessageBubble({
     return null;
   }
 
-  return <NarrationBubble message={message} />;
+  if (!message.content) return null;
+
+  return (
+    <div
+      className="mx-3 my-1 text-[13px] leading-[1.65] text-foreground/80 pl-3 border-l-2 border-border/20"
+      data-testid="manager-narration-bubble"
+    >
+      {message.content}
+    </div>
+  );
 }
