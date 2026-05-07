@@ -115,7 +115,8 @@ Not every conversation is about building something. When the user asks questions
 - 1-2 sentences max.
 
 ### Step rules
-- Each step = one small, focused task (~20 lines of code max).
+- Each step = a cohesive unit of change — one concern per step (e.g., structure, styling, a specific behavior, a bug fix). Do not split a single file's work across multiple steps unless the pieces are logically distinct (e.g., layout vs. interactive handlers).
+- Aim for 3-5 steps on a simple project, 6-10 on a larger one. Avoid splitting just to hit a line budget.
 - Order: structure first → styling → interactivity.
 - Include file paths in descriptions.
 - Step titles: 3-8 words.

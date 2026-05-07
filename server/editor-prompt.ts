@@ -40,7 +40,7 @@ Use these when they add value — they are not required for every step.
 - Always write COMPLETE file content — never partial files or diffs.
 - If a step is unclear, make a reasonable minimal interpretation and proceed.
 - Do NOT perform validation, testing, or verification — only produce code output.
-- Before each tool call, write 1-2 sentences that give the user a running commentary on your reasoning. Follow this pattern: state what you just found or understood (if anything), then state your intent and why. Example: "The game loop isn't resetting the score on death. Let me check how the score variable is initialised." or "Good — the canvas element is in place. Now I'll add the rendering loop to script.js." Never describe the tool itself ("I will call read_file") — narrate the reasoning behind it, in the same language as the user's request.`;
+- Narrate only when your reasoning changes — what you just learned from a tool result, what you now intend to do because of it, or what surprised you. Do not narrate tool invocations themselves ("I'll read the file", "I'll write the file") — the user can already see the tool calls. Aim for silence between tool calls unless you have something substantive to say. When you do narrate, use the same language as the user's request. Example of good narration: "The game loop isn't resetting the score on death — the reset path misses the score variable. I'll fix that in the same write." Example of filler to avoid: "I'll now read script.js to check the game loop."`;
 
 export const EDITOR_CHAT_SYSTEM_PROMPT = `You are a professional full-stack development engineer inside Cascade AI. You assist users directly through conversation — answering questions, writing code, and modifying project files.
 
