@@ -57,6 +57,7 @@ export function useManagerStream() {
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUnmountingRef = useRef(false);
+  const mgrConnectionErrorAddedRef = useRef(false);
   const connectToMgrStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -67,11 +68,13 @@ export function useManagerStream() {
     if (mgrInactivityTimerRef.current) clearTimeout(mgrInactivityTimerRef.current);
     mgrInactivityTimerRef.current = setTimeout(() => {
       mgrInactivityTimerRef.current = null;
-      if (useIDEStore.getState().isManagerResponding) {
-        setManagerResponding(false);
-      }
-    }, 120_000);
-  }, [setManagerResponding]);
+      if (!useIDEStore.getState().isManagerResponding) return;
+      setManagerResponding(false);
+      setMgrPreparingPlan(false);
+      clearMgrLive(0);
+      removeTypingBubble();
+    }, 60_000);
+  }, [setManagerResponding, setMgrPreparingPlan]);
 
   useEffect(() => {
     // Reset unmounting flag on each mount so the finally blocks work correctly
@@ -139,23 +142,6 @@ export function useManagerStream() {
     }
   }, []);
 
-  // Strips metadata marker lines from communicator output (plan summary metadata, etc.)
-  const filterCommContent = useCallback((raw: string): string => {
-    return raw
-      .split("\n")
-      .filter(
-        (l) =>
-          !l.trim().match(/^\[PLAN[_ ]SUMMARY\]/i) &&
-          !l.trim().match(/^\[STEP[_ ]\d+\]/i) &&
-          !l.trim().match(/^\[WHAT[_ ]AND[_ ]WHY\]/i) &&
-          !l.trim().match(/^\[DONE[_ ]LOOKS[_ ]LIKE\]/i) &&
-          !l.trim().match(/^\[OUT[_ ]OF[_ ]SCOPE\]/i),
-      )
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .join("\n");
-  }, []);
-
   const handleManagerSend = useCallback(
     async (overrideMessage?: string, input?: string): Promise<boolean> => {
       const trimmed = overrideMessage?.trim() || input?.trim() || "";
@@ -168,6 +154,7 @@ export function useManagerStream() {
 
       addManagerMessage({ role: "user", content: trimmed });
       setManagerResponding(true);
+      mgrConnectionErrorAddedRef.current = false;
       resetInactivityTimer();
       setMgrPreparingPlan(false);
       setMgrLiveThinkingText("");
@@ -339,7 +326,7 @@ export function useManagerStream() {
                 // Write the comm narration as a static message BEFORE the plan card,
                 // so it appears above it in seq order.
                 if (commAccumulated) {
-                  const friendlyComm = filterCommContent(commAccumulated);
+                  const friendlyComm = commAccumulated.trim();
                   if (friendlyComm) {
                     addManagerMessage({
                       role: "assistant",
@@ -466,7 +453,7 @@ export function useManagerStream() {
                   // Late plan (arrived via manager_done instead of plan_ready)
                   // Write comm narration first, then the plan card
                   if (commAccumulated) {
-                    const friendlyComm = filterCommContent(commAccumulated);
+                    const friendlyComm = commAccumulated.trim();
                     if (friendlyComm) {
                       addManagerMessage({
                         role: "assistant",
@@ -490,7 +477,7 @@ export function useManagerStream() {
                   });
                 } else if (commAccumulated) {
                   // Conversational response — write the communicator message
-                  const friendlyComm = filterCommContent(commAccumulated);
+                  const friendlyComm = commAccumulated.trim();
                   if (friendlyComm) {
                     addManagerMessage({
                       role: "assistant",
@@ -593,7 +580,7 @@ export function useManagerStream() {
           useIDEStore.getState().projectId === projectId &&
           commAccumulated
         ) {
-          const friendlyComm = filterCommContent(commAccumulated);
+          const friendlyComm = commAccumulated.trim();
           if (friendlyComm) {
             addManagerMessage({
               role: "assistant",
@@ -673,7 +660,8 @@ export function useManagerStream() {
           }
           if (useIDEStore.getState().projectId === projectId) {
             removeTypingBubble();
-            if (!isAbort) {
+            if (!isAbort && !mgrConnectionErrorAddedRef.current) {
+              mgrConnectionErrorAddedRef.current = true;
               addManagerMessage({
                 role: "assistant",
                 content: tr(
@@ -804,36 +792,48 @@ export function useManagerStream() {
                   stripProjectNameMarker(managerAccumulated2),
                 );
             } else if (evType === "communicator_token") {
+              managerAccumulated2 += ev.token || "";
               if (isCurrentProject)
-                setMgrLiveNarrationText(ev.token || "");
+                setMgrLiveNarrationText(managerAccumulated2);
             } else if (evType === "plan_ready") {
               if (isCurrentProject) {
-                const msgs = useIDEStore.getState().managerMessages;
-                // Remove typing bubbles and any stale plan cards — a reconnect
-                // replay re-emits plan_ready, so we'd get duplicates otherwise
-                useIDEStore.setState({
-                  managerMessages: msgs.filter((m) => !m.typing && !m.plan),
-                });
                 const plan = ev.plan;
-                if (plan) {
+                const msgs = useIDEStore.getState().managerMessages;
+                const lastPlanIdx = msgs.findLastIndex((m: ManagerMessage) => !!m.plan);
+                const existingPlan = lastPlanIdx >= 0 ? msgs[lastPlanIdx].plan : null;
+                const sameSummary =
+                  !!existingPlan && !!plan && existingPlan.summary === plan.summary;
+
+                if (sameSummary) {
+                  // Replay of an already-rendered plan — keep the existing card
+                  // (preserves live task statuses). Just drop any typing bubbles.
                   planEmittedInReconnect = true;
-                  useIDEStore.getState().clearManagerPlan();
-                  const steps = normalizeSteps(plan);
-                  for (const step of steps)
-                    updateTaskStatus(String(step.step), "pending");
-                  useIDEStore.getState().setManagerPlan(plan);
-                  addManagerMessage({
-                    role: "assistant",
-                    content: "",
-                    plan,
-                    thinking: managerThinkingAccumulated2 || undefined,
+                  useIDEStore.setState({
+                    managerMessages: msgs.filter((m: ManagerMessage) => !m.typing),
                   });
+                } else {
+                  // Different plan (or first one) — strip the last plan card + typing
+                  // bubbles and render the new one.
+                  useIDEStore.setState({
+                    managerMessages: msgs.filter((m: ManagerMessage, i: number) => !m.typing && (i !== lastPlanIdx || !m.plan)),
+                  });
+                  if (plan) {
+                    planEmittedInReconnect = true;
+                    useIDEStore.getState().clearManagerPlan();
+                    const steps = normalizeSteps(plan);
+                    for (const step of steps)
+                      updateTaskStatus(String(step.step), "pending");
+                    useIDEStore.getState().setManagerPlan(plan);
+                    addManagerMessage({
+                      role: "assistant",
+                      content: "",
+                      plan,
+                      thinking: managerThinkingAccumulated2 || undefined,
+                    });
+                  }
                 }
               }
-            } else if (
-              evType === "manager_done" ||
-              evType === "manager_error"
-            ) {
+            } else if (evType === "manager_done") {
               if (!planEmittedInReconnect && isCurrentProject && managerAccumulated2.trim()) {
                 const stripped = stripProjectNameMarker(managerAccumulated2).trim();
                 if (stripped) {
@@ -841,6 +841,34 @@ export function useManagerStream() {
                     role: "assistant",
                     content: stripped,
                     thinking: managerThinkingAccumulated2 || undefined,
+                  });
+                }
+              }
+              return;
+            } else if (evType === "manager_error") {
+              useIDEStore.getState().setStreamingSnapshot(null);
+              mgrSessionIdRef.current = null;
+              mgrReconnectRetryRef.current = 0;
+              if (projectId) {
+                try {
+                  localStorage.removeItem(`cascade-mgr-session-${projectId}`);
+                } catch {}
+              }
+              if (isCurrentProject) {
+                setManagerResponding(false);
+                setMgrPreparingPlan(false);
+                clearMgrLive(0);
+                removeTypingBubble();
+                if (!mgrConnectionErrorAddedRef.current) {
+                  mgrConnectionErrorAddedRef.current = true;
+                  addManagerMessage({
+                    role: "assistant",
+                    content: tr(
+                      useLanguageStore.getState().lang,
+                      "chat.errorConnect",
+                    ),
+                    source: "communicator",
+                    errorCode: "connect",
                   });
                 }
               }
@@ -885,6 +913,24 @@ export function useManagerStream() {
               );
             }, backoffMs);
             return;
+          }
+          if (useIDEStore.getState().projectId === projectId && !mgrConnectionErrorAddedRef.current) {
+            mgrConnectionErrorAddedRef.current = true;
+            const errorContent = tr(useLanguageStore.getState().lang, "chat.errorConnect");
+            const msgs = useIDEStore.getState().managerMessages;
+            const last = msgs[msgs.length - 1];
+            const alreadyShown =
+              last &&
+              last.role === "assistant" &&
+              last.errorCode === "connect";
+            if (!alreadyShown) {
+              addManagerMessage({
+                role: "assistant",
+                content: errorContent,
+                source: "communicator",
+                errorCode: "connect",
+              });
+            }
           }
         }
       } finally {

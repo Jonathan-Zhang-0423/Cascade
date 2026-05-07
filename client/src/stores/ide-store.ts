@@ -110,6 +110,7 @@ export interface ManagerMessage {
   thinking?: string;
   preparingPlan?: boolean;
   buildResult?: BuildResultData;
+  errorCode?: "connect" | "build_interrupted" | "build_generic";
 }
 
 interface FlatFile {
@@ -945,37 +946,38 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     const updatedCheckpoints = [...oldCheckpoints, newCheckpoint];
 
-    const seq = state._nextSeq;
-    const checkpointMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "checkpoint",
-      content: label,
-      timestamp: now,
-      seq,
-      checkpointId,
-    };
-
-    const nextManagerMessages = options?.includeManagerThread
-      ? [...state.managerMessages, {
-          id: crypto.randomUUID(),
-          role: "checkpoint" as const,
-          content: label,
-          timestamp: now,
-          seq: seq + 1,
-          checkpointId,
-        } satisfies ManagerMessage]
-      : state.managerMessages;
-
-    const next = {
-      ...state,
-      _nextSeq: options?.includeManagerThread ? seq + 2 : seq + 1,
-      checkpoints: updatedCheckpoints,
-      chatMessages: [...state.chatMessages, checkpointMessage],
-      managerMessages: nextManagerMessages,
-    };
-
-    set(next);
-    debouncedPersist(next);
+    let nextForPersist: IDEState | null = null;
+    set((prev) => {
+      const seq = prev._nextSeq;
+      const checkpointMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "checkpoint",
+        content: label,
+        timestamp: now,
+        seq,
+        checkpointId,
+      };
+      const nextManagerMessages = options?.includeManagerThread
+        ? [...prev.managerMessages, {
+            id: crypto.randomUUID(),
+            role: "checkpoint" as const,
+            content: label,
+            timestamp: now,
+            seq: seq + 1,
+            checkpointId,
+          } satisfies ManagerMessage]
+        : prev.managerMessages;
+      const next = {
+        ...prev,
+        _nextSeq: options?.includeManagerThread ? seq + 2 : seq + 1,
+        checkpoints: updatedCheckpoints,
+        chatMessages: [...prev.chatMessages, checkpointMessage],
+        managerMessages: nextManagerMessages,
+      };
+      nextForPersist = next;
+      return next;
+    });
+    if (nextForPersist) debouncedPersist(nextForPersist);
     persistCheckpoints(state.projectId, updatedCheckpoints);
   },
 

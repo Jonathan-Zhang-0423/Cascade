@@ -53,12 +53,15 @@ export function useBuildStream() {
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reviewWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
-  const narrationBubbleAddedRef = useRef(false);
+  const savedBuildSessionIdsRef = useRef<Set<string>>(new Set());
+  const connectionErrorAddedRef = useRef(false);
   const userConfirmationRef = useRef<string>("");
   const beforeBuildCheckpointCreatedRef = useRef(false);
   const buildCompleteCheckpointCreatedRef = useRef(false);
   const thinkingStartTimeRef = useRef<number | null>(null);
+  const thinkingElapsedComputedRef = useRef(false);
   const connectToBuildStreamRef = useRef<
     ((sessionId: string, lastEventId: number) => Promise<void>) | null
   >(null);
@@ -105,6 +108,10 @@ export function useBuildStream() {
       if (heartbeatWatchdogRef.current) {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
+      }
+      if (reviewWatchdogRef.current) {
+        clearTimeout(reviewWatchdogRef.current);
+        reviewWatchdogRef.current = null;
       }
       // Don't reset isReconnectingRef — remount will handle reconnection
     };
@@ -206,9 +213,16 @@ export function useBuildStream() {
           clearTimeout(buildLiveClearTimerRef.current);
           buildLiveClearTimerRef.current = null;
         }
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
         setBuildPhase("thinking");
         setLiveThinkingText("");
         setLiveNarrationText("");
+        setThinkingElapsedSec(null);
+        thinkingStartTimeRef.current = null;
+        thinkingElapsedComputedRef.current = false;
         const stepNum = ev.stepNumber ?? 1;
         const stepTitle = ev.stepTitle || "";
         const totalSteps = ev.totalSteps || ctx.normalizedSteps.length;
@@ -229,19 +243,7 @@ export function useBuildStream() {
         }
         if (isCurrentProjectNow) {
           ctx.commAccumulated.value = "";
-          const alreadyAdded = useIDEStore
-            .getState()
-            .managerMessages.some((m) => m.content === stepLabel && m.source === "communicator");
-          if (!alreadyAdded) {
-            addManagerMessage({
-              role: "assistant",
-              content: stepLabel,
-              source: "communicator",
-              typing: true,
-            });
-          }
-          ctx.commMsgIndex.value =
-            useIDEStore.getState().managerMessages.length - 1;
+          ctx.commMsgIndex.value = -1;
         }
         await new Promise<void>((r) => setTimeout(r, 0));
       } else if (type === "thinking_token") {
@@ -302,7 +304,8 @@ export function useBuildStream() {
           filePath,
         });
       } else if (type === "narration_token") {
-        if (thinkingStartTimeRef.current && thinkingElapsedSec === null) {
+        if (thinkingStartTimeRef.current && !thinkingElapsedComputedRef.current) {
+          thinkingElapsedComputedRef.current = true;
           const elapsed = Math.round((Date.now() - thinkingStartTimeRef.current) / 1000);
           setThinkingElapsedSec(elapsed);
         }
@@ -338,8 +341,10 @@ export function useBuildStream() {
         setLiveNarrationText(ctx.commAccumulated.value);
         setBuildPhase("working");
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      } else if (type === "editor_token") {
-        ctx.editorAccumulated.value += ev.token || "";
+      } else if (type === "communicator_token") {
+        ctx.commAccumulated.value += ev.token || "";
+        ctx.flushSnapshot();
+        setLiveNarrationText(ctx.commAccumulated.value);
         setBuildPhase("working");
       } else if (type === "code_applied") {
         setBuildPhase("working");
@@ -357,10 +362,42 @@ export function useBuildStream() {
         ctx.resetNarration();
         setLiveNarrationText("");
         setBuildPhase("verifying");
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+        }
+        reviewWatchdogRef.current = setTimeout(() => {
+          reviewWatchdogRef.current = null;
+          if (useIDEStore.getState().projectId !== projectId) return;
+          const currentPhase = useIDEStore.getState().reviewPhase;
+          if (currentPhase !== "reviewing") return;
+          setReviewPhase("idle");
+          setBuildPhase(null);
+          clearBuildLive(0);
+          addManagerMessage({
+            role: "assistant",
+            content: tr(
+              useLanguageStore.getState().lang,
+              "chat.errorBuildGeneric",
+            ),
+            source: "communicator",
+          });
+          if (buildReaderRef.current) {
+            buildReaderRef.current.cancel().catch(() => {});
+            buildReaderRef.current = null;
+          }
+        }, 60_000);
       } else if (type === "bugs_found") {
         setBuildPhase("fixing");
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
       } else if (type === "fixing") {
         setBuildPhase("fixing");
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
       }
 
       const isCurrentProject =
@@ -428,6 +465,10 @@ export function useBuildStream() {
         setReviewPhase("reviewing");
       } else if (type === "review_passed") {
         setReviewPhase("review_passed");
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
         ctx.normalizedSteps.forEach((step) => {
           const key = String(step.step);
           const s = useIDEStore.getState().taskStatuses[key];
@@ -452,20 +493,40 @@ export function useBuildStream() {
       } else if (type === "all_complete") {
         setReviewPhase("review_passed");
         setBuildPhase(null);
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
         ctx.normalizedSteps.forEach((step) => {
           const key = String(step.step);
           const s = useIDEStore.getState().taskStatuses[key];
           if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
         });
       } else if (type === "build_error") {
-        addManagerMessage({
-          role: "assistant",
-          content: tr(
-            useLanguageStore.getState().lang,
-            "chat.errorBuildGeneric",
-          ),
-          source: "communicator",
-        });
+        setBuildPhase(null);
+        setExecutingTaskIndex(null);
+        setReviewPhase("idle");
+        clearBuildLive(0);
+        if (reviewWatchdogRef.current) {
+          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current = null;
+        }
+        if (thinkingFadeTimerRef.current) {
+          clearTimeout(thinkingFadeTimerRef.current);
+          thinkingFadeTimerRef.current = null;
+        }
+        if (!connectionErrorAddedRef.current) {
+          connectionErrorAddedRef.current = true;
+          addManagerMessage({
+            role: "assistant",
+            content: tr(
+              useLanguageStore.getState().lang,
+              "chat.errorBuildGeneric",
+            ),
+            source: "communicator",
+            errorCode: "build_generic",
+          });
+        }
       }
     },
     [
@@ -481,20 +542,23 @@ export function useBuildStream() {
       setHolisticReview,
       setFixCycle,
       setPendingConfirmation,
+      clearBuildLive,
     ],
   );
 
   const saveBuildResult = useCallback(
-    (finalLog: ActionLogEntry[], changedFiles: string[], userLang: string) => {
+    (finalLog: ActionLogEntry[], changedFiles: string[], userLang: string, summary = "", sessionId?: string | null) => {
       if (useIDEStore.getState().projectId !== projectId) return;
-      // Idempotency: if we already saved a result for this build session, skip
-      if (buildResultMsgIdRef.current) {
-        const msgs = useIDEStore.getState().managerMessages;
-        if (msgs.some((m) => m.id === buildResultMsgIdRef.current)) return;
-      }
+      const activeSessionId = sessionId ?? buildSessionIdRef.current;
+      if (!activeSessionId) return;
+      // Session-scoped dedup: one BuildResultCard per build session.
+      // Reconnect replays into the same sessionId, so this guard stops duplicate
+      // cards even when all_complete is replayed.
+      if (savedBuildSessionIdsRef.current.has(activeSessionId)) return;
+      savedBuildSessionIdsRef.current.add(activeSessionId);
       const buildResult: BuildResultData = {
         actionLog: finalLog,
-        completionData: { changedFiles, userLang },
+        completionData: { changedFiles, userLang, summary },
       };
       addManagerMessage({
         role: "assistant",
@@ -610,6 +674,7 @@ export function useBuildStream() {
     setReviewPhase("building");
     setFixCycle(0);
     setHolisticReview(null);
+    setCompletionData(null);
 
     if (!beforeBuildCheckpointCreatedRef.current) {
       beforeBuildCheckpointCreatedRef.current = true;
@@ -659,7 +724,7 @@ export function useBuildStream() {
     setThinkingElapsedSec(null);
     thinkingStartTimeRef.current = null;
     buildResultMsgIdRef.current = null;
-    narrationBubbleAddedRef.current = false;
+    connectionErrorAddedRef.current = false;
 
     const helpers = createBuildHelpers(userLang);
 
@@ -710,6 +775,10 @@ export function useBuildStream() {
           ),
           source: "communicator",
         });
+        setBuildPhase(null);
+        setExecutingTaskIndex(null);
+        setAiResponding(false);
+        setReviewPhase("idle");
         return;
       }
 
@@ -749,23 +818,26 @@ export function useBuildStream() {
               });
             }
             const changedFiles = ev.changedFiles || [];
+            const summaryText = ev.summaryText || "";
             const finalLog = [...actionLogRef.current];
             helpers.resetNarration();
-            saveBuildResult(finalLog, changedFiles, userLang);
+            saveBuildResult(finalLog, changedFiles, userLang, summaryText);
+            setCompletionData({ changedFiles, summary: summaryText });
+            setBuildPhase(null);
+            setExecutingTaskIndex(null);
 
-            const summaryText = (ev as any).summaryText || "";
-            const nextStepSuggestion = (ev as any).nextStepSuggestion || "";
-            const narrationContent = nextStepSuggestion
-              ? `${summaryText}\n\n→ ${nextStepSuggestion}`
-              : summaryText;
-
-            if (!narrationBubbleAddedRef.current && narrationContent.trim()) {
-              narrationBubbleAddedRef.current = true;
-              addManagerMessage({
-                role: "assistant",
-                source: "communicator",
-                content: narrationContent,
-              });
+            // Refresh preview and reload files immediately on completion
+            if (projectId && useIDEStore.getState().projectId === projectId) {
+              refreshPreview();
+              fetch(`/api/projects/${projectId}/files`)
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) => {
+                  if (!data?.files?.length) return;
+                  if (useIDEStore.getState().projectId === projectId) {
+                    useIDEStore.getState().loadProject(projectId);
+                  }
+                })
+                .catch(() => {});
             }
             return;
           }
@@ -810,17 +882,6 @@ export function useBuildStream() {
               } else {
                 saveBuildResult(finalLog, [], userLang);
               }
-            }
-            if (projectId && useIDEStore.getState().projectId === projectId) {
-              fetch(`/api/projects/${projectId}/files`)
-                .then((r) => (r.ok ? r.json() : null))
-                .then((data) => {
-                  if (!data?.files?.length) return;
-                  if (useIDEStore.getState().projectId === projectId) {
-                    useIDEStore.getState().loadProject(projectId);
-                  }
-                })
-                .catch(() => {});
             }
             clearBuildLive(400);
             return;
@@ -874,20 +935,14 @@ export function useBuildStream() {
           }, backoffMs);
           return;
         }
-        if (useIDEStore.getState().projectId === projectId) {
-          const errorContent = tr(
-            useLanguageStore.getState().lang,
-            "chat.errorBuildInterrupted",
-          );
-          const msgs = useIDEStore.getState().managerMessages;
-          const last = msgs[msgs.length - 1];
-          if (!(last && last.role === "assistant" && last.content === errorContent)) {
-            addManagerMessage({
-              role: "assistant",
-              content: errorContent,
-              source: "communicator",
-            });
-          }
+        if (useIDEStore.getState().projectId === projectId && !connectionErrorAddedRef.current) {
+          connectionErrorAddedRef.current = true;
+          addManagerMessage({
+            role: "assistant",
+            content: tr(useLanguageStore.getState().lang, "chat.errorBuildInterrupted"),
+            source: "communicator",
+            errorCode: "build_interrupted",
+          });
         }
       }
     } finally {
@@ -936,7 +991,10 @@ export function useBuildStream() {
             );
             useIDEStore.setState({ managerMessages: updated });
           } else if (useIDEStore.getState().projectId === projectId) {
-            saveBuildResult(finalLog, [], userLang);
+            const alreadyHasResult = useIDEStore.getState().managerMessages.some((m) => !!m.buildResult);
+            if (!alreadyHasResult) {
+              saveBuildResult(finalLog, [], userLang);
+            }
           }
         }
         if (useIDEStore.getState().projectId === projectId) {
@@ -1001,7 +1059,6 @@ export function useBuildStream() {
         setLiveActionLog([]);
         setLiveThinkingText("");
         buildResultMsgIdRef.current = null;
-        narrationBubbleAddedRef.current = false;
       }
 
       const helpers = createBuildHelpers(userLang);
@@ -1101,6 +1158,7 @@ export function useBuildStream() {
               if (type === "step_starting") {
                 const stepNum = ev.stepNumber ?? 1;
                 setExecutingTaskIndex(stepNum - 1);
+                updateTaskStatus(String(stepNum), "running");
                 setBuildPhase("thinking");
                 helpers.thinkingAccumulated.value = "";
                 helpers.commAccumulated.value = "";
@@ -1140,7 +1198,14 @@ export function useBuildStream() {
                   );
                 }
                 setBuildPhase("working");
-              } else if (type === "editor_token") {
+              } else if (type === "communicator_token") {
+                const token = ev.token || "";
+                if (token) {
+                  helpers.commAccumulated.value += token;
+                  setLiveNarrationText(
+                    helpers.commAccumulated.value,
+                  );
+                }
                 setBuildPhase("working");
               } else if (type === "action_log") {
                 setBuildPhase("working");
@@ -1157,6 +1222,10 @@ export function useBuildStream() {
                 });
               } else if (type === "step_completed") {
                 updateTaskStatus(String(ev.stepNumber), "done");
+                helpers.clearTypingOnCurrentMsg();
+                helpers.finalizeEditor();
+                helpers.flushNarrationToStore();
+                setLiveNarrationText("");
               } else if (type === "step_failed") {
                 updateTaskStatus(String(ev.stepNumber), "failed");
                 if (ev.reason)
@@ -1193,6 +1262,20 @@ export function useBuildStream() {
                 setReviewPhase("fixing");
                 setBuildPhase("fixing");
                 setFixCycle(ev.fixCycle || 1);
+              } else if (type === "step_cancelled") {
+                updateTaskStatus(String(ev.stepNumber), "pending");
+              } else if (type === "needs_input") {
+                setPendingConfirmation({
+                  stepKey: "review",
+                  items: ev.items || [],
+                });
+              } else if (type === "build_error") {
+                setBuildPhase(null);
+                setExecutingTaskIndex(null);
+                setReviewPhase("idle");
+                setLiveThinkingText("");
+                setLiveNarrationText("");
+                helpers.resetNarration();
               } else if (type === "all_complete") {
                 buildCompleted = true;
                 setReviewPhase("review_passed");
@@ -1201,7 +1284,7 @@ export function useBuildStream() {
                 helpers.resetNarration();
                 saveBuildResult(finalLog, changedFiles, userLang);
                 const replayTargetId = buildResultMsgIdRef.current;
-                const replaySummary = (ev as any).summaryText || "";
+                const replaySummary = ev.summaryText || "";
                 if (replaySummary && replayTargetId) {
                   const curMsgs = useIDEStore.getState().managerMessages;
                   useIDEStore.setState({
@@ -1212,6 +1295,9 @@ export function useBuildStream() {
                     ),
                   });
                 }
+                setCompletionData({ changedFiles, summary: replaySummary });
+                setBuildPhase(null);
+                setExecutingTaskIndex(null);
                 return;
               } else if (type === "done") {
                 return;
@@ -1228,35 +1314,15 @@ export function useBuildStream() {
                 });
               }
               const changedFiles = ev.changedFiles || [];
+              const summaryText2 = ev.summaryText || "";
               const finalLog = [...actionLogRef.current];
               helpers.resetNarration();
-              saveBuildResult(finalLog, changedFiles, userLang);
-              const targetMsgId2 = buildResultMsgIdRef.current;
-              const summaryText2 = (ev as any).summaryText || "";
-              if (summaryText2 && targetMsgId2) {
-                const curMsgs = useIDEStore.getState().managerMessages;
-                const updated = curMsgs.map((m) =>
-                  m.id === targetMsgId2 && m.buildResult
-                    ? {
-                        ...m,
-                        buildResult: {
-                          ...m.buildResult,
-                          completionData: {
-                            ...m.buildResult.completionData,
-                            summary: summaryText2,
-                          },
-                        },
-                      }
-                    : m,
-                );
-                useIDEStore.setState({ managerMessages: updated });
-              }
-              return;
-            }
+              saveBuildResult(finalLog, changedFiles, userLang, summaryText2);
+              setCompletionData({ changedFiles, summary: summaryText2 });
+              setBuildPhase(null);
+              setExecutingTaskIndex(null);
 
-            if (type === "done") {
-              helpers.finalizeEditor();
-              helpers.flushNarrationToStore();
+              // Refresh preview and reload files immediately on completion
               if (projectId && useIDEStore.getState().projectId === projectId) {
                 fetch(`/api/projects/${projectId}/files`)
                   .then((r) => (r.ok ? r.json() : null))
@@ -1268,6 +1334,12 @@ export function useBuildStream() {
                   })
                   .catch(() => {});
               }
+              return;
+            }
+
+            if (type === "done") {
+              helpers.finalizeEditor();
+              helpers.flushNarrationToStore();
               clearBuildLive(400);
               return;
             }
@@ -1332,11 +1404,16 @@ export function useBuildStream() {
             );
             const msgs = useIDEStore.getState().managerMessages;
             const last = msgs[msgs.length - 1];
-            if (!(last && last.role === "assistant" && last.content === errorContent)) {
+            const alreadyShown =
+              last &&
+              last.role === "assistant" &&
+              last.errorCode === "build_interrupted";
+            if (!alreadyShown) {
               addManagerMessage({
                 role: "assistant",
                 content: errorContent,
                 source: "communicator",
+                errorCode: "build_interrupted",
               });
             }
           }
@@ -1442,6 +1519,7 @@ export function useBuildStream() {
               store.setManagerPlan(planMsg.plan);
               setReviewPhase("review_passed");
             }
+            setCompletionData({ changedFiles: data.result.changedFiles, summary: data.result.summary });
           } else {
             addManagerMessage({
               role: "assistant",
@@ -1450,6 +1528,7 @@ export function useBuildStream() {
               buildResult,
             });
             setReviewPhase("review_passed");
+            setCompletionData({ changedFiles: data.result.changedFiles, summary: data.result.summary });
           }
         })
         .catch(() => {});

@@ -64,7 +64,6 @@ export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
   "step_completed",
   "step_failed",
   "step_cancelled",
-  "editor_token",
   "code_applied",
   "reviewing",
   "review_passed",
@@ -79,7 +78,6 @@ export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
 export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   narration_token: "communicator",
   communicator_token: "communicator",
-  editor_token: "editor",
   code_applied: "editor",
   reviewing: "verifier",
   review_passed: "verifier",
@@ -181,6 +179,7 @@ export interface BuildSseEvent {
   items?: string[];
   changedFiles?: string[];
   summary?: string;
+  summaryText?: string;
   content?: string;
   [key: string]: unknown;
 }
