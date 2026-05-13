@@ -57,53 +57,253 @@ function mapEventAttr(name: string): string | null {
 // Expression rewriting — prefix bare identifiers with __data__.
 // ---------------------------------------------------------------------------
 
+// Identifiers that already resolve in the generated scope (globals, keywords,
+// runtime locals). Never prefix these.
 const SKIP_PREFIXING = new Set([
+  // Literals & keywords
   "true", "false", "null", "undefined", "NaN", "Infinity",
   "typeof", "instanceof", "void", "delete", "new", "in", "of",
+  "return", "if", "else", "for", "while", "do", "switch", "case",
+  "break", "continue", "this", "yield", "async", "await",
+  // JS built-in globals the agent reaches for
   "Math", "Date", "JSON", "Object", "Array", "String", "Number",
-  "Boolean", "parseInt", "parseFloat", "isNaN", "isFinite",
-  "console", "window", "document", "wx",
-  "__data__", "__page__", "__parseStyle",
+  "Boolean", "Symbol", "Map", "Set", "WeakMap", "WeakSet",
+  "Promise", "Error", "TypeError", "RangeError", "SyntaxError",
+  "ReferenceError", "RegExp", "Reflect", "Intl", "URL",
+  "URLSearchParams", "Proxy", "ArrayBuffer", "Uint8Array", "Int8Array",
+  "Float32Array", "Float64Array", "DataView",
+  "parseInt", "parseFloat", "isNaN", "isFinite",
+  "encodeURI", "decodeURI", "encodeURIComponent", "decodeURIComponent",
+  "console", "window", "document", "globalThis", "wx",
+  // Runtime locals from the surrounding generated function
+  "__data__", "__page__", "__parseStyle", "__parseInlineStyle",
+  // Default wx:for loop variables
   "item", "index",
 ]);
 
+/**
+ * Rewrite a WXML `{{ ... }}` expression into a JS expression that resolves
+ * bare identifiers from the page's reactive `__data__` object.
+ *
+ * Gotchas handled:
+ *   - String literals (single/double/template) are passed through untouched.
+ *   - Optional chaining (`user?.name`): `name` after `?.` is a property access.
+ *   - Member access (`foo.bar`): `bar` is a property, never prefixed.
+ *   - Function calls (`filter(x => x.active)`): the identifier before `(`
+ *     is treated as a method on the preceding object / a free function.
+ *   - Object keys (`{a: 1}`): the identifier before `:` is a key, not a ref.
+ *   - Arrow-function parameters (`(x) =>` or `x =>`): the parameter name is
+ *     added to a local scope stack and skipped while inside the arrow body.
+ *   - Destructuring parameters (`({id, name}) =>`): each binding is scoped.
+ *   - Numeric literals (`1.5`, `.5`): the `.` inside is not a member access.
+ */
 function rewriteExpr(expr: string): string {
   let result = "";
   let i = 0;
+  // Stack of name-sets that act as local scopes (from arrow parameters).
+  // An identifier found in any scope is treated as already-bound.
+  const localScopes: Array<Set<string>> = [];
+  // Paren depth at which each scope was opened; used to pop on close.
+  const scopeDepths: number[] = [];
+  let parenDepth = 0;
+
+  const isLocal = (name: string) => {
+    for (let s = localScopes.length - 1; s >= 0; s--) if (localScopes[s].has(name)) return true;
+    return false;
+  };
+
+  // Member access: identifier preceded by `.` (but not a numeric literal dot).
+  const precededByMember = (): boolean => {
+    let p = result.length - 1;
+    while (p >= 0 && /\s/.test(result[p])) p--;
+    if (p < 0) return false;
+    if (result[p] !== ".") return false;
+    const before = p > 0 ? result[p - 1] : "";
+    return !/[0-9]/.test(before);
+  };
+
+  // Single-ident arrow: `name =>` — push scope binding `name`.
+  const tryPushArrowScope = (name: string, nameEnd: number): boolean => {
+    let q = nameEnd;
+    while (q < expr.length && /\s/.test(expr[q])) q++;
+    if (expr[q] === "=" && expr[q + 1] === ">") {
+      localScopes.push(new Set([name]));
+      scopeDepths.push(parenDepth);
+      return true;
+    }
+    return false;
+  };
+
   while (i < expr.length) {
-    // Skip string literals
-    if (expr[i] === "'" || expr[i] === '"' || expr[i] === "`") {
-      const q = expr[i];
+    const c = expr[i];
+
+    // String literals — pass through, but rewrite ${...} interpolations in template literals.
+    if (c === "'" || c === '"' || c === "`") {
+      const q = c;
       result += q;
       i++;
       while (i < expr.length && expr[i] !== q) {
-        if (expr[i] === "\\") { result += expr[i] + expr[i+1]; i += 2; continue; }
+        if (expr[i] === "\\") { result += expr[i] + (expr[i + 1] ?? ""); i += 2; continue; }
+        if (q === "`" && expr[i] === "$" && expr[i + 1] === "{") {
+          result += "${";
+          i += 2;
+          let d = 1;
+          const sub: string[] = [];
+          while (i < expr.length && d > 0) {
+            if (expr[i] === "{") d++;
+            else if (expr[i] === "}") { d--; if (d === 0) break; }
+            sub.push(expr[i]);
+            i++;
+          }
+          result += rewriteExpr(sub.join(""));
+          result += "}";
+          if (expr[i] === "}") i++;
+          continue;
+        }
         result += expr[i++];
       }
-      result += expr[i++] || "";
+      result += expr[i++] ?? "";
       continue;
     }
-    // Identifier start
-    if (/[a-zA-Z_$]/.test(expr[i])) {
-      let name = "";
-      while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) name += expr[i++];
-      // Check what precedes (was it a dot?)
-      const prevNonSpace = result.trimEnd();
-      const preceded_by_dot = prevNonSpace.endsWith(".");
-      // Check what follows (is it a paren = function call, or colon = object key?)
-      let j = i;
-      while (j < expr.length && expr[j] === " ") j++;
-      const followed_by_paren = expr[j] === "(";
-      const followed_by_colon = expr[j] === ":";
-      if (!preceded_by_dot && !followed_by_paren && !followed_by_colon && !SKIP_PREFIXING.has(name)) {
-        result += "__data__." + name;
-      } else {
-        result += name;
+
+    // Numeric literal — pass through digits + decimal + exponent so the dot
+    // inside `1.5` doesn't trip member-access detection.
+    if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(expr[i + 1] ?? ""))) {
+      while (i < expr.length && /[0-9.]/.test(expr[i])) result += expr[i++];
+      // exponent
+      if (expr[i] === "e" || expr[i] === "E") {
+        result += expr[i++];
+        if (expr[i] === "+" || expr[i] === "-") result += expr[i++];
+        while (i < expr.length && /[0-9]/.test(expr[i])) result += expr[i++];
       }
       continue;
     }
-    result += expr[i++];
+
+    // Paren tracking — open paren may be an arrow-param list.
+    if (c === "(") {
+      // Find matching `)`.
+      let d = 1;
+      let p = i + 1;
+      while (p < expr.length && d > 0) {
+        if (expr[p] === "(") d++;
+        else if (expr[p] === ")") d--;
+        else if (expr[p] === "'" || expr[p] === '"' || expr[p] === "`") {
+          const q = expr[p];
+          p++;
+          while (p < expr.length && expr[p] !== q) {
+            if (expr[p] === "\\") p += 2; else p++;
+          }
+        }
+        if (d > 0) p++;
+      }
+      // Arrow if `)` is followed by `=>`.
+      let q = p + 1;
+      while (q < expr.length && /\s/.test(expr[q])) q++;
+      const isArrowParams = d === 0 && expr[q] === "=" && expr[q + 1] === ">";
+      if (isArrowParams) {
+        // Parse identifier names from the param list expr[i+1 .. p].
+        const names = new Set<string>();
+        let s = i + 1;
+        let topDepth = 0;
+        let inDefault = false;
+        while (s < p) {
+          const ch = expr[s];
+          if (ch === "{" || ch === "[" || ch === "(") { topDepth++; s++; continue; }
+          if (ch === "}" || ch === "]" || ch === ")") { topDepth--; s++; continue; }
+          if (topDepth === 0) {
+            if (ch === ",") { inDefault = false; s++; continue; }
+            if (ch === "=") { inDefault = true; s++; continue; }
+            if (ch === ":") { inDefault = true; s++; continue; }
+            if (!inDefault && /[a-zA-Z_$]/.test(ch)) {
+              let n = "";
+              while (s < p && /[a-zA-Z0-9_$]/.test(expr[s])) n += expr[s++];
+              names.add(n);
+              continue;
+            }
+          } else if (/[a-zA-Z_$]/.test(ch)) {
+            // Conservative: any ident inside a destructuring pattern is a binding.
+            let n = "";
+            while (s < p && /[a-zA-Z0-9_$]/.test(expr[s])) n += expr[s++];
+            names.add(n);
+            continue;
+          }
+          s++;
+        }
+        if (names.size > 0) {
+          // The arrow body executes at the CURRENT (outer) paren depth —
+          // it persists until a `,` or `)` at depth === parenDepth.
+          localScopes.push(names);
+          scopeDepths.push(parenDepth);
+        }
+      }
+      parenDepth++;
+      result += c;
+      i++;
+      continue;
+    }
+    if (c === ")") {
+      parenDepth--;
+      // Arrow body ends when we drop BELOW the depth at which it was pushed.
+      while (scopeDepths.length > 0 && scopeDepths[scopeDepths.length - 1] > parenDepth) {
+        scopeDepths.pop();
+        localScopes.pop();
+      }
+      result += c;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      // Pop arrow scopes whose bodies end at this comma at the same paren depth.
+      while (scopeDepths.length > 0 && scopeDepths[scopeDepths.length - 1] === parenDepth) {
+        scopeDepths.pop();
+        localScopes.pop();
+      }
+      result += c;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      // Pop arrow scopes whose body ends at this comma at the same paren depth.
+      while (scopeDepths.length > 0 && scopeDepths[scopeDepths.length - 1] === parenDepth) {
+        scopeDepths.pop();
+        localScopes.pop();
+      }
+      result += c;
+      i++;
+      continue;
+    }
+
+    // Identifier.
+    if (/[a-zA-Z_$]/.test(c)) {
+      let name = "";
+      while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) name += expr[i++];
+
+      // Single-ident arrow: `foo =>` (param `foo` bound locally).
+      if (tryPushArrowScope(name, i)) {
+        result += name;
+        continue;
+      }
+
+      // Look ahead for `:` (object key) or `(` (call/wxs import).
+      let j = i;
+      while (j < expr.length && /\s/.test(expr[j])) j++;
+      const followedByColon = expr[j] === ":" && expr[j + 1] !== ":";
+      const followedByParen = expr[j] === "(";
+      const memberAccess = precededByMember();
+
+      if (memberAccess || followedByColon || followedByParen || SKIP_PREFIXING.has(name) || isLocal(name)) {
+        result += name;
+        continue;
+      }
+
+      result += "__data__." + name;
+      continue;
+    }
+
+    result += c;
+    i++;
   }
+
   return result;
 }
 
@@ -197,7 +397,7 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
 
   // Wrap with wx:for
   if (wxFor) {
-    const listExpr = wxFor.replace(/^\{\{/, "").replace(/\}\}$/, "").trim();
+    const listExpr = rewriteExpr(wxFor.replace(/^\{\{/, "").replace(/\}\}$/, "").trim());
     result = `${pad}({(${listExpr} ?? []).map((${wxForItem}: unknown, ${wxForIndex}: number) => (\n${result}${pad}))}\n${pad})\n`;
   }
 
@@ -418,7 +618,10 @@ function parseWxml(wxml: string): ChildNode[] {
 
 export interface WxmlToJsxResult {
   jsx: string;
+  /** Fatal errors — compilation produced nothing usable. */
   errors: string[];
+  /** Non-fatal issues (unsupported features silently dropped). */
+  warnings: string[];
 }
 
 /**
@@ -428,11 +631,12 @@ export interface WxmlToJsxResult {
  */
 export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
   const errors: string[] = [];
+  const warnings: string[] = [];
   let nodes: ChildNode[];
   try {
     nodes = parseWxml(wxml);
   } catch (e: unknown) {
-    return { jsx: "<View><Text>WXML parse error</Text></View>", errors: [(e as Error).message] };
+    return { jsx: "<View><Text>WXML parse error</Text></View>", errors: [(e as Error).message], warnings: [] };
   }
 
   const templates: TemplateMap = new Map();
@@ -443,6 +647,24 @@ export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
       templates.set((node as Element).attribs.name, (node as Element).children ?? []);
     }
   }
+
+  // Walk the tree once to detect unsupported WXML features and record warnings.
+  // The actual transform (next step) silently drops these; surfacing them here
+  // turns them into dismissible yellow chips in the preview UI.
+  const warnedTags = new Set<string>();
+  (function scan(list: ChildNode[]) {
+    for (const n of list) {
+      if (n.type === "tag") {
+        const e = n as Element;
+        const t = e.name.toLowerCase();
+        if ((t === "import" || t === "include" || t === "wxs") && !warnedTags.has(t)) {
+          warnedTags.add(t);
+          warnings.push(`<${t}> is not yet supported — content will not execute in preview.`);
+        }
+        if (e.children) scan(e.children);
+      }
+    }
+  })(nodes);
 
   // Second pass: convert content nodes (use convertChildren for wx:if/elif/else chain support)
   const contentNodes = nodes.filter(
@@ -475,5 +697,5 @@ ${body}    </div>
 }
 `;
 
-  return { jsx, errors };
+  return { jsx, errors, warnings };
 }

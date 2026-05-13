@@ -314,6 +314,8 @@ const zh: Dict = {
   "wechat.preparingPreview": "准备小程序预览",
   "wechat.compilingWxml": "正在编译 WXML 并使用 React 打包...",
   "wechat.waitingFiles": "等待 .wxml / .js 源文件...",
+  "wechat.moreWarnings": "还有 {n} 条提示…",
+  "wechat.dismissWarnings": "关闭提示",
 };
 
 const en: Dict = {
@@ -628,6 +630,8 @@ const en: Dict = {
   "wechat.preparingPreview": "Preparing Mini Program Preview",
   "wechat.compilingWxml": "Compiling WXML and bundling with React...",
   "wechat.waitingFiles": "Waiting for .wxml / .js source files...",
+  "wechat.moreWarnings": "+{n} more…",
+  "wechat.dismissWarnings": "Dismiss warnings",
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
