@@ -9,7 +9,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
-  getProjects(): Promise<Project[]>;
+  getProjects(userId?: string): Promise<Project[]>;
   createProject(project: InsertProject): Promise<Project>;
   updateProjectName(id: string, name: string): Promise<void>;
   updateProjectPlan(id: string, plan: unknown): Promise<void>;
@@ -44,12 +44,20 @@ export class DatabaseStorage implements IStorage {
     return project;
   }
 
-  async getProjects(): Promise<Project[]> {
+  async getProjects(userId?: string): Promise<Project[]> {
+    if (userId) {
+      return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(projects.createdAt);
+    }
     return db.select().from(projects).orderBy(projects.createdAt);
   }
 
   async createProject(project: InsertProject): Promise<Project> {
-    const [created] = await db.insert(projects).values(project).returning();
+    const [created] = await db.insert(projects).values(project).onConflictDoNothing().returning();
+    if (!created) {
+      // Row already existed — return the existing one
+      const [existing] = await db.select().from(projects).where(eq(projects.id, project.id!));
+      return existing;
+    }
     return created;
   }
 

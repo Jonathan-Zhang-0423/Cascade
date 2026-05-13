@@ -39,7 +39,9 @@ page {
       path: "/project/pages/index/index.wxml",
       content: `<view class="container">
   <view class="header">
-    <image class="logo" src="/images/logo.png" mode="aspectFit" />
+    <view class="logo-placeholder">
+      <text class="logo-icon">💬</text>
+    </view>
     <text class="title">Hello, Mini Program!</text>
     <text class="subtitle">Start building your WeChat Mini Program</text>
   </view>
@@ -65,10 +67,19 @@ page {
   padding: 60rpx 0;
 }
 
-.logo {
+.logo-placeholder {
   width: 120rpx;
   height: 120rpx;
+  border-radius: 30rpx;
+  background-color: #07c160;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 30rpx;
+}
+
+.logo-icon {
+  font-size: 60rpx;
 }
 
 .title {

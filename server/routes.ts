@@ -50,6 +50,7 @@ import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerO
 import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
 import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "./rn-web-compiler";
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "./flutter-compiler";
+import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "./wechat-web-compiler";
 import { runExploreAgent } from "./explore-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
@@ -626,6 +627,25 @@ export async function registerRoutes(
       eventCount: session.events.length,
       done: session.done,
     });
+  });
+
+  app.post("/api/build-session/:sessionId/console-event", (req, res) => {
+    const session = buildSessions.get(req.params.sessionId);
+    if (!session || session.done || session.aborted) {
+      res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    const { level, message } = req.body as { level?: string; message?: string };
+    if (!level || !message) {
+      res.status(400).json({ error: "level and message are required" });
+      return;
+    }
+    if (!session.consoleEvents) session.consoleEvents = [];
+    // Only capture errors and warnings — ignore log/info noise
+    if (level === "error" || level === "warn") {
+      session.consoleEvents.push({ level, message, timestamp: Date.now() });
+    }
+    res.json({ ok: true });
   });
 
   app.get("/api/build-session/active/:projectId", (req, res) => {
@@ -1354,19 +1374,19 @@ export async function registerRoutes(
 
       const systemPrompt = `You MUST respond only in ${language}.
 
-You are a smart response generator for a beginner-friendly coding assistant app.
+You are a smart response generator for a professional coding assistant app.
 
-Given a conversation between a user and an AI coding assistant, your job is to generate the most helpful and natural response that the USER would likely want to send next.
+Given a conversation between a user and an AI coding assistant, generate the most appropriate response the USER would likely want to send next.
 
 Rules:
 - Output ONLY the user's response text — no explanations, no quotes, no meta-commentary
-- Keep it concise and direct (1–4 sentences)
+- Keep it concise and direct (1–3 sentences)
 - You MUST write your response in ${language} only
 - Address exactly what the AI assistant just asked, proposed, or explained
-- Write in first person as the user (e.g. "I want...", "Yes, please...", "Let's go with...")
-- For choices or yes/no questions, pick the most sensible option and briefly explain why
-- Sound like a real beginner who is enthusiastic and wants to move forward
-${mode === "manager" ? "- This is a planning conversation, so the response should be about confirming direction, adding requirements, or asking for clarification" : "- This is a building conversation, so the response should be about what to build or change"}`;
+- Write in first person as the user (e.g. "I'd like to...", "Yes, proceed with...", "Let's use...")
+- For choices or yes/no questions, pick the most sensible option with a brief rationale
+- Maintain a professional, precise tone — clear intent, no filler phrases
+${mode === "manager" ? "- This is a planning conversation: confirm direction, add requirements, or ask for clarification" : "- This is a building conversation: specify what to build or change"}`;
 
       const completion = await doubaoClient.chat.completions.create({
         model: DOUBAO_LITE_MODEL,
@@ -1714,7 +1734,8 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.get("/api/projects", async (req, res) => {
     try {
-      const allProjects = await storage.getProjects();
+      const userId = (req.session as any)?.userId as string | undefined;
+      const allProjects = await storage.getProjects(userId);
       res.json({ projects: allProjects });
     } catch (error: any) {
       console.error("Get projects error:", error?.message || error);
@@ -1745,6 +1766,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const framework = (rawFramework || "web") as Framework;
       const language = getLanguageForFramework(framework);
       const targetPlatform = getTargetPlatformForFramework(framework);
+      const userId = (req.session as any)?.userId as string | undefined;
 
       const project = await storage.createProject({
         id,
@@ -1753,6 +1775,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         framework,
         language,
         targetPlatform,
+        userId: userId ?? undefined,
       });
 
       // Initialize files from template
@@ -2242,7 +2265,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const buildId = subPath.slice(0, slashIdx);
       const requestedFile = subPath.slice(slashIdx + 1);
 
-      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId) || getRnArtifactPath(buildId) || getFlutterArtifactPath(buildId);
+      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId) || getRnArtifactPath(buildId) || getFlutterArtifactPath(buildId) || getWxArtifactDir(buildId);
       if (!artifactDir) {
         res.status(404).json({ error: "Build artifacts not found or expired" });
         return;
@@ -2371,6 +2394,35 @@ Generate the cascade.md content for this project based on both the plan and the 
       console.error("Flutter/Web compile error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Compilation failed" });
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // WeChat Mini Program Web compile
+  // -------------------------------------------------------------------------
+
+  const wxFilesSchema = z.object({
+    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(60),
+    projectId: z.string().optional(),
+  });
+
+  app.post("/api/compile/wechat-web", async (req, res) => {
+    try {
+      const parsed = wxFilesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+      }
+      const result = await compileWeChatWeb(parsed.data.files, parsed.data.projectId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("WeChat/Web compile error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Compilation failed" });
+    }
+  });
+
+  // Kick off wx vendor bundle build at startup (non-blocking)
+  ensureWxVendorBundle().catch((err) => {
+    console.warn("[wx-web] Vendor bundle build failed at startup:", err?.message);
   });
 
   // === AUTH ===

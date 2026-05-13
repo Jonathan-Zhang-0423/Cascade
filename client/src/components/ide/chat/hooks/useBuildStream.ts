@@ -11,7 +11,7 @@ import { tr } from "@/lib/i18n";
 import type { ActionLogEntry, CodeBlock, BuildSseEvent, NormalizedStep } from "../chat-types";
 import { KNOWN_BUILD_EVENT_TYPES, BUILD_SOURCE_MAP, validateBuildEvent } from "../chat-types";
 import { detectLanguage, normalizeSteps, generateCascade } from "../chat-utils";
-import { parseSseStream, createHeartbeatWatchdog } from "./useSSEStream";
+import { parseSseStream, createHeartbeatWatchdog, type HeartbeatWatchdog } from "./useSSEStream";
 import type { BuildPhase } from "../BuildPhaseIndicator";
 
 export function useBuildStream() {
@@ -53,7 +53,7 @@ export function useBuildStream() {
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reviewWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reviewWatchdogRef = useRef<HeartbeatWatchdog | null>(null);
   const buildResultMsgIdRef = useRef<string | null>(null);
   const savedBuildSessionIdsRef = useRef<Set<string>>(new Set());
   const connectionErrorAddedRef = useRef(false);
@@ -110,7 +110,7 @@ export function useBuildStream() {
         heartbeatWatchdogRef.current = null;
       }
       if (reviewWatchdogRef.current) {
-        clearTimeout(reviewWatchdogRef.current);
+        reviewWatchdogRef.current.clear();
         reviewWatchdogRef.current = null;
       }
       // Don't reset isReconnectingRef — remount will handle reconnection
@@ -214,7 +214,7 @@ export function useBuildStream() {
           buildLiveClearTimerRef.current = null;
         }
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
         setBuildPhase("thinking");
@@ -363,9 +363,10 @@ export function useBuildStream() {
         setLiveNarrationText("");
         setBuildPhase("verifying");
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
+          reviewWatchdogRef.current = null;
         }
-        reviewWatchdogRef.current = setTimeout(() => {
+        reviewWatchdogRef.current = createHeartbeatWatchdog(300_000, () => {
           reviewWatchdogRef.current = null;
           if (useIDEStore.getState().projectId !== projectId) return;
           const currentPhase = useIDEStore.getState().reviewPhase;
@@ -373,29 +374,33 @@ export function useBuildStream() {
           setReviewPhase("idle");
           setBuildPhase(null);
           clearBuildLive(0);
-          addManagerMessage({
-            role: "assistant",
-            content: tr(
-              useLanguageStore.getState().lang,
-              "chat.errorBuildGeneric",
-            ),
-            source: "communicator",
-          });
+          if (!connectionErrorAddedRef.current) {
+            connectionErrorAddedRef.current = true;
+            addManagerMessage({
+              role: "assistant",
+              content: tr(
+                useLanguageStore.getState().lang,
+                "chat.errorBuildGeneric",
+              ),
+              source: "communicator",
+              errorCode: "build_generic",
+            });
+          }
           if (buildReaderRef.current) {
             buildReaderRef.current.cancel().catch(() => {});
             buildReaderRef.current = null;
           }
-        }, 60_000);
+        });
       } else if (type === "bugs_found") {
         setBuildPhase("fixing");
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
       } else if (type === "fixing") {
         setBuildPhase("fixing");
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
       }
@@ -466,7 +471,7 @@ export function useBuildStream() {
       } else if (type === "review_passed") {
         setReviewPhase("review_passed");
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
         ctx.normalizedSteps.forEach((step) => {
@@ -494,13 +499,13 @@ export function useBuildStream() {
         setReviewPhase("review_passed");
         setBuildPhase(null);
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
         ctx.normalizedSteps.forEach((step) => {
           const key = String(step.step);
           const s = useIDEStore.getState().taskStatuses[key];
-          if (s === "bug" || s === "failed") updateTaskStatus(key, "done");
+          if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
         });
       } else if (type === "build_error") {
         setBuildPhase(null);
@@ -508,7 +513,7 @@ export function useBuildStream() {
         setReviewPhase("idle");
         clearBuildLive(0);
         if (reviewWatchdogRef.current) {
-          clearTimeout(reviewWatchdogRef.current);
+          reviewWatchdogRef.current.clear();
           reviewWatchdogRef.current = null;
         }
         if (thinkingFadeTimerRef.current) {
@@ -551,14 +556,45 @@ export function useBuildStream() {
       if (useIDEStore.getState().projectId !== projectId) return;
       const activeSessionId = sessionId ?? buildSessionIdRef.current;
       if (!activeSessionId) return;
-      // Session-scoped dedup: one BuildResultCard per build session.
-      // Reconnect replays into the same sessionId, so this guard stops duplicate
-      // cards even when all_complete is replayed.
+      // Session-scoped dedup using the persisted BuildResultData.sessionId field.
+      // managerMessages persists to localStorage, so on reload we can look up
+      // existing cards by sessionId even though in-memory refs reset. This prevents
+      // duplicate cards on every reload (the old Set<string> ref-based guard failed
+      // because the ref reset on mount while the card persisted).
+      const existingMsgs = useIDEStore.getState().managerMessages;
+      const existing = existingMsgs.find(
+        (m) => m.buildResult?.sessionId === activeSessionId,
+      );
+      if (existing) {
+        // Already have a card for this session — update in place instead of adding.
+        buildResultMsgIdRef.current = existing.id;
+        savedBuildSessionIdsRef.current.add(activeSessionId);
+        const updated = existingMsgs.map((m) =>
+          m.id === existing.id && m.buildResult
+            ? {
+                ...m,
+                buildResult: {
+                  ...m.buildResult,
+                  actionLog: finalLog.length > 0 ? finalLog : m.buildResult.actionLog,
+                  completionData: {
+                    ...m.buildResult.completionData,
+                    changedFiles: changedFiles.length > 0 ? changedFiles : m.buildResult.completionData.changedFiles,
+                    userLang: userLang || m.buildResult.completionData.userLang,
+                    summary: summary || m.buildResult.completionData.summary,
+                  },
+                },
+              }
+            : m,
+        );
+        useIDEStore.setState({ managerMessages: updated });
+        return;
+      }
       if (savedBuildSessionIdsRef.current.has(activeSessionId)) return;
       savedBuildSessionIdsRef.current.add(activeSessionId);
       const buildResult: BuildResultData = {
         actionLog: finalLog,
         completionData: { changedFiles, userLang, summary },
+        sessionId: activeSessionId,
       };
       addManagerMessage({
         role: "assistant",
@@ -800,10 +836,14 @@ export function useBuildStream() {
       };
 
       await parseSseStream<BuildSseEvent>(reader, {
-        onHeartbeat: () => watchdog.reset(),
+        onHeartbeat: () => {
+          watchdog.reset();
+          reviewWatchdogRef.current?.reset();
+        },
         validate: validateBuildEvent,
         onEvent: async (ev) => {
           watchdog.reset();
+          reviewWatchdogRef.current?.reset();
 
           if (typeof ev.eventId === "number") {
             lastReceivedEventIdRef.current = ev.eventId;
@@ -825,6 +865,12 @@ export function useBuildStream() {
             setCompletionData({ changedFiles, summary: summaryText });
             setBuildPhase(null);
             setExecutingTaskIndex(null);
+            // Clear snapshot and session key now so re-entry after all_complete
+            // (but before done) doesn't trigger a phantom reconnect.
+            useIDEStore.getState().setStreamingSnapshot(null);
+            if (projectId) {
+              try { localStorage.removeItem(`cascade-build-session-${projectId}`); } catch {}
+            }
 
             // Refresh preview and reload files immediately on completion
             if (projectId && useIDEStore.getState().projectId === projectId) {
@@ -1127,10 +1173,14 @@ export function useBuildStream() {
         };
 
         await parseSseStream<BuildSseEvent>(reader, {
-          onHeartbeat: () => watchdog.reset(),
+          onHeartbeat: () => {
+            watchdog.reset();
+            reviewWatchdogRef.current?.reset();
+          },
           validate: validateBuildEvent,
           onEvent: async (ev) => {
             watchdog.reset();
+            reviewWatchdogRef.current?.reset();
 
             if (typeof ev.eventId === "number") {
               lastReceivedEventIdRef.current = ev.eventId;
@@ -1298,6 +1348,11 @@ export function useBuildStream() {
                 setCompletionData({ changedFiles, summary: replaySummary });
                 setBuildPhase(null);
                 setExecutingTaskIndex(null);
+                nSteps.forEach((step) => {
+                  const key = String(step.step);
+                  const s = useIDEStore.getState().taskStatuses[key];
+                  if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
+                });
                 return;
               } else if (type === "done") {
                 return;
@@ -1321,6 +1376,17 @@ export function useBuildStream() {
               setCompletionData({ changedFiles, summary: summaryText2 });
               setBuildPhase(null);
               setExecutingTaskIndex(null);
+              nSteps.forEach((step) => {
+                const key = String(step.step);
+                const s = useIDEStore.getState().taskStatuses[key];
+                if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
+              });
+              // Clear snapshot and session key now so re-entry after all_complete
+              // (but before done) doesn't trigger a phantom reconnect.
+              useIDEStore.getState().setStreamingSnapshot(null);
+              if (projectId) {
+                try { localStorage.removeItem(`cascade-build-session-${projectId}`); } catch {}
+              }
 
               // Refresh preview and reload files immediately on completion
               if (projectId && useIDEStore.getState().projectId === projectId) {
@@ -1556,7 +1622,11 @@ export function useBuildStream() {
             // Still running — reconnect to live stream
             setExecutingTaskIndex(0);
             setChatMode("build");
-            setReviewPhase("building");
+            // Don't overwrite a terminal review state (e.g. review_passed) that was
+            // already persisted — only reset to "building" if we have no result yet.
+            if (useIDEStore.getState().reviewPhase !== "review_passed" && useIDEStore.getState().reviewPhase !== "review_failed") {
+              setReviewPhase("building");
+            }
             setBuildPhase("thinking");
             connectToBuildStream(existingSessionId, resumeEventId).catch(() => {});
           } else if (data?.done) {
@@ -1618,7 +1688,9 @@ export function useBuildStream() {
           isReconnectingRef.current = true;
           setExecutingTaskIndex(0);
           setChatMode("build");
-          setReviewPhase("building");
+          if (useIDEStore.getState().reviewPhase !== "review_passed" && useIDEStore.getState().reviewPhase !== "review_failed") {
+            setReviewPhase("building");
+          }
           setBuildPhase("thinking");
           connectToBuildStream(data.sessionId, -1).catch(() => {});
         })
@@ -1666,7 +1738,9 @@ export function useBuildStream() {
               isReconnectingRef.current = true;
               setExecutingTaskIndex(0);
               setChatMode("build");
-              setReviewPhase("building");
+              if (useIDEStore.getState().reviewPhase !== "review_passed" && useIDEStore.getState().reviewPhase !== "review_failed") {
+                setReviewPhase("building");
+              }
               setBuildPhase("thinking");
               connectToBuildStream(activeData.sessionId, -1).catch(() => {});
             })
@@ -1683,7 +1757,9 @@ export function useBuildStream() {
         isReconnectingRef.current = true;
         setExecutingTaskIndex(0);
         setChatMode("build");
-        setReviewPhase("building");
+        if (useIDEStore.getState().reviewPhase !== "review_passed" && useIDEStore.getState().reviewPhase !== "review_failed") {
+          setReviewPhase("building");
+        }
         setBuildPhase("thinking");
         connectToBuildStream(savedSessionId, -1).catch(() => {});
       })

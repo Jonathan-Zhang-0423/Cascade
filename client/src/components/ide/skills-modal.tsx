@@ -92,7 +92,7 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
         onClose();
       } else {
         const resBody = await res.json().catch(() => ({}));
-        setSaveError((resBody as { error?: string }).error || "Failed to save skill");
+        setSaveError((resBody as { error?: string }).error || t("skillsModal.saveError"));
       }
     } finally {
       setSaving(false);

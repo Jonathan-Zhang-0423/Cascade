@@ -21,6 +21,7 @@ export interface ProjectEntry {
 interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
+  _syncing: boolean;
   createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => Promise<string>;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
@@ -210,6 +211,7 @@ export const useProjectStore = create<ProjectStoreState>()(
     (set, get) => ({
       projects: [],
       serverSynced: false,
+      _syncing: false,
 
       createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
         const id = generateId();
@@ -272,6 +274,8 @@ export const useProjectStore = create<ProjectStoreState>()(
       },
 
       syncFromServer: async () => {
+        if (get()._syncing) return;
+        set({ _syncing: true });
         try {
           const resp = await fetch("/api/projects");
           if (!resp.ok) return;
@@ -329,6 +333,8 @@ export const useProjectStore = create<ProjectStoreState>()(
           }
         } catch {
           set({ serverSynced: true });
+        } finally {
+          set({ _syncing: false });
         }
       },
     }),

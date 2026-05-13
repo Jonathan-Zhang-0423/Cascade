@@ -130,15 +130,16 @@ function Section({ title, skills, scope, deletingSkillId, onToggle, onEdit, onDe
 }
 
 function BuiltinSection({ skills }: { skills: Array<{ name: string; description: string; type: string }> }) {
+  const t = useT();
   return (
     <div className="mb-4">
       <div className="flex items-center px-3 mb-1">
         <span className="text-[10px] uppercase tracking-wider text-[rgba(255,255,255,0.3)] font-semibold">
-          Built-in Skills
+          {t("skills.builtinTitle")}
         </span>
       </div>
       {skills.length === 0 ? (
-        <p className="px-3 text-[10px] text-[rgba(255,255,255,0.2)] italic">None</p>
+        <p className="px-3 text-[10px] text-[rgba(255,255,255,0.2)] italic">{t("skills.none")}</p>
       ) : (
         skills.map((s) => (
           <div key={s.name} className="flex items-start gap-2 px-3 py-2 rounded-md opacity-60">
@@ -149,7 +150,7 @@ function BuiltinSection({ skills }: { skills: Array<{ name: string; description:
                 <p className="text-[10px] text-[rgba(255,255,255,0.35)] truncate">{s.description}</p>
               )}
             </div>
-            <span className="ml-auto text-[9px] text-[rgba(255,255,255,0.2)] shrink-0">built-in</span>
+            <span className="ml-auto text-[9px] text-[rgba(255,255,255,0.2)] shrink-0">{t("skills.builtinLabel")}</span>
           </div>
         ))
       )}

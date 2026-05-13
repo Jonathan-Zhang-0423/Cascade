@@ -94,6 +94,7 @@ export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
   completionData: { changedFiles: string[]; userLang?: string; summary?: string };
   nextStepSuggestion?: string;
+  sessionId?: string;
 }
 
 export interface ManagerMessage {

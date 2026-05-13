@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { type FileNode, flattenFiles, useIDEStore } from "@/stores/ide-store";
 import { CodePreview } from "./code-preview";
 import { getMainEntryFile } from "@/lib/preview-adapters";
+import { useT } from "@/lib/i18n";
 
 interface FlutterWebPreviewProps {
   files: FileNode[];
@@ -34,6 +35,7 @@ function hashFiles(files: Array<{ path: string; content: string }>): string {
 }
 
 export function FlutterWebPreview({ files, framework, projectId, refreshKey }: FlutterWebPreviewProps) {
+  const t = useT();
   const [compileState, setCompileState] = useState<CompileState>({ status: "idle" });
   const [showFallback, setShowFallback] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,7 +97,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
         if (res.status === 503) {
           setCompileState({ status: "unavailable" });
         } else {
-          setCompileState({ status: "error", errors: data.errors || [data.error || "Compilation failed"] });
+          setCompileState({ status: "error", errors: data.errors || [data.error || t("preview.compilationFailed")] });
         }
         return;
       }
@@ -104,13 +106,13 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
         setCompileState({ status: "success", buildId: data.buildId });
         setShowFallback(false);
       } else {
-        setCompileState({ status: "error", errors: data.errors || ["Unknown error"] });
+        setCompileState({ status: "error", errors: data.errors || [t("preview.unknownError")] });
       }
     } catch (err: any) {
       stopElapsedTimer();
       if (err?.name === "AbortError") return;
       if (thisVersion !== compileVersionRef.current) return;
-      setCompileState({ status: "error", errors: [err?.message || "Network error"] });
+      setCompileState({ status: "error", errors: [err?.message || t("preview.networkError")] });
     }
   }, [sourceFiles, stopElapsedTimer]);
 
@@ -144,9 +146,9 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
 
   const handleAskAiFix = useCallback(() => {
     if (!compileState.errors?.length) return;
-    const prompt = `The Flutter code has errors. Please fix:\n\n${compileState.errors.join("\n")}`;
+    const prompt = `${t("flutter.errors")}\n\n${compileState.errors.join("\n")}`;
     setPendingPrompt(prompt);
-  }, [compileState.errors, setPendingPrompt]);
+  }, [compileState.errors, setPendingPrompt, t]);
 
   const formatElapsed = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -160,7 +162,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
           <div className="px-3 py-2 bg-yellow-500/10 border-b border-yellow-500/30 flex items-center gap-2">
             <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
             <span className="text-xs text-yellow-400">
-              Flutter compiler not available. Showing code preview.
+              {t("flutter.compilerNotAvailable")}
             </span>
           </div>
         )}
@@ -176,7 +178,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
       <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-200" data-testid="flutter-preview-error">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
           <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-          <span className="text-xs text-red-400 font-medium">Build Failed</span>
+          <span className="text-xs text-red-400 font-medium">{t("preview.buildFailed")}</span>
           <div className="flex-1" />
           <Button
             size="sm"
@@ -186,7 +188,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
             data-testid="button-ask-ai-fix-flutter"
           >
             <Wand2 className="w-3 h-3" />
-            Ask AI to Fix
+            {t("preview.askAiFix")}
           </Button>
           <Button
             size="sm"
@@ -195,7 +197,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
             onClick={() => setShowFallback(true)}
           >
             <FileCode className="w-3 h-3 mr-1" />
-            View Code
+            {t("preview.viewCode")}
           </Button>
         </div>
         <div className="flex-1 overflow-auto p-4" data-testid="flutter-compile-errors">
@@ -210,7 +212,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
         </div>
         <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
           <p className="text-[10px] text-gray-500 text-center">
-            Flutter web requires the Flutter SDK to be installed on the server.
+            {t("flutter.note")}
           </p>
         </div>
       </div>
@@ -222,7 +224,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
       <div className="flex flex-col h-full" data-testid="flutter-preview-live">
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-[10px] text-blue-400 font-medium">Live Flutter Preview</span>
+          <span className="text-[10px] text-blue-400 font-medium">{t("flutter.livePreview")}</span>
           <div className="flex-1" />
           <Button
             size="sm"
@@ -231,7 +233,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
             onClick={() => setShowFallback(true)}
           >
             <FileCode className="w-3 h-3 mr-1" />
-            Code
+            {t("preview.code")}
           </Button>
         </div>
         <div className="flex-1 min-h-0">
@@ -257,12 +259,12 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
           <span className="text-lg">🐦</span>
         </div>
         <p className="text-sm text-gray-300 font-medium">
-          {compileState.status === "compiling" ? "Building Flutter Preview..." : "Preparing Flutter Preview"}
+          {compileState.status === "compiling" ? t("flutter.buildingPreview") : t("flutter.preparingPreview")}
         </p>
         <p className="text-xs text-gray-500 max-w-[260px]">
           {compileState.status === "compiling"
-            ? `Running flutter build web... ${elapsed > 0 ? `(${formatElapsed(elapsed)})` : ""}`
-            : "Waiting for Dart source files..."}
+            ? `${t("flutter.building")} ${elapsed > 0 ? `(${formatElapsed(elapsed)})` : ""}`
+            : t("flutter.waitingFiles")}
         </p>
         {compileState.status === "compiling" && (
           <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">
@@ -271,7 +273,7 @@ export function FlutterWebPreview({ files, framework, projectId, refreshKey }: F
         )}
         {compileState.status === "compiling" && elapsed > 30_000 && (
           <p className="text-[10px] text-gray-600 max-w-[240px]">
-            First build downloads packages — subsequent builds are faster.
+            {t("flutter.firstBuild")}
           </p>
         )}
       </div>

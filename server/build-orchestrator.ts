@@ -76,6 +76,8 @@ export interface BuildSessionState {
   /** Pending user input for needs_input pause/resume */
   pendingUserInput?: string;
   pendingUserInputResolve?: () => void;
+  /** Console errors/warnings captured from the preview iframe during this build */
+  consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -196,6 +198,10 @@ function buildVerifierInitialMessage(
     ? `\n\n## User Feedback\n${userFeedback}\nPlease take this into account.`
     : "";
 
+  const consoleSection = session.consoleEvents && session.consoleEvents.length > 0
+    ? `\n\n## Browser Console Errors (captured from preview)\nThese runtime errors were captured from the preview iframe. Treat each one as a potential bug.\n\n${session.consoleEvents.map(e => `[${e.level.toUpperCase()}] ${e.message}`).join("\n")}`
+    : "";
+
   return `Please review this project against its requirements.
 
 ## Original User Request
@@ -207,7 +213,7 @@ ${stepsList}
 ## Available Files to Review
 ${filesList}
 
-Use read_file to examine each file, then report any issues with report_issue, and finally call submit_verdict with your assessment.${feedbackSection}`;
+Use read_file to examine each file, then report any issues with report_issue, and finally call submit_verdict with your assessment.${consoleSection}${feedbackSection}`;
 }
 
 const MAX_FIX_CYCLES = 3;

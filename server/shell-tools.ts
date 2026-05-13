@@ -38,6 +38,10 @@ export function buildShellTools(session: BuildSessionState): {
 
       if (!command) return "Error: command is required";
 
+      if (!process.env.ENABLE_SHELL) {
+        return "shell_run is unavailable: ENABLE_SHELL is not set. Skipping shell execution — proceed with static analysis only.";
+      }
+
       emit({ type: "action_log", actionType: "file_write", label: "Shell", detail: command });
 
       const result = await shellManager.runCommand(session.id, command, timeoutMs);

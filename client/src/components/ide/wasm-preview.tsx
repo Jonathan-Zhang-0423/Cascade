@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { type FileNode, flattenFiles, useIDEStore } from "@/stores/ide-store";
 import { CodePreview } from "./code-preview";
 import { getMainEntryFile } from "@/lib/preview-adapters";
+import { useT } from "@/lib/i18n";
 
 interface WasmPreviewProps {
   files: FileNode[];
@@ -84,6 +85,7 @@ export function WasmPreview({
   projectId,
   refreshKey,
 }: WasmPreviewProps) {
+  const t = useT();
   const [compileState, setCompileState] = useState<CompileState>({
     status: "idle",
   });
@@ -136,7 +138,7 @@ export function WasmPreview({
         } else {
           setCompileState({
             status: "error",
-            errors: data.errors || [data.error || "Compilation failed"],
+            errors: data.errors || [data.error || t("preview.compilationFailed")],
           });
         }
         return;
@@ -149,7 +151,7 @@ export function WasmPreview({
         setCompileState({
           status: "error",
           buildId: data.buildId,
-          errors: data.errors || ["Unknown compilation error"],
+          errors: data.errors || [t("preview.unknownError")],
         });
       }
     } catch (err: any) {
@@ -157,7 +159,7 @@ export function WasmPreview({
       if (thisVersion !== compileVersionRef.current) return;
       setCompileState({
         status: "error",
-        errors: [err?.message || "Network error during compilation"],
+        errors: [err?.message || t("preview.networkError")],
       });
     }
   }, [sourceFiles, compileTarget]);
@@ -203,9 +205,9 @@ export function WasmPreview({
     if (!compileState.errors || compileState.errors.length === 0) return;
     const errorText = compileState.errors.join("\n");
     const langName = compileTarget === "swift" ? "SwiftUI" : "Kotlin/Compose";
-    const prompt = `The ${langName} code has compilation errors. Please fix these errors:\n\n${errorText}`;
+    const prompt = `${t("wasm.errors", { lang: langName })}\n\n${errorText}`;
     setPendingPrompt(prompt);
-  }, [compileState.errors, setPendingPrompt, compileTarget]);
+  }, [compileState.errors, setPendingPrompt, compileTarget, t]);
 
   if (showFallback || compileState.status === "unavailable") {
     return (
@@ -214,7 +216,7 @@ export function WasmPreview({
           <div className="px-3 py-2 bg-yellow-500/10 border-b border-yellow-500/30 flex items-center gap-2">
             <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
             <span className="text-xs text-yellow-400">
-              {langLabel} Wasm compiler not available. Showing code preview.
+              {t("wasm.compilerNotAvailable", { lang: langLabel })}
             </span>
           </div>
         )}
@@ -239,7 +241,7 @@ export function WasmPreview({
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
           <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
           <span className="text-xs text-red-400 font-medium">
-            Compilation Failed
+            {t("wasm.compilationFailed")}
           </span>
           <div className="flex-1" />
           <Button
@@ -250,7 +252,7 @@ export function WasmPreview({
             data-testid="button-ask-ai-fix"
           >
             <Wand2 className="w-3 h-3" />
-            Ask AI to Fix
+            {t("preview.askAiFix")}
           </Button>
           <Button
             size="sm"
@@ -260,7 +262,7 @@ export function WasmPreview({
             data-testid="button-show-code-fallback"
           >
             <FileCode className="w-3 h-3 mr-1" />
-            View Code
+            {t("preview.viewCode")}
           </Button>
         </div>
 
@@ -282,8 +284,7 @@ export function WasmPreview({
 
         <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
           <p className="text-[10px] text-gray-500 text-center">
-            Click "Ask AI to Fix" to let the AI agent debug these errors
-            automatically
+            {t("wasm.askAiFixNote")}
           </p>
         </div>
       </div>
@@ -297,7 +298,7 @@ export function WasmPreview({
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           <span className="text-[10px] text-green-400 font-medium">
-            Live {langLabel} Preview
+            {t("wasm.livePreview", { lang: langLabel })}
           </span>
           <div className="flex-1" />
           <Button
@@ -308,7 +309,7 @@ export function WasmPreview({
             data-testid="button-switch-to-code"
           >
             <FileCode className="w-3 h-3 mr-1" />
-            Code
+            {t("preview.code")}
           </Button>
         </div>
         <div className="flex-1 min-h-0">
@@ -335,12 +336,12 @@ export function WasmPreview({
           <span className="text-lg">{styles.emoji}</span>
         </div>
         <p className="text-sm text-gray-300 font-medium">
-          Preparing {langLabel} Preview
+          {t("wasm.preparing", { lang: langLabel })}
         </p>
         <p className="text-xs text-gray-500 max-w-[240px]">
           {compileState.status === "compiling"
-            ? `Compiling ${langLabel} to WebAssembly...`
-            : `Waiting for ${getFileExtension(compileTarget)} source files...`}
+            ? t("wasm.compiling", { lang: langLabel })
+            : t("wasm.waitingFiles", { ext: getFileExtension(compileTarget) })}
         </p>
         {compileState.status === "compiling" && (
           <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">

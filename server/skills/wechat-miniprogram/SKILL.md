@@ -331,3 +331,260 @@ wx.setClipboardData({ data: 'text to copy' })
 8. **Use wx.request** for HTTP — no fetch, axios, or XMLHttpRequest.
 9. **Self-closing tags must close** — WXML is XML: `<image />` not `<image>`.
 10. **bindtap handler = method name only** — `bindtap="handleTap"` not `bindtap="handleTap()"`.
+
+## Networking (production patterns)
+
+Never call `wx.request` directly from pages. Build a shared `utils/request.js` that handles auth, retries, timeouts, and cancellation. Import it everywhere.
+
+### Shared request util
+```js
+// utils/request.js
+const BASE_URL = 'https://api.example.com';
+const DEFAULT_TIMEOUT = 10000;
+let refreshPromise = null; // prevent refresh storms
+
+function doRequest(opts, attempt = 0) {
+  return new Promise((resolve, reject) => {
+    const token = wx.getStorageSync('token');
+    const task = wx.request({
+      url: opts.url.startsWith('http') ? opts.url : BASE_URL + opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      timeout: opts.timeout || DEFAULT_TIMEOUT,
+      header: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...opts.header,
+      },
+      success: (res) => {
+        if (res.statusCode === 401 && !opts._retried) {
+          // single in-flight refresh; all 401s wait on the same promise
+          refreshPromise = refreshPromise || refreshToken();
+          refreshPromise
+            .then(() => { refreshPromise = null; resolve(doRequest({ ...opts, _retried: true })); })
+            .catch((e) => { refreshPromise = null; reject(e); });
+          return;
+        }
+        if (res.statusCode >= 500 && attempt < 1) {
+          // single retry with backoff for 5xx (not 4xx — those are client bugs)
+          setTimeout(() => resolve(doRequest(opts, attempt + 1)), 500 * Math.pow(2, attempt));
+          return;
+        }
+        if (res.statusCode >= 400) { reject(res); return; }
+        resolve(res.data);
+      },
+      fail: (err) => {
+        if (err.errMsg?.includes('timeout') && attempt < 1) {
+          setTimeout(() => resolve(doRequest(opts, attempt + 1)), 500);
+          return;
+        }
+        wx.showToast({ title: '网络错误', icon: 'none' });
+        reject(err);
+      },
+    });
+    opts._onCreated?.(task); // expose task so caller can abort()
+  });
+}
+
+function refreshToken() {
+  return doRequest({ url: '/auth/refresh', method: 'POST', _retried: true })
+    .then((r) => wx.setStorageSync('token', r.token));
+}
+
+module.exports = { request: doRequest };
+```
+
+### Cancellation
+`wx.request` returns a `requestTask` — store it on the Page instance and call `.abort()` in `onHide` or `onUnload` to avoid setState-after-unload races:
+```js
+fetchData() {
+  this.request({ url: '/items', _onCreated: (task) => { this._task = task; } });
+},
+onUnload() { this._task?.abort(); }
+```
+
+### What to avoid
+- Never use `fetch()`, `axios`, or `XMLHttpRequest` — they don't exist in the mini-program runtime.
+- Never retry 4xx (client error — retrying won't help and masks real bugs).
+- Never log tokens in `console.log` or send them as URL query params.
+
+## State & Lifecycle
+
+### `onLoad` vs `onShow`
+- **`onLoad(options)`** — fires **once** per page instance. Use for: reading route params (`options.id`), one-time setup (subscriptions, first-time fetch of rarely-changing data).
+- **`onShow`** — fires **every time** the page becomes visible, including after `navigateBack` from a child page or `switchTab`. Use for: refreshing volatile data (cart count, notification badge, list that might have changed on a detail page).
+- **`onReady`** — fires once after first render; use for queries that need DOM (`wx.createSelectorQuery()`).
+- **`onHide`** — stop polling intervals, pause animations, cancel in-flight requests.
+- **`onUnload`** — definitive cleanup; clear timers, remove bus subscriptions, abort requests.
+
+### Global state via `app.globalData`
+Use for auth token, current user, feature flags — things that outlive any single page. Access with `getApp()`:
+```js
+// app.js
+App({
+  globalData: { user: null, token: '' },
+  setUser(user) { this.globalData.user = user; },
+});
+
+// any page
+const app = getApp();
+onLoad() { if (!app.globalData.token) wx.redirectTo({ url: '/pages/login/login' }); }
+```
+Avoid deep mutation (`app.globalData.user.profile.name = 'x'`) — prefer replace-the-object semantics so other pages observe the change consistently.
+
+### Cross-page pub/sub
+For events like "order placed" or "cart updated" that affect multiple pages, use a tiny event bus — don't try to thread callbacks through `wx.navigateTo`:
+```js
+// utils/bus.js
+const handlers = {};
+module.exports = {
+  on(ev, fn) { (handlers[ev] ||= []).push(fn); },
+  off(ev, fn) { handlers[ev] = (handlers[ev] || []).filter((h) => h !== fn); },
+  emit(ev, payload) { (handlers[ev] || []).forEach((h) => h(payload)); },
+};
+```
+Subscribe in `onLoad`, unsubscribe in `onUnload` — otherwise the handler leaks with the closed page's `this`.
+
+### Background / foreground
+Poll only while visible. Stop in `onHide`, resume in `onShow`. For app-wide resume logic (e.g., refetch after the user leaves WeChat for 10 minutes), use `wx.onAppShow` in `app.js`.
+
+## Performance
+
+### `setData` is the bottleneck
+Every `setData` call serializes to JSON and crosses the logic-layer / render-layer bridge. Payload has a soft limit around **1 MB** — over that, the view becomes janky or the call silently drops fields.
+
+- **Send only the fields that changed.** Never re-send the whole `data` object.
+- **Use path syntax** for deeply-nested updates so you ship a single key instead of the whole parent object:
+  ```js
+  // Good — 20 bytes over the bridge
+  this.setData({ 'list[3].read': true });
+  // Bad — re-serializes the entire list
+  const list = [...this.data.list];
+  list[3] = { ...list[3], read: true };
+  this.setData({ list });
+  ```
+- **Batch within a tick.** Accumulate into a single `setData` call per event loop:
+  ```js
+  this._pending = { ...this._pending, ...patch };
+  Promise.resolve().then(() => {
+    if (!this._pending) return;
+    this.setData(this._pending);
+    this._pending = null;
+  });
+  ```
+- **Never setData large static data** (500+ item menu, dictionaries). Keep it as `this._menu` (non-reactive) and only push the fields the template actually reads.
+
+### Large lists
+Default to pagination — never fetch 1,000 rows at once. Fetch 20–50 per page, append on `onReachBottom`:
+```js
+onReachBottom() {
+  if (this.data.loading || this.data.done) return;
+  this.setData({ loading: true });
+  this.request({ url: '/items', data: { page: this.data.page + 1 } })
+    .then((r) => this.setData({
+      'list': this.data.list.concat(r.items),
+      'page': this.data.page + 1,
+      'done': r.items.length < 20,
+      'loading': false,
+    }));
+}
+```
+For lists that truly need 1,000+ rows in memory (chat threads, log viewers), use [`recycle-view`](https://developers.weixin.qq.com/miniprogram/dev/extended/component-plus/recycle-view.html) or [`miniprogram-virtual-list`](https://github.com/Lanceric/miniprogram-virtual-list) — the built-in `<scroll-view>` renders every child.
+
+### Images
+Always include `lazy-load="true"` on long scrollable image lists, plus explicit dimensions so the layout doesn't reflow as each image loads:
+```xml
+<image src="{{item.cover}}" mode="aspectFill" lazy-load="true" style="width: 200rpx; height: 200rpx;" />
+```
+Use `mode="aspectFill"` or `"aspectFit"` — without `mode`, images stretch.
+
+### `wx:key` must be stable
+Use a field from the data, not the array index. If you use `index`, the runtime discards DOM on reorder / insert — losing input focus, scroll position, and animation state.
+```xml
+<!-- Good -->
+<view wx:for="{{list}}" wx:key="id">...</view>
+<!-- Bad — breaks on any mutation -->
+<view wx:for="{{list}}" wx:key="index">...</view>
+```
+
+### Precompute in JS, not WXML
+WXML expressions re-evaluate on every re-render. Do string formatting, date parsing, and filtering in `setData`, not in `{{ foo.toFixed(2) + '元' }}`:
+```js
+this.setData({ list: items.map((i) => ({ ...i, priceText: `¥${i.price.toFixed(2)}` })) });
+```
+
+## UX, Auth & Accessibility
+
+### Loading, empty, and error states
+Every screen that fetches data needs four UI states. Don't render just the happy path.
+
+- **Skeleton** — render placeholder blocks during first load. Mimics the final layout so the user sees structure, not a blank screen:
+  ```xml
+  <view wx:if="{{loading && list.length === 0}}">
+    <view class="skeleton-row" wx:for="{{[1,2,3,4,5]}}" wx:key="*this" />
+  </view>
+  ```
+- **Empty state** — icon + short title + one-line explanation + primary CTA. Show when `!loading && list.length === 0`. Don't collapse to a blank area.
+- **Error state** — "加载失败" + retry button that calls the same fetch function. Log the real error separately; don't show stack traces to users.
+- **`wx.showLoading`** — blocking spinner for operations the user is actively waiting on (submit form). Not for background refresh.
+- **`wx.showToast`** — non-blocking feedback (1500 ms). Use `icon: 'success'`/`'error'`/`'none'`.
+
+### Pull-to-refresh
+Enable per-page in the page's `.json`:
+```json
+{ "enablePullDownRefresh": true, "backgroundTextStyle": "dark" }
+```
+Wire `onPullDownRefresh`:
+```js
+onPullDownRefresh() {
+  this.setData({ page: 1, done: false });
+  this.fetchData(() => wx.stopPullDownRefresh());
+}
+```
+Always call `wx.stopPullDownRefresh()` in every completion branch — otherwise the spinner spins forever.
+
+### Debounced search
+```js
+handleInput(e) {
+  const q = e.detail.value;
+  clearTimeout(this._t);
+  this._searchTask?.abort(); // cancel in-flight
+  this._t = setTimeout(() => this.runSearch(q), 300);
+}
+```
+
+### Auth: `wx.login` + `code2session`
+1. Frontend: `wx.login({ success: ({ code }) => POST /auth/wechat { code } })`.
+2. Backend: call `https://api.weixin.qq.com/sns/jscode2session` with `appid` + `secret` + `code`, receive `openid` + `session_key`. Issue your own app session token (JWT) and return it. **Never expose `session_key` to the client.**
+3. Frontend stores: `wx.setStorageSync('token', token)`.
+4. All subsequent requests attach `Authorization: Bearer <token>` (via `utils/request.js`).
+5. On 401, call `/auth/refresh` (or re-run `wx.login`) per the networking section.
+
+### Token storage
+`wx.setStorageSync` is **not encrypted** and is readable by the user via devtools export. Only store opaque session tokens that your backend can revoke — never plaintext passwords, card numbers, or PII.
+
+### Accessibility
+- **Tap targets: minimum 88rpx × 88rpx** (≈44pt at 2× density). Don't build icon-only rows shorter than 88rpx.
+- **Use `<button>` for actions.** `<view bindtap>` doesn't register as a button for hardware keyboards or screen readers.
+- **`aria-label`** on icon-only buttons so screen readers announce the action ("购物车").
+- **`aria-role="heading"`** on section titles; let screen readers navigate by heading.
+- **Color contrast** ≥ 4.5:1 for body text against background (WCAG AA).
+
+### Design tokens in `app.wxss`
+Centralize color, spacing, and type to avoid magic numbers across pages:
+```css
+page {
+  --color-primary: #07c160;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #999;
+  --color-bg: #f7f7f7;
+  --space-1: 8rpx;
+  --space-2: 16rpx;
+  --space-3: 24rpx;
+  --space-4: 32rpx;
+  --radius-md: 16rpx;
+  --font-body: 28rpx;
+  --font-title: 34rpx;
+}
+```
+Pages reference `padding: var(--space-3); color: var(--color-primary);`. Swap tokens globally to rebrand.

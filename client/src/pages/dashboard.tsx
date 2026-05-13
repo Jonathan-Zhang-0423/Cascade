@@ -74,7 +74,7 @@ export default function DashboardPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "swiftui" | "kotlin" | "wechat">("web");
+  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "kotlin" | "wechat">("web");
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -311,7 +311,7 @@ export default function DashboardPage() {
               const isSelected = selectedIds.has(project.id);
               const fw = project.framework ?? "web";
               const fwLabel: Record<string, string> = {
-                web: "Web", "rn-expo": "RN", flutter: "Flutter", swiftui: "SwiftUI", kotlin: "Kotlin", wechat: "WeChat",
+                web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "WeChat",
               };
               return (
                 <div
@@ -477,18 +477,27 @@ export default function DashboardPage() {
           />
           
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Framework</label>
+            <label className="text-sm font-medium text-foreground">{t("dashboard.framework")}</label>
             <Select value={selectedFramework} onValueChange={(v: any) => setSelectedFramework(v)}>
               <SelectTrigger data-testid="select-framework">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="web">Web (HTML/CSS/JS)</SelectItem>
-                <SelectItem value="rn-expo">React Native (Expo)</SelectItem>
-                <SelectItem value="flutter">Flutter</SelectItem>
-                <SelectItem value="swiftui">SwiftUI (iOS)</SelectItem>
-                <SelectItem value="kotlin">Kotlin Compose (Android)</SelectItem>
-                <SelectItem value="wechat">WeChat Mini Program</SelectItem>
+                <SelectItem value="web">{t("dashboard.frameworkWeb")}</SelectItem>
+                <SelectItem value="wechat">{t("dashboard.frameworkWechat")}</SelectItem>
+                <SelectItem value="rn-expo">{t("dashboard.frameworkRN")}</SelectItem>
+                <SelectItem value="flutter" disabled>
+                  <span className="flex items-center gap-2">
+                    {t("dashboard.frameworkFlutter")}
+                    <span className="text-xs text-muted-foreground">({t("dashboard.comingSoon")})</span>
+                  </span>
+                </SelectItem>
+                <SelectItem value="kotlin" disabled>
+                  <span className="flex items-center gap-2">
+                    {t("dashboard.frameworkKotlin")}
+                    <span className="text-xs text-muted-foreground">({t("dashboard.comingSoon")})</span>
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

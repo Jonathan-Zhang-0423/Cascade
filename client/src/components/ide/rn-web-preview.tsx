@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { type FileNode, flattenFiles, useIDEStore } from "@/stores/ide-store";
 import { CodePreview } from "./code-preview";
 import { getMainEntryFile } from "@/lib/preview-adapters";
+import { useT } from "@/lib/i18n";
 
 interface RnWebPreviewProps {
   files: FileNode[];
@@ -39,6 +40,7 @@ function hashFiles(files: Array<{ path: string; content: string }>): string {
 }
 
 export function RnWebPreview({ files, framework, projectId, refreshKey, projectName }: RnWebPreviewProps) {
+  const t = useT();
   const [compileState, setCompileState] = useState<CompileState>({ status: "idle" });
   const [showFallback, setShowFallback] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,14 +80,14 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
 
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
-        setCompileState({ status: "error", errors: [`Server error (${res.status}): unexpected response — check server logs`] });
+        setCompileState({ status: "error", errors: [t("preview.serverError", { status: String(res.status) })] });
         return;
       }
 
       const data = JSON.parse(text);
 
       if (!res.ok) {
-        setCompileState({ status: "error", errors: data.errors || [data.error || "Compilation failed"] });
+        setCompileState({ status: "error", errors: data.errors || [data.error || t("preview.compilationFailed")] });
         return;
       }
 
@@ -93,12 +95,12 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
         setCompileState({ status: "success", buildId: data.buildId });
         setShowFallback(false);
       } else {
-        setCompileState({ status: "error", errors: data.errors || ["Unknown error"] });
+        setCompileState({ status: "error", errors: data.errors || [t("preview.unknownError")] });
       }
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       if (thisVersion !== compileVersionRef.current) return;
-      setCompileState({ status: "error", errors: [err?.message || "Network error"] });
+      setCompileState({ status: "error", errors: [err?.message || t("preview.networkError")] });
     }
   }, [sourceFiles, projectName]);
 
@@ -149,9 +151,9 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
 
   const handleAskAiFix = useCallback(() => {
     if (!compileState.errors?.length) return;
-    const prompt = `The React Native code has errors. Please fix:\n\n${compileState.errors.join("\n")}`;
+    const prompt = `${t("rn.errors")}\n\n${compileState.errors.join("\n")}`;
     setPendingPrompt(prompt);
-  }, [compileState.errors, setPendingPrompt]);
+  }, [compileState.errors, setPendingPrompt, t]);
 
   if (showFallback) {
     return (
@@ -168,7 +170,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
       <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-200" data-testid="rn-preview-error">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
           <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-          <span className="text-xs text-red-400 font-medium">Build Failed</span>
+          <span className="text-xs text-red-400 font-medium">{t("preview.buildFailed")}</span>
           <div className="flex-1" />
           <Button
             size="sm"
@@ -178,7 +180,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
             data-testid="button-ask-ai-fix-rn"
           >
             <Wand2 className="w-3 h-3" />
-            Ask AI to Fix
+            {t("preview.askAiFix")}
           </Button>
           <Button
             size="sm"
@@ -187,7 +189,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
             onClick={() => setShowFallback(true)}
           >
             <FileCode className="w-3 h-3 mr-1" />
-            View Code
+            {t("preview.viewCode")}
           </Button>
         </div>
         <div className="flex-1 overflow-auto p-4" data-testid="rn-compile-errors">
@@ -202,7 +204,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
         </div>
         <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
           <p className="text-[10px] text-gray-500 text-center">
-            Note: react-native-web supports core RN APIs. Native-only modules may not be available.
+            {t("rn.note")}
           </p>
         </div>
       </div>
@@ -214,7 +216,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
       <div className="flex flex-col h-full" data-testid="rn-preview-live">
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[10px] text-green-400 font-medium">Live React Native Preview</span>
+          <span className="text-[10px] text-green-400 font-medium">{t("rn.livePreview")}</span>
           <div className="flex-1" />
           <Button
             size="sm"
@@ -223,7 +225,7 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
             onClick={() => setShowFallback(true)}
           >
             <FileCode className="w-3 h-3 mr-1" />
-            Code
+            {t("preview.code")}
           </Button>
         </div>
         <div className="flex-1 min-h-0">
@@ -248,12 +250,12 @@ export function RnWebPreview({ files, framework, projectId, refreshKey, projectN
           <span className="text-lg">📱</span>
         </div>
         <p className="text-sm text-gray-300 font-medium">
-          {compileState.status === "compiling" ? "Building Preview..." : "Preparing React Native Preview"}
+          {compileState.status === "compiling" ? t("rn.buildingPreview") : t("rn.preparingPreview")}
         </p>
         <p className="text-xs text-gray-500 max-w-[240px]">
           {compileState.status === "compiling"
-            ? "Transforming React Native code for browser..."
-            : "Waiting for .tsx / .js source files..."}
+            ? t("rn.transforming")
+            : t("rn.waitingFiles")}
         </p>
         {compileState.status === "compiling" && (
           <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">

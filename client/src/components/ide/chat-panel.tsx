@@ -2,11 +2,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import { normalizeSteps } from "./chat/chat-utils";
-import { ActionLogLive } from "./chat/action-log";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
 import { TypingIndicator } from "./chat/message-components";
 import { ChatMessageList } from "./chat/ChatMessageList";
@@ -265,24 +263,16 @@ export function ChatPanel() {
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
-    <div className="h-full flex flex-col" data-testid="chat-panel">
-      <div className="flex items-center justify-between gap-2 px-3 h-[34px] border-b border-[rgba(255,255,255,0.04)] shrink-0 text-[11px] font-medium text-[#8888a8]">
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-medium text-foreground" data-testid="text-chat-title">
-            {tGlobal("chat.title")}
-          </span>
-        </div>
-        <Button
-          size="icon" variant="ghost" className="h-6 w-6"
-          onClick={() => setActiveTool(null)}
-          aria-label={tGlobal("chat.close")}
-          data-testid="button-close-chat"
-        >
-          <X className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2" ref={scrollRef}>
+    <div className="h-full flex flex-col bg-[#08080e] relative group/panel" data-testid="chat-panel">
+      <button
+        className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-[#484860] hover:text-[#8888a8] hover:bg-[rgba(255,255,255,0.04)] opacity-0 group-hover/panel:opacity-100 transition-opacity"
+        onClick={() => setActiveTool(null)}
+        aria-label={tGlobal("chat.close")}
+        data-testid="button-close-chat"
+      >
+        <X className="w-3 h-3" />
+      </button>
+      <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-1" ref={scrollRef}>
         <ChatMessageList
           chatMessages={chatMessages}
           managerMessages={managerMessages}
@@ -307,15 +297,13 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 ? (
-          <div className="mx-3 rounded-lg border border-border/30 bg-card/30 overflow-hidden">
-            <ActionLogLive
-              entries={mgrLiveActionLog}
-              thinkingText={mgrLiveThinkingText || undefined}
-              narrationText={mgrLiveNarrationText || undefined}
-            />
-          </div>
-        ) : null)}
+        {(isManagerResponding || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+          <BuildLivePanel
+            entries={mgrLiveActionLog}
+            thinkingText={mgrLiveThinkingText || undefined}
+            narrationText={mgrLiveNarrationText || undefined}
+          />
+        )}
         {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <BuildLivePanel
             entries={liveActionLog}

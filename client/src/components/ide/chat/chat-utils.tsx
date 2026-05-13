@@ -621,7 +621,7 @@ export function renderMarkdown(text: string): React.ReactNode {
     const h1Match = trimmed.match(/^# +(.+)$/);
     if (h1Match) {
       elements.push(
-        <h1 key={`h1-${i}`} className="text-[15px] font-semibold text-foreground mt-3 mb-1">
+        <h1 key={`h1-${i}`} className="text-[14px] font-semibold text-inherit mt-3 mb-1">
           {renderInlineMarkdown(h1Match[1])}
         </h1>
       );
@@ -632,7 +632,7 @@ export function renderMarkdown(text: string): React.ReactNode {
     const h2Match = trimmed.match(/^## +(.+)$/);
     if (h2Match) {
       elements.push(
-        <h2 key={`h2-${i}`} className="text-[13px] font-semibold text-foreground/90 mt-2.5 mb-0.5">
+        <h2 key={`h2-${i}`} className="text-[13px] font-semibold text-inherit/90 mt-2.5 mb-0.5">
           {renderInlineMarkdown(h2Match[1])}
         </h2>
       );
@@ -643,7 +643,7 @@ export function renderMarkdown(text: string): React.ReactNode {
     const h3Match = trimmed.match(/^### +(.+)$/);
     if (h3Match) {
       elements.push(
-        <h3 key={`h3-${i}`} className="text-[12px] font-medium text-foreground/75 uppercase tracking-wide mt-2 mb-0.5">
+        <h3 key={`h3-${i}`} className="text-[12px] font-medium text-inherit/75 uppercase tracking-wide mt-2 mb-0.5">
           {renderInlineMarkdown(h3Match[1])}
         </h3>
       );
@@ -685,7 +685,7 @@ export function renderMarkdown(text: string): React.ReactNode {
     }
 
     elements.push(
-      <p key={`p-${i}`} className="text-[13px] leading-[1.65] text-foreground/90 mb-1">
+      <p key={`p-${i}`} className="text-[13px] leading-[1.65] text-inherit mb-1">
         {renderInlineMarkdown(trimmed)}
       </p>
     );

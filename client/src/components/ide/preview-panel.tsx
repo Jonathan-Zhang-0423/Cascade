@@ -219,18 +219,29 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
         iframeRef.current &&
         e.source === iframeRef.current.contentWindow
       ) {
-        const level = e.data.level;
+        const level = e.data.level as string;
+        const message = String(e.data.message || "");
         if (["log", "warn", "error", "info"].includes(level)) {
-          addConsoleEntry({
-            level,
-            message: String(e.data.message || ""),
-          });
+          addConsoleEntry({ level: level as "log" | "warn" | "error" | "info", message });
+        }
+        // Forward errors/warnings to the active build session so the verifier can see them
+        if ((level === "error" || level === "warn") && projectId) {
+          try {
+            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}`);
+            if (sessionId) {
+              fetch(`/api/build-session/${sessionId}/console-event`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ level, message }),
+              }).catch(() => {});
+            }
+          } catch {}
         }
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addConsoleEntry]);
+  }, [addConsoleEntry, projectId]);
 
   const handleRefresh = () => {
     clearConsole();
@@ -592,6 +603,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             <WeChatPreview
               files={files}
               refreshKey={effectiveRefresh}
+              projectId={projectId}
             />
           ) : (
             <>

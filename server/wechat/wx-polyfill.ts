@@ -1,0 +1,389 @@
+/**
+ * wx.* API polyfill for WeChat Mini Program browser preview.
+ * Exported as an ES module; bundled into wx-vendor.js at server startup.
+ */
+
+// Injected by esbuild define at compile time — unique per project.
+// Falls back to empty string so the polyfill still works when loaded outside
+// the compiler pipeline (e.g. unit tests or the vendor bundle preview).
+declare const __WX_PROJECT_ID__: string;
+const _pid = (typeof __WX_PROJECT_ID__ !== "undefined" && __WX_PROJECT_ID__)
+  ? __WX_PROJECT_ID__ + "_"
+  : "";
+const _key = (k: string) => "wx_" + _pid + k;
+const _pfx = "wx_" + _pid;
+
+let _toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+const WX_FONT = '-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",Arial,sans-serif';
+
+// SVG markup is static (defined here in source), not user-controlled.
+const SVG_SUCCESS = '<svg width="36" height="36" viewBox="0 0 32 32" fill="none"><polyline points="7,16 13,22 25,10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_ERROR = '<svg width="36" height="36" viewBox="0 0 32 32" fill="none"><line x1="9" y1="9" x2="23" y2="23" stroke="#fff" stroke-width="3" stroke-linecap="round"/><line x1="23" y1="9" x2="9" y2="23" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>';
+const SVG_SPINNER = '<svg width="36" height="36" viewBox="0 0 32 32" fill="none" style="animation:__wx_spin__ 0.8s linear infinite"><circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.25)" stroke-width="3"/><path d="M16 4a12 12 0 0 1 12 12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>';
+
+function _ensureOverlayStyles() {
+  if (document.getElementById("__wx_overlay_style__")) return;
+  const s = document.createElement("style");
+  s.id = "__wx_overlay_style__";
+  s.textContent = `
+    @keyframes __wx_spin__ { to { transform: rotate(360deg); } }
+    @keyframes __wx_fade_in__ { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes __wx_toast_in__ { from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+    #__wx_toast__, #__wx_loading__ { animation: __wx_toast_in__ 0.18s ease-out; }
+    #__wx_modal_backdrop__ { animation: __wx_fade_in__ 0.18s ease-out; }
+  `;
+  document.head.appendChild(s);
+}
+
+function _setSvg(el: HTMLElement, svg: string) {
+  // SVG constants above are static; safe to insert as HTML. No user input flows here.
+  el.innerHTML = svg;
+}
+
+function _showToastOverlay(opts: { title?: string; icon?: string; duration?: number; mask?: boolean }) {
+  const title = opts.title ?? "";
+  const icon = opts.icon ?? "success";
+  const duration = opts.duration != null ? opts.duration : 1500;
+  document.getElementById("__wx_toast__")?.remove();
+  document.getElementById("__wx_toast_mask__")?.remove();
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _ensureOverlayStyles();
+  const el = document.createElement("div");
+  el.id = "__wx_toast__";
+  const hasIcon = icon !== "none";
+  const sizing = hasIcon
+    ? "width:120px;height:120px;padding:0;justify-content:center;"
+    : "max-width:80%;padding:12px 20px;min-width:0;";
+  el.style.cssText =
+    "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);" +
+    "background:rgba(17,17,17,0.75);color:#fff;border-radius:8px;" +
+    "display:flex;flex-direction:column;align-items:center;gap:8px;" +
+    "z-index:99999;font-size:14px;line-height:1.4;text-align:center;" +
+    "pointer-events:" + (opts.mask ? "auto" : "none") + ";" +
+    "font-family:" + WX_FONT + ";" + sizing;
+  if (hasIcon) {
+    const iconEl = document.createElement("div");
+    _setSvg(iconEl, icon === "success" ? SVG_SUCCESS : icon === "error" ? SVG_ERROR : SVG_SPINNER);
+    el.appendChild(iconEl);
+  }
+  if (title) {
+    const label = document.createElement("span");
+    label.style.cssText = "font-size:14px;max-width:100px;word-break:break-all;";
+    label.textContent = title;
+    el.appendChild(label);
+  }
+  if (opts.mask) {
+    const backdrop = document.createElement("div");
+    backdrop.id = "__wx_toast_mask__";
+    backdrop.style.cssText = "position:fixed;inset:0;background:transparent;z-index:99998;";
+    document.body.appendChild(backdrop);
+  }
+  document.body.appendChild(el);
+  if (duration > 0) _toastTimer = setTimeout(() => {
+    document.getElementById("__wx_toast__")?.remove();
+    document.getElementById("__wx_toast_mask__")?.remove();
+  }, duration);
+}
+
+function _showLoadingOverlay(title?: string, mask?: boolean) {
+  document.getElementById("__wx_loading__")?.remove();
+  document.getElementById("__wx_loading_mask__")?.remove();
+  _ensureOverlayStyles();
+  const el = document.createElement("div");
+  el.id = "__wx_loading__";
+  el.style.cssText =
+    "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);" +
+    "background:rgba(17,17,17,0.75);color:#fff;border-radius:8px;" +
+    "width:120px;height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;" +
+    "z-index:99999;font-size:14px;text-align:center;" +
+    "pointer-events:" + (mask ? "auto" : "none") + ";" +
+    "font-family:" + WX_FONT + ";";
+  const spinEl = document.createElement("div");
+  _setSvg(spinEl, SVG_SPINNER);
+  el.appendChild(spinEl);
+  const label = document.createElement("span");
+  label.style.cssText = "max-width:100px;word-break:break-all;";
+  label.textContent = title ?? "加载中";
+  el.appendChild(label);
+  if (mask) {
+    const backdrop = document.createElement("div");
+    backdrop.id = "__wx_loading_mask__";
+    backdrop.style.cssText = "position:fixed;inset:0;background:transparent;z-index:99998;";
+    document.body.appendChild(backdrop);
+  }
+  document.body.appendChild(el);
+}
+
+function _showModalOverlay(opts: {
+  title?: string; content?: string; showCancel?: boolean;
+  cancelText?: string; confirmText?: string;
+  cancelColor?: string; confirmColor?: string;
+  success?: (r: { confirm: boolean; cancel: boolean }) => void;
+  complete?: (r: { confirm: boolean; cancel: boolean }) => void;
+}) {
+  _ensureOverlayStyles();
+  const backdrop = document.createElement("div");
+  backdrop.id = "__wx_modal_backdrop__";
+  backdrop.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;font-family:" + WX_FONT + ";";
+  const box = document.createElement("div");
+  box.style.cssText = "background:#fff;border-radius:8px;width:272px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.12);";
+
+  const body = document.createElement("div");
+  body.style.cssText = "padding:24px 20px 20px;text-align:center;";
+  if (opts.title) {
+    const titleEl = document.createElement("div");
+    titleEl.style.cssText = "font-size:17px;font-weight:600;color:#1a1a1a;margin-bottom:" + (opts.content ? "10px" : "0") + ";line-height:1.3;";
+    titleEl.textContent = opts.title;
+    body.appendChild(titleEl);
+  }
+  if (opts.content) {
+    const contentEl = document.createElement("div");
+    contentEl.style.cssText = "font-size:15px;color:#555;line-height:1.45;white-space:pre-wrap;";
+    contentEl.textContent = opts.content;
+    body.appendChild(contentEl);
+  }
+  box.appendChild(body);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;border-top:1px solid rgba(0,0,0,0.1);";
+  const showCancel = opts.showCancel !== false;
+  const cancelColor = opts.cancelColor ?? "#576b95";
+  const confirmColor = opts.confirmColor ?? "#576b95";
+
+  let cancelBtn: HTMLButtonElement | null = null;
+  if (showCancel) {
+    cancelBtn = document.createElement("button");
+    cancelBtn.style.cssText = "flex:1;padding:14px 0;background:transparent;border:none;border-right:1px solid rgba(0,0,0,0.1);font-size:17px;color:" + cancelColor + ";cursor:pointer;font-family:inherit;";
+    cancelBtn.textContent = opts.cancelText ?? "取消";
+    btnRow.appendChild(cancelBtn);
+  }
+  const okBtn = document.createElement("button");
+  okBtn.style.cssText = "flex:1;padding:14px 0;background:transparent;border:none;font-size:17px;color:" + confirmColor + ";font-weight:500;cursor:pointer;font-family:inherit;";
+  okBtn.textContent = opts.confirmText ?? "确定";
+  btnRow.appendChild(okBtn);
+  box.appendChild(btnRow);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  const close = (confirmed: boolean) => {
+    backdrop.remove();
+    const r = { confirm: confirmed, cancel: !confirmed };
+    opts.success?.(r); opts.complete?.(r);
+  };
+  okBtn.onclick = () => close(true);
+  cancelBtn?.addEventListener("click", () => close(false));
+}
+
+function _sysInfo() {
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  return { brand: isIOS ? "Apple" : "Android", model: isIOS ? "iPhone" : "Android Device", pixelRatio: window.devicePixelRatio || 1, screenWidth: window.screen.width, screenHeight: window.screen.height, windowWidth: window.innerWidth, windowHeight: window.innerHeight, statusBarHeight: 20, language: navigator.language || "zh_CN", version: "8.0.0", system: isIOS ? "iOS 16.0" : "Android 12", platform: isIOS ? "ios" : "android", SDKVersion: "3.0.0", fontSizeSetting: 16, safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 }, errMsg: "getSystemInfo:ok" };
+}
+
+type WxOpts = Record<string, unknown> & { success?: (r: unknown) => void; fail?: (r: unknown) => void; complete?: (r: unknown) => void };
+const ok = (opts: WxOpts, extra: Record<string, unknown> = {}) => { const r = { errMsg: "ok", ...extra }; opts.success?.(r); opts.complete?.(r); };
+const fail = (opts: WxOpts, msg: string) => { const r = { errMsg: msg }; opts.fail?.(r); opts.complete?.(r); };
+
+type WxNav = { __wxNavigate?: (u: string) => void; __wxNavigateBack?: (d: number) => void; __wxSwitchTab?: (u: string) => void; __wxApp__?: unknown };
+
+export const wx = {
+  navigateTo(opts: WxOpts & { url?: string }) { try { (window as unknown as WxNav).__wxNavigate?.(opts.url ?? ""); ok(opts, { errMsg: "navigateTo:ok" }); } catch (e: unknown) { fail(opts, "navigateTo:fail " + (e as Error).message); } },
+  redirectTo(opts: WxOpts & { url?: string }) { try { (window as unknown as WxNav).__wxNavigate?.("__redirect__:" + (opts.url ?? "")); ok(opts, { errMsg: "redirectTo:ok" }); } catch (e: unknown) { fail(opts, "redirectTo:fail " + (e as Error).message); } },
+  navigateBack(opts: WxOpts & { delta?: number } = {}) { try { (window as unknown as WxNav).__wxNavigateBack?.(opts.delta ?? 1); ok(opts, { errMsg: "navigateBack:ok" }); } catch (e: unknown) { fail(opts, "navigateBack:fail " + (e as Error).message); } },
+  switchTab(opts: WxOpts & { url?: string }) { try { (window as unknown as WxNav).__wxSwitchTab?.(opts.url ?? ""); ok(opts, { errMsg: "switchTab:ok" }); } catch (e: unknown) { fail(opts, "switchTab:fail " + (e as Error).message); } },
+  reLaunch(opts: WxOpts & { url?: string }) { try { (window as unknown as WxNav).__wxNavigate?.("__relaunch__:" + (opts.url ?? "")); ok(opts, { errMsg: "reLaunch:ok" }); } catch (e: unknown) { fail(opts, "reLaunch:fail " + (e as Error).message); } },
+
+  showToast(opts: WxOpts & { title?: string; icon?: string; duration?: number; mask?: boolean }) { _showToastOverlay(opts); ok(opts, { errMsg: "showToast:ok" }); },
+  hideToast(opts: WxOpts = {}) { document.getElementById("__wx_toast__")?.remove(); document.getElementById("__wx_toast_mask__")?.remove(); ok(opts, { errMsg: "hideToast:ok" }); },
+  showLoading(opts: WxOpts & { title?: string; mask?: boolean }) { _showLoadingOverlay(opts.title as string | undefined, opts.mask as boolean | undefined); ok(opts, { errMsg: "showLoading:ok" }); },
+  hideLoading(opts: WxOpts = {}) { document.getElementById("__wx_loading__")?.remove(); document.getElementById("__wx_loading_mask__")?.remove(); ok(opts, { errMsg: "hideLoading:ok" }); },
+  showModal: _showModalOverlay,
+  showActionSheet(opts: WxOpts & { itemList?: string[]; itemColor?: string }) {
+    const items = (opts.itemList as string[]) ?? [];
+    const itemColor = (opts.itemColor as string) ?? "#000";
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99998;display:flex;align-items:flex-end;font-family:" + WX_FONT + ";";
+    const sheet = document.createElement("div");
+    sheet.style.cssText = "background:#f5f5f5;width:100%;padding:0 8px 8px;";
+    const itemsWrap = document.createElement("div");
+    itemsWrap.style.cssText = "background:#fff;border-radius:12px;overflow:hidden;margin-bottom:8px;";
+    items.forEach((item, i) => {
+      const btn = document.createElement("button");
+      btn.dataset.idx = String(i);
+      btn.style.cssText = "display:block;width:100%;padding:14px;background:#fff;border:none;border-bottom:" + (i < items.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none") + ";font-size:17px;color:" + itemColor + ";cursor:pointer;text-align:center;font-family:inherit;";
+      btn.textContent = item;
+      itemsWrap.appendChild(btn);
+    });
+    const cancelBtn = document.createElement("button");
+    cancelBtn.id = "__wx_sc__";
+    cancelBtn.style.cssText = "display:block;width:100%;padding:14px;background:#fff;border:none;font-size:17px;color:#000;cursor:pointer;text-align:center;border-radius:12px;font-weight:500;font-family:inherit;";
+    cancelBtn.textContent = "取消";
+    sheet.appendChild(itemsWrap); sheet.appendChild(cancelBtn);
+    backdrop.appendChild(sheet); document.body.appendChild(backdrop);
+    itemsWrap.querySelectorAll<HTMLButtonElement>("[data-idx]").forEach((btn) => { btn.onclick = () => { backdrop.remove(); opts.success?.({ tapIndex: parseInt(btn.dataset.idx!, 10) }); }; });
+    cancelBtn.onclick = () => { backdrop.remove(); opts.fail?.({ errMsg: "showActionSheet:fail cancel" }); };
+    backdrop.onclick = (e) => { if (e.target === backdrop) { backdrop.remove(); opts.fail?.({ errMsg: "showActionSheet:fail cancel" }); } };
+  },
+  showNavigationBarLoading() {}, hideNavigationBarLoading() {},
+  setNavigationBarTitle(opts: WxOpts & { title?: string }) { if (opts.title) document.title = opts.title as string; },
+  setNavigationBarColor() {}, setTabBarBadge() {}, removeTabBarBadge() {}, showTabBarRedDot() {}, hideTabBarRedDot() {}, showTabBar() {}, hideTabBar() {},
+  startPullDownRefresh(opts: WxOpts = {}) { ok(opts, { errMsg: "startPullDownRefresh:ok" }); },
+  stopPullDownRefresh(opts: WxOpts = {}) {
+    // PageRenderer installs __stopPullDownRefresh on the current page instance.
+    try {
+      const pages = (window as unknown as { getCurrentPages?: () => Array<Record<string, unknown>> }).getCurrentPages?.();
+      const top = pages && pages[pages.length - 1];
+      (top?.__stopPullDownRefresh as (() => void) | null)?.();
+    } catch {}
+    ok(opts, { errMsg: "stopPullDownRefresh:ok" });
+  },
+
+  request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string> }) {
+    const url = opts.url ?? "";
+    const method = ((opts.method as string) ?? "GET").toUpperCase();
+    const data = opts.data;
+    const header: Record<string, string> = (opts.header as Record<string, string>) ?? {};
+    let body: string | undefined;
+    if (data && method !== "GET" && method !== "HEAD") {
+      header["Content-Type"] = header["Content-Type"] ?? "application/json";
+      body = typeof data === "object" ? JSON.stringify(data) : String(data);
+    }
+    const fetchUrl = method === "GET" && data && typeof data === "object" ? url + "?" + new URLSearchParams(data as Record<string, string>).toString() : url;
+    fetch(fetchUrl, { method, headers: header, body })
+      .then((res) => res.text().then((text) => {
+        let responseData: unknown; try { responseData = JSON.parse(text); } catch { responseData = text; }
+        const r = { data: responseData, statusCode: res.status, header: {}, errMsg: "request:ok" };
+        opts.success?.(r); opts.complete?.(r);
+      }))
+      .catch((err: Error) => { const r = { errMsg: "request:fail " + err.message }; opts.fail?.(r); opts.complete?.(r); });
+    return { abort() {} };
+  },
+
+  setStorage(opts: WxOpts & { key?: string; data?: unknown }) { try { localStorage.setItem(_key(opts.key!), JSON.stringify(opts.data)); ok(opts, { errMsg: "setStorage:ok" }); } catch (e: unknown) { fail(opts, "setStorage:fail " + (e as Error).message); } },
+  setStorageSync(key: string, data: unknown) { try { localStorage.setItem(_key(key), JSON.stringify(data)); } catch {} },
+  getStorage(opts: WxOpts & { key?: string }) { try { const raw = localStorage.getItem(_key(opts.key!)); if (raw === null) throw new Error("data not found"); ok(opts, { data: JSON.parse(raw), errMsg: "getStorage:ok" }); } catch (e: unknown) { fail(opts, "getStorage:fail " + (e as Error).message); } },
+  getStorageSync(key: string): unknown { try { return JSON.parse(localStorage.getItem(_key(key)) ?? "null"); } catch { return null; } },
+  removeStorage(opts: WxOpts & { key?: string }) { localStorage.removeItem(_key(opts.key!)); ok(opts, { errMsg: "removeStorage:ok" }); },
+  removeStorageSync(key: string) { localStorage.removeItem(_key(key)); },
+  clearStorage(opts: WxOpts = {}) { Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).forEach((k) => localStorage.removeItem(k)); ok(opts, { errMsg: "clearStorage:ok" }); },
+  clearStorageSync() { Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).forEach((k) => localStorage.removeItem(k)); },
+  getStorageInfo(opts: WxOpts = {}) { const keys = Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length)); ok(opts, { keys, currentSize: 0, limitSize: 10240, errMsg: "getStorageInfo:ok" }); },
+  getStorageInfoSync() { return { keys: Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length)), currentSize: 0, limitSize: 10240 }; },
+
+  getSystemInfo(opts: WxOpts = {}) { ok(opts, _sysInfo()); },
+  getSystemInfoSync: _sysInfo,
+  getWindowInfo: _sysInfo,
+  getNetworkType(opts: WxOpts = {}) { ok(opts, { networkType: navigator.onLine ? "wifi" : "none", errMsg: "getNetworkType:ok" }); },
+  onNetworkStatusChange(cb: (r: { isConnected: boolean; networkType: string }) => void) { window.addEventListener("online", () => cb({ isConnected: true, networkType: "wifi" })); window.addEventListener("offline", () => cb({ isConnected: false, networkType: "none" })); },
+  offNetworkStatusChange() {},
+  vibrateLong(opts: WxOpts = {}) { navigator.vibrate?.(400); ok(opts, {}); },
+  vibrateShort(opts: WxOpts = {}) { navigator.vibrate?.(15); ok(opts, {}); },
+  getBatteryInfo(opts: WxOpts = {}) { ok(opts, { level: 100, isCharging: true, errMsg: "getBatteryInfo:ok" }); },
+
+  setClipboardData(opts: WxOpts & { data?: string }) { if (navigator.clipboard) { navigator.clipboard.writeText(opts.data ?? "").then(() => ok(opts, { errMsg: "setClipboardData:ok" })).catch((e: Error) => fail(opts, "setClipboardData:fail " + e)); } else { ok(opts, { errMsg: "setClipboardData:ok" }); } },
+  getClipboardData(opts: WxOpts = {}) { if (navigator.clipboard) { navigator.clipboard.readText().then((t) => ok(opts, { data: t, errMsg: "getClipboardData:ok" })).catch((e: Error) => fail(opts, "getClipboardData:fail " + e)); } else { fail(opts, "getClipboardData:fail"); } },
+
+  getLocation(opts: WxOpts = {}) { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition((p) => ok(opts, { latitude: p.coords.latitude, longitude: p.coords.longitude, speed: p.coords.speed ?? 0, accuracy: p.coords.accuracy, errMsg: "getLocation:ok" }), (e) => fail(opts, "getLocation:fail " + e.message)); } else { fail(opts, "getLocation:fail"); } },
+  chooseLocation(opts: WxOpts = {}) { fail(opts, "chooseLocation:fail not supported in preview"); },
+  openLocation() {}, onLocationChange() {}, offLocationChange() {}, startLocationUpdate() {}, stopLocationUpdate() {},
+
+  chooseImage(opts: WxOpts & { count?: number } = {}) { const input = document.createElement("input"); input.type = "file"; input.accept = "image/*"; if ((opts.count ?? 9) > 1) input.multiple = true; input.onchange = () => { const files = Array.from(input.files ?? []); const paths = files.map((f) => URL.createObjectURL(f)); ok(opts, { tempFilePaths: paths, tempFiles: files.map((f, i) => ({ path: paths[i], size: f.size })), errMsg: "chooseImage:ok" }); }; input.click(); },
+  chooseVideo(opts: WxOpts = {}) { const input = document.createElement("input"); input.type = "file"; input.accept = "video/*"; input.onchange = () => { const f = input.files?.[0]; if (f) ok(opts, { tempFilePath: URL.createObjectURL(f), size: f.size, errMsg: "chooseVideo:ok" }); }; input.click(); },
+  previewImage(opts: WxOpts & { current?: string; urls?: string[] } = {}) { const lb = document.createElement("div"); lb.style.cssText = "position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;"; const img = document.createElement("img"); img.src = opts.current ?? opts.urls?.[0] ?? ""; img.style.cssText = "max-width:100%;max-height:100%;object-fit:contain;"; lb.appendChild(img); lb.onclick = () => lb.remove(); document.body.appendChild(lb); ok(opts, { errMsg: "previewImage:ok" }); },
+  saveImageToPhotosAlbum(opts: WxOpts = {}) { fail(opts, "saveImageToPhotosAlbum:fail not supported in preview"); },
+
+  createCanvasContext(id: string) { const c = document.getElementById(id) as HTMLCanvasElement | null; return c ? c.getContext("2d") : { draw() {} }; },
+  canvasToTempFilePath(opts: WxOpts & { canvasId?: string } = {}) { const c = document.getElementById(opts.canvasId ?? "") as HTMLCanvasElement | null; if (c) ok(opts, { tempFilePath: c.toDataURL(), errMsg: "canvasToTempFilePath:ok" }); else fail(opts, "canvasToTempFilePath:fail"); },
+
+  login(opts: WxOpts = {}) { ok(opts, { code: "PREVIEW_CODE_" + Date.now(), errMsg: "login:ok" }); },
+  checkSession(opts: WxOpts = {}) { ok(opts, { errMsg: "checkSession:ok" }); },
+  getUserInfo(opts: WxOpts = {}) { ok(opts, { userInfo: { nickName: "Preview User", avatarUrl: "", gender: 0, country: "", province: "", city: "", language: "zh_CN" }, errMsg: "getUserInfo:ok" }); },
+  getUserProfile(opts: WxOpts = {}) { wx.getUserInfo(opts); },
+  authorize(opts: WxOpts = {}) { ok(opts, { errMsg: "authorize:ok" }); },
+  openSetting(opts: WxOpts = {}) { ok(opts, { authSetting: {}, errMsg: "openSetting:ok" }); },
+  getSetting(opts: WxOpts = {}) { ok(opts, { authSetting: {}, errMsg: "getSetting:ok" }); },
+  requestPayment(opts: WxOpts = {}) { _showModalOverlay({ title: "支付", content: "支付在预览环境中不可用。", showCancel: false, confirmText: "确定" }); fail(opts, "requestPayment:fail not supported in preview"); },
+  showShareMenu() {}, hideShareMenu() {}, updateShareMenu() {},
+  getShareInfo(opts: WxOpts = {}) { ok(opts, { errMsg: "getShareInfo:ok", encryptedData: "", iv: "", cloudID: "" }); },
+  nextTick(cb: () => void) { setTimeout(cb, 0); },
+  reportMonitor() {}, reportAnalytics() {}, reportEvent() {},
+  canIUse() { return true; },
+  env: { USER_DATA_PATH: "wxfile://usr" },
+  base64ToArrayBuffer(str: string) { const binary = atob(str); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes.buffer; },
+  arrayBufferToBase64(buf: ArrayBuffer) { const bytes = new Uint8Array(buf); let binary = ""; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); },
+
+  createSelectorQuery() {
+    type FieldsOpts = { id?: boolean; dataset?: boolean; rect?: boolean; size?: boolean; scrollOffset?: boolean; node?: boolean; properties?: string[]; computedStyle?: string[] };
+    type Q = { sel: string | null; all: boolean; vp: boolean; type: string; cb?: (r: unknown) => void; opts?: FieldsOpts };
+    const queries: Q[] = [];
+    const query = {
+      select(s: string) { return this._q(s, false, false); },
+      selectAll(s: string) { return this._q(s, true, false); },
+      selectViewport() { return this._q(null, false, true); },
+      _q(sel: string | null, all: boolean, vp: boolean) {
+        const m = {
+          boundingClientRect(cb?: (r: unknown) => void) { queries.push({ sel, all, vp, type: "rect", cb }); return m; },
+          scrollOffset(cb?: (r: unknown) => void) { queries.push({ sel, all, vp, type: "scroll", cb }); return m; },
+          fields(opts: FieldsOpts, cb?: (r: unknown) => void) { queries.push({ sel, all, vp, type: "fields", cb, opts }); return m; },
+          exec(cb?: (r: unknown[]) => void) { return query.exec(cb); },
+        };
+        return m;
+      },
+      exec(cb?: (r: unknown[]) => void) {
+        const results = queries.map((q) => {
+          if (q.type === "rect") {
+            if (q.vp) { const r = { width: window.innerWidth, height: window.innerHeight }; q.cb?.(r); return r; }
+            const result = q.all
+              ? Array.from(document.querySelectorAll(q.sel ?? "")).map((e) => e.getBoundingClientRect())
+              : (document.querySelector(q.sel ?? "") as Element | null)?.getBoundingClientRect() ?? null;
+            q.cb?.(result); return result;
+          }
+          if (q.type === "scroll") {
+            if (q.vp) { const r = { scrollLeft: window.scrollX, scrollTop: window.scrollY, scrollWidth: document.body.scrollWidth, scrollHeight: document.body.scrollHeight, width: window.innerWidth, height: window.innerHeight }; q.cb?.(r); return r; }
+            const el = document.querySelector(q.sel ?? "") as Element | null;
+            const r = el ? { scrollLeft: el.scrollLeft, scrollTop: el.scrollTop } : null;
+            q.cb?.(r); return r;
+          }
+          // fields query — honor opts.{node, size, rect, scrollOffset, id, dataset}
+          const opts = q.opts ?? {};
+          const buildFields = (el: Element): Record<string, unknown> => {
+            const rect = el.getBoundingClientRect();
+            const out: Record<string, unknown> = {};
+            if (opts.id) out.id = el.id;
+            if (opts.node) out.node = el;
+            if (opts.size) { out.width = rect.width; out.height = rect.height; }
+            if (opts.rect) { out.left = rect.left; out.top = rect.top; out.right = rect.right; out.bottom = rect.bottom; }
+            if (opts.scrollOffset) { out.scrollLeft = (el as HTMLElement).scrollLeft; out.scrollTop = (el as HTMLElement).scrollTop; }
+            if (opts.dataset) {
+              const ds: Record<string, string> = {};
+              for (const a of Array.from(el.attributes)) if (a.name.startsWith("data-")) ds[a.name.slice(5).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = a.value;
+              out.dataset = ds;
+            }
+            return out;
+          };
+          if (q.vp) { const r = { width: window.innerWidth, height: window.innerHeight }; q.cb?.(r); return r; }
+          if (q.all) {
+            const els = Array.from(document.querySelectorAll(q.sel ?? ""));
+            const r = els.map(buildFields);
+            q.cb?.(r); return r;
+          }
+          const el = document.querySelector(q.sel ?? "") as Element | null;
+          const r = el ? buildFields(el) : null;
+          q.cb?.(r); return r;
+        });
+        cb?.(results);
+      },
+    };
+    return query;
+  },
+
+  getFileSystemManager() {
+    const noop = (opts: WxOpts) => fail(opts, "not supported in preview");
+    return { readFile: noop, writeFile: noop, readdir: noop, mkdir: (opts: WxOpts) => ok(opts, {}), stat: noop, saveFile: (opts: WxOpts & { tempFilePath?: string }) => ok(opts, { savedFilePath: opts.tempFilePath }), getSavedFileList: (opts: WxOpts) => ok(opts, { fileList: [] }) };
+  },
+};
+
+(window as unknown as { wx: typeof wx }).wx = wx;
+(window as unknown as { getCurrentPages: () => unknown[] }).getCurrentPages = () => [];
+(window as unknown as { getApp: () => unknown }).getApp = () => (window as unknown as WxNav).__wxApp__ ?? {};

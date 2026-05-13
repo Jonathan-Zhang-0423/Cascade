@@ -47,10 +47,17 @@ export function getCompileCheck(framework: Framework): CompileCheck | null {
           "Compiles all Kotlin sources. Fix any compilation errors (missing imports, type mismatches, unresolved references).",
       };
     case "swiftui":
-    case "wechat":
-      // No standard CLI compile check available in our sandbox.
-      // Rely on LSP diagnostics and verifier review.
       return null;
+    case "wechat":
+      // The wechat-web-compiler (esbuild + WXML parser) surfaces structural errors
+      // (missing pages, unclosed WXML tags, bad app.json) at build time.
+      // The agent can trigger a preview rebuild via the shell and check for errors.
+      return {
+        command: "curl -sf -X POST http://localhost:5000/api/compile/wechat-web -H 'Content-Type: application/json' -d '{\"files\":[]}' | node -e \"const d=require('fs').readFileSync('/dev/stdin','utf8');const r=JSON.parse(d);if(!r.success)process.exit(1);\"",
+        label: "wechat preview build",
+        guidance:
+          "Triggers the WeChat preview compiler. A non-zero exit means the WXML/JS has structural errors (missing pages in app.json, unclosed tags, etc.). Fix reported errors before proceeding.",
+      };
     default:
       return null;
   }

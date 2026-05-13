@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useIDEStore, type AIProvider } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -10,15 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ArrowUp,
-  Lightbulb,
-  Check,
-  Loader2,
-  Square,
-} from "lucide-react";
+import { ArrowUp, Square, Check, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentStatusLine, type AgentStatus } from "./AgentStatusLine";
+import { type AgentStatus } from "./AgentStatusLine";
 
 interface ProviderFlags {
   doubao: boolean;
@@ -41,6 +34,26 @@ interface ChatInputAreaProps {
   onSmartResponse: () => void;
   onToggleMode: () => void;
 }
+
+const STATUS_COLORS: Record<Exclude<AgentStatus, null>, string> = {
+  planning: "#4f82ff",
+  preparing: "#818cf8",
+  thinking: "#818cf8",
+  working: "#f59e0b",
+  verifying: "#34d68a",
+  fixing: "#f97316",
+  reconnecting: "#f59e0b",
+};
+
+const STATUS_LABELS: Record<Exclude<AgentStatus, null>, string> = {
+  planning: "planning",
+  preparing: "preparing",
+  thinking: "thinking",
+  working: "working",
+  verifying: "verifying",
+  fixing: "fixing",
+  reconnecting: "reconnecting",
+};
 
 export function ChatInputArea({
   input,
@@ -66,8 +79,6 @@ export function ChatInputArea({
     pendingConfirmation,
     selectedProvider,
     setSelectedProvider,
-    chatMessages,
-    managerMessages,
   } = useIDEStore();
 
   const tGlobal = useT();
@@ -77,19 +88,38 @@ export function ChatInputArea({
     if (!el) return;
     el.style.height = "auto";
     const lineHeight = parseInt(getComputedStyle(el).lineHeight) || 20;
-    el.style.height = Math.min(el.scrollHeight, lineHeight * 10) + "px";
+    el.style.height = Math.min(el.scrollHeight, lineHeight * 8) + "px";
   }, [input]);
 
-  const hasAssistantMsg =
-    chatMode === "manager"
-      ? managerMessages.some((m) => m.role === "assistant")
-      : chatMessages.some((m) => m.role === "assistant");
+  const borderColor = agentStatus
+    ? STATUS_COLORS[agentStatus]
+    : inputFocused
+      ? "rgba(79,130,255,0.4)"
+      : "rgba(255,255,255,0.08)";
 
   return (
-    <div className="px-2 pb-2 pt-1.5 border-t border-border/50 shrink-0">
+    <div className="px-2.5 pb-2.5 pt-1 shrink-0">
+      {/* Status line — only when agent is active */}
       {agentStatus && (
-        <AgentStatusLine status={agentStatus} elapsed={elapsed} />
+        <div
+          className="flex items-center gap-1.5 px-1 pb-1.5 font-mono text-[10px]"
+          style={{ color: STATUS_COLORS[agentStatus] }}
+        >
+          <span
+            className="w-[5px] h-[5px] rounded-full shrink-0"
+            style={{
+              backgroundColor: STATUS_COLORS[agentStatus],
+              animation: "pulse 1.5s ease-in-out infinite",
+            }}
+          />
+          <span>{STATUS_LABELS[agentStatus]}</span>
+          {typeof elapsed === "number" && elapsed >= 2 && (
+            <span style={{ opacity: 0.5 }}>· {elapsed}s</span>
+          )}
+        </div>
       )}
+
+      {/* Input box */}
       <div
         ref={inputBoxRef}
         onFocus={() => setInputFocused(true)}
@@ -100,13 +130,12 @@ export function ChatInputArea({
             }
           }, 0);
         }}
-        className={cn(
-          "rounded-lg border border-l-4 overflow-hidden transition-all",
-          inputFocused
-            ? "border-[#4f82ff]/30 border-l-[#4f82ff] ring-2 ring-[#4f82ff]/40 shadow-lg bg-[#0c0c14]"
-            : "border-[rgba(255,255,255,0.07)] border-l-[#4f82ff] bg-[#0c0c14]",
-        )}
-        style={inputFocused ? { backgroundImage: "linear-gradient(135deg, rgba(79,130,255,0.02) 0%, transparent 100%)" } : {}}
+        className="rounded-md overflow-hidden transition-colors"
+        style={{
+          background: "#0a0a12",
+          border: "1px solid rgba(255,255,255,0.05)",
+          borderLeft: `3px solid ${borderColor}`,
+        }}
       >
         <Textarea
           ref={textareaRef}
@@ -127,12 +156,15 @@ export function ChatInputArea({
                   ? tGlobal("chat.placeholderStartBuild")
                   : tGlobal("chat.placeholderDefault")
           }
-          className="resize-none text-[13px] min-h-[60px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-3 pb-1"
+          className="resize-none !text-[13px] min-h-[38px] max-h-[160px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-2.5 pb-1"
           data-testid="input-chat"
         />
-        <div className="flex items-center gap-2 px-2 pb-2">
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-1.5 px-2 pb-1.5">
+          {/* Plan mode toggle */}
           <button
-            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[rgba(79,130,255,0.08)] transition-colors group"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors"
             onClick={onToggleMode}
             data-testid="toggle-plan-mode"
             title={
@@ -143,103 +175,98 @@ export function ChatInputArea({
           >
             <div
               className={cn(
-                "w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0",
+                "w-3 h-3 rounded-sm border flex items-center justify-center shrink-0",
                 chatMode === "manager"
-                  ? "bg-primary border-primary"
-                  : "border-[#484860] group-hover:border-[#8888a8]",
+                  ? "bg-[#4f82ff] border-[#4f82ff]"
+                  : "border-[rgba(255,255,255,0.15)]",
               )}
             >
               {chatMode === "manager" && (
-                <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                <Check className="w-2 h-2 text-white" />
               )}
             </div>
-            <span className="text-[12px] text-[#8888a8] font-medium group-hover:text-foreground transition-colors">
-              {tGlobal("chat.planMode")}
+            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">
+              plan
             </span>
           </button>
+
+          {/* Provider selector */}
           <Select
             value={selectedProvider}
             onValueChange={(v) => setSelectedProvider(v as AIProvider)}
-            data-testid="select-model-provider"
           >
             <SelectTrigger
-              className="h-7 w-auto gap-1 border-0 bg-transparent px-1.5 py-0 text-[11px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0 hover:bg-[rgba(79,130,255,0.08)] text-[#8888a8] hover:text-foreground transition-colors [&>svg]:w-2.5 [&>svg]:h-2.5"
+              className="h-5 w-auto gap-0.5 border-0 bg-transparent px-1 py-0 text-[9px] font-mono shadow-none focus:ring-0 focus:ring-offset-0 text-[rgba(238,238,246,0.35)] hover:text-[rgba(238,238,246,0.6)] transition-colors [&>svg]:w-2 [&>svg]:h-2"
               data-testid="select-model-provider"
             >
               <SelectValue>
-                <span
-                  className={cn(
-                    "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors",
-                    selectedProvider === "kimi"
-                      ? "bg-violet-900/40 border-violet-500 text-violet-300"
-                      : selectedProvider === "minimax"
-                        ? "bg-emerald-900/40 border-emerald-500 text-emerald-300"
-                        : selectedProvider === "glm"
-                          ? "bg-sky-900/40 border-sky-500 text-sky-300"
-                          : "bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.12)] text-[#8888a8]",
-                  )}
-                >
+                <span className="font-mono text-[9px]">
                   {selectedProvider === "kimi"
-                    ? "Kimi K2.5"
+                    ? "kimi"
                     : selectedProvider === "minimax"
-                      ? "MiniMax M2.7"
+                      ? "minimax"
                       : selectedProvider === "glm"
-                        ? "GLM-5"
-                        : "Doubao"}
+                        ? "glm"
+                        : "doubao"}
                 </span>
               </SelectValue>
             </SelectTrigger>
-            <SelectContent align="end" className="min-w-[140px]">
-              <SelectItem value="doubao" className="text-xs">
-                Doubao
+            <SelectContent align="end" className="min-w-[100px]">
+              <SelectItem value="doubao" className="text-xs font-mono">
+                doubao
               </SelectItem>
               {providers.kimi && (
-                <SelectItem value="kimi" className="text-xs">
-                  Kimi K2.5
+                <SelectItem value="kimi" className="text-xs font-mono">
+                  kimi
                 </SelectItem>
               )}
               {providers.minimax && (
-                <SelectItem value="minimax" className="text-xs">
-                  MiniMax M2.7
+                <SelectItem value="minimax" className="text-xs font-mono">
+                  minimax
                 </SelectItem>
               )}
               {providers.glm && (
-                <SelectItem value="glm" className="text-xs">
-                  GLM-5
+                <SelectItem value="glm" className="text-xs font-mono">
+                  glm
                 </SelectItem>
               )}
             </SelectContent>
           </Select>
-          <div className="flex-1" />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 rounded-lg shrink-0 hover:bg-[rgba(79,130,255,0.12)] hover:text-[#4f82ff] transition-colors"
+
+          {/* Smart Response button */}
+          <button
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors disabled:opacity-30 disabled:cursor-default"
             onClick={onSmartResponse}
-            disabled={isBusy || smartResponseLoading || !hasAssistantMsg}
-            title={tGlobal("chat.smartResponse")}
-            data-testid="button-smart-response"
+            disabled={smartResponseLoading || isBusy}
+            title="Smart Response — let AI suggest a reply"
           >
             {smartResponseLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
             ) : (
-              <Lightbulb className="w-4 h-4" />
+              <Sparkles className="w-3 h-3 text-[rgba(238,238,246,0.4)]" />
             )}
-          </Button>
+            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">suggest</span>
+          </button>
+
+          <div className="flex-1" />
+
+          {/* Send / Stop button */}
           {isBusy ? (
-            <Button
-              size="icon"
-              variant="destructive"
-              className="h-8 w-8 rounded-lg shrink-0 shadow-[0_2px_8px_rgba(239,68,68,0.25)]"
+            <button
+              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 bg-[#ef4444] hover:bg-[#dc2626] transition-colors"
               onClick={onStop}
               data-testid="button-stop-chat"
             >
-              <Square className="w-3.5 h-3.5 fill-current" />
-            </Button>
+              <Square className="w-2.5 h-2.5 fill-white text-white" />
+            </button>
           ) : (
-            <Button
-              size="icon"
-              className="h-8 w-8 rounded-lg shrink-0 bg-gradient-to-br from-[#4f82ff] to-[#2563eb] hover:from-[#5fa3ff] hover:to-[#3a7bed] border-0 shadow-[0_2px_8px_rgba(79,130,255,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all"
+            <button
+              className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                input.trim() || (chatMode === "build" && managerPlan && !isExecuting)
+                  ? "bg-[#4f82ff] hover:bg-[#3a6ee8] text-white"
+                  : "bg-[rgba(255,255,255,0.06)] text-[rgba(238,238,246,0.25)] cursor-default",
+              )}
               onClick={onSend}
               disabled={
                 !input.trim() &&
@@ -247,8 +274,8 @@ export function ChatInputArea({
               }
               data-testid="button-send-chat"
             >
-              <ArrowUp className="w-4 h-4" />
-            </Button>
+              <ArrowUp className="w-3 h-3" />
+            </button>
           )}
         </div>
       </div>

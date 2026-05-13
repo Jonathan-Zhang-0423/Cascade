@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
+import { useT } from "@/lib/i18n";
 
 type ExperienceLevel = "beginner" | "intermediate" | "advanced";
 
-const LEVEL_OPTIONS: Array<{ value: ExperienceLevel; label: string; description: string }> = [
-  { value: "beginner", label: "Beginner", description: "I'm new to coding or just getting started" },
-  { value: "intermediate", label: "Intermediate", description: "I can build projects but still learning best practices" },
-  { value: "advanced", label: "Advanced", description: "I write production code and know my way around a codebase" },
-];
-
 export default function OnboardingPage() {
+  const t = useT();
   const [, setLocation] = useLocation();
   const setUserId = useIDEStore((s) => s.setUserId);
   const setUsername = useIDEStore((s) => s.setUsername);
   const [level, setLevel] = useState<ExperienceLevel>("intermediate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const LEVEL_OPTIONS: Array<{ value: ExperienceLevel; label: string; description: string }> = [
+    { value: "beginner", label: t("onboarding.beginnerLabel"), description: t("onboarding.beginnerDesc") },
+    { value: "intermediate", label: t("onboarding.intermediateLabel"), description: t("onboarding.intermediateDesc") },
+    { value: "advanced", label: t("onboarding.advancedLabel"), description: t("onboarding.advancedDesc") },
+  ];
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -29,7 +31,7 @@ export default function OnboardingPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Something went wrong");
+        setError(data.error ?? t("onboarding.genericError"));
         return;
       }
       const data = await res.json();
@@ -45,9 +47,9 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-[#080810] flex items-center justify-center">
       <div className="w-full max-w-md bg-[#0d1525] border border-[rgba(255,255,255,0.08)] rounded-2xl p-8 shadow-2xl">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-white">One quick question</h1>
+          <h1 className="text-2xl font-bold text-white">{t("onboarding.title")}</h1>
           <p className="mt-2 text-sm text-[rgba(255,255,255,0.4)]">
-            This helps us tailor the AI's guidance to your experience level.
+            {t("onboarding.subtitle")}
           </p>
         </div>
 
@@ -83,7 +85,7 @@ export default function OnboardingPage() {
           disabled={loading}
           className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40"
         >
-          {loading ? "Saving…" : "Get started"}
+          {loading ? t("onboarding.saving") : t("onboarding.getStarted")}
         </button>
       </div>
     </div>
