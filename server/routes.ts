@@ -2425,6 +2425,43 @@ Generate the cascade.md content for this project based on both the plan and the 
     console.warn("[wx-web] Vendor bundle build failed at startup:", err?.message);
   });
 
+  // WeChat project export — downloads the source tree as a ZIP that can be
+  // opened directly in Tencent WeChat Developer Tools for 100%-faithful preview.
+  app.get("/api/projects/:id/export-wechat", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+      const files = await storage.getProjectFiles(req.params.id);
+      if (!files || files.length === 0) { res.status(404).json({ error: "No files found" }); return; }
+
+      const safeName = (project.name ?? "miniprogram").replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, "_").slice(0, 40);
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}.zip"`);
+
+      const archive = archiver("zip", { zlib: { level: 6 } });
+      archive.on("error", (err: Error) => {
+        console.error("[wx-export] archive error:", err);
+        if (!res.headersSent) res.status(500).json({ error: "Failed to create archive" });
+      });
+      archive.pipe(res);
+
+      for (const file of files) {
+        // Strip /project/ prefix — the ZIP root IS the mini-program root.
+        let rel = file.path.replace(/^\/project\//, "");
+        if (!rel) continue;
+        // Sanitise path segments.
+        rel = rel.split("/").filter((s) => s && s !== ".." && s !== ".").join("/");
+        if (!rel) continue;
+        archive.append(file.content, { name: rel });
+      }
+
+      await archive.finalize();
+    } catch (err: any) {
+      console.error("[wx-export]", err?.message || err);
+      if (!res.headersSent) res.status(500).json({ error: err?.message || "Export failed" });
+    }
+  });
+
   // === AUTH ===
 
   app.post("/api/auth/register", async (req, res) => {

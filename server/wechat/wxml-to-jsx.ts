@@ -577,6 +577,11 @@ function buildElement(el: Element, tag: string, attribs: Record<string, string>,
     // Skip wx: directives (handled above)
     if (name.startsWith("wx:")) continue;
 
+    // generic:xxx="comp-name" — WeChat custom-component generics.
+    // In preview we can't dynamically resolve the component, so we skip
+    // the attribute silently (the component renders its default slot).
+    if (name.startsWith("generic:")) continue;
+
     // Event attributes
     const evtProp = mapEventAttr(name);
     if (evtProp) {

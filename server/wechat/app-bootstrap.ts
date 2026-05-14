@@ -96,6 +96,35 @@ function createPageInst(pagePath: string, options: Record<string, string> = {}) 
   const cfg = entry.factory?.() ?? {};
   const data = Object.assign({}, cfg.data ?? {});
   let _setData: ((d: Record<string, unknown>) => void) | null = null;
+
+  // Build observer map from cfg.observers: { 'field.**': fn, 'a, b': fn }
+  // Keys may be comma-separated paths; '**' means any change to the object.
+  type ObserverEntry = { paths: string[]; fn: Function };
+  const observers: ObserverEntry[] = [];
+  if (cfg.observers && typeof cfg.observers === "object") {
+    for (const [key, fn] of Object.entries(cfg.observers as Record<string, unknown>)) {
+      if (typeof fn !== "function") continue;
+      const paths = key.split(",").map((p) => p.trim()).filter(Boolean);
+      observers.push({ paths, fn });
+    }
+  }
+
+  // Check if a changed key matches an observer path.
+  // Supports exact match, wildcard (**), and dot-path prefix matching.
+  function matchesObserver(changedKey: string, observerPath: string): boolean {
+    if (observerPath === "**") return true;
+    const op = observerPath.replace(/\.\*\*$/, "");
+    return changedKey === op || changedKey.startsWith(op + ".") || op.startsWith(changedKey + ".");
+  }
+
+  // Get a nested value from data by dot-path (e.g. "user.name").
+  function getByPath(obj: Record<string, unknown>, path: string): unknown {
+    return path.split(".").reduce((cur: unknown, k) => {
+      if (cur == null || typeof cur !== "object") return undefined;
+      return (cur as Record<string, unknown>)[k];
+    }, obj);
+  }
+
   const inst: Record<string, unknown> = {
     data,
     route: pagePath,
@@ -103,6 +132,18 @@ function createPageInst(pagePath: string, options: Record<string, string> = {}) 
       Object.assign(this.data as object, obj);
       _setData?.(Object.assign({}, this.data as object));
       cb?.();
+      // Fire observers for any changed key.
+      if (observers.length > 0) {
+        const changedKeys = Object.keys(obj);
+        for (const { paths, fn } of observers) {
+          const matched = paths.some((p) => changedKeys.some((k) => matchesObserver(k, p)));
+          if (matched) {
+            // Pass current values for each observed path as arguments.
+            const args = paths.map((p) => getByPath(this.data as Record<string, unknown>, p.replace(/\.\*\*$/, "")));
+            try { fn.apply(inst, args); } catch (e) { console.error("[observer]", e); }
+          }
+        }
+      }
     },
     __bindSetData(fn: (d: Record<string, unknown>) => void) { _setData = fn; },
   };

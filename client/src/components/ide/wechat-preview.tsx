@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { AlertTriangle, Wand2, FileCode } from "lucide-react";
+import { AlertTriangle, Wand2, FileCode, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type FileNode, flattenFiles, useIDEStore } from "@/stores/ide-store";
 import { CodePreview } from "./code-preview";
@@ -214,6 +214,23 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
           <div className="w-2 h-2 rounded-full bg-[#07c160] animate-pulse" />
           <span className="text-[10px] text-[#07c160] font-medium">{t("wechat.livePreview")}</span>
           <div className="flex-1" />
+          {projectId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-[10px] text-gray-400 hover:text-gray-200"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = `/api/projects/${projectId}/export-wechat`;
+                a.download = "";
+                a.click();
+              }}
+              title={t("wechat.exportTooltip")}
+            >
+              <Download className="w-3 h-3 mr-1" />
+              {t("wechat.export")}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"

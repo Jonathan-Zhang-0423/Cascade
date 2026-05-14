@@ -316,6 +316,8 @@ const zh: Dict = {
   "wechat.waitingFiles": "等待 .wxml / .js 源文件...",
   "wechat.moreWarnings": "还有 {n} 条提示…",
   "wechat.dismissWarnings": "关闭提示",
+  "wechat.export": "导出",
+  "wechat.exportTooltip": "下载 ZIP，在微信开发者工具中打开以获得完整保真度预览",
 };
 
 const en: Dict = {
@@ -632,6 +634,8 @@ const en: Dict = {
   "wechat.waitingFiles": "Waiting for .wxml / .js source files...",
   "wechat.moreWarnings": "+{n} more…",
   "wechat.dismissWarnings": "Dismiss warnings",
+  "wechat.export": "Export",
+  "wechat.exportTooltip": "Download ZIP to open in WeChat Developer Tools for full-fidelity preview",
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
