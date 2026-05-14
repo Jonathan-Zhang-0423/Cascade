@@ -11,6 +11,12 @@ function compile(wxml: string): string {
   return jsx;
 }
 
+function compileWithWarnings(wxml: string): { jsx: string; warnings: string[] } {
+  const { jsx, errors, warnings } = wxmlToJsx(wxml, "pages/test/test");
+  expect(errors).toEqual([]);
+  return { jsx, warnings };
+}
+
 describe("rewriteExpr — identifier prefixing", () => {
   it("prefixes bare identifiers with __data__.", () => {
     const jsx = compile(`<view>{{ count }}</view>`);
@@ -19,7 +25,6 @@ describe("rewriteExpr — identifier prefixing", () => {
 
   it("does NOT prefix member-access identifiers", () => {
     const jsx = compile(`<view>{{ user.name }}</view>`);
-    // Should emit __data__.user.name, NOT __data__.user.__data__.name
     expect(jsx).toContain("__data__.user.name");
     expect(jsx).not.toContain("__data__.user.__data__");
   });
@@ -45,7 +50,6 @@ describe("rewriteExpr — identifier prefixing", () => {
 
   it("skips arrow-function parameters in .filter / .map chains", () => {
     const jsx = compile(`<text>{{ list.filter(x => x.active).length }}</text>`);
-    // Arrow param `x` is local — must not be prefixed.
     expect(jsx).toContain("__data__.list.filter(x => x.active).length");
     expect(jsx).not.toContain("__data__.x");
   });
@@ -59,15 +63,12 @@ describe("rewriteExpr — identifier prefixing", () => {
   });
 
   it("does not prefix function-call identifiers (wxs imports)", () => {
-    // `formatPrice` is an imported wxs helper — leave unprefixed so the
-    // wxs module binding resolves it, not __data__.
     const jsx = compile(`<text>{{ formatPrice(price) }}</text>`);
     expect(jsx).toContain("formatPrice(__data__.price)");
     expect(jsx).not.toContain("__data__.formatPrice");
   });
 
   it("does not prefix object-literal keys", () => {
-    // Use a class binding so the expression flows through rewriteExpr.
     const jsx = compile(`<view class="{{ {active: isActive, disabled: isDisabled} }}">x</view>`);
     expect(jsx).toContain("active:");
     expect(jsx).toContain("disabled:");
@@ -85,8 +86,6 @@ describe("rewriteExpr — identifier prefixing", () => {
 
   it("handles numeric literals with decimal points without treating them as member access", () => {
     const jsx = compile(`<text>{{ price * 1.5 }}</text>`);
-    // `1.5` must not trigger "preceded by dot" on whatever comes next
-    // (no identifier comes after here — just sanity-check it compiles).
     expect(jsx).toContain("__data__.price * 1.5");
   });
 
@@ -94,8 +93,6 @@ describe("rewriteExpr — identifier prefixing", () => {
     const jsx = compile(`<view wx:for="{{list}}" wx:key="id">{{ item.name }} — {{ index }}</view>`);
     expect(jsx).toContain("__data__.list");
     expect(jsx).toContain("item.name");
-    // index — after the first template string split, it appears as a reference.
-    // Must not be prefixed.
     expect(jsx).not.toContain("__data__.item");
     expect(jsx).not.toContain("__data__.index");
   });
@@ -105,5 +102,94 @@ describe("rewriteExpr — identifier prefixing", () => {
     expect(jsx).toContain("__data__.user?.profile?.name");
     expect(jsx).not.toContain("__data__.profile");
     expect(jsx).not.toContain("__data__.name");
+  });
+});
+
+describe("Rung 2 — WXML parity", () => {
+  it("wx:for routes list expression through rewriteExpr", () => {
+    const jsx = compile(`<view wx:for="{{items}}" wx:key="id">{{ item.name }}</view>`);
+    expect(jsx).toContain("__wxFor(__data__.items)");
+  });
+
+  it("wx:for with custom item/index names leaves them unprefixed", () => {
+    const jsx = compile(`<view wx:for="{{list}}" wx:for-item="row" wx:for-index="i" wx:key="id">{{ row.title }} {{ i }}</view>`);
+    expect(jsx).toContain("__wxFor(__data__.list)");
+    expect(jsx).toContain("row.title");
+    expect(jsx).not.toContain("__data__.row");
+    expect(jsx).not.toContain("__data__.i");
+  });
+
+  it("inline <wxs> module is evaluated and its name is unprefixed", () => {
+    const wxml = `<wxs module="fmt">module.exports = { price: function(v) { return '¥' + v; } };</wxs><text>{{ fmt.price(price) }}</text>`;
+    const jsx = compile(wxml);
+    // Module binding should be emitted
+    expect(jsx).toContain('const fmt = (function()');
+    // fmt should NOT be prefixed with __data__
+    expect(jsx).toContain("fmt.price(__data__.price)");
+    expect(jsx).not.toContain("__data__.fmt");
+  });
+
+  it("external <wxs src=...> emits empty object and a warning", () => {
+    const wxml = `<wxs module="utils" src="./utils.wxs"/><text>{{ utils.format(val) }}</text>`;
+    const { jsx, warnings } = compileWithWarnings(wxml);
+    expect(jsx).toContain("const utils = {}");
+    expect(warnings.some(w => w.includes("external import"))).toBe(true);
+  });
+
+  it("static <template is='name'> inlines the template", () => {
+    const wxml = `<template name="item"><text>{{ name }}</text></template><template is="item" />`;
+    const jsx = compile(wxml);
+    expect(jsx).toContain("__data__.name");
+  });
+
+  it("<import> and <include> emit warnings", () => {
+    const { warnings } = compileWithWarnings(`<import src="./comp.wxml"/><view>hi</view>`);
+    expect(warnings.some(w => w.includes("<import>"))).toBe(true);
+  });
+});
+
+describe("Rung 3 — component library", () => {
+  it("rich-text tag maps to RichText", () => {
+    const jsx = compile(`<rich-text nodes="{{content}}"></rich-text>`);
+    expect(jsx).toContain("<RichText");
+  });
+
+  it("video tag maps to Video", () => {
+    const jsx = compile(`<video src="{{url}}" controls></video>`);
+    expect(jsx).toContain("<Video");
+    expect(jsx).toContain("__data__.url");
+  });
+
+  it("web-view tag maps to WebView", () => {
+    const jsx = compile(`<web-view src="{{pageUrl}}"></web-view>`);
+    expect(jsx).toContain("<WebView");
+    expect(jsx).toContain("__data__.pageUrl");
+  });
+
+  it("movable-area and movable-view map correctly", () => {
+    const jsx = compile(`<movable-area><movable-view direction="all">drag</movable-view></movable-area>`);
+    expect(jsx).toContain("<MovableArea");
+    expect(jsx).toContain("<MovableView");
+  });
+
+  it("cover-view and cover-image map correctly", () => {
+    const jsx = compile(`<cover-view><cover-image src="{{img}}"/></cover-view>`);
+    expect(jsx).toContain("<CoverView");
+    expect(jsx).toContain("<CoverImage");
+  });
+
+  it("live-player maps to LivePlayerStub", () => {
+    const jsx = compile(`<live-player src="{{stream}}"></live-player>`);
+    expect(jsx).toContain("<LivePlayerStub");
+  });
+
+  it("ad maps to AdStub", () => {
+    const jsx = compile(`<ad unit-id="xxx"></ad>`);
+    expect(jsx).toContain("<AdStub");
+  });
+
+  it("unknown tags fall back to View", () => {
+    const jsx = compile(`<my-custom-comp foo="bar">text</my-custom-comp>`);
+    expect(jsx).toContain("<View");
   });
 });

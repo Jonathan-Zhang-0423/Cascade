@@ -201,28 +201,45 @@ type ImageMode =
   | "top" | "bottom" | "center" | "left" | "right"
   | "top left" | "top right" | "bottom left" | "bottom right";
 
-const MODE_FIT: Record<ImageMode, string> = {
-  scaleToFill: "fill", aspectFit: "contain", aspectFill: "cover",
-  widthFix: "fill", heightFix: "fill",
-  top: "none", bottom: "none", center: "none", left: "none", right: "none",
-  "top left": "none", "top right": "none", "bottom left": "none", "bottom right": "none",
+// Maps WeChat mode → CSS objectFit + objectPosition
+const MODE_STYLE: Record<ImageMode, React.CSSProperties> = {
+  scaleToFill:   { objectFit: "fill" },
+  aspectFit:     { objectFit: "contain" },
+  aspectFill:    { objectFit: "cover" },
+  widthFix:      { objectFit: "fill", height: "auto" },
+  heightFix:     { objectFit: "fill", width: "auto" },
+  top:           { objectFit: "none", objectPosition: "top center" },
+  bottom:        { objectFit: "none", objectPosition: "bottom center" },
+  center:        { objectFit: "none", objectPosition: "center center" },
+  left:          { objectFit: "none", objectPosition: "center left" },
+  right:         { objectFit: "none", objectPosition: "center right" },
+  "top left":    { objectFit: "none", objectPosition: "top left" },
+  "top right":   { objectFit: "none", objectPosition: "top right" },
+  "bottom left": { objectFit: "none", objectPosition: "bottom left" },
+  "bottom right":{ objectFit: "none", objectPosition: "bottom right" },
 };
 
 interface ImageProps extends WxBaseProps {
   src?: string;
   mode?: ImageMode;
+  lazyLoad?: boolean;
+  bindload?: (e: unknown) => void;
+  binderror?: (e: unknown) => void;
 }
 
-export function Image({ id, className, style, src, mode = "scaleToFill", bindtap, catchtap, ...rest }: ImageProps) {
-  const objectFit = MODE_FIT[mode] ?? "fill";
+export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoad, bindtap, catchtap, bindload, binderror, ...rest }: ImageProps) {
+  const modeStyle = MODE_STYLE[mode] ?? { objectFit: "fill" };
   const touch = useTouchProps(extractTouchBindings(rest));
   return (
     <img
       id={id}
       className={className}
       src={src}
-      style={{ display: "block", width: "100%", height: "100%", objectFit: objectFit as React.CSSProperties["objectFit"], ...style }}
+      loading={lazyLoad ? "lazy" : undefined}
+      style={{ display: "block", width: "100%", height: "100%", ...modeStyle, ...style }}
       onClick={tapHandler(bindtap ?? catchtap)}
+      onLoad={(e) => bindload?.(makeWxEvent("load", { width: (e.target as HTMLImageElement).naturalWidth, height: (e.target as HTMLImageElement).naturalHeight }, e.currentTarget))}
+      onError={(e) => binderror?.(makeWxEvent("error", { errMsg: "load failed" }, e.currentTarget))}
       {...touch}
       alt=""
     />
@@ -357,15 +374,32 @@ export function Textarea({ id, className, style, value, placeholder, disabled, m
 interface ScrollViewProps extends WxBaseProps {
   scrollY?: boolean;
   scrollX?: boolean;
+  scrollIntoView?: string;
+  scrollTop?: number;
   bindscroll?: (e: unknown) => void;
   bindscrolltolower?: (e: unknown) => void;
   bindscrolltoupper?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, bindscroll, bindscrolltolower, bindscrolltoupper, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, bindscroll, bindscrolltolower, bindscrolltoupper, bindtap, catchtap, ...rest }: ScrollViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to element by id when scrollIntoView changes.
+  useEffect(() => {
+    if (!scrollIntoView || !containerRef.current) return;
+    const target = containerRef.current.querySelector(`#${CSS.escape(scrollIntoView)}`);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [scrollIntoView]);
+
+  // Scroll to top offset when scrollTop changes.
+  useEffect(() => {
+    if (scrollTop == null || !containerRef.current) return;
+    containerRef.current.scrollTop = scrollTop;
+  }, [scrollTop]);
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    bindscroll && bindscroll(makeWxEvent("scroll", { scrollTop: el.scrollTop, scrollLeft: el.scrollLeft, scrollHeight: el.scrollHeight, scrollWidth: el.scrollWidth }, el));
+    bindscroll?.(makeWxEvent("scroll", { scrollTop: el.scrollTop, scrollLeft: el.scrollLeft, scrollHeight: el.scrollHeight, scrollWidth: el.scrollWidth }, el));
     if (bindscrolltolower && el.scrollTop + el.clientHeight >= el.scrollHeight - 10) {
       bindscrolltolower(makeWxEvent("scrolltolower", {}, el));
     }
@@ -373,13 +407,15 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, b
       bindscrolltoupper(makeWxEvent("scrolltoupper", {}, el));
     }
   }, [bindscroll, bindscrolltolower, bindscrolltoupper]);
+
   const touch = useTouchProps(extractTouchBindings(rest));
 
   return (
     <div
+      ref={containerRef}
       id={id}
       className={className}
-      style={{ overflowY: scrollY ? "auto" : "hidden", overflowX: scrollX ? "auto" : "hidden", ...style }}
+      style={{ overflowY: scrollY ? "auto" : "hidden", overflowX: scrollX ? "auto" : "hidden", WebkitOverflowScrolling: "touch", ...style } as React.CSSProperties}
       onScroll={handleScroll}
       onClick={tapHandler(bindtap ?? catchtap)}
       {...touch}
@@ -390,44 +426,66 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, b
 }
 
 // ---------------------------------------------------------------------------
-// Swiper
+// Swiper — supports circular, vertical, and duration.
 // ---------------------------------------------------------------------------
 
 interface SwiperProps extends WxBaseProps {
   indicatorDots?: boolean;
+  indicatorColor?: string;
+  indicatorActiveColor?: string;
   autoplay?: boolean;
   interval?: number;
+  duration?: number;
   current?: number;
+  circular?: boolean;
+  vertical?: boolean;
   bindchange?: (e: unknown) => void;
 }
 
-export function Swiper({ id, className, style, children, indicatorDots, autoplay, interval = 3000, current = 0, bindchange }: SwiperProps) {
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, bindchange }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
+  const count = items.length;
+
+  const goTo = useCallback((next: number) => {
+    const clamped = circular ? ((next % count) + count) % count : Math.max(0, Math.min(count - 1, next));
+    setIdx(clamped);
+    bindchange?.(makeWxEvent("change", { current: clamped, source: "autoplay" }, null));
+  }, [circular, count, bindchange]);
 
   useEffect(() => {
-    if (!autoplay || items.length <= 1) return;
-    const t = setInterval(() => {
-      setIdx((i) => {
-        const next = (i + 1) % items.length;
-        bindchange && bindchange(makeWxEvent("change", { current: next, source: "autoplay" }, null));
-        return next;
-      });
-    }, interval);
+    if (!autoplay || count <= 1) return;
+    const t = setInterval(() => goTo(idx + 1), interval);
     return () => clearInterval(t);
-  }, [autoplay, interval, items.length, bindchange]);
+  }, [autoplay, interval, idx, goTo, count]);
+
+  const axis = vertical ? "Y" : "X";
 
   return (
     <div id={id} className={className} style={{ position: "relative", overflow: "hidden", ...style }}>
-      <div style={{ display: "flex", transition: "transform 0.3s", transform: `translateX(-${idx * 100}%)` }}>
+      <div style={{
+        display: "flex",
+        flexDirection: vertical ? "column" : "row",
+        transition: `transform ${duration}ms ease`,
+        transform: `translate${axis}(-${idx * 100}%)`,
+        height: "100%",
+      }}>
         {items.map((child, i) => (
-          <div key={i} style={{ minWidth: "100%", flexShrink: 0 }}>{child}</div>
+          <div key={i} style={{ minWidth: vertical ? "100%" : "100%", minHeight: vertical ? "100%" : undefined, flexShrink: 0, height: "100%" }}>{child}</div>
         ))}
       </div>
-      {indicatorDots && items.length > 1 && (
-        <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 4 }}>
+      {indicatorDots && count > 1 && (
+        <div style={{
+          position: "absolute",
+          ...(vertical ? { right: 8, top: 0, bottom: 0, flexDirection: "column" } : { bottom: 8, left: 0, right: 0 }),
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 4,
+          pointerEvents: "none",
+        }}>
           {items.map((_, i) => (
-            <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i === idx ? "#fff" : "rgba(255,255,255,0.5)" }} />
+            <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i === idx ? indicatorActiveColor : indicatorColor, transition: "background 0.3s" }} />
           ))}
         </div>
       )}
@@ -743,6 +801,271 @@ export function Canvas({ id, className, style, width, height, bindtap, catchtap,
 }
 
 // ---------------------------------------------------------------------------
+// RichText — renders a WeChat node-tree or HTML string.
+// Content is sanitised (scripts/styles/event-handlers stripped) before render.
+// ---------------------------------------------------------------------------
+
+interface RichTextNode {
+  name?: string;
+  type?: "node" | "text";
+  text?: string;
+  attrs?: Record<string, string>;
+  children?: RichTextNode[];
+}
+
+function richNodesToHtml(nodes: RichTextNode[]): string {
+  return nodes.map((n) => {
+    if (n.type === "text" || !n.name) return n.text ?? "";
+    const attrs = Object.entries(n.attrs ?? {})
+      .map(([k, v]) => ` ${k}="${String(v).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const inner = n.children ? richNodesToHtml(n.children) : "";
+    return `<${n.name}${attrs}>${inner}</${n.name}>`;
+  }).join("");
+}
+
+const RICH_ALLOWED_TAGS = new Set([
+  "a","abbr","b","blockquote","br","code","col","colgroup","dd","del","div",
+  "dl","dt","em","fieldset","h1","h2","h3","h4","h5","h6","hr","i","img",
+  "ins","label","legend","li","ol","p","q","s","small","span","strong","sub",
+  "sup","table","tbody","td","tfoot","th","thead","tr","u","ul",
+]);
+
+function sanitiseRichHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/<(\/?)([\w-]+)/g, (_m, slash, tag) =>
+      RICH_ALLOWED_TAGS.has(tag.toLowerCase()) ? `<${slash}${tag}` : `<!-- ${tag} `
+    );
+}
+
+interface RichTextProps extends WxBaseProps {
+  nodes?: RichTextNode[] | string;
+  space?: string;
+}
+
+export function RichText({ id, className, style, nodes }: RichTextProps) {
+  let html = "";
+  if (typeof nodes === "string") {
+    html = sanitiseRichHtml(nodes);
+  } else if (Array.isArray(nodes)) {
+    html = sanitiseRichHtml(richNodesToHtml(nodes));
+  }
+  // sanitiseRichHtml strips all scripts, styles, and event-handler attributes
+  // before this content reaches dangerouslySetInnerHTML.
+  return (
+    <div
+      id={id}
+      className={className}
+      style={{ wordBreak: "break-word", ...style }}
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Video — HTML5 <video> with WeChat-style controls.
+// ---------------------------------------------------------------------------
+
+interface VideoProps extends WxBaseProps {
+  src?: string;
+  poster?: string;
+  autoplay?: boolean;
+  loop?: boolean;
+  muted?: boolean;
+  controls?: boolean;
+  objectFit?: string;
+  bindplay?: (e: unknown) => void;
+  bindpause?: (e: unknown) => void;
+  bindended?: (e: unknown) => void;
+  binderror?: (e: unknown) => void;
+  bindtimeupdate?: (e: unknown) => void;
+}
+
+export function Video({
+  id, className, style, src, poster, autoplay, loop, muted,
+  controls = true, objectFit = "contain",
+  bindplay, bindpause, bindended, binderror, bindtimeupdate,
+}: VideoProps) {
+  return (
+    <div id={id} className={className} style={{ position: "relative", background: "#000", ...style }}>
+      <video
+        src={src}
+        poster={poster}
+        autoPlay={autoplay}
+        loop={loop}
+        muted={muted}
+        controls={controls}
+        style={{ width: "100%", height: "100%", objectFit: (objectFit as React.CSSProperties["objectFit"]) }}
+        onPlay={(e) => bindplay?.(makeWxEvent("play", {}, e.currentTarget))}
+        onPause={(e) => bindpause?.(makeWxEvent("pause", {}, e.currentTarget))}
+        onEnded={(e) => bindended?.(makeWxEvent("ended", {}, e.currentTarget))}
+        onError={(e) => binderror?.(makeWxEvent("error", {}, e.currentTarget))}
+        onTimeUpdate={(e) => {
+          const v = e.currentTarget;
+          bindtimeupdate?.(makeWxEvent("timeupdate", { currentTime: v.currentTime, duration: v.duration }, v));
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WebView — renders an iframe for <web-view src="...">.
+// ---------------------------------------------------------------------------
+
+interface WebViewProps extends WxBaseProps {
+  src?: string;
+}
+
+export function WebView({ id, className, style, src }: WebViewProps) {
+  if (!src) {
+    return (
+      <View id={id} className={className} style={style}>
+        <Text style={{ color: "#999", fontSize: 12 }}>web-view: no src</Text>
+      </View>
+    );
+  }
+  return (
+    <iframe
+      id={id}
+      className={className}
+      src={src}
+      style={{ width: "100%", height: "100%", border: "none", ...style }}
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      title="web-view"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MovableArea / MovableView — drag-and-drop container.
+// ---------------------------------------------------------------------------
+
+export function MovableArea({ id, className, style, children }: WxBaseProps) {
+  return (
+    <div id={id} className={className} style={{ position: "relative", overflow: "hidden", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+interface MovableViewProps extends WxBaseProps {
+  direction?: "all" | "vertical" | "horizontal" | "none";
+  x?: number;
+  y?: number;
+  bindchange?: (e: unknown) => void;
+}
+
+export function MovableView({
+  id, className, style, children,
+  direction = "all", x = 0, y = 0, bindchange,
+}: MovableViewProps) {
+  const [pos, setPos] = useState({ x, y });
+  const startRef = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    startRef.current = { mx: e.clientX, my: e.clientY, px: pos.x, py: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!startRef.current) return;
+      const dx = direction !== "vertical" ? ev.clientX - startRef.current.mx : 0;
+      const dy = direction !== "horizontal" ? ev.clientY - startRef.current.my : 0;
+      const nx = startRef.current.px + dx;
+      const ny = startRef.current.py + dy;
+      setPos({ x: nx, y: ny });
+      bindchange?.(makeWxEvent("change", { x: nx, y: ny, source: "touch" }, null));
+    };
+    const onUp = () => {
+      startRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      id={id}
+      className={className}
+      style={{
+        position: "absolute",
+        left: pos.x,
+        top: pos.y,
+        cursor: direction === "none" ? "default" : "grab",
+        userSelect: "none",
+        ...style,
+      }}
+      onMouseDown={direction !== "none" ? onMouseDown : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CoverView / CoverImage — overlay components (render as View/Image).
+// ---------------------------------------------------------------------------
+
+export function CoverView({ id, className, style, children, bindtap, catchtap }: WxBaseProps) {
+  return (
+    <div
+      id={id}
+      className={className}
+      style={{ position: "absolute", ...style }}
+      onClick={tapHandler(bindtap ?? catchtap)}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface CoverImageProps extends WxBaseProps {
+  src?: string;
+}
+
+export function CoverImage({ id, className, style, src, bindtap, catchtap }: CoverImageProps) {
+  return (
+    <img
+      id={id}
+      className={className}
+      src={src}
+      alt=""
+      style={{ position: "absolute", display: "block", ...style }}
+      onClick={tapHandler(bindtap ?? catchtap)}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stubs for components that require native capabilities.
+// ---------------------------------------------------------------------------
+
+function UnavailableStub({ label }: { label: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "#1a1a1a", color: "#666", fontSize: 11,
+      padding: "8px 12px", borderRadius: 4, fontFamily: "monospace",
+    }}>
+      {label} (preview unavailable)
+    </div>
+  );
+}
+
+export function LivePlayerStub(_props: WxBaseProps) {
+  return <UnavailableStub label="live-player" />;
+}
+
+export function AdStub(_props: WxBaseProps) {
+  return <UnavailableStub label="ad" />;
+}
+
+// ---------------------------------------------------------------------------
 // Exports map used by wxml-to-jsx.ts
 // ---------------------------------------------------------------------------
 
@@ -770,4 +1093,15 @@ export const WX_COMPONENTS: Record<string, React.ComponentType<unknown>> = {
   progress: Progress as React.ComponentType<unknown>,
   block: Block as React.ComponentType<unknown>,
   canvas: Canvas as React.ComponentType<unknown>,
+  "rich-text": RichText as React.ComponentType<unknown>,
+  video: Video as React.ComponentType<unknown>,
+  "web-view": WebView as React.ComponentType<unknown>,
+  "movable-view": MovableView as React.ComponentType<unknown>,
+  "movable-area": MovableArea as React.ComponentType<unknown>,
+  "cover-view": CoverView as React.ComponentType<unknown>,
+  "cover-image": CoverImage as React.ComponentType<unknown>,
+  "live-player": LivePlayerStub as React.ComponentType<unknown>,
+  "live-pusher": LivePlayerStub as React.ComponentType<unknown>,
+  ad: AdStub as React.ComponentType<unknown>,
+  "official-account": AdStub as React.ComponentType<unknown>,
 };

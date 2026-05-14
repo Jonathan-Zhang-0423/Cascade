@@ -318,8 +318,8 @@ async function _doCompile(
 
       // Write page module: JSX component + page factory
       const pageModule = `
-import React, { useState, useEffect } from "react";
-import { View, Text, Image, Button, Input, Textarea, ScrollView, Swiper, SwiperItem, Navigator, Form, Label, Checkbox, CheckboxGroup, Radio, RadioGroup, Switch, Slider, Picker, Icon, Progress, Block, Canvas } from "./wx-runtime";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, Image, Button, Input, Textarea, ScrollView, Swiper, SwiperItem, Navigator, Form, Label, Checkbox, CheckboxGroup, Radio, RadioGroup, Switch, Slider, Picker, Icon, Progress, Block, Canvas, RichText, Video, WebView, MovableView, MovableArea, CoverView, CoverImage, LivePlayerStub, AdStub } from "./wx-runtime";
 import { wx } from "./wx-polyfill";
 
 ${wrappedJs}

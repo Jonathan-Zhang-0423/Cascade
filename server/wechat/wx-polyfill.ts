@@ -293,7 +293,6 @@ export const wx = {
   previewImage(opts: WxOpts & { current?: string; urls?: string[] } = {}) { const lb = document.createElement("div"); lb.style.cssText = "position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;"; const img = document.createElement("img"); img.src = opts.current ?? opts.urls?.[0] ?? ""; img.style.cssText = "max-width:100%;max-height:100%;object-fit:contain;"; lb.appendChild(img); lb.onclick = () => lb.remove(); document.body.appendChild(lb); ok(opts, { errMsg: "previewImage:ok" }); },
   saveImageToPhotosAlbum(opts: WxOpts = {}) { fail(opts, "saveImageToPhotosAlbum:fail not supported in preview"); },
 
-  createCanvasContext(id: string) { const c = document.getElementById(id) as HTMLCanvasElement | null; return c ? c.getContext("2d") : { draw() {} }; },
   canvasToTempFilePath(opts: WxOpts & { canvasId?: string } = {}) { const c = document.getElementById(opts.canvasId ?? "") as HTMLCanvasElement | null; if (c) ok(opts, { tempFilePath: c.toDataURL(), errMsg: "canvasToTempFilePath:ok" }); else fail(opts, "canvasToTempFilePath:fail"); },
 
   login(opts: WxOpts = {}) { ok(opts, { code: "PREVIEW_CODE_" + Date.now(), errMsg: "login:ok" }); },
@@ -381,6 +380,154 @@ export const wx = {
   getFileSystemManager() {
     const noop = (opts: WxOpts) => fail(opts, "not supported in preview");
     return { readFile: noop, writeFile: noop, readdir: noop, mkdir: (opts: WxOpts) => ok(opts, {}), stat: noop, saveFile: (opts: WxOpts & { tempFilePath?: string }) => ok(opts, { savedFilePath: opts.tempFilePath }), getSavedFileList: (opts: WxOpts) => ok(opts, { fileList: [] }) };
+  },
+
+  // ── Audio ──────────────────────────────────────────────────────────────────
+  createInnerAudioContext() {
+    const audio = new Audio();
+    let _onPlay: (() => void) | null = null;
+    let _onPause: (() => void) | null = null;
+    let _onStop: (() => void) | null = null;
+    let _onEnded: (() => void) | null = null;
+    let _onError: ((e: { errMsg: string }) => void) | null = null;
+    let _onTimeUpdate: (() => void) | null = null;
+    audio.addEventListener("play", () => _onPlay?.());
+    audio.addEventListener("pause", () => _onPause?.());
+    audio.addEventListener("ended", () => { _onStop?.(); _onEnded?.(); });
+    audio.addEventListener("error", () => _onError?.({ errMsg: "audio error" }));
+    audio.addEventListener("timeupdate", () => _onTimeUpdate?.());
+    return {
+      get src() { return audio.src; },
+      set src(v: string) { audio.src = v; },
+      get autoplay() { return audio.autoplay; },
+      set autoplay(v: boolean) { audio.autoplay = v; },
+      get loop() { return audio.loop; },
+      set loop(v: boolean) { audio.loop = v; },
+      get volume() { return audio.volume; },
+      set volume(v: number) { audio.volume = v; },
+      get currentTime() { return audio.currentTime; },
+      set currentTime(v: number) { audio.currentTime = v; },
+      get duration() { return audio.duration; },
+      get paused() { return audio.paused; },
+      play() { audio.play().catch(() => {}); },
+      pause() { audio.pause(); },
+      stop() { audio.pause(); audio.currentTime = 0; },
+      seek(pos: number) { audio.currentTime = pos; },
+      destroy() { audio.pause(); audio.src = ""; },
+      onPlay(cb: () => void) { _onPlay = cb; },
+      onPause(cb: () => void) { _onPause = cb; },
+      onStop(cb: () => void) { _onStop = cb; },
+      onEnded(cb: () => void) { _onEnded = cb; },
+      onError(cb: (e: { errMsg: string }) => void) { _onError = cb; },
+      onTimeUpdate(cb: () => void) { _onTimeUpdate = cb; },
+      offPlay() { _onPlay = null; },
+      offPause() { _onPause = null; },
+      offStop() { _onStop = null; },
+      offEnded() { _onEnded = null; },
+      offError() { _onError = null; },
+      offTimeUpdate() { _onTimeUpdate = null; },
+    };
+  },
+
+  // ── Animation ──────────────────────────────────────────────────────────────
+  // Returns a WeChat-compatible animation object. The generated keyframes are
+  // applied via element.animate() when the page calls this.setData({ anim }).
+  createAnimation(opts: { duration?: number; timingFunction?: string; delay?: number; transformOrigin?: string } = {}) {
+    const duration = opts.duration ?? 400;
+    const easing = opts.timingFunction ?? "linear";
+    const delay = opts.delay ?? 0;
+    const steps: Array<Record<string, string | number>> = [];
+    let current: Record<string, string | number> = {};
+
+    const api = {
+      // Transform helpers
+      rotate: (deg: number) => { current.transform = `${current.transform ?? ""} rotate(${deg}deg)`.trim(); return api; },
+      rotateX: (deg: number) => { current.transform = `${current.transform ?? ""} rotateX(${deg}deg)`.trim(); return api; },
+      rotateY: (deg: number) => { current.transform = `${current.transform ?? ""} rotateY(${deg}deg)`.trim(); return api; },
+      scale: (x: number, y?: number) => { current.transform = `${current.transform ?? ""} scale(${x},${y ?? x})`.trim(); return api; },
+      scaleX: (x: number) => { current.transform = `${current.transform ?? ""} scaleX(${x})`.trim(); return api; },
+      scaleY: (y: number) => { current.transform = `${current.transform ?? ""} scaleY(${y})`.trim(); return api; },
+      translate: (x: number, y: number) => { current.transform = `${current.transform ?? ""} translate(${x}px,${y}px)`.trim(); return api; },
+      translateX: (x: number) => { current.transform = `${current.transform ?? ""} translateX(${x}px)`.trim(); return api; },
+      translateY: (y: number) => { current.transform = `${current.transform ?? ""} translateY(${y}px)`.trim(); return api; },
+      // Style helpers
+      opacity: (v: number) => { current.opacity = v; return api; },
+      backgroundColor: (v: string) => { current.backgroundColor = v; return api; },
+      width: (v: number) => { current.width = `${v}px`; return api; },
+      height: (v: number) => { current.height = `${v}px`; return api; },
+      top: (v: number) => { current.top = `${v}px`; return api; },
+      left: (v: number) => { current.left = `${v}px`; return api; },
+      // Commit a step
+      step(stepOpts?: { duration?: number; timingFunction?: string }) {
+        steps.push({ ...current, __duration__: stepOpts?.duration ?? duration, __easing__: stepOpts?.timingFunction ?? easing });
+        current = {};
+        return api;
+      },
+      // Export — returns a plain object that the page stores in data and passes
+      // to the component via the `animation` prop. The runtime component reads
+      // this and calls element.animate() if available.
+      export() {
+        return {
+          actions: steps.map((s) => ({
+            animates: Object.entries(s)
+              .filter(([k]) => !k.startsWith("__"))
+              .map(([type, value]) => ({ type, value })),
+            option: { transformOrigin: opts.transformOrigin ?? "50% 50% 0", transition: { duration: s.__duration__, timingFunction: s.__easing__, delay } },
+          })),
+        };
+      },
+    };
+    return api;
+  },
+
+  // ── Intersection observer ──────────────────────────────────────────────────
+  createIntersectionObserver(_component: unknown, opts: { thresholds?: number[]; initialRatio?: number } = {}) {
+    const thresholds = opts.thresholds ?? [0];
+    let _observer: IntersectionObserver | null = null;
+    return {
+      relativeTo(_selector: string, _margins?: unknown) { return this; },
+      relativeToViewport(_margins?: unknown) { return this; },
+      observe(selector: string, cb: (res: { intersectionRatio: number; intersectionRect: DOMRect; boundingClientRect: DOMRect; relativeRect: DOMRect; time: number }) => void) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        _observer = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            cb({ intersectionRatio: entry.intersectionRatio, intersectionRect: entry.intersectionRect as DOMRect, boundingClientRect: entry.boundingClientRect as DOMRect, relativeRect: entry.rootBounds as DOMRect ?? entry.boundingClientRect as DOMRect, time: entry.time });
+          }
+        }, { threshold: thresholds });
+        _observer.observe(el);
+      },
+      disconnect() { _observer?.disconnect(); _observer = null; },
+    };
+  },
+
+  // ── Canvas 2D context ──────────────────────────────────────────────────────
+  createCanvasContext(canvasId: string) {
+    // Returns a WeChat-compatible canvas context backed by the real DOM canvas.
+    // Deferred to next tick so the canvas element has mounted.
+    let _canvas: HTMLCanvasElement | null = null;
+    let _ctx: CanvasRenderingContext2D | null = null;
+    const getCtx = () => {
+      if (_ctx) return _ctx;
+      _canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+      _ctx = _canvas?.getContext("2d") ?? null;
+      return _ctx;
+    };
+    const proxy = new Proxy({} as CanvasRenderingContext2D, {
+      get(_t, prop) {
+        const ctx = getCtx();
+        if (!ctx) return () => {};
+        const val = (ctx as unknown as Record<string, unknown>)[prop as string];
+        return typeof val === "function" ? (val as Function).bind(ctx) : val;
+      },
+      set(_t, prop, value) {
+        const ctx = getCtx();
+        if (ctx) (ctx as unknown as Record<string, unknown>)[prop as string] = value;
+        return true;
+      },
+    });
+    (proxy as unknown as { draw: (reserve?: boolean, cb?: () => void) => void }).draw = (_reserve?: boolean, cb?: () => void) => { cb?.(); };
+    return proxy;
   },
 };
 

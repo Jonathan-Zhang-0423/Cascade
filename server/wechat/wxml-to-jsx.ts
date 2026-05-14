@@ -31,6 +31,18 @@ const COMP_MAP: Record<string, string> = {
   switch: "Switch", slider: "Slider", picker: "Picker",
   icon: "Icon", progress: "Progress", block: "Block",
   canvas: "Canvas",
+  // Rung 3 additions
+  "rich-text": "RichText",
+  video: "Video",
+  "web-view": "WebView",
+  "movable-view": "MovableView",
+  "movable-area": "MovableArea",
+  "cover-view": "CoverView",
+  "cover-image": "CoverImage",
+  "live-player": "LivePlayerStub",
+  "live-pusher": "LivePlayerStub",
+  ad: "AdStub",
+  "official-account": "AdStub",
   // Fallback unknown tags to View
 };
 
@@ -81,6 +93,10 @@ const SKIP_PREFIXING = new Set([
   "item", "index",
 ]);
 
+// Per-page extra identifiers to leave un-prefixed (e.g. <wxs module="..."> names).
+// Mutated by wxmlToJsx() before each compile; reset to an empty set on entry.
+let _extraSkip = new Set<string>();
+
 /**
  * Rewrite a WXML `{{ ... }}` expression into a JS expression that resolves
  * bare identifiers from the page's reactive `__data__` object.
@@ -103,6 +119,9 @@ function rewriteExpr(expr: string): string {
   // Stack of name-sets that act as local scopes (from arrow parameters).
   // An identifier found in any scope is treated as already-bound.
   const localScopes: Array<Set<string>> = [];
+  // Per-page additional skips (e.g. <wxs module="..."> names). Set by wxmlToJsx
+  // before invoking the transform.
+  if (_extraSkip.size) localScopes.push(_extraSkip);
   // Paren depth at which each scope was opened; used to pop on close.
   const scopeDepths: number[] = [];
   let parenDepth = 0;
@@ -368,14 +387,32 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
   }
 
   // ── <template is="..."> usage — inline the template ──
+  // Supports both static `is="name"` and dynamic `is="{{expr}}"`.
   if (tag === "template" && attribs.is) {
-    const tmplName = attribs.is.replace(/\{\{|\}\}/g, "").trim();
+    const rawIs = attribs.is.trim();
+    const isDynamic = rawIs.startsWith("{{") && rawIs.endsWith("}}");
+    if (isDynamic) {
+      // Emit a runtime lookup: find the template by name at render time.
+      // We pass all registered template names as a lookup map.
+      const expr = rewriteExpr(rawIs.slice(2, -2).trim());
+      const dataAttr = attribs.data ? rewriteExpr(attribs.data.replace(/^\{\{/, "").replace(/\}\}$/, "").trim()) : "{}";
+      // Build a map of template-name → render function.
+      const tmplEntries = Array.from(templates.entries())
+        .map(([name, nodes]) => {
+          const body = nodes.map((c) => convertNode(c, templates, indent + 2)).join("");
+          return `"${name}": ((__tplData__) => (<>${body.trim()}</>))`;
+        })
+        .join(",\n");
+      if (!tmplEntries) return `${pad}{/* no templates defined */}\n`;
+      return `${pad}{((__tmplMap__) => { const __fn__ = __tmplMap__[${expr}]; return __fn__ ? __fn__(${dataAttr}) : null; })({${tmplEntries}})}\n`;
+    }
+    const tmplName = rawIs;
     const tmplNodes = templates.get(tmplName);
     if (!tmplNodes) return `${pad}{/* template "${tmplName}" not found */}\n`;
     return tmplNodes.map((c) => convertNode(c, templates, indent)).join("");
   }
 
-  // ── <import> / <include> / <wxs> — unsupported, emit comment ──
+  // ── <import> / <include> / <wxs> — wxs is handled in the prelude; others are no-ops ──
   if (tag === "import" || tag === "include" || tag === "wxs") {
     return `${pad}{/* <${tag}> is not supported in preview */}\n`;
   }
@@ -390,15 +427,24 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
   const wxForItem = attribs["wx:for-item"] ?? "item";
   const wxForIndex = attribs["wx:for-index"] ?? "index";
 
+  // Register custom loop variable names so rewriteExpr leaves them unprefixed.
+  if (wxFor) {
+    _extraSkip.add(wxForItem);
+    _extraSkip.add(wxForIndex);
+  }
+
   // Build the inner element (without wx: directives)
   const innerJsx = buildElement(el, tag, attribs, templates, indent);
 
   let result = innerJsx;
 
-  // Wrap with wx:for
+  // Wrap with wx:for. Use runtime helper __wxFor() so iteration works over
+  // arrays, objects (key/value pairs), strings, and numbers — the real
+  // mini-program runtime accepts all four. Defaults: item / index, but for
+  // object iteration `index` is the KEY (matches WeChat semantics).
   if (wxFor) {
     const listExpr = rewriteExpr(wxFor.replace(/^\{\{/, "").replace(/\}\}$/, "").trim());
-    result = `${pad}({(${listExpr} ?? []).map((${wxForItem}: unknown, ${wxForIndex}: number) => (\n${result}${pad}))}\n${pad})\n`;
+    result = `${pad}({__wxFor(${listExpr}).map((${wxForItem}: unknown, ${wxForIndex}: unknown) => (\n${result}${pad}))}\n${pad})\n`;
   }
 
   // wx:if / wx:elif / wx:else are handled at the parent children level (see convertChildren).
@@ -632,6 +678,8 @@ export interface WxmlToJsxResult {
 export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  // Reset per-page rewriter state.
+  _extraSkip = new Set<string>();
   let nodes: ChildNode[];
   try {
     nodes = parseWxml(wxml);
@@ -652,12 +700,32 @@ export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
   // The actual transform (next step) silently drops these; surfacing them here
   // turns them into dismissible yellow chips in the preview UI.
   const warnedTags = new Set<string>();
+  // Collect <wxs module="x"> blocks into named CommonJS modules. Supports both:
+  //   - inline:  <wxs module="m">var fmt = function(x) { return x }; module.exports = { fmt }</wxs>
+  //   - external: <wxs module="m" src="./util.wxs"/>  (warned only — file resolution
+  //     would require cross-file context we don't have here; fall back to empty {})
+  const wxsModules: Array<{ name: string; src: string; external?: string }> = [];
   (function scan(list: ChildNode[]) {
     for (const n of list) {
       if (n.type === "tag") {
         const e = n as Element;
         const t = e.name.toLowerCase();
-        if ((t === "import" || t === "include" || t === "wxs") && !warnedTags.has(t)) {
+        if (t === "wxs" && e.attribs?.module) {
+          const name = e.attribs.module;
+          const src = e.attribs.src;
+          if (src) {
+            wxsModules.push({ name, src: "", external: src });
+          } else {
+            // Concatenate child text nodes as the module body.
+            const body = (e.children ?? [])
+              .filter((c) => c.type === "text")
+              .map((c) => (c as TextNode).data)
+              .join("\n");
+            wxsModules.push({ name, src: body });
+          }
+          continue;
+        }
+        if ((t === "import" || t === "include") && !warnedTags.has(t)) {
           warnedTags.add(t);
           warnings.push(`<${t}> is not yet supported — content will not execute in preview.`);
         }
@@ -665,6 +733,13 @@ export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
       }
     }
   })(nodes);
+  for (const m of wxsModules) {
+    if (m.external) {
+      warnings.push(`<wxs src="${m.external}"> external import is not supported in preview — module "${m.name}" is empty.`);
+    }
+    // Register module name as a local so rewriteExpr leaves it unprefixed.
+    _extraSkip.add(m.name);
+  }
 
   // Second pass: convert content nodes (use convertChildren for wx:if/elif/else chain support)
   const contentNodes = nodes.filter(
@@ -672,10 +747,51 @@ export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
   );
   const body = convertChildren(contentNodes, templates, 2);
 
+  // Build wxs module bindings — each <wxs module="m">...</wxs> becomes a CommonJS-style
+  // IIFE binding `const m = (function() { var module = { exports: {} }; <body>; return module.exports; })();`
+  // External (src=) modules become empty objects since we can't resolve cross-file in this pass.
+  const wxsBindings = wxsModules
+    .map((m) => {
+      if (m.external) {
+        return `const ${m.name} = {};`;
+      }
+      // Wrap in try/catch so a malformed wxs body doesn't kill the whole page.
+      return `const ${m.name} = (function() {
+  try {
+    const module = { exports: {} };
+    const exports = module.exports;
+    (function() { ${m.src} })();
+    return module.exports;
+  } catch (e) {
+    console.warn("[wxs] module \\"${m.name}\\" failed:", e);
+    return {};
+  }
+})();`;
+    })
+    .join("\n");
+
   const safePageClass = slugifyPagePath(pagePath);
   const safePageIdent = pagePath.replace(/[^a-zA-Z0-9]/g, "_");
 
   const jsx = `
+${wxsBindings}
+
+// Iteration helper: WeChat's wx:for accepts arrays, objects, strings, and numbers.
+// Returns Array<[item, indexOrKey]> mapped to plain map() for JSX rendering.
+function __wxFor(val) {
+  if (val == null) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") return val.split("");
+  if (typeof val === "number") return Array.from({ length: val }, (_, i) => i);
+  if (typeof val === "object") {
+    // Object iteration: __wxFor returns key/value pairs; the .map below
+    // unpacks them so the user's wx:for-item is the value and wx:for-index is the key.
+    // (Real WeChat: index = key for object iteration.)
+    return Object.keys(val).map((k) => ({ __wx_key__: k, __wx_val__: val[k] }));
+  }
+  return [];
+}
+
 function __parseStyle(s) {
   if (!s) return {};
   const obj = {};
