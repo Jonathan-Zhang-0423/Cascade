@@ -16,6 +16,7 @@ interface CompileState {
   status: "idle" | "compiling" | "success" | "error";
   buildId?: string;
   errors?: string[];
+  warnings?: string[];
 }
 
 function getSourceFiles(files: FileNode[]): Array<{ path: string; content: string }> {
@@ -41,6 +42,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
   const t = useT();
   const [compileState, setCompileState] = useState<CompileState>({ status: "idle" });
   const [showFallback, setShowFallback] = useState(false);
+  const [warningsDismissed, setWarningsDismissed] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastHashRef = useRef<string>("");
   const compileVersionRef = useRef(0);
@@ -90,8 +92,10 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
       }
 
       if (data.success) {
-        setCompileState({ status: "success", buildId: data.buildId });
+        setCompileState({ status: "success", buildId: data.buildId, warnings: data.warnings });
         setShowFallback(false);
+        // Show warnings afresh on each new successful build.
+        setWarningsDismissed(false);
       } else {
         setCompileState({ status: "error", errors: data.errors || ["Unknown error"] });
       }
@@ -202,6 +206,8 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
   }
 
   if (compileState.status === "success" && compileState.buildId) {
+    const warnings = compileState.warnings ?? [];
+    const showWarnings = warnings.length > 0 && !warningsDismissed;
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
@@ -218,14 +224,71 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
             {t("wechat.code")}
           </Button>
         </div>
-        <div className="flex-1 min-h-0">
-          <iframe
-            key={`wx-${compileState.buildId}`}
-            src={`/api/compile/artifacts/${compileState.buildId}/index.html`}
-            className="w-full h-full border-0"
-            title="WeChat Mini Program Preview"
-            sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-          />
+        {showWarnings && (
+          <div className="flex items-start gap-2 px-3 py-1.5 bg-yellow-500/10 border-b border-yellow-500/30">
+            <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 text-[11px] text-yellow-200 leading-relaxed">
+              {warnings.slice(0, 3).map((w, i) => (
+                <div key={i} className="truncate" title={w}>{w}</div>
+              ))}
+              {warnings.length > 3 && (
+                <div className="text-yellow-400/60">{t("wechat.moreWarnings", { n: String(warnings.length - 3) })}</div>
+              )}
+            </div>
+            <button
+              onClick={() => setWarningsDismissed(true)}
+              className="text-yellow-400/60 hover:text-yellow-300 text-xs leading-none px-1"
+              aria-label={t("wechat.dismissWarnings")}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 bg-[#111] flex items-center justify-center overflow-auto p-4">
+          <div
+            className="relative shrink-0 bg-black rounded-[44px] shadow-[0_20px_50px_rgba(0,0,0,0.4),inset_0_0_0_3px_#222]"
+            style={{ width: 375, height: 770, padding: 4 }}
+          >
+            {/* Status bar (9:41, signal/wifi/battery) */}
+            <div
+              className="absolute top-[4px] left-[4px] right-[4px] h-[28px] flex items-center justify-between px-7 text-[12px] font-semibold text-black rounded-t-[40px] pointer-events-none z-10"
+              style={{ fontFamily: '-apple-system, "PingFang SC", "SF Pro Text", sans-serif' }}
+            >
+              <span>9:41</span>
+              <span className="flex items-center gap-1">
+                {/* signal bars */}
+                <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor" aria-hidden="true">
+                  <rect x="0" y="7" width="3" height="4" rx="0.5" />
+                  <rect x="4.5" y="5" width="3" height="6" rx="0.5" />
+                  <rect x="9" y="3" width="3" height="8" rx="0.5" />
+                  <rect x="13.5" y="0" width="3" height="11" rx="0.5" />
+                </svg>
+                {/* wifi */}
+                <svg width="15" height="11" viewBox="0 0 15 11" fill="currentColor" aria-hidden="true">
+                  <path d="M7.5 10.5a1 1 0 100-2 1 1 0 000 2zm0-4a3 3 0 012.1.85l1.4-1.4a5 5 0 00-7 0l1.4 1.4A3 3 0 017.5 6.5zm0-4a7 7 0 014.95 2.05l1.4-1.4a9 9 0 00-12.7 0l1.4 1.4A7 7 0 017.5 2.5z" />
+                </svg>
+                {/* battery */}
+                <svg width="24" height="11" viewBox="0 0 24 11" fill="none" aria-hidden="true">
+                  <rect x="0.5" y="0.5" width="21" height="10" rx="2" stroke="currentColor" />
+                  <rect x="2" y="2" width="18" height="7" rx="1" fill="currentColor" />
+                  <rect x="22.5" y="4" width="1.5" height="3" rx="0.5" fill="currentColor" />
+                </svg>
+              </span>
+            </div>
+            {/* Notch */}
+            <div
+              className="absolute top-[4px] left-1/2 -translate-x-1/2 w-[110px] h-[26px] bg-black rounded-b-[14px] z-20 pointer-events-none"
+            />
+            <iframe
+              key={`wx-${compileState.buildId}`}
+              src={`/api/compile/artifacts/${compileState.buildId}/index.html`}
+              className="w-full h-full border-0 rounded-[40px] bg-white"
+              title="WeChat Mini Program Preview"
+              sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+            />
+            {/* Home indicator */}
+            <div className="absolute bottom-[10px] left-1/2 -translate-x-1/2 w-[135px] h-[5px] bg-white/80 rounded-full z-10 pointer-events-none" />
+          </div>
         </div>
       </div>
     );

@@ -40,6 +40,8 @@ export interface WxCompilationResult {
   success: boolean;
   buildId: string;
   errors?: string[];
+  /** Non-fatal issues — the build still succeeded, but the agent should know. */
+  warnings?: string[];
 }
 
 interface AppJson {
@@ -164,12 +166,31 @@ function buildHtmlShell(bundleFilename: string, cssContent: string): string {
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#07c160">
 <title>WeChat Mini Program Preview</title>
 <style>
 @keyframes wx-spin { to { transform: rotate(360deg); } }
-*{box-sizing:border-box;margin:0;padding:0}
-html,body,#root{height:100%;overflow:hidden;background:#f5f5f5;font-family:-apple-system,'PingFang SC','Helvetica Neue',sans-serif}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1); }
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", "Hiragino Sans GB", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+/* WeChat's characteristic long-press + selection suppression on non-text UI */
+button, [role="button"], .wx-tap-area {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Native-feel momentum scroll inside scroll containers */
+.wx-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 </style>
 <style id="__wx_styles__">${escapedCss}</style>
 </head>
@@ -248,6 +269,7 @@ async function _doCompile(
     const navTitle = windowConfig.navigationBarTitleText ?? "Mini Program";
 
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     // Validate pages exist
     for (const page of pages) {
@@ -278,8 +300,9 @@ async function _doCompile(
 
       // WXML → JSX
       const wxml = fileMap[pagePath + ".wxml"] ?? "<view><text>Empty page</text></view>";
-      const { jsx, errors: wxmlErrors } = wxmlToJsx(wxml, pagePath);
+      const { jsx, errors: wxmlErrors, warnings: wxmlWarnings } = wxmlToJsx(wxml, pagePath);
       if (wxmlErrors.length) errors.push(...wxmlErrors.map((e) => `[${pagePath}.wxml] ${e}`));
+      if (wxmlWarnings.length) warnings.push(...wxmlWarnings.map((w) => `[${pagePath}.wxml] ${w}`));
 
       // WXSS → CSS
       const wxss = fileMap[pagePath + ".wxss"] ?? "";
@@ -295,8 +318,8 @@ async function _doCompile(
 
       // Write page module: JSX component + page factory
       const pageModule = `
-import React, { useState, useEffect } from "react";
-import { View, Text, Image, Button, Input, Textarea, ScrollView, Swiper, SwiperItem, Navigator, Form, Label, Checkbox, CheckboxGroup, Radio, RadioGroup, Switch, Slider, Picker, Icon, Progress, Block, Canvas } from "./wx-runtime";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, Image, Button, Input, Textarea, ScrollView, Swiper, SwiperItem, Navigator, Form, Label, Checkbox, CheckboxGroup, Radio, RadioGroup, Switch, Slider, Picker, Icon, Progress, Block, Canvas, RichText, Video, WebView, MovableView, MovableArea, CoverView, CoverImage, LivePlayerStub, AdStub } from "./wx-runtime";
 import { wx } from "./wx-polyfill";
 
 ${wrappedJs}
@@ -368,12 +391,16 @@ export { ${safeComp} };
 
     artifactCache.set(hash, { buildId, dir: buildDir, createdAt: Date.now() });
 
+    if (warnings.length > 0) {
+      console.warn("[wx-web] Build succeeded with warnings:", warnings);
+    }
+    // `errors` now only collects truly blocking issues (parse failures, missing pages).
+    // Non-fatal unsupported-feature notes are surfaced via `warnings`.
     if (errors.length > 0) {
-      // Non-fatal errors (e.g. unsupported WXML features) — still return success
-      console.warn("[wx-web] Build succeeded with warnings:", errors);
+      console.warn("[wx-web] Build completed with non-fatal errors:", errors);
     }
 
-    return { success: true, buildId };
+    return { success: true, buildId, warnings: warnings.length ? warnings : undefined };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     await rm(buildDir, { recursive: true, force: true }).catch(() => {});
