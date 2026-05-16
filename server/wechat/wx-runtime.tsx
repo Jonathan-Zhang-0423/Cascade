@@ -531,13 +531,28 @@ interface ScrollViewProps extends WxBaseProps {
   scrollX?: boolean;
   scrollIntoView?: string;
   scrollTop?: number;
+  refresherEnabled?: boolean;
+  refresherThreshold?: number;
+  refresherDefaultStyle?: "black" | "white" | "none";
+  refresherBackground?: string;
+  refresherTriggered?: boolean;
   bindscroll?: (e: unknown) => void;
   bindscrolltolower?: (e: unknown) => void;
   bindscrolltoupper?: (e: unknown) => void;
+  bindrefresherrefresh?: (e: unknown) => void;
+  bindrefresherrestore?: (e: unknown) => void;
+  bindrefresherpulling?: (e: unknown) => void;
+  bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, bindscroll, bindscrolltolower, bindscrolltoupper, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [pulling, setPulling] = useState(0);
+  const [refreshing, setRefreshing] = useState(!!refresherTriggered);
+  const touchStartY = useRef<number | null>(null);
+
+  // Sync refresherTriggered prop.
+  useEffect(() => { setRefreshing(!!refresherTriggered); }, [refresherTriggered]);
 
   // Scroll to element by id when scrollIntoView changes.
   useEffect(() => {
@@ -565,17 +580,59 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
 
   const touch = useTouchProps(extractTouchBindings(rest));
 
+  // Pull-to-refresh for ScrollView (refresher-enabled).
+  const onTouchStart = refresherEnabled ? (e: React.TouchEvent<HTMLDivElement>) => {
+    if (containerRef.current && containerRef.current.scrollTop > 0) return;
+    touchStartY.current = e.touches[0].clientY;
+  } : undefined;
+  const onTouchMove = refresherEnabled ? (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartY.current == null) return;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    if (dy > 0) setPulling(Math.min(dy * 0.5, 60));
+  } : undefined;
+  const onTouchEnd = refresherEnabled ? () => {
+    if (touchStartY.current == null) { setPulling(0); return; }
+    touchStartY.current = null;
+    if (pulling >= 60) {
+      setRefreshing(true);
+      setPulling(60);
+      bindrefresherrefresh?.(makeWxEvent("refresherrefresh", {}, null));
+    } else {
+      setPulling(0);
+    }
+  } : undefined;
+
   return (
-    <div
-      ref={containerRef}
-      id={id}
-      className={className}
-      style={{ overflowY: scrollY ? "auto" : "hidden", overflowX: scrollX ? "auto" : "hidden", WebkitOverflowScrolling: "touch", ...style } as React.CSSProperties}
-      onScroll={handleScroll}
-      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
-      {...touch}
-    >
-      {children}
+    <div style={{ position: "relative", overflow: "hidden", ...style }}>
+      {refresherEnabled && (pulling > 0 || refreshing) && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 40, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 1 }}>
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" style={{ animation: refreshing ? "__wx_spin__ 0.8s linear infinite" : "none", transform: !refreshing ? `rotate(${(pulling / 60) * 180}deg)` : undefined }}>
+            <circle cx="16" cy="16" r="12" stroke="rgba(7,193,96,0.2)" strokeWidth="3" />
+            <path d="M16 4a12 12 0 0 1 12 12" stroke="#07c160" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        id={id}
+        className={className}
+        style={{
+          overflowY: scrollY ? "auto" : "hidden",
+          overflowX: scrollX ? "auto" : "hidden",
+          WebkitOverflowScrolling: "touch",
+          transform: refresherEnabled && (pulling > 0 || refreshing) ? `translateY(${refreshing ? 40 : pulling}px)` : undefined,
+          transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out",
+          height: "100%",
+        } as React.CSSProperties}
+        onScroll={handleScroll}
+        onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
+        onTouchStart={onTouchStart ?? touch.onTouchStart}
+        onTouchMove={onTouchMove ?? touch.onTouchMove}
+        onTouchEnd={onTouchEnd ?? touch.onTouchEnd}
+        onTouchCancel={onTouchEnd ?? touch.onTouchCancel}
+      >
+        {children}
+      </div>
     </div>
   );
 }

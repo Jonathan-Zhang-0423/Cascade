@@ -362,6 +362,19 @@ export const wx = {
   },
   addCard(opts: WxOpts = {}) { ok(opts, { cardList: [], errMsg: "addCard:ok" }); },
   openCard(opts: WxOpts = {}) { ok(opts, { errMsg: "openCard:ok" }); },
+  getAccountInfoSync() {
+    return {
+      miniProgram: { appId: "wx_preview_appid", envVersion: "release", version: "1.0.0" },
+      plugin: { appId: "", version: "" },
+    };
+  },
+  getLaunchOptionsSync() {
+    return { scene: 1001, path: "", query: {}, referrerInfo: {}, forwardMaterials: [], chatType: 1 };
+  },
+  getEnterOptionsSync() {
+    return { scene: 1001, path: "", query: {}, referrerInfo: {}, forwardMaterials: [], chatType: 1 };
+  },
+  onLaunch(cb: (opts: Record<string, unknown>) => void) { setTimeout(() => cb({ scene: 1001, path: "", query: {}, referrerInfo: {} }), 0); },
   nextTick(cb: () => void) { setTimeout(cb, 0); },
   reportMonitor() {}, reportAnalytics() {}, reportEvent() {},
   canIUse() { return true; },
