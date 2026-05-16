@@ -425,6 +425,8 @@ interface InputProps extends WxBaseProps {
   selectionStart?: number;
   selectionEnd?: number;
   adjustPosition?: boolean;
+  autoFocus?: boolean;
+  focus?: boolean;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
@@ -438,7 +440,7 @@ const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputE
   send: "send", search: "search", next: "next", go: "go", done: "done",
 };
 
-export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
@@ -465,7 +467,8 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
         placeholder={placeholder}
         disabled={disabled}
         maxLength={maxlength}
-      enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
+        autoFocus={autoFocus || focus}
+        enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
       onChange={(e) => {
         setLocalVal(e.target.value);
         bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
@@ -496,13 +499,15 @@ interface TextareaProps extends WxBaseProps {
   placeholderClass?: string;
   disabled?: boolean;
   maxlength?: number;
+  autoFocus?: boolean;
+  focus?: boolean;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
   bindblur?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
   const styleId = id ? `__wx_ta_${id}__` : null;
@@ -520,6 +525,7 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
         placeholder={placeholder}
         disabled={disabled}
         maxLength={maxlength}
+        autoFocus={autoFocus || focus}
         onChange={(e) => {
           setLocalVal(e.target.value);
           bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
@@ -543,6 +549,8 @@ interface ScrollViewProps extends WxBaseProps {
   scrollX?: boolean;
   scrollIntoView?: string;
   scrollTop?: number;
+  lowerThreshold?: number;
+  upperThreshold?: number;
   refresherEnabled?: boolean;
   refresherThreshold?: number;
   refresherDefaultStyle?: "black" | "white" | "none";
@@ -557,7 +565,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -582,13 +590,13 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     bindscroll?.(makeWxEvent("scroll", { scrollTop: el.scrollTop, scrollLeft: el.scrollLeft, scrollHeight: el.scrollHeight, scrollWidth: el.scrollWidth }, el));
-    if (bindscrolltolower && el.scrollTop + el.clientHeight >= el.scrollHeight - 10) {
+    if (bindscrolltolower && el.scrollTop + el.clientHeight >= el.scrollHeight - lowerThreshold) {
       bindscrolltolower(makeWxEvent("scrolltolower", {}, el));
     }
-    if (bindscrolltoupper && el.scrollTop <= 10) {
+    if (bindscrolltoupper && el.scrollTop <= upperThreshold) {
       bindscrolltoupper(makeWxEvent("scrolltoupper", {}, el));
     }
-  }, [bindscroll, bindscrolltolower, bindscrolltoupper]);
+  }, [bindscroll, bindscrolltolower, bindscrolltoupper, lowerThreshold, upperThreshold]);
 
   const touch = useTouchProps(extractTouchBindings(rest));
 

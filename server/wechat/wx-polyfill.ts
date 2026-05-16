@@ -366,12 +366,73 @@ export const wx = {
 
   getLocation(opts: WxOpts = {}) { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition((p) => ok(opts, { latitude: p.coords.latitude, longitude: p.coords.longitude, speed: p.coords.speed ?? 0, accuracy: p.coords.accuracy, errMsg: "getLocation:ok" }), (e) => fail(opts, "getLocation:fail " + e.message)); } else { fail(opts, "getLocation:fail"); } },
   chooseLocation(opts: WxOpts = {}) { fail(opts, "chooseLocation:fail not supported in preview"); },
-  openLocation() {}, onLocationChange() {}, offLocationChange() {}, startLocationUpdate() {}, stopLocationUpdate() {},
+  onLocationChange() {}, offLocationChange() {}, startLocationUpdate() {}, stopLocationUpdate() {},
 
   chooseImage(opts: WxOpts & { count?: number } = {}) { const input = document.createElement("input"); input.type = "file"; input.accept = "image/*"; if ((opts.count ?? 9) > 1) input.multiple = true; input.onchange = () => { const files = Array.from(input.files ?? []); const paths = files.map((f) => URL.createObjectURL(f)); ok(opts, { tempFilePaths: paths, tempFiles: files.map((f, i) => ({ path: paths[i], size: f.size })), errMsg: "chooseImage:ok" }); }; input.click(); },
   chooseVideo(opts: WxOpts = {}) { const input = document.createElement("input"); input.type = "file"; input.accept = "video/*"; input.onchange = () => { const f = input.files?.[0]; if (f) ok(opts, { tempFilePath: URL.createObjectURL(f), size: f.size, errMsg: "chooseVideo:ok" }); }; input.click(); },
-  previewImage(opts: WxOpts & { current?: string; urls?: string[] } = {}) { const lb = document.createElement("div"); lb.style.cssText = "position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;"; const img = document.createElement("img"); img.src = opts.current ?? opts.urls?.[0] ?? ""; img.style.cssText = "max-width:100%;max-height:100%;object-fit:contain;"; lb.appendChild(img); lb.onclick = () => lb.remove(); document.body.appendChild(lb); ok(opts, { errMsg: "previewImage:ok" }); },
+  chooseMedia(opts: WxOpts & { count?: number; mediaType?: string[]; sourceType?: string[] } = {}) {
+    const types = (opts.mediaType as string[] | undefined) ?? ["image", "video"];
+    const accept = types.includes("video") && !types.includes("image") ? "video/*"
+      : types.includes("image") && !types.includes("video") ? "image/*"
+      : "image/*,video/*";
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = accept;
+    if ((opts.count ?? 9) > 1) input.multiple = true;
+    input.onchange = () => {
+      const files = Array.from(input.files ?? []);
+      const tempFiles = files.map((f) => ({
+        tempFilePath: URL.createObjectURL(f),
+        size: f.size,
+        duration: 0,
+        height: 0,
+        width: 0,
+        thumbTempFilePath: "",
+        fileType: f.type.startsWith("video") ? "video" : "image",
+      }));
+      ok(opts, { tempFiles, errMsg: "chooseMedia:ok" });
+    };
+    input.click();
+  },
+  getImageInfo(opts: WxOpts & { src?: string } = {}) {
+    const img = new Image();
+    img.onload = () => ok(opts, { width: img.naturalWidth, height: img.naturalHeight, path: opts.src ?? "", type: "unknown", orientation: "up", errMsg: "getImageInfo:ok" });
+    img.onerror = () => fail(opts, "getImageInfo:fail");
+    img.src = opts.src ?? "";
+  },
+  compressImage(opts: WxOpts & { src?: string; quality?: number } = {}) {
+    // In preview, return the original src unchanged (no canvas compression needed for testing).
+    ok(opts, { tempFilePath: opts.src ?? "", errMsg: "compressImage:ok" });
+  },
+  saveVideoToPhotosAlbum(opts: WxOpts = {}) { fail(opts, "saveVideoToPhotosAlbum:fail not supported in preview"); },
+  previewImage(opts: WxOpts & { current?: string; urls?: string[] } = {}) { const lb = document.createElement("div"); lb.style.cssText = "position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;"; const img = document.createElement("img"); img.src = opts.current ?? opts.urls?.[0] ?? ""; img.style.cssText = "max-width:100%;max-height:100%;object-fit:contain;"; lb.appendChild(img); lb.onclick = () => { lb.remove(); opts.complete?.({ errMsg: "previewImage:ok" }); }; document.body.appendChild(lb); ok(opts, { errMsg: "previewImage:ok" }); },
+  previewMedia(opts: WxOpts & { current?: number; sources?: Array<{ url: string; type?: string }> } = {}) {
+    const sources = (opts.sources as Array<{ url: string; type?: string }>) ?? [];
+    const src = sources[opts.current ?? 0]?.url ?? "";
+    if (src) {
+      const lb = document.createElement("div");
+      lb.style.cssText = "position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;";
+      const el = sources[opts.current ?? 0]?.type === "video"
+        ? Object.assign(document.createElement("video"), { src, controls: true, style: "max-width:100%;max-height:100%;" })
+        : Object.assign(document.createElement("img"), { src, style: "max-width:100%;max-height:100%;object-fit:contain;" });
+      lb.appendChild(el); lb.onclick = (e) => { if (e.target === lb) lb.remove(); }; document.body.appendChild(lb);
+    }
+    ok(opts, { errMsg: "previewMedia:ok" });
+  },
   saveImageToPhotosAlbum(opts: WxOpts = {}) { fail(opts, "saveImageToPhotosAlbum:fail not supported in preview"); },
+  openLocation(opts: WxOpts & { latitude?: number; longitude?: number; name?: string; address?: string } = {}) {
+    const lat = opts.latitude ?? 0;
+    const lng = opts.longitude ?? 0;
+    const name = encodeURIComponent((opts.name as string) ?? "");
+    window.open(`https://maps.google.com/?q=${lat},${lng}&label=${name}`, "_blank");
+    ok(opts, { errMsg: "openLocation:ok" });
+  },
+  requestSubscribeMessage(opts: WxOpts & { tmplIds?: string[] } = {}) {
+    const result: Record<string, string> = {};
+    for (const id of (opts.tmplIds as string[]) ?? []) result[id] = "accept";
+    ok(opts, { ...result, errMsg: "requestSubscribeMessage:ok" });
+  },
+  requestSubscribeDeviceMessage(opts: WxOpts = {}) { ok(opts, { errMsg: "requestSubscribeDeviceMessage:ok" }); },
+  showRedPackage(opts: WxOpts = {}) { ok(opts, { errMsg: "showRedPackage:ok" }); },
 
   canvasToTempFilePath(opts: WxOpts & { canvasId?: string } = {}) { const c = document.getElementById(opts.canvasId ?? "") as HTMLCanvasElement | null; if (c) ok(opts, { tempFilePath: c.toDataURL(), errMsg: "canvasToTempFilePath:ok" }); else fail(opts, "canvasToTempFilePath:fail"); },
 

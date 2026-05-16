@@ -359,6 +359,19 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
     return () => { (entry.inst as any).__scrollTo = null; };
   }, [entry.inst]);
 
+  // Wire onResize lifecycle — fires when the window is resized.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        (entry.inst.onResize as Function)?.call(entry.inst, {
+          size: { windowWidth: window.innerWidth, windowHeight: window.innerHeight },
+        });
+      } catch {}
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [entry.inst]);
+
   const reg = PAGE_REGISTRY[entry.path];
   if (!reg) return <div style={{ padding: 16, color: "red" }}>Page not found: {entry.path}</div>;
 
