@@ -328,6 +328,8 @@ interface ButtonProps extends WxBaseProps {
 }
 
 export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, openType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
+  const hoverClass = rest.hoverClass as string | undefined;
+  const [hovered, setHovered] = useState(false);
   const baseStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
     padding: "0 32px", height: "44px", borderRadius: "4px",
@@ -383,7 +385,17 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
   };
 
   return (
-    <button id={id} className={className} style={baseStyle} disabled={disabled} onClick={handleClick} {...touch}>
+    <button
+      id={id}
+      className={[className, hoverClass && hovered ? hoverClass : ""].filter(Boolean).join(" ") || undefined}
+      style={baseStyle}
+      disabled={disabled}
+      onClick={handleClick}
+      onMouseDown={hoverClass && !disabled ? () => setHovered(true) : undefined}
+      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
+      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
+      {...touch}
+    >
       {loading && (
         <span style={{ marginRight: 6, display: "inline-block", width: 16, height: 16, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "wx-spin 0.8s linear infinite" }} />
       )}
@@ -719,7 +731,9 @@ interface NavigatorProps extends WxBaseProps {
   delta?: number;
 }
 
-export function Navigator({ id, className, style, children, url, openType = "navigate", delta, bindtap }: NavigatorProps) {
+export function Navigator({ id, className, style, children, url, openType = "navigate", delta, bindtap, ...rest }: NavigatorProps) {
+  const hoverClass = rest.hoverClass as string | undefined;
+  const [hovered, setHovered] = useState(false);
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (bindtap) { bindtap(makeWxEvent("tap", {}, e.currentTarget)); return; }
@@ -733,7 +747,16 @@ export function Navigator({ id, className, style, children, url, openType = "nav
     else if (openType === "navigateBack") wx.navigateBack({ delta: delta ?? 1 });
   };
   return (
-    <a id={id} className={className} style={{ textDecoration: "none", color: "inherit", display: "block", ...style }} href={url ?? "#"} onClick={handleClick}>
+    <a
+      id={id}
+      className={[className, hoverClass && hovered ? hoverClass : ""].filter(Boolean).join(" ") || undefined}
+      style={{ textDecoration: "none", color: "inherit", display: "block", ...style }}
+      href={url ?? "#"}
+      onClick={handleClick}
+      onMouseDown={hoverClass ? () => setHovered(true) : undefined}
+      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
+      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
+    >
       {children}
     </a>
   );
@@ -1067,9 +1090,19 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
 // Label
 // ---------------------------------------------------------------------------
 
-export function Label({ id, className, style, children, bindtap, catchtap }: WxBaseProps) {
+interface LabelProps extends WxBaseProps {
+  for?: string;
+}
+
+export function Label({ id, className, style, children, bindtap, catchtap, for: htmlFor }: LabelProps) {
   return (
-    <label id={id} className={className} style={style} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>
+    <label
+      id={id}
+      className={className}
+      style={style}
+      htmlFor={htmlFor}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
+    >
       {children}
     </label>
   );

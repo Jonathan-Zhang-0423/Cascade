@@ -382,6 +382,78 @@ export const wx = {
   base64ToArrayBuffer(str: string) { const binary = atob(str); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes.buffer; },
   arrayBufferToBase64(buf: ArrayBuffer) { const bytes = new Uint8Array(buf); let binary = ""; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); },
 
+  // ── Update manager ─────────────────────────────────────────────────────────
+  getUpdateManager() {
+    return {
+      onCheckForUpdate(cb: (r: { hasUpdate: boolean }) => void) { setTimeout(() => cb({ hasUpdate: false }), 0); },
+      onUpdateReady(cb: () => void) { void cb; },
+      onUpdateFailed(cb: () => void) { void cb; },
+      applyUpdate() {},
+    };
+  },
+
+  // ── Video / live player context ────────────────────────────────────────────
+  createVideoContext(videoId: string) {
+    const getEl = () => document.getElementById(videoId) as HTMLVideoElement | null;
+    return {
+      play() { getEl()?.play(); },
+      pause() { getEl()?.pause(); },
+      stop() { const v = getEl(); if (v) { v.pause(); v.currentTime = 0; } },
+      seek(pos: number) { const v = getEl(); if (v) v.currentTime = pos; },
+      sendDanmu() {},
+      playbackRate(rate: number) { const v = getEl(); if (v) v.playbackRate = rate; },
+      requestFullScreen() { getEl()?.requestFullscreen?.(); },
+      exitFullScreen() { document.exitFullscreen?.(); },
+    };
+  },
+  createLivePlayerContext() {
+    return { play() {}, stop() {}, mute() {}, unmute() {}, requestFullScreen() {}, exitFullScreen() {}, snapshot() {} };
+  },
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  connectSocket(opts: WxOpts & { url?: string; header?: Record<string, string>; protocols?: string[] } = {}) {
+    let ws: WebSocket | null = null;
+    try { ws = new WebSocket(opts.url ?? "", opts.protocols); } catch {}
+    const task = {
+      send(o: WxOpts & { data?: string | ArrayBuffer } = {}) { ws?.send(o.data ?? ""); ok(o, {}); },
+      close(o: WxOpts = {}) { ws?.close(); ok(o, {}); },
+      onOpen(cb: () => void) { ws?.addEventListener("open", () => cb()); },
+      onClose(cb: (r: { code: number; reason: string }) => void) { ws?.addEventListener("close", (e) => cb({ code: e.code, reason: e.reason })); },
+      onError(cb: (r: { errMsg: string }) => void) { ws?.addEventListener("error", () => cb({ errMsg: "socket error" })); },
+      onMessage(cb: (r: { data: string | ArrayBuffer }) => void) { ws?.addEventListener("message", (e) => cb({ data: e.data })); },
+    };
+    ws?.addEventListener("open", () => ok(opts, { errMsg: "connectSocket:ok" }));
+    ws?.addEventListener("error", () => fail(opts, "connectSocket:fail"));
+    return task;
+  },
+  sendSocketMessage(opts: WxOpts & { data?: string | ArrayBuffer } = {}) { ok(opts, {}); },
+  closeSocket(opts: WxOpts = {}) { ok(opts, {}); },
+  onSocketOpen(cb: () => void) { void cb; },
+  onSocketClose(cb: () => void) { void cb; },
+  onSocketError(cb: () => void) { void cb; },
+  onSocketMessage(cb: () => void) { void cb; },
+
+  // ── Recorder ──────────────────────────────────────────────────────────────
+  getRecorderManager() {
+    return {
+      start() {}, stop() {}, pause() {}, resume() {},
+      onStart(cb: () => void) { void cb; },
+      onStop(cb: (r: { tempFilePath: string }) => void) { void cb; },
+      onPause(cb: () => void) { void cb; },
+      onResume(cb: () => void) { void cb; },
+      onError(cb: (r: { errMsg: string }) => void) { void cb; },
+      onFrameRecorded(cb: (r: { frameBuffer: ArrayBuffer; isLastFrame: boolean }) => void) { void cb; },
+    };
+  },
+
+  // ── Navigate to mini-program ───────────────────────────────────────────────
+  navigateToMiniProgram(opts: WxOpts & { appId?: string; path?: string } = {}) {
+    _showModalOverlay({ title: "跳转小程序", content: `跳转到 ${opts.appId ?? "其他小程序"} 在预览中不可用。`, showCancel: false, confirmText: "确定" });
+    fail(opts, "navigateToMiniProgram:fail not supported in preview");
+  },
+  navigateBackMiniProgram(opts: WxOpts = {}) { ok(opts, {}); },
+  exitMiniProgram(opts: WxOpts = {}) { ok(opts, {}); },
+
   createSelectorQuery() {
     type FieldsOpts = { id?: boolean; dataset?: boolean; rect?: boolean; size?: boolean; scrollOffset?: boolean; node?: boolean; properties?: string[]; computedStyle?: string[] };
     type Q = { sel: string | null; all: boolean; vp: boolean; type: string; cb?: (r: unknown) => void; opts?: FieldsOpts };
