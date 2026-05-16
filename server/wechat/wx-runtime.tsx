@@ -857,17 +857,32 @@ export function Radio({ id, className, style, value, checked, disabled, bindchan
       value={value}
       defaultChecked={checked}
       disabled={disabled}
-      onChange={(e) => bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
+      onChange={(e) => {
+        // Only fire bindchange if this Radio is standalone (not inside a RadioGroup).
+        // RadioGroup uses event delegation on its container div, so firing here too
+        // would cause duplicate events. We detect RadioGroup by checking if the
+        // closest ancestor with role="radiogroup" exists.
+        const inGroup = !!e.currentTarget.closest("[data-wx-radiogroup]");
+        if (!inGroup) bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
+      }}
     />
   );
 }
 
 export function RadioGroup({ id, className, style, children, bindchange }: WxBaseProps & { bindchange?: (e: unknown) => void }) {
   return (
-    <div id={id} className={className} style={style} onChange={(e) => {
-      const target = e.target as HTMLInputElement;
-      bindchange && bindchange(makeWxEvent("change", { value: target.value }, target));
-    }}>
+    <div
+      id={id}
+      className={className}
+      style={style}
+      data-wx-radiogroup="1"
+      onChange={(e) => {
+        const target = e.target as HTMLInputElement;
+        if (target.type === "radio" && target.checked) {
+          bindchange?.(makeWxEvent("change", { value: target.value }, target));
+        }
+      }}
+    >
       {children}
     </div>
   );

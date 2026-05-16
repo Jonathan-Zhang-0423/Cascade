@@ -181,6 +181,21 @@ function WxApp() {
       if (idx >= 0) setActiveTab(idx);
     }
 
+    // Fire onHide on the current top page before pushing a new one.
+    const currentTop = stackRef.current[stackRef.current.length - 1];
+    if (currentTop && !relaunch) {
+      try { (currentTop.inst.onHide as Function)?.call(currentTop.inst); } catch {}
+    }
+    // Fire onUnload on pages being replaced/relaunched.
+    if (relaunch) {
+      for (const entry of stackRef.current) {
+        try { (entry.inst.onUnload as Function)?.call(entry.inst); } catch {}
+      }
+    } else if (replace && stackRef.current.length > 0) {
+      const replaced = stackRef.current[stackRef.current.length - 1];
+      try { (replaced.inst.onUnload as Function)?.call(replaced.inst); } catch {}
+    }
+
     const inst = createPageInst(path, options);
     if (!inst) { console.warn("[wx] page not found:", path); return; }
     const key = ++keyRef.current;
@@ -200,10 +215,16 @@ function WxApp() {
     setStack(prev => {
       if (prev.length <= 1) return prev;
       setTransition("pop");
+      // Fire onHide + onUnload on pages being popped.
+      const popped = prev.slice(Math.max(1, prev.length - delta));
+      for (const entry of popped) {
+        try { (entry.inst.onHide as Function)?.call(entry.inst); } catch {}
+        try { (entry.inst.onUnload as Function)?.call(entry.inst); } catch {}
+      }
       const next = prev.slice(0, Math.max(1, prev.length - delta));
       stackRef.current = next;
       const top = next[next.length - 1];
-      try { (top.inst.onShow as Function)?.call(top.inst); } catch(e) {}
+      try { (top.inst.onShow as Function)?.call(top.inst); } catch {}
       return next;
     });
   }, []);
