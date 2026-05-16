@@ -292,7 +292,8 @@ export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoa
 
 type ButtonOpenType =
   | "getUserInfo" | "getPhoneNumber" | "openSetting" | "feedback"
-  | "contact" | "launchApp" | "openGroupProfile" | "chooseAvatar";
+  | "contact" | "launchApp" | "openGroupProfile" | "chooseAvatar"
+  | "navigate" | "redirect" | "switchTab" | "reLaunch" | "navigateBack";
 
 interface ButtonProps extends WxBaseProps {
   type?: "primary" | "default" | "warn";
@@ -345,7 +346,20 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
       input.click();
       return;
     }
-    tapHandler(bindtap ?? catchtap)?.(e);
+    // Navigation open-types — delegate to wx polyfill
+    if (openType === "navigate" || openType === "redirect" || openType === "switchTab" || openType === "reLaunch" || openType === "navigateBack") {
+      const wx = (window as unknown as { wx?: Record<string, (o: unknown) => void> }).wx;
+      if (wx) {
+        const url = (rest as Record<string, unknown>).url as string | undefined;
+        if (openType === "navigate") wx.navigateTo?.({ url });
+        else if (openType === "redirect") wx.redirectTo?.({ url });
+        else if (openType === "switchTab") wx.switchTab?.({ url });
+        else if (openType === "reLaunch") wx.reLaunch?.({ url });
+        else if (openType === "navigateBack") wx.navigateBack?.({ delta: 1 });
+      }
+      return;
+    }
+    tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)?.(e);
   };
 
   return (
@@ -367,6 +381,8 @@ type ConfirmType = "send" | "search" | "next" | "go" | "done";
 interface InputProps extends WxBaseProps {
   value?: string;
   placeholder?: string;
+  placeholderStyle?: string;
+  placeholderClass?: string;
   type?: "text" | "number" | "idcard" | "digit" | "tel" | "safe-password";
   password?: boolean;
   disabled?: boolean;
@@ -390,7 +406,7 @@ const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputE
   send: "send", search: "search", next: "next", go: "go", done: "done",
 };
 
-export function Input({ id, className, style, value, placeholder, type = "text", password, disabled, maxlength, confirmType, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
@@ -399,16 +415,24 @@ export function Input({ id, className, style, value, placeholder, type = "text",
     : type === "tel" ? "tel"
     : "text";
 
+  // Inject placeholder styles via a <style> tag scoped to this input's id.
+  const styleId = id ? `__wx_ph_${id}__` : null;
+  const placeholderCss = (placeholderStyle || placeholderClass) && styleId
+    ? `#${styleId}::placeholder { ${placeholderStyle ?? ""} }` + (placeholderClass ? ` #${styleId}::placeholder { /* class: ${placeholderClass} */ }` : "")
+    : null;
+
   return (
-    <input
-      id={id}
-      className={className}
-      style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", ...style }}
-      type={htmlType}
-      value={localVal}
-      placeholder={placeholder}
-      disabled={disabled}
-      maxLength={maxlength}
+    <>
+      {placeholderCss && <style>{placeholderCss}</style>}
+      <input
+        id={styleId ?? id}
+        className={className}
+        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", ...style }}
+        type={htmlType}
+        value={localVal}
+        placeholder={placeholder}
+        disabled={disabled}
+        maxLength={maxlength}
       enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
       onChange={(e) => {
         setLocalVal(e.target.value);
@@ -425,6 +449,7 @@ export function Input({ id, className, style, value, placeholder, type = "text",
         }
       }}
     />
+    </>
   );
 }
 
@@ -629,22 +654,52 @@ export function Navigator({ id, className, style, children, url, openType = "nav
 }
 
 // ---------------------------------------------------------------------------
-// Form
+// Form — collects all named child inputs on submit
 // ---------------------------------------------------------------------------
 
 interface FormProps extends WxBaseProps {
   bindsubmit?: (e: unknown) => void;
   bindreset?: (e: unknown) => void;
+  reportSubmit?: boolean;
 }
 
 export function Form({ id, className, style, children, bindsubmit, bindreset }: FormProps) {
+  const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
+      ref={formRef}
       id={id}
       className={className}
       style={style}
-      onSubmit={(e) => { e.preventDefault(); bindsubmit && bindsubmit(makeWxEvent("submit", {}, e.currentTarget)); }}
-      onReset={(e) => { bindreset && bindreset(makeWxEvent("reset", {}, e.currentTarget)); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!bindsubmit) return;
+        // Collect all named form controls into a value map.
+        const formValue: Record<string, unknown> = {};
+        if (formRef.current) {
+          const els = formRef.current.elements;
+          for (let i = 0; i < els.length; i++) {
+            const el = els[i] as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+            const name = el.getAttribute("name") || el.id;
+            if (!name) continue;
+            if (el instanceof HTMLInputElement) {
+              if (el.type === "checkbox") {
+                // Collect checkbox-group values as array
+                if (!(name in formValue)) formValue[name] = [];
+                if (el.checked) (formValue[name] as string[]).push(el.value);
+              } else if (el.type === "radio") {
+                if (el.checked) formValue[name] = el.value;
+              } else {
+                formValue[name] = el.value;
+              }
+            } else {
+              formValue[name] = el.value;
+            }
+          }
+        }
+        bindsubmit(makeWxEvent("submit", { value: formValue }, e.currentTarget));
+      }}
+      onReset={(e) => { bindreset?.(makeWxEvent("reset", {}, e.currentTarget)); }}
     >
       {children}
     </form>

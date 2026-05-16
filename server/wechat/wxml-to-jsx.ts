@@ -614,6 +614,26 @@ function buildElement(el: Element, tag: string, attribs: Record<string, string>,
       continue;
     }
 
+    // hidden — keep element in DOM but set display:none (unlike wx:if which removes it).
+    if (name === "hidden") {
+      const val = value.trim();
+      const isHidden = val === "" || val === "true" || val === "{{true}}";
+      const isDynamic = val.startsWith("{{") && val.endsWith("}}");
+      if (isDynamic) {
+        const expr = rewriteExpr(val.slice(2, -2).trim());
+        props.push(`style={{...(${expr} ? {display:"none"} : {})}}`);
+      } else if (isHidden) {
+        props.push(`style={{display:"none"}}`);
+      }
+      continue;
+    }
+
+    // slot — pass through as a prop so custom components can use it.
+    if (name === "slot") {
+      props.push(`slot=${attrToJsx(value)}`);
+      continue;
+    }
+
     // class → className
     if (name === "class") { props.push(`className=${attrToJsx(value)}`); continue; }
 

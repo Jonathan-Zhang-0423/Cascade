@@ -260,13 +260,19 @@ function WxApp() {
 
       {/* TabBar */}
       {hasTabBar && (
-        <div style={{ display: "flex", height: 50, flexShrink: 0, background: TAB_BAR_CONFIG!.backgroundColor ?? "#fff", borderTop: "1px solid rgba(0,0,0,0.08)", paddingBottom: "env(safe-area-inset-bottom, 0)" }}>
+        <div id="__wx_tabbar__" style={{ display: "flex", height: 50, flexShrink: 0, background: TAB_BAR_CONFIG!.backgroundColor ?? "#fff", borderTop: "1px solid rgba(0,0,0,0.08)", paddingBottom: "env(safe-area-inset-bottom, 0)" }}>
           {TAB_BAR_CONFIG!.list.map((item: TabBarItem, i: number) => {
             const active = i === activeTab;
             const iconSrc = active ? item.selectedIconPath : item.iconPath;
             const tint = active ? TAB_BAR_CONFIG!.selectedColor : TAB_BAR_CONFIG!.color;
             return (
-              <button key={i} onClick={() => switchTab("/" + item.pagePath.replace(/^\\//, ""))} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", gap: 2, padding: "4px 0", minHeight: 44 }}>
+              <button key={i} onClick={() => {
+                const path = item.pagePath.replace(/^\\//, "");
+                // onTabItemTap fires on every tap, including the active tab.
+                const topInst = stackRef.current[stackRef.current.length - 1]?.inst;
+                try { (topInst?.onTabItemTap as Function)?.call(topInst, { index: i, pagePath: item.pagePath, text: item.text }); } catch {}
+                switchTab("/" + path);
+              }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", gap: 2, padding: "4px 0", minHeight: 44 }}>
                 <TabIcon src={iconSrc} tint={tint} />
                 <span style={{ fontSize: 10, color: tint, lineHeight: 1.2 }}>{item.text}</span>
               </button>
