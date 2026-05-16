@@ -275,25 +275,69 @@ export const wx = {
     };
   },
 
-  request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string> }) {
+  request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string>; timeout?: number }) {
     const url = opts.url ?? "";
     const method = ((opts.method as string) ?? "GET").toUpperCase();
     const data = opts.data;
     const header: Record<string, string> = (opts.header as Record<string, string>) ?? {};
+    const timeoutMs = (opts.timeout as number | undefined) ?? 60000;
     let body: string | undefined;
     if (data && method !== "GET" && method !== "HEAD") {
       header["Content-Type"] = header["Content-Type"] ?? "application/json";
       body = typeof data === "object" ? JSON.stringify(data) : String(data);
     }
     const fetchUrl = method === "GET" && data && typeof data === "object" ? url + "?" + new URLSearchParams(data as Record<string, string>).toString() : url;
-    fetch(fetchUrl, { method, headers: header, body })
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    fetch(fetchUrl, { method, headers: header, body, signal: controller.signal })
       .then((res) => res.text().then((text) => {
+        clearTimeout(timer);
         let responseData: unknown; try { responseData = JSON.parse(text); } catch { responseData = text; }
-        const r = { data: responseData, statusCode: res.status, header: {}, errMsg: "request:ok" };
+        const r = { data: responseData, statusCode: res.status, header: Object.fromEntries(res.headers.entries()), errMsg: "request:ok" };
         opts.success?.(r); opts.complete?.(r);
       }))
-      .catch((err: Error) => { const r = { errMsg: "request:fail " + err.message }; opts.fail?.(r); opts.complete?.(r); });
-    return { abort() {} };
+      .catch((err: Error) => {
+        clearTimeout(timer);
+        const msg = err.name === "AbortError" ? "request:fail timeout" : "request:fail " + err.message;
+        const r = { errMsg: msg };
+        opts.fail?.(r); opts.complete?.(r);
+      });
+    return { abort() { clearTimeout(timer); controller.abort(); } };
+  },
+
+  downloadFile(opts: WxOpts & { url?: string; header?: Record<string, string>; filePath?: string } = {}) {
+    const url = opts.url ?? "";
+    fetch(url, { headers: (opts.header as Record<string, string>) ?? {} })
+      .then((res) => res.blob().then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const r = { tempFilePath: objectUrl, filePath: opts.filePath ?? objectUrl, statusCode: res.status, errMsg: "downloadFile:ok" };
+        opts.success?.(r); opts.complete?.(r);
+      }))
+      .catch((err: Error) => { const r = { errMsg: "downloadFile:fail " + err.message }; opts.fail?.(r); opts.complete?.(r); });
+    return { abort() {}, onProgressUpdate() {} };
+  },
+
+  uploadFile(opts: WxOpts & { url?: string; filePath?: string; name?: string; header?: Record<string, string>; formData?: Record<string, string> } = {}) {
+    const url = opts.url ?? "";
+    const form = new FormData();
+    if (opts.filePath) {
+      // filePath may be an object URL from chooseImage — fetch it back as a blob.
+      fetch(opts.filePath as string)
+        .then((r) => r.blob())
+        .then((blob) => {
+          form.append(opts.name ?? "file", blob, "upload");
+          for (const [k, v] of Object.entries((opts.formData as Record<string, string>) ?? {})) form.append(k, v);
+          return fetch(url, { method: "POST", headers: (opts.header as Record<string, string>) ?? {}, body: form });
+        })
+        .then((res) => res.text().then((text) => {
+          const r = { data: text, statusCode: res.status, errMsg: "uploadFile:ok" };
+          opts.success?.(r); opts.complete?.(r);
+        }))
+        .catch((err: Error) => { const r = { errMsg: "uploadFile:fail " + err.message }; opts.fail?.(r); opts.complete?.(r); });
+    } else {
+      fail(opts, "uploadFile:fail no filePath");
+    }
+    return { abort() {}, onProgressUpdate() {} };
   },
 
   setStorage(opts: WxOpts & { key?: string; data?: unknown }) { try { localStorage.setItem(_key(opts.key!), JSON.stringify(opts.data)); ok(opts, { errMsg: "setStorage:ok" }); } catch (e: unknown) { fail(opts, "setStorage:fail " + (e as Error).message); } },
