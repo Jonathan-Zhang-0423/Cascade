@@ -178,16 +178,36 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
   const animIter  = rest.bindanimationiteration as ((e: unknown) => void) | undefined;
   const animEnd   = rest.bindanimationend as ((e: unknown) => void) | undefined;
   const transEnd  = rest.bindtransitionend as ((e: unknown) => void) | undefined;
+  const hoverClass = rest.hoverClass as string | undefined;
+  const [hovered, setHovered] = useState(false);
+
+  // animation prop from wx.createAnimation().export() — apply the last step's styles.
+  const animProp = rest.animation as { actions?: Array<{ animates?: Array<{ type: string; value: unknown }> }> } | undefined;
+  const animStyle: React.CSSProperties = {};
+  if (animProp?.actions?.length) {
+    const lastAction = animProp.actions[animProp.actions.length - 1];
+    for (const { type, value } of lastAction.animates ?? []) {
+      if (type === "opacity") animStyle.opacity = value as number;
+      else if (type === "backgroundColor") animStyle.backgroundColor = value as string;
+      else if (type === "width") animStyle.width = value as string;
+      else if (type === "height") animStyle.height = value as string;
+      else if (type === "transform") animStyle.transform = value as string;
+    }
+  }
+
   return (
     <div
       id={id}
-      className={className}
-      style={style}
+      className={[className, hoverClass && hovered ? hoverClass : ""].filter(Boolean).join(" ") || undefined}
+      style={{ ...style, ...animStyle }}
       onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onAnimationStart={animStart ? (e) => animStart(makeWxEvent("animationstart", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onAnimationIteration={animIter ? (e) => animIter(makeWxEvent("animationiteration", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onAnimationEnd={animEnd ? (e) => animEnd(makeWxEvent("animationend", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onTransitionEnd={transEnd ? (e) => transEnd(makeWxEvent("transitionend", { propertyName: e.propertyName, elapsedTime: e.elapsedTime }, e.currentTarget)) : undefined}
+      onMouseDown={hoverClass ? () => setHovered(true) : undefined}
+      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
+      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
       {...touch}
       {...dataAttrs}
     >
@@ -460,6 +480,8 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
 interface TextareaProps extends WxBaseProps {
   value?: string;
   placeholder?: string;
+  placeholderStyle?: string;
+  placeholderClass?: string;
   disabled?: boolean;
   maxlength?: number;
   bindinput?: (e: unknown) => void;
@@ -468,28 +490,35 @@ interface TextareaProps extends WxBaseProps {
   bindblur?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, disabled, maxlength, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
+  const styleId = id ? `__wx_ta_${id}__` : null;
+  const placeholderCss = (placeholderStyle || placeholderClass) && styleId
+    ? `#${styleId}::placeholder { ${placeholderStyle ?? ""} }`
+    : null;
   return (
-    <textarea
-      id={id}
-      className={className}
-      style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", ...style }}
-      value={localVal}
-      placeholder={placeholder}
-      disabled={disabled}
-      maxLength={maxlength}
-      onChange={(e) => {
-        setLocalVal(e.target.value);
-        bindinput && bindinput(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
-      }}
-      onBlur={(e) => {
-        bindchange && bindchange(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
-        bindblur && bindblur(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
-      }}
-      onFocus={(e) => bindfocus && bindfocus(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
-    />
+    <>
+      {placeholderCss && <style>{placeholderCss}</style>}
+      <textarea
+        id={styleId ?? id}
+        className={className}
+        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", ...style }}
+        value={localVal}
+        placeholder={placeholder}
+        disabled={disabled}
+        maxLength={maxlength}
+        onChange={(e) => {
+          setLocalVal(e.target.value);
+          bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
+        }}
+        onBlur={(e) => {
+          bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
+          bindblur?.(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
+        }}
+        onFocus={(e) => bindfocus?.(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
+      />
+    </>
   );
 }
 
@@ -726,19 +755,39 @@ export function Checkbox({ id, className, style, value, checked, disabled, bindc
       className={className}
       style={style}
       type="checkbox"
+      name={id}
       value={value}
       checked={localChecked}
       disabled={disabled}
       onChange={(e) => {
         setLocalChecked(e.target.checked);
-        bindchange && bindchange(makeWxEvent("change", { value: e.target.checked ? [value] : [] }, e.currentTarget));
+        bindchange?.(makeWxEvent("change", { value: e.target.checked ? [value] : [] }, e.currentTarget));
       }}
     />
   );
 }
 
-export function CheckboxGroup({ id, className, style, children }: WxBaseProps) {
-  return <div id={id} className={className} style={style}>{children}</div>;
+interface CheckboxGroupProps extends WxBaseProps {
+  bindchange?: (e: unknown) => void;
+}
+
+export function CheckboxGroup({ id, className, style, children, bindchange }: CheckboxGroupProps) {
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!bindchange) return;
+    // Collect all checked checkboxes within this group.
+    const container = e.currentTarget.closest(`#${id}`) ?? e.currentTarget.parentElement;
+    if (!container) return;
+    const checked = Array.from(container.querySelectorAll<HTMLInputElement>("input[type=checkbox]:checked"))
+      .map((el) => el.value)
+      .filter(Boolean);
+    bindchange(makeWxEvent("change", { value: checked }, e.currentTarget));
+  }, [bindchange, id]);
+
+  return (
+    <div id={id} className={className} style={style} onChange={handleChange as unknown as React.ChangeEventHandler<HTMLDivElement>}>
+      {children}
+    </div>
+  );
 }
 
 export function Radio({ id, className, style, value, checked, disabled, bindchange }: CheckboxProps) {
@@ -751,7 +800,7 @@ export function Radio({ id, className, style, value, checked, disabled, bindchan
       value={value}
       defaultChecked={checked}
       disabled={disabled}
-      onChange={(e) => bindchange && bindchange(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
+      onChange={(e) => bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
     />
   );
 }

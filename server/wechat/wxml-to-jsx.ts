@@ -89,6 +89,8 @@ const SKIP_PREFIXING = new Set([
   "console", "window", "document", "globalThis", "wx",
   // Runtime locals from the surrounding generated function
   "__data__", "__page__", "__parseStyle", "__parseInlineStyle",
+  // Dynamic template rendering locals
+  "__tplData__", "__tmplMap__", "__fn__",
   // Default wx:for loop variables
   "item", "index",
 ]);
