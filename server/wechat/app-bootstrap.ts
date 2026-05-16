@@ -321,6 +321,15 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
     return () => { (entry.inst as any).__stopPullDownRefresh = null; };
   }, [entry.inst]);
 
+  // Wire wx.pageScrollTo to the scroller.
+  useEffect(() => {
+    (entry.inst as any).__scrollTo = (opts: { scrollTop?: number; duration?: number }) => {
+      if (!scrollerRef.current) return;
+      scrollerRef.current.scrollTo({ top: opts.scrollTop ?? 0, behavior: opts.duration === 0 ? "instant" : "smooth" });
+    };
+    return () => { (entry.inst as any).__scrollTo = null; };
+  }, [entry.inst]);
+
   const reg = PAGE_REGISTRY[entry.path];
   if (!reg) return <div style={{ padding: 16, color: "red" }}>Page not found: {entry.path}</div>;
 
@@ -390,6 +399,17 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
         onTouchMove={pullEnabled ? onTouchMove : undefined}
         onTouchEnd={pullEnabled ? onTouchEnd : undefined}
         onTouchCancel={pullEnabled ? onTouchEnd : undefined}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const scrollTop = el.scrollTop;
+          // onPageScroll
+          try { (entry.inst.onPageScroll as Function)?.call(entry.inst, { scrollTop }); } catch {}
+          // onReachBottom — fire when within 50px of the bottom
+          const threshold = (reg.config?.onReachBottomDistance as number) ?? 50;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight <= threshold) {
+            try { (entry.inst.onReachBottom as Function)?.call(entry.inst); } catch {}
+          }
+        }}
         style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch", transform: pulling > 0 && !refreshing ? "translateY(" + pulling + "px)" : refreshing ? "translateY(40px)" : "translateY(0)", transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out" } as React.CSSProperties}
       >
         <Component __page__={entry.inst} __data__={data} />

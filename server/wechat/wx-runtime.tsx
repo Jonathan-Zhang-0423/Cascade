@@ -250,13 +250,23 @@ export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoa
 // Button
 // ---------------------------------------------------------------------------
 
+type ButtonOpenType =
+  | "getUserInfo" | "getPhoneNumber" | "openSetting" | "feedback"
+  | "contact" | "launchApp" | "openGroupProfile" | "chooseAvatar";
+
 interface ButtonProps extends WxBaseProps {
   type?: "primary" | "default" | "warn";
   disabled?: boolean;
   loading?: boolean;
+  openType?: ButtonOpenType;
+  bindgetuserinfo?: (e: unknown) => void;
+  bindgetphonenumber?: (e: unknown) => void;
+  bindopensetting?: (e: unknown) => void;
+  bindchooseavatar?: (e: unknown) => void;
+  binderror?: (e: unknown) => void;
 }
 
-export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, ...rest }: ButtonProps) {
+export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, openType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
   const baseStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
     padding: "0 32px", height: "44px", borderRadius: "4px",
@@ -267,8 +277,39 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
     ...style,
   };
   const touch = useTouchProps(extractTouchBindings(rest));
+
+  const handleClick = disabled ? undefined : (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Handle open-type actions by delegating to wx polyfill equivalents.
+    if (openType === "getUserInfo") {
+      (window as unknown as { wx?: { getUserInfo: (o: unknown) => void } }).wx?.getUserInfo({ success: (r: unknown) => bindgetuserinfo?.(makeWxEvent("getuserinfo", r as Record<string, unknown>, e.currentTarget)) });
+      return;
+    }
+    if (openType === "getPhoneNumber") {
+      bindgetphonenumber?.(makeWxEvent("getphonenumber", { errMsg: "getPhoneNumber:fail not supported in preview" }, e.currentTarget));
+      return;
+    }
+    if (openType === "openSetting") {
+      (window as unknown as { wx?: { openSetting: (o: unknown) => void } }).wx?.openSetting({ success: (r: unknown) => bindopensetting?.(makeWxEvent("opensetting", r as Record<string, unknown>, e.currentTarget)) });
+      return;
+    }
+    if (openType === "chooseAvatar") {
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = "image/*";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          bindchooseavatar?.(makeWxEvent("chooseavatar", { avatarUrl: url }, e.currentTarget));
+        }
+      };
+      input.click();
+      return;
+    }
+    tapHandler(bindtap ?? catchtap)?.(e);
+  };
+
   return (
-    <button id={id} className={className} style={baseStyle} disabled={disabled} onClick={disabled ? undefined : tapHandler(bindtap ?? catchtap)} {...touch}>
+    <button id={id} className={className} style={baseStyle} disabled={disabled} onClick={handleClick} {...touch}>
       {loading && (
         <span style={{ marginRight: 6, display: "inline-block", width: 16, height: 16, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "wx-spin 0.8s linear infinite" }} />
       )}
@@ -281,25 +322,42 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
 // Input
 // ---------------------------------------------------------------------------
 
+type ConfirmType = "send" | "search" | "next" | "go" | "done";
+
 interface InputProps extends WxBaseProps {
   value?: string;
   placeholder?: string;
-  type?: "text" | "number" | "idcard" | "digit" | "tel";
+  type?: "text" | "number" | "idcard" | "digit" | "tel" | "safe-password";
   password?: boolean;
   disabled?: boolean;
   maxlength?: number;
+  confirmType?: ConfirmType;
+  confirmHold?: boolean;
+  cursor?: number;
+  selectionStart?: number;
+  selectionEnd?: number;
+  adjustPosition?: boolean;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
   bindblur?: (e: unknown) => void;
   bindconfirm?: (e: unknown) => void;
+  bindkeyboardheightchange?: (e: unknown) => void;
 }
 
-export function Input({ id, className, style, value, placeholder, type = "text", password, disabled, maxlength, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+// Maps WeChat confirm-type to HTML enterkeyhint (shows correct key on mobile keyboards).
+const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputElement>["enterKeyHint"]> = {
+  send: "send", search: "search", next: "next", go: "go", done: "done",
+};
+
+export function Input({ id, className, style, value, placeholder, type = "text", password, disabled, maxlength, confirmType, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
-  const htmlType = password ? "password" : type === "digit" || type === "number" ? "number" : type === "tel" ? "tel" : "text";
+  const htmlType = password || type === "safe-password" ? "password"
+    : type === "digit" || type === "number" ? "number"
+    : type === "tel" ? "tel"
+    : "text";
 
   return (
     <input
@@ -311,17 +369,20 @@ export function Input({ id, className, style, value, placeholder, type = "text",
       placeholder={placeholder}
       disabled={disabled}
       maxLength={maxlength}
+      enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
       onChange={(e) => {
         setLocalVal(e.target.value);
-        bindinput && bindinput(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
+        bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
       }}
       onBlur={(e) => {
-        bindchange && bindchange(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
-        bindblur && bindblur(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
+        bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
+        bindblur?.(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
       }}
-      onFocus={(e) => bindfocus && bindfocus(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
+      onFocus={(e) => bindfocus?.(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
       onKeyDown={(e) => {
-        if (e.key === "Enter") bindconfirm && bindconfirm(makeWxEvent("confirm", { value: (e.target as HTMLInputElement).value }, e.currentTarget));
+        if (e.key === "Enter") {
+          bindconfirm?.(makeWxEvent("confirm", { value: (e.target as HTMLInputElement).value }, e.currentTarget));
+        }
       }}
     />
   );
@@ -675,34 +736,111 @@ export function Slider({ id, className, style, value = 0, min = 0, max = 100, st
 }
 
 interface PickerProps extends WxBaseProps {
-  range?: string[] | number[];
-  value?: number;
+  range?: string[] | number[] | Array<string[] | number[]>;
+  rangeKey?: string;
+  value?: number | number[] | string;
   mode?: "selector" | "multiSelector" | "time" | "date" | "region";
+  start?: string;
+  end?: string;
+  fields?: "year" | "month" | "day";
   disabled?: boolean;
   bindchange?: (e: unknown) => void;
+  bindcolumnchange?: (e: unknown) => void;
+  bindcancel?: (e: unknown) => void;
 }
 
-export function Picker({ id, className, style, children, range = [], value = 0, mode = "selector", disabled, bindchange }: PickerProps) {
-  if (mode === "date" || mode === "time") {
+export function Picker({ id, className, style, children, range = [], value = 0, mode = "selector", start, end, fields, disabled, bindchange, bindcolumnchange, bindcancel }: PickerProps) {
+  // date / time — use native HTML inputs.
+  if (mode === "date") {
+    const dateType = fields === "year" ? "number" : fields === "month" ? "month" : "date";
     return (
       <div id={id} className={className} style={{ display: "inline-block", ...style }}>
         <input
-          type={mode === "date" ? "date" : "time"}
+          type={dateType === "number" ? "number" : dateType}
+          min={start}
+          max={end}
           disabled={disabled}
-          onChange={(e) => bindchange && bindchange(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
+          defaultValue={typeof value === "string" ? value : undefined}
+          onChange={(e) => bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
+          style={{ fontSize: 14, padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4 }}
         />
         {children}
       </div>
     );
   }
+  if (mode === "time") {
+    return (
+      <div id={id} className={className} style={{ display: "inline-block", ...style }}>
+        <input
+          type="time"
+          min={start}
+          max={end}
+          disabled={disabled}
+          defaultValue={typeof value === "string" ? value : undefined}
+          onChange={(e) => bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget))}
+          style={{ fontSize: 14, padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4 }}
+        />
+        {children}
+      </div>
+    );
+  }
+  // multiSelector — render one <select> per column.
+  if (mode === "multiSelector") {
+    const cols = Array.isArray(range) && Array.isArray(range[0]) ? range as Array<string[] | number[]> : [range as string[] | number[]];
+    const vals = Array.isArray(value) ? value as number[] : cols.map(() => 0);
+    return (
+      <div id={id} className={className} style={{ display: "flex", gap: 4, alignItems: "center", ...style }}>
+        {cols.map((col, ci) => (
+          <select
+            key={ci}
+            value={vals[ci] ?? 0}
+            disabled={disabled}
+            onChange={(e) => {
+              const newVals = [...vals];
+              newVals[ci] = Number(e.target.value);
+              bindcolumnchange?.(makeWxEvent("columnchange", { column: ci, value: Number(e.target.value) }, e.currentTarget));
+              bindchange?.(makeWxEvent("change", { value: newVals }, e.currentTarget));
+            }}
+            style={{ fontSize: 14, padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4 }}
+          >
+            {(col as Array<string | number>).map((item, i) => (
+              <option key={i} value={i}>{String(item)}</option>
+            ))}
+          </select>
+        ))}
+        {children}
+      </div>
+    );
+  }
+  // region — three linked selects (province / city / district).
+  // In preview we show a simple text input since we don't have the full region dataset.
+  if (mode === "region") {
+    return (
+      <div id={id} className={className} style={{ display: "inline-flex", alignItems: "center", gap: 4, ...style }}>
+        <input
+          type="text"
+          placeholder="省/市/区"
+          disabled={disabled}
+          defaultValue={Array.isArray(value) ? (value as unknown as string[]).join(" / ") : ""}
+          onBlur={(e) => bindchange?.(makeWxEvent("change", { value: e.target.value.split(" / "), code: [], postcode: "" }, e.currentTarget))}
+          style={{ fontSize: 14, padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4 }}
+        />
+        {children}
+      </div>
+    );
+  }
+  // selector (default) — single <select>.
   return (
     <div id={id} className={className} style={{ display: "inline-block", ...style }}>
       <select
-        value={value}
+        value={value as number}
         disabled={disabled}
-        onChange={(e) => bindchange && bindchange(makeWxEvent("change", { value: Number(e.target.value) }, e.currentTarget))}
+        onChange={(e) => bindchange?.(makeWxEvent("change", { value: Number(e.target.value) }, e.currentTarget))}
+        style={{ fontSize: 14, padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4 }}
       >
-        {(range as string[]).map((item, i) => <option key={i} value={i}>{item}</option>)}
+        {(range as Array<string | number>).map((item, i) => (
+          <option key={i} value={i}>{String(item)}</option>
+        ))}
       </select>
       {children}
     </div>

@@ -226,17 +226,53 @@ export const wx = {
     backdrop.onclick = (e) => { if (e.target === backdrop) { backdrop.remove(); opts.fail?.({ errMsg: "showActionSheet:fail cancel" }); } };
   },
   showNavigationBarLoading() {}, hideNavigationBarLoading() {},
-  setNavigationBarTitle(opts: WxOpts & { title?: string }) { if (opts.title) document.title = opts.title as string; },
-  setNavigationBarColor() {}, setTabBarBadge() {}, removeTabBarBadge() {}, showTabBarRedDot() {}, hideTabBarRedDot() {}, showTabBar() {}, hideTabBar() {},
+  setNavigationBarTitle(opts: WxOpts & { title?: string }) { if (opts.title) document.title = opts.title as string; ok(opts, { errMsg: "setNavigationBarTitle:ok" }); },
+  setNavigationBarColor(opts: WxOpts & { frontColor?: string; backgroundColor?: string } = {}) {
+    // Update the navbar background via a CSS variable the app-bootstrap reads.
+    if (opts.backgroundColor) document.documentElement.style.setProperty("--wx-nav-bg", opts.backgroundColor as string);
+    if (opts.frontColor) document.documentElement.style.setProperty("--wx-nav-text", opts.frontColor as string);
+    ok(opts, { errMsg: "setNavigationBarColor:ok" });
+  },
+  setTabBarBadge() {}, removeTabBarBadge() {}, showTabBarRedDot() {}, hideTabBarRedDot() {},
+  showTabBar(opts: WxOpts = {}) { document.getElementById("__wx_tabbar__")?.style.setProperty("display", "flex"); ok(opts, {}); },
+  hideTabBar(opts: WxOpts = {}) { document.getElementById("__wx_tabbar__")?.style.setProperty("display", "none"); ok(opts, {}); },
+  setTabBarItem() {}, setTabBarStyle() {},
+  pageScrollTo(opts: WxOpts & { scrollTop?: number; duration?: number } = {}) {
+    try {
+      const pages = (window as unknown as { getCurrentPages?: () => Array<Record<string, unknown>> }).getCurrentPages?.();
+      const top = pages && pages[pages.length - 1];
+      (top?.__scrollTo as ((o: { scrollTop?: number; duration?: number }) => void) | null)?.(opts);
+    } catch {}
+    ok(opts, { errMsg: "pageScrollTo:ok" });
+  },
   startPullDownRefresh(opts: WxOpts = {}) { ok(opts, { errMsg: "startPullDownRefresh:ok" }); },
   stopPullDownRefresh(opts: WxOpts = {}) {
-    // PageRenderer installs __stopPullDownRefresh on the current page instance.
     try {
       const pages = (window as unknown as { getCurrentPages?: () => Array<Record<string, unknown>> }).getCurrentPages?.();
       const top = pages && pages[pages.length - 1];
       (top?.__stopPullDownRefresh as (() => void) | null)?.();
     } catch {}
     ok(opts, { errMsg: "stopPullDownRefresh:ok" });
+  },
+  getMenuButtonBoundingClientRect() {
+    // Return a plausible capsule-button rect for a 375px-wide phone frame.
+    return { width: 87, height: 32, top: 6, right: 367, bottom: 38, left: 280 };
+  },
+  onAppShow(cb: (opts: Record<string, unknown>) => void) { window.addEventListener("focus", () => cb({})); },
+  onAppHide(cb: () => void) { window.addEventListener("blur", () => cb()); },
+  offAppShow() {}, offAppHide() {},
+  createMediaQueryObserver() {
+    return {
+      observe(descriptor: Record<string, unknown>, cb: (res: { matches: boolean }) => void) {
+        const mq = descriptor.minWidth != null
+          ? window.matchMedia(`(min-width: ${descriptor.minWidth}px)`)
+          : descriptor.maxWidth != null
+            ? window.matchMedia(`(max-width: ${descriptor.maxWidth}px)`)
+            : null;
+        if (mq) { cb({ matches: mq.matches }); mq.addEventListener("change", (e) => cb({ matches: e.matches })); }
+      },
+      disconnect() {},
+    };
   },
 
   request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string> }) {
