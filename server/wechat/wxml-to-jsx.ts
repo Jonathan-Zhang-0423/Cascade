@@ -591,6 +591,14 @@ function buildElement(el: Element, tag: string, attribs: Record<string, string>,
       continue;
     }
 
+    // mark:xxx attributes — WeChat event mark system. Store as data-wx-mark-xxx
+    // so event handlers can read e.mark.xxx from the event object.
+    if (name.startsWith("mark:")) {
+      const markKey = name.slice(5);
+      props.push(`data-wx-mark-${markKey}=${attrToJsx(value)}`);
+      continue;
+    }
+
     // data-* attributes — pass through as-is
     if (name.startsWith("data-")) {
       props.push(`${name}=${attrToJsx(value)}`);

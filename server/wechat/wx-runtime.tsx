@@ -14,15 +14,19 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 
 function makeWxEvent(type: string, detail: Record<string, unknown>, el: EventTarget | null) {
   const dataset: Record<string, string> = {};
+  const mark: Record<string, string> = {};
   if (el && el instanceof HTMLElement) {
     for (const attr of Array.from(el.attributes)) {
-      if (attr.name.startsWith("data-wx-")) {
+      if (attr.name.startsWith("data-wx-mark-")) {
+        const key = attr.name.slice(13).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+        mark[key] = attr.value;
+      } else if (attr.name.startsWith("data-wx-")) {
         const key = attr.name.slice(8).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
         dataset[key] = attr.value;
       }
     }
   }
-  return { type, timeStamp: Date.now(), detail, target: { dataset }, currentTarget: { dataset } };
+  return { type, timeStamp: Date.now(), detail, mark, target: { dataset, markMap: mark }, currentTarget: { dataset, markMap: mark } };
 }
 
 function tapHandler(handler?: (e: unknown) => void) {
@@ -179,14 +183,33 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
 // Text
 // ---------------------------------------------------------------------------
 
-export function Text({ id, className, style, children, bindtap, catchtap, ...rest }: WxBaseProps) {
+interface TextProps extends WxBaseProps {
+  selectable?: boolean;
+  space?: "ensp" | "emsp" | "nbsp";
+  decode?: boolean;
+  numberOfLines?: number;
+}
+
+export function Text({ id, className, style, children, bindtap, catchtap, selectable, space, numberOfLines, ...rest }: TextProps) {
   const dataAttrs: Record<string, string> = {};
   for (const [k, v] of Object.entries(rest)) {
     if (k.startsWith("data-")) dataAttrs[k] = String(v ?? "");
   }
   const touch = useTouchProps(extractTouchBindings(rest));
+
+  const textStyle: React.CSSProperties = {
+    ...style,
+    ...(selectable ? { userSelect: "text", WebkitUserSelect: "text" } : {}),
+    ...(numberOfLines != null ? {
+      display: "-webkit-box",
+      WebkitLineClamp: numberOfLines,
+      WebkitBoxOrient: "vertical",
+      overflow: "hidden",
+    } : {}),
+  };
+
   return (
-    <span id={id} className={className} style={style} onClick={tapHandler(bindtap ?? catchtap)} {...touch} {...dataAttrs}>
+    <span id={id} className={className} style={textStyle} onClick={tapHandler(bindtap ?? catchtap)} {...touch} {...dataAttrs}>
       {children}
     </span>
   );
