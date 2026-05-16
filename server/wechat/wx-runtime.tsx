@@ -320,6 +320,7 @@ interface ButtonProps extends WxBaseProps {
   disabled?: boolean;
   loading?: boolean;
   openType?: ButtonOpenType;
+  formType?: "submit" | "reset";
   bindgetuserinfo?: (e: unknown) => void;
   bindgetphonenumber?: (e: unknown) => void;
   bindopensetting?: (e: unknown) => void;
@@ -327,7 +328,7 @@ interface ButtonProps extends WxBaseProps {
   binderror?: (e: unknown) => void;
 }
 
-export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, openType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
+export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
   const hoverClass = rest.hoverClass as string | undefined;
   const [hovered, setHovered] = useState(false);
   const baseStyle: React.CSSProperties = {
@@ -390,6 +391,7 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
       className={[className, hoverClass && hovered ? hoverClass : ""].filter(Boolean).join(" ") || undefined}
       style={baseStyle}
       disabled={disabled}
+      type={formType === "submit" ? "submit" : formType === "reset" ? "reset" : "button"}
       onClick={handleClick}
       onMouseDown={hoverClass && !disabled ? () => setHovered(true) : undefined}
       onMouseUp={hoverClass ? () => setHovered(false) : undefined}

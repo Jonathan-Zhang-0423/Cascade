@@ -225,12 +225,29 @@ export const wx = {
     cancelBtn.onclick = () => { backdrop.remove(); opts.fail?.({ errMsg: "showActionSheet:fail cancel" }); };
     backdrop.onclick = (e) => { if (e.target === backdrop) { backdrop.remove(); opts.fail?.({ errMsg: "showActionSheet:fail cancel" }); } };
   },
-  showNavigationBarLoading() {}, hideNavigationBarLoading() {},
-  setNavigationBarTitle(opts: WxOpts & { title?: string }) { if (opts.title) document.title = opts.title as string; ok(opts, { errMsg: "setNavigationBarTitle:ok" }); },
+  showNavigationBarLoading(opts: WxOpts = {}) {
+    (window as unknown as { __wxSetNavLoading?: (v: boolean) => void }).__wxSetNavLoading?.(true);
+    ok(opts, { errMsg: "showNavigationBarLoading:ok" });
+  },
+  hideNavigationBarLoading(opts: WxOpts = {}) {
+    (window as unknown as { __wxSetNavLoading?: (v: boolean) => void }).__wxSetNavLoading?.(false);
+    ok(opts, { errMsg: "hideNavigationBarLoading:ok" });
+  },
+  setNavigationBarTitle(opts: WxOpts & { title?: string }) {
+    const title = opts.title as string | undefined;
+    if (title) {
+      document.title = title;
+      (window as unknown as { __wxSetNavTitle?: (t: string) => void }).__wxSetNavTitle?.(title);
+    }
+    ok(opts, { errMsg: "setNavigationBarTitle:ok" });
+  },
   setNavigationBarColor(opts: WxOpts & { frontColor?: string; backgroundColor?: string } = {}) {
-    // Update the navbar background via a CSS variable the app-bootstrap reads.
-    if (opts.backgroundColor) document.documentElement.style.setProperty("--wx-nav-bg", opts.backgroundColor as string);
-    if (opts.frontColor) document.documentElement.style.setProperty("--wx-nav-text", opts.frontColor as string);
+    if (opts.backgroundColor) {
+      (window as unknown as { __wxSetNavBg?: (c: string) => void }).__wxSetNavBg?.(opts.backgroundColor as string);
+    }
+    if (opts.frontColor) {
+      (window as unknown as { __wxSetNavText?: (c: string) => void }).__wxSetNavText?.(opts.frontColor as string);
+    }
     ok(opts, { errMsg: "setNavigationBarColor:ok" });
   },
   setTabBarBadge() {}, removeTabBarBadge() {}, showTabBarRedDot() {}, hideTabBarRedDot() {},

@@ -244,6 +244,32 @@ function WxApp() {
     (window as any).getCurrentPages = () => stackRef.current.map(e => e.inst);
   }, [navigate, navigateBack, switchTab]);
 
+  // Reactive navbar overrides — wx.setNavigationBarTitle / setNavigationBarColor
+  // write to these via window.__wxSetNavTitle / __wxSetNavBg / __wxSetNavText.
+  const [navTitleOverride, setNavTitleOverride] = useState<string | null>(null);
+  const [navBgOverride, setNavBgOverride] = useState<string | null>(null);
+  const [navTextOverride, setNavTextOverride] = useState<string | null>(null);
+  const [navLoading, setNavLoading] = useState(false);
+  useEffect(() => {
+    (window as any).__wxSetNavTitle = (t: string) => setNavTitleOverride(t);
+    (window as any).__wxSetNavBg = (c: string) => setNavBgOverride(c);
+    (window as any).__wxSetNavText = (c: string) => setNavTextOverride(c);
+    (window as any).__wxSetNavLoading = (v: boolean) => setNavLoading(v);
+    return () => {
+      delete (window as any).__wxSetNavTitle;
+      delete (window as any).__wxSetNavBg;
+      delete (window as any).__wxSetNavText;
+      delete (window as any).__wxSetNavLoading;
+    };
+  }, []);
+  // Reset overrides when the page changes.
+  useEffect(() => {
+    setNavTitleOverride(null);
+    setNavBgOverride(null);
+    setNavTextOverride(null);
+    setNavLoading(false);
+  }, [stack.length]);
+
   // Boot: run app.js then load entry page
   useEffect(() => {
     try {
@@ -256,9 +282,9 @@ function WxApp() {
 
   const current = stack[stack.length - 1];
   const showBack = stack.length > 1;
-  const pageTitle = current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarTitleText as string ?? "${navTitle}") : "${navTitle}";
-  const pageBg = current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarBackgroundColor as string ?? "${navBgColor}") : "${navBgColor}";
-  const pageTextColor = current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarTextStyle === "black" ? "#000" : "${navTextColor}") : "${navTextColor}";
+  const pageTitle = navTitleOverride ?? (current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarTitleText as string ?? "${navTitle}") : "${navTitle}");
+  const pageBg = navBgOverride ?? (current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarBackgroundColor as string ?? "${navBgColor}") : "${navBgColor}");
+  const pageTextColor = navTextOverride ?? (current ? (PAGE_REGISTRY[current.path]?.config?.navigationBarTextStyle === "black" ? "#000" : "${navTextColor}") : "${navTextColor}");
 
   const hasTabBar = !!TAB_BAR_CONFIG && TAB_BAR_CONFIG.list.length > 0;
 
@@ -272,6 +298,14 @@ function WxApp() {
           </button>
         )}
         <span style={{ fontSize: 17, fontWeight: 600 }}>{pageTitle}</span>
+        {navLoading && (
+          <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="none" style={{ animation: "__wx_spin__ 0.8s linear infinite" }}>
+              <circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.3)" strokeWidth="3"/>
+              <path d="M16 4a12 12 0 0 1 12 12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            </svg>
+          </span>
+        )}
       </div>
 
       {/* Page content */}
