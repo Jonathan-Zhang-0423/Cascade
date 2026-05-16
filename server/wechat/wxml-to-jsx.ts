@@ -54,6 +54,10 @@ function mapEventAttr(name: string): string | null {
   const lower = name.toLowerCase();
   // bindtap / catchtap → onClick (catchtap also stops propagation — handled in runtime)
   if (lower === "bindtap" || lower === "catchtap") return lower === "catchtap" ? "catchtap" : "bindtap";
+  // WeChat supports both old camelCase (catchtap) and new colon syntax (catch:tap).
+  // Normalise catch:xxx → catchxxx so the runtime handles it uniformly.
+  if (lower.startsWith("catch:")) return "catch" + lower.slice(6);
+  if (lower.startsWith("bind:")) return "bind" + lower.slice(5);
   // bindinput / bindchange / bindfocus / bindblur / bindconfirm / bindsubmit / bindreset
   // bindscroll / bindscrolltolower / bindscrolltoupper / bindchange on swiper
   if (lower.startsWith("bind") || lower.startsWith("catch")) return lower;
@@ -649,7 +653,10 @@ function buildElement(el: Element, tag: string, attribs: Record<string, string>,
   // Add key for wx:for items
   if (attribs["wx:for"]) {
     const wxKey = attribs["wx:key"];
-    if (wxKey && wxKey !== "*this") {
+    if (wxKey === "*this") {
+      // Primitive array — use the value itself as the key.
+      props.push(`key={String(${attribs["wx:for-item"] ?? "item"})}`);
+    } else if (wxKey) {
       props.push(`key={${attribs["wx:for-item"] ?? "item"}.${wxKey}}`);
     } else {
       props.push(`key={${attribs["wx:for-index"] ?? "index"}}`);

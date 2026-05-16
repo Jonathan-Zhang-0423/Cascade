@@ -304,6 +304,8 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
   const [animState, setAnimState] = useState<"entering" | "idle">(transition ? "entering" : "idle");
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const reachBottomFiredRef = useRef(false);
+
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef<number | null>(null);
 
@@ -410,10 +412,14 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
           const scrollTop = el.scrollTop;
           // onPageScroll
           try { (entry.inst.onPageScroll as Function)?.call(entry.inst, { scrollTop }); } catch {}
-          // onReachBottom — fire when within 50px of the bottom
+          // onReachBottom — fire once per threshold crossing (reset when user scrolls back up)
           const threshold = (reg.config?.onReachBottomDistance as number) ?? 50;
-          if (el.scrollHeight - el.scrollTop - el.clientHeight <= threshold) {
+          const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+          if (nearBottom && !reachBottomFiredRef.current) {
+            reachBottomFiredRef.current = true;
             try { (entry.inst.onReachBottom as Function)?.call(entry.inst); } catch {}
+          } else if (!nearBottom) {
+            reachBottomFiredRef.current = false;
           }
         }}
         style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch", transform: pulling > 0 && !refreshing ? "translateY(" + pulling + "px)" : refreshing ? "translateY(40px)" : "translateY(0)", transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out" } as React.CSSProperties}

@@ -339,8 +339,29 @@ export const wx = {
   openSetting(opts: WxOpts = {}) { ok(opts, { authSetting: {}, errMsg: "openSetting:ok" }); },
   getSetting(opts: WxOpts = {}) { ok(opts, { authSetting: {}, errMsg: "getSetting:ok" }); },
   requestPayment(opts: WxOpts = {}) { _showModalOverlay({ title: "支付", content: "支付在预览环境中不可用。", showCancel: false, confirmText: "确定" }); fail(opts, "requestPayment:fail not supported in preview"); },
-  showShareMenu() {}, hideShareMenu() {}, updateShareMenu() {},
+  showShareMenu(opts: WxOpts = {}) { ok(opts, { errMsg: "showShareMenu:ok" }); },
+  hideShareMenu(opts: WxOpts = {}) { ok(opts, { errMsg: "hideShareMenu:ok" }); },
+  updateShareMenu() {},
   getShareInfo(opts: WxOpts = {}) { ok(opts, { errMsg: "getShareInfo:ok", encryptedData: "", iv: "", cloudID: "" }); },
+  makePhoneCall(opts: WxOpts & { phoneNumber?: string } = {}) {
+    // In a browser we can attempt tel: link; most desktop browsers will prompt.
+    if (opts.phoneNumber) {
+      const a = document.createElement("a");
+      a.href = "tel:" + (opts.phoneNumber as string);
+      a.click();
+    }
+    ok(opts, { errMsg: "makePhoneCall:ok" });
+  },
+  scanCode(opts: WxOpts & { onlyFromCamera?: boolean } = {}) {
+    // No camera access in preview — return a mock QR result.
+    ok(opts, { result: "https://example.com", scanType: "QR_CODE", charSet: "UTF-8", rawData: "", errMsg: "scanCode:ok" });
+  },
+  openDocument(opts: WxOpts & { filePath?: string; fileType?: string } = {}) {
+    if (opts.filePath) { window.open(opts.filePath as string, "_blank"); }
+    ok(opts, { errMsg: "openDocument:ok" });
+  },
+  addCard(opts: WxOpts = {}) { ok(opts, { cardList: [], errMsg: "addCard:ok" }); },
+  openCard(opts: WxOpts = {}) { ok(opts, { errMsg: "openCard:ok" }); },
   nextTick(cb: () => void) { setTimeout(cb, 0); },
   reportMonitor() {}, reportAnalytics() {}, reportEvent() {},
   canIUse() { return true; },
