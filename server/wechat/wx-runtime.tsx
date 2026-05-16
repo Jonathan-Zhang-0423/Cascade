@@ -29,10 +29,10 @@ function makeWxEvent(type: string, detail: Record<string, unknown>, el: EventTar
   return { type, timeStamp: Date.now(), detail, mark, target: { dataset, markMap: mark }, currentTarget: { dataset, markMap: mark } };
 }
 
-function tapHandler(handler?: (e: unknown) => void) {
+function tapHandler(handler?: (e: unknown) => void, stopProp = false) {
   if (!handler) return undefined;
   return (e: React.MouseEvent) => {
-    e.stopPropagation();
+    if (stopProp) e.stopPropagation();
     handler(makeWxEvent("tap", { x: e.clientX, y: e.clientY }, e.currentTarget));
   };
 }
@@ -135,6 +135,8 @@ const WX_EVENT_KEYS = [
   "bindtouchstart", "bindtouchmove", "bindtouchend", "bindtouchcancel",
   "catchtouchstart", "catchtouchmove", "catchtouchend", "catchtouchcancel",
   "bindlongpress", "bindlongtap",
+  "bindanimationstart", "bindanimationiteration", "bindanimationend",
+  "bindtransitionend",
 ] as const;
 
 function extractTouchBindings(props: Record<string, unknown>): TouchBindings {
@@ -172,8 +174,23 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
     if (k.startsWith("data-")) dataAttrs[k] = String(v ?? "");
   }
   const touch = useTouchProps(extractTouchBindings(rest));
+  const animStart = rest.bindanimationstart as ((e: unknown) => void) | undefined;
+  const animIter  = rest.bindanimationiteration as ((e: unknown) => void) | undefined;
+  const animEnd   = rest.bindanimationend as ((e: unknown) => void) | undefined;
+  const transEnd  = rest.bindtransitionend as ((e: unknown) => void) | undefined;
   return (
-    <div id={id} className={className} style={style} onClick={tapHandler(bindtap ?? catchtap)} {...touch} {...dataAttrs}>
+    <div
+      id={id}
+      className={className}
+      style={style}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
+      onAnimationStart={animStart ? (e) => animStart(makeWxEvent("animationstart", { animationName: e.animationName }, e.currentTarget)) : undefined}
+      onAnimationIteration={animIter ? (e) => animIter(makeWxEvent("animationiteration", { animationName: e.animationName }, e.currentTarget)) : undefined}
+      onAnimationEnd={animEnd ? (e) => animEnd(makeWxEvent("animationend", { animationName: e.animationName }, e.currentTarget)) : undefined}
+      onTransitionEnd={transEnd ? (e) => transEnd(makeWxEvent("transitionend", { propertyName: e.propertyName, elapsedTime: e.elapsedTime }, e.currentTarget)) : undefined}
+      {...touch}
+      {...dataAttrs}
+    >
       {children}
     </div>
   );
@@ -209,7 +226,7 @@ export function Text({ id, className, style, children, bindtap, catchtap, select
   };
 
   return (
-    <span id={id} className={className} style={textStyle} onClick={tapHandler(bindtap ?? catchtap)} {...touch} {...dataAttrs}>
+    <span id={id} className={className} style={textStyle} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)} {...touch} {...dataAttrs}>
       {children}
     </span>
   );
@@ -260,7 +277,7 @@ export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoa
       src={src}
       loading={lazyLoad ? "lazy" : undefined}
       style={{ display: "block", width: "100%", height: "100%", ...modeStyle, ...style }}
-      onClick={tapHandler(bindtap ?? catchtap)}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onLoad={(e) => bindload?.(makeWxEvent("load", { width: (e.target as HTMLImageElement).naturalWidth, height: (e.target as HTMLImageElement).naturalHeight }, e.currentTarget))}
       onError={(e) => binderror?.(makeWxEvent("error", { errMsg: "load failed" }, e.currentTarget))}
       {...touch}
@@ -501,7 +518,7 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
       className={className}
       style={{ overflowY: scrollY ? "auto" : "hidden", overflowX: scrollX ? "auto" : "hidden", WebkitOverflowScrolling: "touch", ...style } as React.CSSProperties}
       onScroll={handleScroll}
-      onClick={tapHandler(bindtap ?? catchtap)}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       {...touch}
     >
       {children}
@@ -876,7 +893,7 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
 
 export function Label({ id, className, style, children, bindtap, catchtap }: WxBaseProps) {
   return (
-    <label id={id} className={className} style={style} onClick={tapHandler(bindtap ?? catchtap)}>
+    <label id={id} className={className} style={style} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>
       {children}
     </label>
   );
@@ -955,7 +972,7 @@ export function Canvas({ id, className, style, width, height, bindtap, catchtap,
       width={typeof width === "number" ? width : undefined}
       height={typeof height === "number" ? height : undefined}
       style={{ display: "block", width: "100%", height: "100%", ...style }}
-      onClick={tapHandler(bindtap ?? catchtap)}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       {...touch}
     />
   );
@@ -1178,7 +1195,7 @@ export function CoverView({ id, className, style, children, bindtap, catchtap }:
       id={id}
       className={className}
       style={{ position: "absolute", ...style }}
-      onClick={tapHandler(bindtap ?? catchtap)}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
     >
       {children}
     </div>
@@ -1197,7 +1214,7 @@ export function CoverImage({ id, className, style, src, bindtap, catchtap }: Cov
       src={src}
       alt=""
       style={{ position: "absolute", display: "block", ...style }}
-      onClick={tapHandler(bindtap ?? catchtap)}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
     />
   );
 }
