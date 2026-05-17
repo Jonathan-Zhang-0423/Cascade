@@ -317,6 +317,7 @@ type ButtonOpenType =
 
 interface ButtonProps extends WxBaseProps {
   type?: "primary" | "default" | "warn";
+  size?: "default" | "mini";
   disabled?: boolean;
   loading?: boolean;
   openType?: ButtonOpenType;
@@ -328,13 +329,17 @@ interface ButtonProps extends WxBaseProps {
   binderror?: (e: unknown) => void;
 }
 
-export function Button({ id, className, style, children, bindtap, catchtap, type = "default", disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
+export function Button({ id, className, style, children, bindtap, catchtap, type = "default", size = "default", disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
   const hoverClass = rest.hoverClass as string | undefined;
   const [hovered, setHovered] = useState(false);
+  const isMini = size === "mini";
   const baseStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "0 32px", height: "44px", borderRadius: "4px",
-    fontSize: "18px", fontWeight: 500, border: "none", cursor: disabled ? "not-allowed" : "pointer",
+    padding: isMini ? "0 16px" : "0 32px",
+    height: isMini ? "30px" : "44px",
+    borderRadius: isMini ? "15px" : "4px",
+    fontSize: isMini ? "13px" : "18px",
+    fontWeight: 500, border: "none", cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,
     background: type === "primary" ? "#07c160" : type === "warn" ? "#e64340" : "#f5f5f5",
     color: type === "default" ? "#333" : "#fff",

@@ -513,11 +513,73 @@ export const wx = {
   },
   onLaunch(cb: (opts: Record<string, unknown>) => void) { setTimeout(() => cb({ scene: 1001, path: "", query: {}, referrerInfo: {} }), 0); },
   nextTick(cb: () => void) { setTimeout(cb, 0); },
-  reportMonitor() {}, reportAnalytics() {}, reportEvent() {},
+  reportMonitor() {}, reportAnalytics() {}, reportEvent() {}, reportPerformance() {},
   canIUse() { return true; },
-  env: { USER_DATA_PATH: "wxfile://usr" },
+  env: { USER_DATA_PATH: "wxfile://usr", VERSION: "1.0.0" },
   base64ToArrayBuffer(str: string) { const binary = atob(str); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes.buffer; },
   arrayBufferToBase64(buf: ArrayBuffer) { const bytes = new Uint8Array(buf); let binary = ""; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); },
+
+  // ── Error / rejection handlers ─────────────────────────────────────────────
+  onError(cb: (msg: string) => void) { window.addEventListener("error", (e) => cb(e.message)); },
+  offError() {},
+  onUnhandledRejection(cb: (r: { reason: unknown; promise: Promise<unknown> }) => void) {
+    window.addEventListener("unhandledrejection", (e) => cb({ reason: e.reason, promise: e.promise }));
+  },
+  offUnhandledRejection() {},
+
+  // ── Background color ───────────────────────────────────────────────────────
+  setBackgroundColor(opts: WxOpts & { backgroundColor?: string; backgroundColorTop?: string; backgroundColorBottom?: string } = {}) {
+    const color = (opts.backgroundColor ?? opts.backgroundColorTop) as string | undefined;
+    if (color) {
+      const page = document.getElementById("__wx_page__");
+      if (page) page.style.background = color;
+    }
+    ok(opts, { errMsg: "setBackgroundColor:ok" });
+  },
+  setBackgroundTextStyle(opts: WxOpts & { textStyle?: "dark" | "light" } = {}) {
+    ok(opts, { errMsg: "setBackgroundTextStyle:ok" });
+  },
+
+  // ── App / device info ──────────────────────────────────────────────────────
+  getAppBaseInfo() {
+    return { SDKVersion: "3.0.0", enableDebug: false, host: { env: "WeChat" }, language: navigator.language || "zh_CN", version: "8.0.0", theme: "light" };
+  },
+  getDeviceInfo() {
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    return { brand: isIOS ? "Apple" : "Android", model: isIOS ? "iPhone" : "Android Device", system: isIOS ? "iOS 16.0" : "Android 12", platform: isIOS ? "ios" : "android", deviceOrientation: "portrait", devicePixelRatio: window.devicePixelRatio || 2 };
+  },
+  getAppAuthorizeSetting() { return { albumAuthorized: "authorized", bluetoothAuthorized: "authorized", cameraAuthorized: "authorized", locationAuthorized: "authorized", locationReducedAccuracy: false, microphoneAuthorized: "authorized", notificationAuthorized: "authorized", notificationHidePreview: "authorized", phoneCalendarAuthorized: "authorized" }; },
+
+  // ── Performance ────────────────────────────────────────────────────────────
+  getPerformance() {
+    return {
+      getEntries() { return []; },
+      getEntriesByType() { return []; },
+      getEntriesByName() { return []; },
+      createObserver() { return { observe() {}, disconnect() {} }; },
+    };
+  },
+
+  // ── Worker ─────────────────────────────────────────────────────────────────
+  createWorker(scriptPath: string) {
+    // Web Workers require a separate script file — not feasible in the preview
+    // sandbox. Return a stub that logs a warning.
+    console.warn("[wx] createWorker is not supported in preview:", scriptPath);
+    return {
+      postMessage() {},
+      onMessage(_cb: (r: { message: unknown }) => void) {},
+      terminate() {},
+    };
+  },
+
+  // ── Offscreen canvas ───────────────────────────────────────────────────────
+  createOffscreenCanvas(opts: { type?: "2d" | "webgl"; width?: number; height?: number } = {}) {
+    const canvas = document.createElement("canvas");
+    canvas.width = opts.width ?? 300;
+    canvas.height = opts.height ?? 150;
+    return canvas;
+  },
 
   // ── Update manager ─────────────────────────────────────────────────────────
   getUpdateManager() {
