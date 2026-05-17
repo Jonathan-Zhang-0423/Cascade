@@ -728,13 +728,21 @@ export const wx = {
         if (!path) { fail(opts, "readFile:fail invalid path"); return; }
         const raw = localStorage.getItem(fsKey(path));
         if (raw === null) { fail(opts, "readFile:fail file not found"); return; }
-        const data = (opts.encoding as string | undefined) ? raw : raw;
+        const encoding = (opts.encoding as string | undefined) ?? "utf-8";
+        let data: string | ArrayBuffer = raw;
+        if (encoding === "base64") {
+          try { data = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0)).buffer; } catch { data = raw; }
+        } else if (encoding === "binary") {
+          try { data = Uint8Array.from(raw, (c) => c.charCodeAt(0)).buffer; } catch { data = raw; }
+        }
         ok(opts, { data, errMsg: "readFile:ok" });
       },
-      readFileSync(filePath: string, encoding?: string): string {
+      readFileSync(filePath: string, encoding?: string): string | ArrayBuffer {
         const raw = localStorage.getItem(fsKey(filePath));
         if (raw === null) throw new Error("readFileSync:fail file not found");
-        void encoding;
+        if (encoding === "base64") {
+          try { return Uint8Array.from(atob(raw), (c) => c.charCodeAt(0)).buffer; } catch {}
+        }
         return raw;
       },
       writeFile(opts: WxOpts & { filePath?: string; data?: string | ArrayBuffer; encoding?: string } = {}) {

@@ -284,13 +284,37 @@ interface ImageProps extends WxBaseProps {
   src?: string;
   mode?: ImageMode;
   lazyLoad?: boolean;
+  showMenuByLongpress?: boolean;
   bindload?: (e: unknown) => void;
   binderror?: (e: unknown) => void;
+  bindlongpress?: (e: unknown) => void;
 }
 
-export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoad, bindtap, catchtap, bindload, binderror, ...rest }: ImageProps) {
+export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoad, showMenuByLongpress, bindtap, catchtap, bindload, binderror, bindlongpress, ...rest }: ImageProps) {
   const modeStyle = MODE_STYLE[mode] ?? { objectFit: "fill" };
   const touch = useTouchProps(extractTouchBindings(rest));
+
+  const handleContextMenu = showMenuByLongpress ? (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Show a simple context menu with save option.
+    const menu = document.createElement("div");
+    menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);z-index:99999;overflow:hidden;font-size:14px;min-width:120px;`;
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "保存图片";
+    saveBtn.style.cssText = "display:block;width:100%;padding:12px 16px;background:none;border:none;cursor:pointer;text-align:left;";
+    saveBtn.onclick = () => {
+      const a = document.createElement("a");
+      a.href = src ?? "";
+      a.download = "image";
+      a.click();
+      menu.remove();
+    };
+    menu.appendChild(saveBtn);
+    document.body.appendChild(menu);
+    const close = (ev: MouseEvent) => { if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", close); } };
+    setTimeout(() => document.addEventListener("click", close), 0);
+  } : undefined;
+
   return (
     <img
       id={id}
@@ -299,6 +323,7 @@ export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoa
       loading={lazyLoad ? "lazy" : undefined}
       style={{ display: "block", width: "100%", height: "100%", ...modeStyle, ...style }}
       onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
+      onContextMenu={handleContextMenu}
       onLoad={(e) => bindload?.(makeWxEvent("load", { width: (e.target as HTMLImageElement).naturalWidth, height: (e.target as HTMLImageElement).naturalHeight }, e.currentTarget))}
       onError={(e) => binderror?.(makeWxEvent("error", { errMsg: "load failed" }, e.currentTarget))}
       {...touch}
@@ -774,17 +799,27 @@ export function SwiperItem({ children, style }: WxBaseProps) {
 
 interface NavigatorProps extends WxBaseProps {
   url?: string;
-  openType?: "navigate" | "redirect" | "switchTab" | "reLaunch" | "navigateBack";
+  openType?: "navigate" | "redirect" | "switchTab" | "reLaunch" | "navigateBack" | "exit";
   delta?: number;
+  target?: "self" | "miniProgram";
+  appId?: string;
+  path?: string;
+  extraData?: Record<string, unknown>;
 }
 
-export function Navigator({ id, className, style, children, url, openType = "navigate", delta, bindtap, ...rest }: NavigatorProps) {
+export function Navigator({ id, className, style, children, url, openType = "navigate", delta, target = "self", appId, bindtap, ...rest }: NavigatorProps) {
   const hoverClass = rest.hoverClass as string | undefined;
   const [hovered, setHovered] = useState(false);
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (bindtap) { bindtap(makeWxEvent("tap", {}, e.currentTarget)); return; }
-    if (!url && openType !== "navigateBack") return;
+    // target="miniProgram" — delegate to wx.navigateToMiniProgram
+    if (target === "miniProgram") {
+      const wx = (window as unknown as { wx?: { navigateToMiniProgram: (o: unknown) => void } }).wx;
+      wx?.navigateToMiniProgram({ appId, path: url });
+      return;
+    }
+    if (!url && openType !== "navigateBack" && openType !== "exit") return;
     const wx = (window as unknown as { wx?: Record<string, (o: unknown) => void> }).wx;
     if (!wx) return;
     if (openType === "navigate") wx.navigateTo({ url });
@@ -792,6 +827,7 @@ export function Navigator({ id, className, style, children, url, openType = "nav
     else if (openType === "switchTab") wx.switchTab({ url });
     else if (openType === "reLaunch") wx.reLaunch({ url });
     else if (openType === "navigateBack") wx.navigateBack({ delta: delta ?? 1 });
+    else if (openType === "exit") wx.exitMiniProgram?.({});
   };
   return (
     <a
