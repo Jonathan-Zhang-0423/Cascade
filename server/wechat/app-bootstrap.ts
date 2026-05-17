@@ -244,7 +244,25 @@ function WxApp() {
     (window as any).getCurrentPages = () => stackRef.current.map(e => e.inst);
   }, [navigate, navigateBack, switchTab]);
 
-  // Reactive navbar overrides — wx.setNavigationBarTitle / setNavigationBarColor
+  // Tab bar badge/red-dot state — keyed by tab index.
+  const [tabBadges, setTabBadges] = useState<Record<number, string>>({});
+  const [tabRedDots, setTabRedDots] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    (window as any).__wxSetTabBadge = (index: number, text: string) =>
+      setTabBadges((prev) => ({ ...prev, [index]: text }));
+    (window as any).__wxRemoveTabBadge = (index: number) =>
+      setTabBadges((prev) => { const n = { ...prev }; delete n[index]; return n; });
+    (window as any).__wxShowTabRedDot = (index: number) =>
+      setTabRedDots((prev) => ({ ...prev, [index]: true }));
+    (window as any).__wxHideTabRedDot = (index: number) =>
+      setTabRedDots((prev) => { const n = { ...prev }; delete n[index]; return n; });
+    return () => {
+      delete (window as any).__wxSetTabBadge;
+      delete (window as any).__wxRemoveTabBadge;
+      delete (window as any).__wxShowTabRedDot;
+      delete (window as any).__wxHideTabRedDot;
+    };
+  }, []);
   // write to these via window.__wxSetNavTitle / __wxSetNavBg / __wxSetNavText.
   const [navTitleOverride, setNavTitleOverride] = useState<string | null>(null);
   const [navBgOverride, setNavBgOverride] = useState<string | null>(null);
@@ -323,12 +341,21 @@ function WxApp() {
             return (
               <button key={i} onClick={() => {
                 const path = item.pagePath.replace(/^\\//, "");
-                // onTabItemTap fires on every tap, including the active tab.
                 const topInst = stackRef.current[stackRef.current.length - 1]?.inst;
                 try { (topInst?.onTabItemTap as Function)?.call(topInst, { index: i, pagePath: item.pagePath, text: item.text }); } catch {}
                 switchTab("/" + path);
-              }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", gap: 2, padding: "4px 0", minHeight: 44 }}>
-                <TabIcon src={iconSrc} tint={tint} />
+              }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", gap: 2, padding: "4px 0", minHeight: 44, position: "relative" }}>
+                <div style={{ position: "relative" }}>
+                  <TabIcon src={iconSrc} tint={tint} />
+                  {tabBadges[i] != null && (
+                    <span style={{ position: "absolute", top: -4, right: -8, background: "#fa5151", color: "#fff", fontSize: 9, fontWeight: 600, borderRadius: 8, padding: "1px 4px", minWidth: 14, textAlign: "center", lineHeight: "14px" }}>
+                      {tabBadges[i]}
+                    </span>
+                  )}
+                  {tabRedDots[i] && tabBadges[i] == null && (
+                    <span style={{ position: "absolute", top: -2, right: -4, width: 8, height: 8, background: "#fa5151", borderRadius: "50%" }} />
+                  )}
+                </div>
                 <span style={{ fontSize: 10, color: tint, lineHeight: 1.2 }}>{item.text}</span>
               </button>
             );

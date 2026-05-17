@@ -250,7 +250,22 @@ export const wx = {
     }
     ok(opts, { errMsg: "setNavigationBarColor:ok" });
   },
-  setTabBarBadge() {}, removeTabBarBadge() {}, showTabBarRedDot() {}, hideTabBarRedDot() {},
+  setTabBarBadge(opts: WxOpts & { index?: number; text?: string } = {}) {
+    (window as unknown as { __wxSetTabBadge?: (i: number, t: string) => void }).__wxSetTabBadge?.((opts.index as number) ?? 0, String(opts.text ?? ""));
+    ok(opts, { errMsg: "setTabBarBadge:ok" });
+  },
+  removeTabBarBadge(opts: WxOpts & { index?: number } = {}) {
+    (window as unknown as { __wxRemoveTabBadge?: (i: number) => void }).__wxRemoveTabBadge?.((opts.index as number) ?? 0);
+    ok(opts, { errMsg: "removeTabBarBadge:ok" });
+  },
+  showTabBarRedDot(opts: WxOpts & { index?: number } = {}) {
+    (window as unknown as { __wxShowTabRedDot?: (i: number) => void }).__wxShowTabRedDot?.((opts.index as number) ?? 0);
+    ok(opts, { errMsg: "showTabBarRedDot:ok" });
+  },
+  hideTabBarRedDot(opts: WxOpts & { index?: number } = {}) {
+    (window as unknown as { __wxHideTabRedDot?: (i: number) => void }).__wxHideTabRedDot?.((opts.index as number) ?? 0);
+    ok(opts, { errMsg: "hideTabBarRedDot:ok" });
+  },
   showTabBar(opts: WxOpts = {}) { document.getElementById("__wx_tabbar__")?.style.setProperty("display", "flex"); ok(opts, {}); },
   hideTabBar(opts: WxOpts = {}) { document.getElementById("__wx_tabbar__")?.style.setProperty("display", "none"); ok(opts, {}); },
   setTabBarItem() {}, setTabBarStyle() {},

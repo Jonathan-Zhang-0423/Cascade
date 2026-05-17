@@ -442,7 +442,7 @@ const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputE
   send: "send", search: "search", next: "next", go: "go", done: "done",
 };
 
-export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, selectionStart, selectionEnd, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
@@ -471,21 +471,27 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
         maxLength={maxlength}
         autoFocus={autoFocus || focus}
         enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
-      onChange={(e) => {
-        setLocalVal(e.target.value);
-        bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
-      }}
-      onBlur={(e) => {
-        bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
-        bindblur?.(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
-      }}
-      onFocus={(e) => bindfocus?.(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          bindconfirm?.(makeWxEvent("confirm", { value: (e.target as HTMLInputElement).value }, e.currentTarget));
-        }
-      }}
-    />
+        ref={(el) => {
+          if (el && selectionStart != null) {
+            const end = selectionEnd ?? selectionStart;
+            try { el.setSelectionRange(selectionStart, end); } catch {}
+          }
+        }}
+        onChange={(e) => {
+          setLocalVal(e.target.value);
+          bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
+        }}
+        onBlur={(e) => {
+          bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
+          bindblur?.(makeWxEvent("blur", { value: e.target.value }, e.currentTarget));
+        }}
+        onFocus={(e) => bindfocus?.(makeWxEvent("focus", { value: e.target.value }, e.currentTarget))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            bindconfirm?.(makeWxEvent("confirm", { value: (e.target as HTMLInputElement).value }, e.currentTarget));
+          }
+        }}
+      />
     </>
   );
 }
@@ -503,26 +509,39 @@ interface TextareaProps extends WxBaseProps {
   maxlength?: number;
   autoFocus?: boolean;
   focus?: boolean;
+  autoHeight?: boolean;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
   bindblur?: (e: unknown) => void;
+  bindlinechange?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
+  const taRef = useRef<HTMLTextAreaElement>(null);
   const styleId = id ? `__wx_ta_${id}__` : null;
   const placeholderCss = (placeholderStyle || placeholderClass) && styleId
     ? `#${styleId}::placeholder { ${placeholderStyle ?? ""} }`
     : null;
+
+  // auto-height: resize textarea to fit content.
+  useEffect(() => {
+    if (!autoHeight || !taRef.current) return;
+    const el = taRef.current;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [localVal, autoHeight]);
+
   return (
     <>
       {placeholderCss && <style>{placeholderCss}</style>}
       <textarea
+        ref={taRef}
         id={styleId ?? id}
         className={className}
-        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", ...style }}
+        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: autoHeight ? "none" : "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
         value={localVal}
         placeholder={placeholder}
         disabled={disabled}
@@ -1175,19 +1194,24 @@ export function Block({ children }: { children?: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 // Canvas — real <canvas> element so wx.createSelectorQuery can return it and
 // game code can call getContext('2d'). Accepts touch bindings for games.
+// type="2d" uses the standard 2D context; type="webgl" uses WebGL.
 // ---------------------------------------------------------------------------
 
 interface CanvasProps extends WxBaseProps {
   width?: number | string;
   height?: number | string;
+  type?: "2d" | "webgl";
 }
 
-export function Canvas({ id, className, style, width, height, bindtap, catchtap, ...rest }: CanvasProps) {
+export function Canvas({ id, className, style, width, height, type, bindtap, catchtap, ...rest }: CanvasProps) {
   const touch = useTouchProps(extractTouchBindings(rest));
+  // For webgl, set the canvas context type hint via a data attribute so
+  // wx.createCanvasContext can pick it up.
   return (
     <canvas
       id={id}
       className={className}
+      data-canvas-type={type ?? "2d"}
       width={typeof width === "number" ? width : undefined}
       height={typeof height === "number" ? height : undefined}
       style={{ display: "block", width: "100%", height: "100%", ...style }}
