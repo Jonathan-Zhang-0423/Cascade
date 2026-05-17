@@ -179,6 +179,7 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
   const animEnd   = rest.bindanimationend as ((e: unknown) => void) | undefined;
   const transEnd  = rest.bindtransitionend as ((e: unknown) => void) | undefined;
   const hoverClass = rest.hoverClass as string | undefined;
+  const hoverStopPropagation = !!(rest.hoverStopPropagation);
   const [hovered, setHovered] = useState(false);
 
   // animation prop from wx.createAnimation().export() — apply the last step's styles.
@@ -205,7 +206,7 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
       onAnimationIteration={animIter ? (e) => animIter(makeWxEvent("animationiteration", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onAnimationEnd={animEnd ? (e) => animEnd(makeWxEvent("animationend", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onTransitionEnd={transEnd ? (e) => transEnd(makeWxEvent("transitionend", { propertyName: e.propertyName, elapsedTime: e.elapsedTime }, e.currentTarget)) : undefined}
-      onMouseDown={hoverClass ? () => setHovered(true) : undefined}
+      onMouseDown={hoverClass ? (e) => { if (hoverStopPropagation) e.stopPropagation(); setHovered(true); } : undefined}
       onMouseUp={hoverClass ? () => setHovered(false) : undefined}
       onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
       {...touch}
@@ -454,7 +455,7 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
   const htmlType = password || type === "safe-password" ? "password"
     : type === "digit" || type === "number" ? "number"
     : type === "tel" ? "tel"
-    : "text";
+    : "text"; // nickname, idcard, text all map to text
 
   // Inject placeholder styles via a <style> tag scoped to this input's id.
   const styleId = id ? `__wx_ph_${id}__` : null;
@@ -577,6 +578,7 @@ interface ScrollViewProps extends WxBaseProps {
   scrollTop?: number;
   lowerThreshold?: number;
   upperThreshold?: number;
+  enableFlex?: boolean;
   refresherEnabled?: boolean;
   refresherThreshold?: number;
   refresherDefaultStyle?: "black" | "white" | "none";
@@ -591,7 +593,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -666,6 +668,7 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
           overflowY: scrollY ? "auto" : "hidden",
           overflowX: scrollX ? "auto" : "hidden",
           WebkitOverflowScrolling: "touch",
+          display: enableFlex ? "flex" : undefined,
           transform: refresherEnabled && (pulling > 0 || refreshing) ? `translateY(${refreshing ? 40 : pulling}px)` : undefined,
           transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out",
           height: "100%",
@@ -697,13 +700,17 @@ interface SwiperProps extends WxBaseProps {
   current?: number;
   circular?: boolean;
   vertical?: boolean;
+  previousMargin?: string;
+  nextMargin?: string;
   bindchange?: (e: unknown) => void;
 }
 
-export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, bindchange }: SwiperProps) {
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", bindchange }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
   const count = items.length;
+  // Parse margin values (e.g. "20px" or "20rpx" → convert rpx to vw)
+  const parsePx = (v: string) => v.replace(/(\d+(?:\.\d+)?)rpx/g, (_, n) => `${(parseFloat(n) / 7.5).toFixed(2)}vw`);
 
   const goTo = useCallback((next: number) => {
     const clamped = circular ? ((next % count) + count) % count : Math.max(0, Math.min(count - 1, next));
@@ -725,11 +732,17 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
         display: "flex",
         flexDirection: vertical ? "column" : "row",
         transition: `transform ${duration}ms ease`,
-        transform: `translate${axis}(-${idx * 100}%)`,
+        // Offset by previousMargin so the previous slide peeks in.
+        transform: `translate${axis}(calc(-${idx * 100}% + ${parsePx(previousMargin)}))`,
         height: "100%",
       }}>
         {items.map((child, i) => (
-          <div key={i} style={{ minWidth: vertical ? "100%" : "100%", minHeight: vertical ? "100%" : undefined, flexShrink: 0, height: "100%" }}>{child}</div>
+          <div key={i} style={{
+            minWidth: vertical ? "100%" : `calc(100% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})`,
+            minHeight: vertical ? `calc(100% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})` : undefined,
+            flexShrink: 0,
+            height: "100%",
+          }}>{child}</div>
         ))}
       </div>
       {indicatorDots && count > 1 && (

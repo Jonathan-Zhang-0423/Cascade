@@ -719,8 +719,83 @@ export const wx = {
   },
 
   getFileSystemManager() {
-    const noop = (opts: WxOpts) => fail(opts, "not supported in preview");
-    return { readFile: noop, writeFile: noop, readdir: noop, mkdir: (opts: WxOpts) => ok(opts, {}), stat: noop, saveFile: (opts: WxOpts & { tempFilePath?: string }) => ok(opts, { savedFilePath: opts.tempFilePath }), getSavedFileList: (opts: WxOpts) => ok(opts, { fileList: [] }) };
+    // localStorage-backed virtual file system for preview.
+    // Files are stored as wx_fs_<path> keys.
+    const fsKey = (p: string) => "wx_fs_" + _pid + p;
+    return {
+      readFile(opts: WxOpts & { filePath?: string; encoding?: string } = {}) {
+        const path = opts.filePath as string | undefined;
+        if (!path) { fail(opts, "readFile:fail invalid path"); return; }
+        const raw = localStorage.getItem(fsKey(path));
+        if (raw === null) { fail(opts, "readFile:fail file not found"); return; }
+        const data = (opts.encoding as string | undefined) ? raw : raw;
+        ok(opts, { data, errMsg: "readFile:ok" });
+      },
+      readFileSync(filePath: string, encoding?: string): string {
+        const raw = localStorage.getItem(fsKey(filePath));
+        if (raw === null) throw new Error("readFileSync:fail file not found");
+        void encoding;
+        return raw;
+      },
+      writeFile(opts: WxOpts & { filePath?: string; data?: string | ArrayBuffer; encoding?: string } = {}) {
+        const path = opts.filePath as string | undefined;
+        if (!path) { fail(opts, "writeFile:fail invalid path"); return; }
+        const data = typeof opts.data === "string" ? opts.data : "";
+        try { localStorage.setItem(fsKey(path), data); ok(opts, { errMsg: "writeFile:ok" }); }
+        catch (e: unknown) { fail(opts, "writeFile:fail " + (e as Error).message); }
+      },
+      writeFileSync(filePath: string, data: string) {
+        localStorage.setItem(fsKey(filePath), data);
+      },
+      appendFile(opts: WxOpts & { filePath?: string; data?: string } = {}) {
+        const path = opts.filePath as string | undefined;
+        if (!path) { fail(opts, "appendFile:fail invalid path"); return; }
+        const existing = localStorage.getItem(fsKey(path)) ?? "";
+        localStorage.setItem(fsKey(path), existing + (opts.data ?? ""));
+        ok(opts, { errMsg: "appendFile:ok" });
+      },
+      unlink(opts: WxOpts & { filePath?: string } = {}) {
+        const path = opts.filePath as string | undefined;
+        if (path) localStorage.removeItem(fsKey(path));
+        ok(opts, { errMsg: "unlink:ok" });
+      },
+      readdir(opts: WxOpts & { dirPath?: string } = {}) {
+        const prefix = fsKey(opts.dirPath ?? "/");
+        const files = Object.keys(localStorage)
+          .filter((k) => k.startsWith(prefix))
+          .map((k) => k.slice(prefix.length).split("/")[0])
+          .filter(Boolean);
+        ok(opts, { files: [...new Set(files)], errMsg: "readdir:ok" });
+      },
+      mkdir(opts: WxOpts = {}) { ok(opts, { errMsg: "mkdir:ok" }); },
+      rmdir(opts: WxOpts = {}) { ok(opts, { errMsg: "rmdir:ok" }); },
+      stat(opts: WxOpts & { path?: string } = {}) {
+        const path = opts.path as string | undefined;
+        const exists = path ? localStorage.getItem(fsKey(path)) !== null : false;
+        if (!exists) { fail(opts, "stat:fail file not found"); return; }
+        ok(opts, { stats: { isFile: () => true, isDirectory: () => false, size: localStorage.getItem(fsKey(path!))?.length ?? 0, lastModifiedTime: Date.now() }, errMsg: "stat:ok" });
+      },
+      access(opts: WxOpts & { path?: string } = {}) {
+        const path = opts.path as string | undefined;
+        if (path && localStorage.getItem(fsKey(path)) !== null) ok(opts, { errMsg: "access:ok" });
+        else fail(opts, "access:fail file not found");
+      },
+      saveFile(opts: WxOpts & { tempFilePath?: string; filePath?: string } = {}) {
+        const src = opts.tempFilePath as string | undefined;
+        const dest = opts.filePath as string | undefined ?? src;
+        ok(opts, { savedFilePath: dest, errMsg: "saveFile:ok" });
+      },
+      getSavedFileList(opts: WxOpts = {}) {
+        const files = Object.keys(localStorage)
+          .filter((k) => k.startsWith("wx_fs_" + _pid))
+          .map((k) => ({ filePath: k.slice(("wx_fs_" + _pid).length), size: localStorage.getItem(k)?.length ?? 0, createTime: 0 }));
+        ok(opts, { fileList: files, errMsg: "getSavedFileList:ok" });
+      },
+      removeSavedFile(opts: WxOpts & { filePath?: string } = {}) {
+        if (opts.filePath) localStorage.removeItem(fsKey(opts.filePath as string));
+        ok(opts, { errMsg: "removeSavedFile:ok" });
+      },
+    };
   },
 
   // ── Audio ──────────────────────────────────────────────────────────────────
