@@ -103,6 +103,10 @@ const SKIP_PREFIXING = new Set([
 // Mutated by wxmlToJsx() before each compile; reset to an empty set on entry.
 let _extraSkip = new Set<string>();
 
+// Counter for generating unique wx:for loop variable names to avoid collisions
+// in nested loops. Reset per wxmlToJsx() call.
+let _wxForDepth = 0;
+
 /**
  * Rewrite a WXML `{{ ... }}` expression into a JS expression that resolves
  * bare identifiers from the page's reactive `__data__` object.
@@ -434,13 +438,19 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
   const wxForIndex = attribs["wx:for-index"] ?? "index";
 
   // Register custom loop variable names so rewriteExpr leaves them unprefixed.
+  // We track which names we added so we can remove them after the inner element
+  // is built — preventing pollution of sibling wx:for blocks at the same level.
+  const addedToSkip: string[] = [];
   if (wxFor) {
-    _extraSkip.add(wxForItem);
-    _extraSkip.add(wxForIndex);
+    if (!_extraSkip.has(wxForItem)) { _extraSkip.add(wxForItem); addedToSkip.push(wxForItem); }
+    if (!_extraSkip.has(wxForIndex)) { _extraSkip.add(wxForIndex); addedToSkip.push(wxForIndex); }
   }
 
   // Build the inner element (without wx: directives)
   const innerJsx = buildElement(el, tag, attribs, templates, indent);
+
+  // Remove the loop variable names we added so they don't leak into sibling nodes.
+  for (const name of addedToSkip) _extraSkip.delete(name);
 
   let result = innerJsx;
 
@@ -450,11 +460,13 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
   // object iteration `index` is the KEY (matches WeChat semantics).
   if (wxFor) {
     const listExpr = rewriteExpr(wxFor.replace(/^\{\{/, "").replace(/\}\}$/, "").trim());
-    // For object iteration __wxFor returns { __wx_key__, __wx_val__ } entries.
-    // We unpack them so wxForItem = value and wxForIndex = key.
-    result = `${pad}({__wxFor(${listExpr}).map((__wxEntry__: unknown, __wxIdx__: number) => {
-  const ${wxForItem} = ((__wxEntry__ as any)?.__wx_val__ !== undefined) ? (__wxEntry__ as any).__wx_val__ : __wxEntry__;
-  const ${wxForIndex} = ((__wxEntry__ as any)?.__wx_key__ !== undefined) ? (__wxEntry__ as any).__wx_key__ : __wxIdx__;
+    // Use depth-scoped entry/idx names to avoid collisions in nested wx:for loops.
+    const depth = _wxForDepth++;
+    const entryVar = `__wxEntry${depth}__`;
+    const idxVar = `__wxIdx${depth}__`;
+    result = `${pad}({__wxFor(${listExpr}).map((${entryVar}: unknown, ${idxVar}: number) => {
+  const ${wxForItem} = ((${entryVar} as any)?.__wx_val__ !== undefined) ? (${entryVar} as any).__wx_val__ : ${entryVar};
+  const ${wxForIndex} = ((${entryVar} as any)?.__wx_key__ !== undefined) ? (${entryVar} as any).__wx_key__ : ${idxVar};
   return (\n${result}${pad});
 })}\n${pad})\n`;
   }
@@ -732,6 +744,7 @@ export function wxmlToJsx(wxml: string, pagePath: string): WxmlToJsxResult {
   const warnings: string[] = [];
   // Reset per-page rewriter state.
   _extraSkip = new Set<string>();
+  _wxForDepth = 0;
   let nodes: ChildNode[];
   try {
     nodes = parseWxml(wxml);

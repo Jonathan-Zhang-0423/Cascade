@@ -225,6 +225,12 @@ function WxApp() {
       stackRef.current = next;
       const top = next[next.length - 1];
       try { (top.inst.onShow as Function)?.call(top.inst); } catch {}
+      // Reset navbar overrides when returning to a previous page — the
+      // previous page's config is the source of truth, not the popped page's overrides.
+      setNavTitleOverride(null);
+      setNavBgOverride(null);
+      setNavTextOverride(null);
+      setNavLoading(false);
       return next;
     });
   }, []);
