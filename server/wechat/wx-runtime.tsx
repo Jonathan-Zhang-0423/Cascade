@@ -1230,13 +1230,8 @@ export function Label({ id, className, style, children, bindtap, catchtap, for: 
 }
 
 // ---------------------------------------------------------------------------
-// Icon
+// Icon — SVG-based rendering matching WeChat's icon set
 // ---------------------------------------------------------------------------
-
-const ICON_CHARS: Record<string, string> = {
-  success: "✓", success_no_circle: "✓", info: "ℹ", warn: "⚠", waiting: "⏳",
-  cancel: "✕", download: "↓", search: "🔍", clear: "✕",
-};
 
 interface IconProps {
   type?: string;
@@ -1244,10 +1239,74 @@ interface IconProps {
   color?: string;
 }
 
+// SVG path data for each WeChat icon type.
+const ICON_SVGS: Record<string, (color: string) => React.ReactElement> = {
+  success: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" stroke={c} strokeWidth="1.5" fill="none"/>
+      <polyline points="6,12 10,16 18,8" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  success_no_circle: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <polyline points="4,12 9,17 20,6" stroke={c} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  info: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" stroke={c} strokeWidth="1.5" fill="none"/>
+      <line x1="12" y1="10" x2="12" y2="17" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="12" cy="7" r="1.2" fill={c}/>
+    </svg>
+  ),
+  warn: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" stroke={c} strokeWidth="1.5" fill="none"/>
+      <line x1="12" y1="7" x2="12" y2="14" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="12" cy="17" r="1.2" fill={c}/>
+    </svg>
+  ),
+  waiting: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" stroke={c} strokeWidth="1.5" fill="none"/>
+      <polyline points="12,7 12,12 16,14" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  cancel: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" stroke={c} strokeWidth="1.5" fill="none"/>
+      <line x1="8" y1="8" x2="16" y2="16" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <line x1="16" y1="8" x2="8" y2="16" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  ),
+  download: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <line x1="12" y1="4" x2="12" y2="16" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <polyline points="7,11 12,16 17,11" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="5" y1="20" x2="19" y2="20" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  ),
+  search: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="10" cy="10" r="7" stroke={c} strokeWidth="2" fill="none"/>
+      <line x1="15" y1="15" x2="21" y2="21" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  ),
+  clear: (c) => (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="11" fill={c} opacity="0.15"/>
+      <line x1="8" y1="8" x2="16" y2="16" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <line x1="16" y1="8" x2="8" y2="16" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  ),
+};
+
 export function Icon({ type = "info", size = 23, color }: IconProps) {
+  const c = color ?? "#07c160";
+  const svgFn = ICON_SVGS[type];
   return (
-    <span style={{ fontSize: size, color: color ?? "#07c160", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-      {ICON_CHARS[type] ?? "●"}
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0 }}>
+      {svgFn ? svgFn(c) : <span style={{ fontSize: size * 0.7, color: c }}>●</span>}
     </span>
   );
 }
