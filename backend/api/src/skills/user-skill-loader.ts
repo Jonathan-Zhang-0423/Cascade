@@ -172,7 +172,7 @@ export async function loadUserSkills(
   }
 
   // 4. Built-in skills from server/skills/ (lowest priority)
-  const skillsDir = join(process.cwd(), "backend", "api", "src", "skills", "builtin");
+  const skillsDir = join(import.meta.dirname, "builtin");
   try {
     const dirents = await readdir(skillsDir, { withFileTypes: true });
     for (const d of dirents) {

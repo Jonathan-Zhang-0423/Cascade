@@ -8,7 +8,7 @@ import { existsSync } from "fs";
 const SWIFT_WASM_PATH = process.env.SWIFT_WASM_PATH ||
   `${process.env.HOME}/.swift-wasm-sdk/swift-6.1-RELEASE-ubuntu24.04/usr/bin/swift`;
 const SWIFT_WASM_SDK_ID = process.env.SWIFT_WASM_SDK_ID || "wasm32-unknown-wasi";
-const TEMPLATE_DIR = resolve(process.cwd(), "backend", "api", "src", "compiler", "compile-templates", "swift-wasm");
+const TEMPLATE_DIR = resolve(import.meta.dirname, "../compile-templates/swift-wasm");
 const COMPILE_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 // Stable build dir — SPM reuses .build/ between compiles, cutting cold time significantly

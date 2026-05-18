@@ -2521,7 +2521,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         .where(eq(users.id, userId));
 
       // Seed starter skill
-      const starterPath = join(process.cwd(), "backend", "api", "src", "skills", "builtin", "starters", `${safeLevel}.md`);
+      const starterPath = join(import.meta.dirname, "../../skills/builtin/starters", `${safeLevel}.md`);
       if (existsSync(starterPath)) {
         const content = readFileSync(starterPath, "utf-8");
         await db.insert(userSkills).values({
@@ -2720,7 +2720,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.get("/api/skills/builtin", (_req, res) => {
     try {
-      const skillsDir = join(process.cwd(), "backend", "api", "src", "skills", "builtin");
+      const skillsDir = join(import.meta.dirname, "../../skills/builtin");
       const entries: Array<{ name: string; description: string; type: "knowledge" }> = [];
 
       const scanDir = (dir: string) => {
