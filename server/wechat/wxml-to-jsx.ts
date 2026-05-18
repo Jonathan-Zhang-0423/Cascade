@@ -659,13 +659,17 @@ function buildElement(el: Element, tag: string, attribs: Record<string, string>,
   // Add key for wx:for items
   if (attribs["wx:for"]) {
     const wxKey = attribs["wx:key"];
+    const itemName = attribs["wx:for-item"] ?? "item";
+    const indexName = attribs["wx:for-index"] ?? "index";
     if (wxKey === "*this") {
       // Primitive array — use the value itself as the key.
-      props.push(`key={String(${attribs["wx:for-item"] ?? "item"})}`);
+      props.push(`key={String(${itemName})}`);
     } else if (wxKey) {
-      props.push(`key={${attribs["wx:for-item"] ?? "item"}.${wxKey}}`);
+      // For object iteration __wxFor unpacks to item=value, index=key.
+      // The key field may be on the item (array) or the index itself (object).
+      props.push(`key={(${itemName} != null && typeof ${itemName} === "object" && "${wxKey}" in (${itemName} as object)) ? String((${itemName} as any)["${wxKey}"]) : String(${indexName})}`);
     } else {
-      props.push(`key={${attribs["wx:for-index"] ?? "index"}}`);
+      props.push(`key={String(${indexName})}`);
     }
   }
 

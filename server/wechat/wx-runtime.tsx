@@ -1004,19 +1004,35 @@ export function Switch({ id, className, style, checked, disabled, bindchange }: 
   const [on, setOn] = useState(checked ?? false);
   useEffect(() => { setOn(checked ?? false); }, [checked]);
   return (
-    <input
+    <div
       id={id}
       className={className}
-      style={style}
-      type="checkbox"
-      role="switch"
-      checked={on}
-      disabled={disabled}
-      onChange={(e) => {
-        setOn(e.target.checked);
-        bindchange && bindchange(makeWxEvent("change", { value: e.target.checked }, e.currentTarget));
+      style={{
+        display: "inline-flex", alignItems: "center",
+        width: 52, height: 32, borderRadius: 16,
+        background: on ? "#07c160" : "#e5e5e5",
+        transition: "background 0.3s",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        flexShrink: 0,
+        ...style,
       }}
-    />
+      role="switch"
+      aria-checked={on}
+      onClick={disabled ? undefined : () => {
+        const next = !on;
+        setOn(next);
+        bindchange?.(makeWxEvent("change", { value: next }, null));
+      }}
+    >
+      <div style={{
+        width: 28, height: 28, borderRadius: 14,
+        background: "#fff",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+        transform: on ? "translateX(22px)" : "translateX(2px)",
+        transition: "transform 0.3s",
+      }} />
+    </div>
   );
 }
 
@@ -1027,32 +1043,53 @@ interface SliderProps extends WxBaseProps {
   step?: number;
   disabled?: boolean;
   showValue?: boolean;
+  activeColor?: string;
+  backgroundColor?: string;
+  blockColor?: string;
+  blockSize?: number;
   bindchange?: (e: unknown) => void;
   bindchanging?: (e: unknown) => void;
 }
 
-export function Slider({ id, className, style, value = 0, min = 0, max = 100, step = 1, disabled, showValue, bindchange, bindchanging }: SliderProps) {
+export function Slider({ id, className, style, value = 0, min = 0, max = 100, step = 1, disabled, showValue, activeColor = "#1aad19", backgroundColor = "#e9e9e9", blockColor = "#fff", blockSize = 28, bindchange, bindchanging }: SliderProps) {
   const [val, setVal] = useState(value);
   useEffect(() => { setVal(value); }, [value]);
+  const pct = ((val - min) / (max - min)) * 100;
   return (
     <div id={id} className={className} style={{ display: "flex", alignItems: "center", gap: 8, ...style }}>
-      <input
-        type="range"
-        style={{ flex: 1 }}
-        value={val}
-        min={min}
-        max={max}
-        step={step}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          setVal(v);
-          bindchanging && bindchanging(makeWxEvent("changing", { value: v }, e.currentTarget));
-        }}
-        onMouseUp={(e) => bindchange && bindchange(makeWxEvent("change", { value: val }, e.currentTarget))}
-        onTouchEnd={(e) => bindchange && bindchange(makeWxEvent("change", { value: val }, e.currentTarget))}
-      />
-      {showValue && <span style={{ fontSize: 14, minWidth: 28, textAlign: "right" }}>{val}</span>}
+      <div style={{ flex: 1, position: "relative", height: blockSize, display: "flex", alignItems: "center" }}>
+        {/* Track background */}
+        <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: backgroundColor }} />
+        {/* Active track */}
+        <div style={{ position: "absolute", left: 0, width: `${pct}%`, height: 4, borderRadius: 2, background: activeColor }} />
+        {/* Thumb */}
+        <div style={{
+          position: "absolute",
+          left: `calc(${pct}% - ${blockSize / 2}px)`,
+          width: blockSize, height: blockSize, borderRadius: blockSize / 2,
+          background: blockColor,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+          cursor: disabled ? "not-allowed" : "pointer",
+        }} />
+        {/* Invisible range input for interaction */}
+        <input
+          type="range"
+          style={{ position: "absolute", inset: 0, opacity: 0, cursor: disabled ? "not-allowed" : "pointer", width: "100%", margin: 0 }}
+          value={val}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setVal(v);
+            bindchanging?.(makeWxEvent("changing", { value: v }, e.currentTarget));
+          }}
+          onMouseUp={(e) => bindchange?.(makeWxEvent("change", { value: val }, e.currentTarget))}
+          onTouchEnd={(e) => bindchange?.(makeWxEvent("change", { value: val }, e.currentTarget))}
+        />
+      </div>
+      {showValue && <span style={{ fontSize: 14, minWidth: 28, textAlign: "right", color: "#666" }}>{val}</span>}
     </div>
   );
 }

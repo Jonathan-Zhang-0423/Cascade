@@ -397,6 +397,16 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef<number | null>(null);
 
+  // Clean up the onPageScroll throttle timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (pageScrollThrottleRef.current) {
+        clearTimeout(pageScrollThrottleRef.current);
+        pageScrollThrottleRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     (entry.inst as any).__bindSetData(setData);
   }, [entry.inst]);
