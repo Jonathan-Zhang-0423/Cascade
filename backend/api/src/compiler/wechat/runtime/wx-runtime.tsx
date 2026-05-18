@@ -180,7 +180,22 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
   const transEnd  = rest.bindtransitionend as ((e: unknown) => void) | undefined;
   const hoverClass = rest.hoverClass as string | undefined;
   const hoverStopPropagation = !!(rest.hoverStopPropagation);
+  const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 50;
+  const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 400;
   const [hovered, setHovered] = useState(false);
+  const hoverStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverStayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startHover = () => {
+    if (!hoverClass) return;
+    hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+    hoverStartTimer.current = setTimeout(() => setHovered(true), hoverStartTime);
+  };
+  const endHover = () => {
+    if (!hoverClass) return;
+    hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+    hoverStayTimer.current = setTimeout(() => setHovered(false), hoverStayTime);
+  };
 
   // animation prop from wx.createAnimation().export() — apply the last step's styles.
   const animProp = rest.animation as { actions?: Array<{ animates?: Array<{ type: string; value: unknown }> }> } | undefined;
@@ -206,9 +221,9 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
       onAnimationIteration={animIter ? (e) => animIter(makeWxEvent("animationiteration", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onAnimationEnd={animEnd ? (e) => animEnd(makeWxEvent("animationend", { animationName: e.animationName }, e.currentTarget)) : undefined}
       onTransitionEnd={transEnd ? (e) => transEnd(makeWxEvent("transitionend", { propertyName: e.propertyName, elapsedTime: e.elapsedTime }, e.currentTarget)) : undefined}
-      onMouseDown={hoverClass ? (e) => { if (hoverStopPropagation) e.stopPropagation(); setHovered(true); } : undefined}
-      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
-      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
+      onMouseDown={hoverClass ? (e) => { if (hoverStopPropagation) e.stopPropagation(); startHover(); } : undefined}
+      onMouseUp={hoverClass ? () => endHover() : undefined}
+      onMouseLeave={hoverClass ? () => endHover() : undefined}
       {...touch}
       {...dataAttrs}
     >

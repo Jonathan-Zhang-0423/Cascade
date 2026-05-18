@@ -178,7 +178,27 @@ function _showModalOverlay(opts: {
 function _sysInfo() {
   const ua = navigator.userAgent;
   const isIOS = /iPhone|iPad|iPod/.test(ua);
-  return { brand: isIOS ? "Apple" : "Android", model: isIOS ? "iPhone" : "Android Device", pixelRatio: window.devicePixelRatio || 1, screenWidth: window.screen.width, screenHeight: window.screen.height, windowWidth: window.innerWidth, windowHeight: window.innerHeight, statusBarHeight: 20, language: navigator.language || "zh_CN", version: "8.0.0", system: isIOS ? "iOS 16.0" : "Android 12", platform: isIOS ? "ios" : "android", SDKVersion: "3.0.0", fontSizeSetting: 16, safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 }, errMsg: "getSystemInfo:ok" };
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  return {
+    brand: isIOS ? "Apple" : "Android",
+    model: isIOS ? "iPhone" : "Android Device",
+    pixelRatio: window.devicePixelRatio || 2,
+    screenWidth: window.screen.width,
+    screenHeight: window.screen.height,
+    windowWidth: window.innerWidth,
+    windowHeight: window.innerHeight,
+    statusBarHeight: 20,
+    language: navigator.language || "zh_CN",
+    version: "8.0.0",
+    system: isIOS ? "iOS 16.0" : "Android 12",
+    platform: isIOS ? "ios" : "android",
+    SDKVersion: "3.0.0",
+    fontSizeSetting: 16,
+    benchmarkLevel: 50,
+    theme: prefersDark ? "dark" : "light",
+    safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 },
+    errMsg: "getSystemInfo:ok",
+  };
 }
 
 type WxOpts = Record<string, unknown> & { success?: (r: unknown) => void; fail?: (r: unknown) => void; complete?: (r: unknown) => void };
@@ -307,12 +327,14 @@ export const wx = {
     };
   },
 
-  request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string>; timeout?: number }) {
+  request(opts: WxOpts & { url?: string; method?: string; data?: unknown; header?: Record<string, string>; timeout?: number; dataType?: string; responseType?: string }) {
     const url = opts.url ?? "";
     const method = ((opts.method as string) ?? "GET").toUpperCase();
     const data = opts.data;
     const header: Record<string, string> = (opts.header as Record<string, string>) ?? {};
     const timeoutMs = (opts.timeout as number | undefined) ?? 60000;
+    const dataType = (opts.dataType as string | undefined) ?? "json";
+    const responseType = (opts.responseType as string | undefined) ?? "text";
     let body: string | undefined;
     if (data && method !== "GET" && method !== "HEAD") {
       header["Content-Type"] = header["Content-Type"] ?? "application/json";
@@ -322,12 +344,22 @@ export const wx = {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     fetch(fetchUrl, { method, headers: header, body, signal: controller.signal })
-      .then((res) => res.text().then((text) => {
+      .then(async (res) => {
         clearTimeout(timer);
-        let responseData: unknown; try { responseData = JSON.parse(text); } catch { responseData = text; }
+        let responseData: unknown;
+        if (responseType === "arraybuffer") {
+          responseData = await res.arrayBuffer();
+        } else {
+          const text = await res.text();
+          if (dataType === "json") {
+            try { responseData = JSON.parse(text); } catch { responseData = text; }
+          } else {
+            responseData = text;
+          }
+        }
         const r = { data: responseData, statusCode: res.status, header: Object.fromEntries(res.headers.entries()), errMsg: "request:ok" };
         opts.success?.(r); opts.complete?.(r);
-      }))
+      })
       .catch((err: Error) => {
         clearTimeout(timer);
         const msg = err.name === "AbortError" ? "request:fail timeout" : "request:fail " + err.message;
