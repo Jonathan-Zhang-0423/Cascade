@@ -1,0 +1,13 @@
+{
+  "name": "@cascade/api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_ENV=development tsx src/infra/index.ts",
+    "build": "node ../../script/build.ts"
+  },
+  "dependencies": {
+    "@cascade/shared": "workspace:*",
+    "@cascade/database": "workspace:*"
+  }
+}
