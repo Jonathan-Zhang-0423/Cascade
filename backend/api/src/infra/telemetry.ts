@@ -55,7 +55,7 @@ export interface BuildTelemetryInit {
 }
 
 export function getTelemetryDir(): string {
-  return process.env.TELEMETRY_DIR || path.join(process.cwd(), "telemetry");
+  return process.env.TELEMETRY_DIR || path.join(import.meta.dirname, "../../../../telemetry");
 }
 
 function isDisabled(): boolean {
