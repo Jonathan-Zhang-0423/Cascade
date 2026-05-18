@@ -473,7 +473,7 @@ const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputE
   send: "send", search: "search", next: "next", go: "go", done: "done",
 };
 
-export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, selectionStart, selectionEnd, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, cursor, selectionStart, selectionEnd, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
@@ -503,9 +503,12 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
         autoFocus={autoFocus || focus}
         enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
         ref={(el) => {
-          if (el && selectionStart != null) {
+          if (!el) return;
+          if (selectionStart != null) {
             const end = selectionEnd ?? selectionStart;
             try { el.setSelectionRange(selectionStart, end); } catch {}
+          } else if (cursor != null) {
+            try { el.setSelectionRange(cursor, cursor); } catch {}
           }
         }}
         onChange={(e) => {
@@ -541,6 +544,7 @@ interface TextareaProps extends WxBaseProps {
   autoFocus?: boolean;
   focus?: boolean;
   autoHeight?: boolean;
+  cursor?: number;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
@@ -548,7 +552,7 @@ interface TextareaProps extends WxBaseProps {
   bindlinechange?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -565,6 +569,13 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
     el.style.height = el.scrollHeight + "px";
   }, [localVal, autoHeight]);
 
+  // Apply cursor position when cursor prop changes.
+  useEffect(() => {
+    if (cursor != null && taRef.current) {
+      try { taRef.current.setSelectionRange(cursor, cursor); } catch {}
+    }
+  }, [cursor]);
+
   return (
     <>
       {placeholderCss && <style>{placeholderCss}</style>}
@@ -572,7 +583,7 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
         ref={taRef}
         id={styleId ?? id}
         className={className}
-        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: autoHeight ? "none" : "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
+        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
         value={localVal}
         placeholder={placeholder}
         disabled={disabled}
@@ -604,6 +615,7 @@ interface ScrollViewProps extends WxBaseProps {
   lowerThreshold?: number;
   upperThreshold?: number;
   enableFlex?: boolean;
+  scrollWithAnimation?: boolean;
   refresherEnabled?: boolean;
   refresherThreshold?: number;
   refresherDefaultStyle?: "black" | "white" | "none";
@@ -618,7 +630,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -637,8 +649,12 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
   // Scroll to top offset when scrollTop changes.
   useEffect(() => {
     if (scrollTop == null || !containerRef.current) return;
-    containerRef.current.scrollTop = scrollTop;
-  }, [scrollTop]);
+    if (scrollWithAnimation) {
+      containerRef.current.scrollTo({ top: scrollTop, behavior: "smooth" });
+    } else {
+      containerRef.current.scrollTop = scrollTop;
+    }
+  }, [scrollTop, scrollWithAnimation]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -727,15 +743,20 @@ interface SwiperProps extends WxBaseProps {
   vertical?: boolean;
   previousMargin?: string;
   nextMargin?: string;
+  displayMultipleItems?: number;
   bindchange?: (e: unknown) => void;
 }
 
-export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", bindchange }: SwiperProps) {
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, bindchange }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
   const count = items.length;
   // Parse margin values (e.g. "20px" or "20rpx" → convert rpx to vw)
   const parsePx = (v: string) => v.replace(/(\d+(?:\.\d+)?)rpx/g, (_, n) => `${(parseFloat(n) / 7.5).toFixed(2)}vw`);
+  // Each item width when showing multiple items
+  const itemWidthExpr = displayMultipleItems > 1
+    ? `calc(${(100 / displayMultipleItems).toFixed(4)}% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})`
+    : `calc(100% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})`;
 
   const goTo = useCallback((next: number) => {
     const clamped = circular ? ((next % count) + count) % count : Math.max(0, Math.min(count - 1, next));
@@ -763,8 +784,8 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
       }}>
         {items.map((child, i) => (
           <div key={i} style={{
-            minWidth: vertical ? "100%" : `calc(100% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})`,
-            minHeight: vertical ? `calc(100% - ${parsePx(previousMargin)} - ${parsePx(nextMargin)})` : undefined,
+            minWidth: vertical ? "100%" : itemWidthExpr,
+            minHeight: vertical ? itemWidthExpr : undefined,
             flexShrink: 0,
             height: "100%",
           }}>{child}</div>
