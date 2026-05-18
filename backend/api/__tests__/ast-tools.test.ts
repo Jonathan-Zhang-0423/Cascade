@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildAstTools } from "../ast-tools";
-import type { BuildSessionState } from "../build-orchestrator";
+import { buildAstTools } from "../src/agent/tools/ast-tools";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
 vi.mock("@ast-grep/napi", () => {
   const fakeMatch = (text: string, line: number) => ({

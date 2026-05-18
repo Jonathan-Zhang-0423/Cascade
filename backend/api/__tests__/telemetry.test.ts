@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, readdir } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
-import { BuildTelemetry } from "../telemetry";
+import { BuildTelemetry } from "../src/infra/telemetry";
 
 describe("AG-17 BuildTelemetry", () => {
   let tmp: string;

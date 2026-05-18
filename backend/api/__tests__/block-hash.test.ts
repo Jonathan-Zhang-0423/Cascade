@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "../block-hash";
+import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "../src/agent/tools/block-hash";
 
 describe("AG-16 extractBlocks (TS via ast-grep)", () => {
   it("finds top-level function, class, and const export in a TS file", async () => {

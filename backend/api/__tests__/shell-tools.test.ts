@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildShellTools } from "../shell-tools";
-import type { BuildSessionState } from "../build-orchestrator";
+import { buildShellTools } from "../src/agent/tools/shell-tools";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
-vi.mock("../shell-manager", () => ({
+vi.mock("../src/agent/tools/shell-manager", () => ({
   shellManager: {
     runCommand: vi.fn(),
   },
 }));
 
-import { shellManager } from "../shell-manager";
+import { shellManager } from "../src/agent/tools/shell-manager";
 import { execSync } from "child_process";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";

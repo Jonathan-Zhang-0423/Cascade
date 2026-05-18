@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wxmlToJsx } from "../wechat/wxml-to-jsx";
+import { wxmlToJsx } from "../src/compiler/wechat/runtime/wxml-to-jsx";
 
 // These tests exercise the rewriteExpr identifier-prefixing logic indirectly
 // via wxmlToJsx. Each snippet is a minimal WXML template whose `{{ ... }}`

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../shell-manager", () => ({
+vi.mock("../src/agent/tools/shell-manager", () => ({
   shellManager: {
     runCommand: vi.fn(),
   },
@@ -11,9 +11,9 @@ import {
   buildTestCommand,
   parseTestOutput,
   buildTestTools,
-} from "../test-tools";
-import { shellManager } from "../shell-manager";
-import type { BuildSessionState } from "../build-orchestrator";
+} from "../src/agent/tools/test-tools";
+import { shellManager } from "../src/agent/tools/shell-manager";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
 function makeFiles(entries: Record<string, string>): Map<string, string> {
   return new Map(Object.entries(entries));

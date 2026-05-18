@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { groupStepsIntoWaves, hasParallelOpportunity } from "../step-dependency-analyzer";
-import type { BuildStep } from "../build-orchestrator";
+import { groupStepsIntoWaves, hasParallelOpportunity } from "../src/agent/orchestrator/step-dependency-analyzer";
+import type { BuildStep } from "../src/agent/orchestrator/build-orchestrator";
 
 describe("AG-10 step dependency analyzer", () => {
   describe("groupStepsIntoWaves", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { BuildStep } from "../build-orchestrator";
+import type { BuildStep } from "../src/agent/orchestrator/build-orchestrator";
 
 /**
  * These helper functions mirror the logic in build-orchestrator.ts

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Stub withFallback so no real HTTP requests happen.
-vi.mock("../kimi-client", () => ({
+vi.mock("../src/agent/providers/kimi-client", () => ({
   withFallback: vi.fn(),
 }));
 
-import { detectSkillFromText, detectSkillsFromText, loadSkills, listSkills } from "../skill-loader";
-import { withFallback } from "../kimi-client";
+import { detectSkillFromText, detectSkillsFromText, loadSkills, listSkills } from "../src/skills/loader";
+import { withFallback } from "../src/agent/providers/kimi-client";
 
 function mockLLMResponse(content: string | null) {
   (withFallback as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => ({

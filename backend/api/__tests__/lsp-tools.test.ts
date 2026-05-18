@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildLspTools } from "../lsp-tools";
-import type { BuildSessionState } from "../build-orchestrator";
+import { buildLspTools } from "../src/agent/tools/lsp-tools";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
-vi.mock("../lsp-manager", () => ({
+vi.mock("../src/agent/tools/lsp-manager", () => ({
   lspManager: {
     getDiagnostics: vi.fn(),
     findReferences: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock("../lsp-manager", () => ({
   },
 }));
 
-import { lspManager } from "../lsp-manager";
+import { lspManager } from "../src/agent/tools/lsp-manager";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
@@ -160,7 +160,7 @@ describe("lsp_diagnostics — real typescript-language-server (integration)", ()
 
   afterEach(async () => {
     if (sessionDir) await rm(sessionDir, { recursive: true, force: true });
-    const realMod = await vi.importActual<typeof import("../lsp-manager")>("../lsp-manager");
+    const realMod = await vi.importActual("../src/agent/tools/lsp-manager");
     (realMod.lspManager as any).stop?.(sessionId);
   });
 
@@ -174,7 +174,7 @@ describe("lsp_diagnostics — real typescript-language-server (integration)", ()
       );
       await writeFile(path.join(sessionDir, "app.ts"), `const x: number = "this is a string";\n`);
 
-      const realMod = await vi.importActual<typeof import("../lsp-manager")>("../lsp-manager");
+      const realMod = await vi.importActual("../src/agent/tools/lsp-manager");
       const realLspManager = realMod.lspManager as any;
 
       await realLspManager.start(sessionId, sessionDir, "typescript");

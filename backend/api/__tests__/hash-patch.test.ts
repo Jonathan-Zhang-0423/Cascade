@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildBuilderTools } from "../agent-tools";
-import type { BuildSessionState } from "../build-orchestrator";
+import { buildBuilderTools } from "../src/agent/tools/agent-tools";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
 function makeSession(overrides: Partial<BuildSessionState> = {}): BuildSessionState {
   return {

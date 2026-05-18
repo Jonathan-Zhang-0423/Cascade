@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
-import { buildBuilderTools } from "../agent-tools";
-import type { BuildSessionState } from "../build-orchestrator";
+import { buildBuilderTools } from "../src/agent/tools/agent-tools";
+import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
 function makeSession(overrides: Partial<BuildSessionState> = {}): BuildSessionState {
   return {

@@ -3,7 +3,7 @@ import {
   getCompileCheck,
   buildEditorCompileCheckPrompt,
   buildVerifierCompileCheckPrompt,
-} from "../compile-checks";
+} from "../src/agent/tools/compile-checks";
 
 describe("AG-11 framework-specific compile checks", () => {
   describe("getCompileCheck", () => {
