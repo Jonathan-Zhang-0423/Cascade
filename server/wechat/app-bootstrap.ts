@@ -387,6 +387,12 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const reachBottomFiredRef = useRef(false);
+  const pageScrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset onReachBottom fired flag when the page entry changes (new page navigation).
+  useEffect(() => {
+    reachBottomFiredRef.current = false;
+  }, [entry.key]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef<number | null>(null);
@@ -505,8 +511,13 @@ function PageRenderer({ entry, transition, onTransitionEnd }: { entry: StackEntr
         onScroll={(e) => {
           const el = e.currentTarget;
           const scrollTop = el.scrollTop;
-          // onPageScroll
-          try { (entry.inst.onPageScroll as Function)?.call(entry.inst, { scrollTop }); } catch {}
+          // onPageScroll — throttled to ~16ms (one animation frame) to match WeChat behavior.
+          if (!pageScrollThrottleRef.current) {
+            pageScrollThrottleRef.current = setTimeout(() => {
+              pageScrollThrottleRef.current = null;
+              try { (entry.inst.onPageScroll as Function)?.call(entry.inst, { scrollTop }); } catch {}
+            }, 16);
+          }
           // onReachBottom — fire once per threshold crossing (reset when user scrolls back up)
           const threshold = (reg.config?.onReachBottomDistance as number) ?? 50;
           const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;

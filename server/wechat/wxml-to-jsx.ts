@@ -450,7 +450,13 @@ function convertNode(node: ChildNode, templates: TemplateMap, indent: number): s
   // object iteration `index` is the KEY (matches WeChat semantics).
   if (wxFor) {
     const listExpr = rewriteExpr(wxFor.replace(/^\{\{/, "").replace(/\}\}$/, "").trim());
-    result = `${pad}({__wxFor(${listExpr}).map((${wxForItem}: unknown, ${wxForIndex}: unknown) => (\n${result}${pad}))}\n${pad})\n`;
+    // For object iteration __wxFor returns { __wx_key__, __wx_val__ } entries.
+    // We unpack them so wxForItem = value and wxForIndex = key.
+    result = `${pad}({__wxFor(${listExpr}).map((__wxEntry__: unknown, __wxIdx__: number) => {
+  const ${wxForItem} = ((__wxEntry__ as any)?.__wx_val__ !== undefined) ? (__wxEntry__ as any).__wx_val__ : __wxEntry__;
+  const ${wxForIndex} = ((__wxEntry__ as any)?.__wx_key__ !== undefined) ? (__wxEntry__ as any).__wx_key__ : __wxIdx__;
+  return (\n${result}${pad});
+})}\n${pad})\n`;
   }
 
   // wx:if / wx:elif / wx:else are handled at the parent children level (see convertChildren).
