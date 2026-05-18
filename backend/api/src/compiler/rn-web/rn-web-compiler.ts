@@ -21,7 +21,7 @@ import { transformSync } from "@babel/core";
 // Constants
 // ---------------------------------------------------------------------------
 
-const VENDOR_PATH = join(process.cwd(), "server", "assets", "rn-vendor.js");
+const VENDOR_PATH = join(process.cwd(), "backend", "api", "assets", "rn-vendor.js");
 const BUILD_CACHE_MAX_AGE = 30 * 60 * 1000; // 30 min
 const MAX_CACHE_ENTRIES = 50;
 const MAX_CONCURRENT_COMPILES = 4;
@@ -68,11 +68,11 @@ export async function ensureVendorBundle(): Promise<void> {
   if (vendorBuildPromise) return vendorBuildPromise;
 
   vendorBuildPromise = (async () => {
-    await mkdir(join(process.cwd(), "server", "assets"), { recursive: true });
+    await mkdir(join(process.cwd(), "backend", "api", "assets"), { recursive: true });
     console.log("[rn-web] Building vendor bundle (React + ReactDOM + react-native-web)...");
     try {
       await esbuild({
-        entryPoints: [join(process.cwd(), "server", "rn-vendor-entry.js")],
+        entryPoints: [join(process.cwd(), "backend", "api", "src", "compiler", "rn-web", "rn-vendor-entry.js")],
         bundle: true,
         format: "iife",
         globalName: "__RNW__",
@@ -90,7 +90,7 @@ export async function ensureVendorBundle(): Promise<void> {
           "react-native-worklets": "react-native-web",
           // Stub out codegenNativeComponent — imported by react-native-safe-area-context
           // at init time. Without this it crashes in the browser IIFE with a dynamic require error.
-          "react-native/Libraries/Utilities/codegenNativeComponent": join(process.cwd(), "server", "stubs", "codegenNativeComponent.js"),
+          "react-native/Libraries/Utilities/codegenNativeComponent": join(process.cwd(), "backend", "api", "stubs", "codegenNativeComponent.js"),
         },
         // Mark packages that call native codegen at init time as external.
         // react-native-screens, react-native-gesture-handler, and react-native-reanimated

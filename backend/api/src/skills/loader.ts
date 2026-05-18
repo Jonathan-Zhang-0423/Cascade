@@ -8,7 +8,7 @@ export interface SkillMeta {
   keywords: string[];
 }
 
-const SKILLS_BASE_DIR = join(process.cwd(), "server", "skills");
+const SKILLS_BASE_DIR = join(process.cwd(), "backend", "api", "src", "skills", "builtin");
 
 const BUILTIN_KEYWORDS: Record<string, string[]> = {
   react: ["react", "jsx", "tsx", "react component", "react hook", "react app", "spa", "next.js", "nextjs", "vite react"],

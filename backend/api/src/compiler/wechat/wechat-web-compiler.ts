@@ -25,7 +25,7 @@ import { generateAppBootstrap } from "./runtime/app-bootstrap.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const VENDOR_PATH = join(process.cwd(), "server", "assets", "wx-vendor.js");
+const VENDOR_PATH = join(process.cwd(), "backend", "api", "assets", "wx-vendor.js");
 const BUILD_CACHE_MAX_AGE = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 const MAX_CONCURRENT_COMPILES = 2;
@@ -92,9 +92,9 @@ export async function ensureWxVendorBundle(): Promise<void> {
   if (vendorBuildPromise) return vendorBuildPromise;
 
   vendorBuildPromise = (async () => {
-    await mkdir(join(process.cwd(), "server", "assets"), { recursive: true });
+    await mkdir(join(process.cwd(), "backend", "api", "assets"), { recursive: true });
     console.log("[wx-web] Building vendor bundle (React + wx-runtime + wx-polyfill)...");
-    const entryPath = join(process.cwd(), "server", "wx-vendor-entry.tsx");
+    const entryPath = join(process.cwd(), "backend", "api", "src", "compiler", "wechat", "runtime", "wx-runtime.tsx");
     await writeFile(entryPath, `
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -246,7 +246,7 @@ async function _doCompile(
 ): Promise<WxCompilationResult> {
   activeCompiles++;
   const buildId = hash;
-  const buildDir = join(process.cwd(), "server", "artifacts", "wx-" + buildId);
+  const buildDir = join(process.cwd(), "backend", "api", "artifacts", "wx-" + buildId);
 
   try {
     await ensureWxVendorBundle();
@@ -354,7 +354,7 @@ export { ${safeComp} };
     await writeFile(join(buildDir, "index.tsx"), bootstrap);
 
     // Copy runtime files into build dir so esbuild can resolve them
-    const runtimeSrc = join(process.cwd(), "server", "wechat");
+    const runtimeSrc = join(process.cwd(), "backend", "api", "src", "compiler", "wechat", "runtime");
     await writeFile(join(buildDir, "wx-runtime.tsx"), await readFile(join(runtimeSrc, "wx-runtime.tsx"), "utf8"));
     await writeFile(join(buildDir, "wx-polyfill.ts"), await readFile(join(runtimeSrc, "wx-polyfill.ts"), "utf8"));
 

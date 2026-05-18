@@ -12,7 +12,7 @@ const GRADLE_PATH = join(
   "bin",
   "gradle"
 );
-const TEMPLATE_DIR = resolve(process.cwd(), "server", "compile-templates", "kotlin-wasm");
+const TEMPLATE_DIR = resolve(process.cwd(), "backend", "api", "src", "compiler", "compile-templates", "kotlin-wasm");
 const COMPILE_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
