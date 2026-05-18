@@ -904,12 +904,13 @@ export function Form({ id, className, style, children, bindsubmit, bindreset }: 
 
 interface CheckboxProps extends WxBaseProps {
   value?: string;
+  name?: string;
   checked?: boolean;
   disabled?: boolean;
   bindchange?: (e: unknown) => void;
 }
 
-export function Checkbox({ id, className, style, value, checked, disabled, bindchange }: CheckboxProps) {
+export function Checkbox({ id, className, style, value, name, checked, disabled, bindchange }: CheckboxProps) {
   const [localChecked, setLocalChecked] = useState(checked ?? false);
   useEffect(() => { setLocalChecked(checked ?? false); }, [checked]);
   return (
@@ -918,7 +919,7 @@ export function Checkbox({ id, className, style, value, checked, disabled, bindc
       className={className}
       style={style}
       type="checkbox"
-      name={id}
+      name={name ?? id}
       value={value}
       checked={localChecked}
       disabled={disabled}
@@ -1261,15 +1262,38 @@ interface ProgressProps {
   strokeWidth?: number;
   activeColor?: string;
   backgroundColor?: string;
+  active?: boolean;
+  activeMode?: "backwards" | "forwards";
+  borderRadius?: number;
 }
 
-export function Progress({ percent = 0, showInfo, strokeWidth = 6, activeColor = "#09BB07", backgroundColor = "#EBEBEB" }: ProgressProps) {
+export function Progress({ percent = 0, showInfo, strokeWidth = 6, activeColor = "#09BB07", backgroundColor = "#EBEBEB", active, borderRadius }: ProgressProps) {
+  const [displayPct, setDisplayPct] = useState(active ? 0 : percent);
+  useEffect(() => {
+    if (active) {
+      // Animate from 0 to percent over ~600ms.
+      const start = performance.now();
+      const duration = 600;
+      const target = Math.min(100, Math.max(0, percent));
+      const frame = (now: number) => {
+        const elapsed = now - start;
+        const p = Math.min(elapsed / duration, 1);
+        setDisplayPct(p * target);
+        if (p < 1) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    } else {
+      setDisplayPct(Math.min(100, Math.max(0, percent)));
+    }
+  }, [percent, active]);
+
+  const r = borderRadius ?? strokeWidth;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1, height: strokeWidth, background: backgroundColor, borderRadius: strokeWidth }}>
-        <div style={{ width: `${Math.min(100, Math.max(0, percent))}%`, height: "100%", background: activeColor, borderRadius: strokeWidth, transition: "width 0.3s" }} />
+      <div style={{ flex: 1, height: strokeWidth, background: backgroundColor, borderRadius: r }}>
+        <div style={{ width: `${displayPct}%`, height: "100%", background: activeColor, borderRadius: r, transition: active ? "none" : "width 0.3s" }} />
       </div>
-      {showInfo && <span style={{ fontSize: 12, minWidth: 36 }}>{percent}%</span>}
+      {showInfo && <span style={{ fontSize: 12, minWidth: 36, color: "#666" }}>{Math.round(displayPct)}%</span>}
     </div>
   );
 }
