@@ -1,6 +1,6 @@
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
-import { withFallback, type AIProvider } from "./kimi-client";
+import { withFallback, type AIProvider } from "../agent/providers/kimi-client";
 
 export interface SkillMeta {
   name: string;

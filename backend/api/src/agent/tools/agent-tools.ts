@@ -1,14 +1,14 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import type { ToolSchema, ToolHandler } from "./agent-loop";
-import type { BuildSessionState, BuildStep, SseEmit } from "./build-orchestrator";
+import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
+import type { BuildSessionState, BuildStep, SseEmit } from "../orchestrator/build-orchestrator";
 import { buildAstTools } from "./ast-tools";
 import { buildLspTools } from "./lsp-tools";
 import { lspManager } from "./lsp-manager";
 import { buildShellTools } from "./shell-tools";
 import { buildTestTools } from "./test-tools";
 import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "./block-hash";
-import type { BuildTelemetry } from "./telemetry";
+import type { BuildTelemetry } from "../../infra/telemetry";
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";

@@ -1,4 +1,4 @@
-import type { Framework } from "./framework-detector";
+import type { Framework } from "../../compiler/framework-detector";
 
 /**
  * AG-11: Framework-specific compile / static-analysis check commands.

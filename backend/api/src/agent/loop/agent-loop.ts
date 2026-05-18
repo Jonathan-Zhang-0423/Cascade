@@ -1,6 +1,6 @@
-import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
-import { withRetry } from "./retry";
-import type { SseEmit } from "./build-orchestrator";
+import { doubaoClient, DOUBAO_MODEL } from "../providers/doubao-client";
+import { withRetry } from "../providers/retry";
+import type { SseEmit } from "../orchestrator/build-orchestrator";
 import type OpenAI from "openai";
 import {
   createPart,
@@ -10,7 +10,7 @@ import {
   type Part,
   type ToolPart,
   type PartEmitContext,
-} from "./parts";
+} from "../../infra/parts";
 
 export type ToolHandler = (args: Record<string, unknown>, emit: SseEmit) => Promise<string>;
 export type ToolHandlers = Record<string, ToolHandler>;

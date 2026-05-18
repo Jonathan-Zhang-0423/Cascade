@@ -16,10 +16,10 @@ import { join } from "path";
 import { existsSync } from "fs";
 import { build as esbuild } from "esbuild";
 
-import { hashSources } from "./compiler-utils.js";
-import { wxmlToJsx } from "./wechat/wxml-to-jsx.js";
-import { transformWxss } from "./wechat/wxss-to-css.js";
-import { generateAppBootstrap } from "./wechat/app-bootstrap.js";
+import { hashSources } from "../compiler-utils.js";
+import { wxmlToJsx } from "./runtime/wxml-to-jsx.js";
+import { transformWxss } from "./runtime/wxss-to-css.js";
+import { generateAppBootstrap } from "./runtime/app-bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Constants

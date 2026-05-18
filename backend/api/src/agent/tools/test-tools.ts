@@ -1,7 +1,7 @@
-import type { ToolSchema, ToolHandler } from "./agent-loop";
-import type { BuildSessionState } from "./build-orchestrator";
+import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
+import type { BuildSessionState } from "../orchestrator/build-orchestrator";
 import { shellManager } from "./shell-manager";
-import type { BuildTelemetry } from "./telemetry";
+import type { BuildTelemetry } from "../../infra/telemetry";
 
 export type TestRunner = "npm" | "pytest" | "flutter" | "gradle" | null;
 

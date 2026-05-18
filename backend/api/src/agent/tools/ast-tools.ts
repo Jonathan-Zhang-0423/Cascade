@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import type { ToolSchema, ToolHandler } from "./agent-loop";
-import type { BuildSessionState } from "./build-orchestrator";
+import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
+import type { BuildSessionState } from "../orchestrator/build-orchestrator";
 
 function isLanguageMatch(filePath: string, language: string): boolean {
   const ext = filePath.split(".").pop()?.toLowerCase();

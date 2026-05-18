@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 

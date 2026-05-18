@@ -1,4 +1,4 @@
-import type { Framework } from "./framework-detector";
+import type { Framework } from "../../compiler/framework-detector";
 
 export type AgentRole = "manager" | "editor" | "verifier" | "communicator";
 

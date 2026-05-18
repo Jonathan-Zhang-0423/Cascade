@@ -1,4 +1,4 @@
-import { doubaoClient, DOUBAO_LITE_MODEL } from "./doubao-client";
+import { doubaoClient, DOUBAO_LITE_MODEL } from "../agent/providers/doubao-client";
 
 type Message = { role: "user" | "assistant"; content: string };
 

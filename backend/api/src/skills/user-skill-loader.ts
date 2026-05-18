@@ -1,11 +1,11 @@
-import { db } from "./db";
-import { userSkills, projectSkills } from "@shared/schema";
+import { db } from "../infra/db";
+import { userSkills, projectSkills } from "@cascade/database";
 import { eq, and } from "drizzle-orm";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
-import type { ToolSchema, ToolHandler, ToolHandlers } from "./agent-loop";
-import type { BuildSessionState, SseEmit } from "./build-orchestrator";
-import { shellManager } from "./shell-manager";
+import type { ToolSchema, ToolHandler, ToolHandlers } from "../agent/loop/agent-loop";
+import type { BuildSessionState, SseEmit } from "../agent/orchestrator/build-orchestrator";
+import { shellManager } from "../agent/tools/shell-manager";
 
 export interface LoadedSkills {
   knowledgePacks: string[];

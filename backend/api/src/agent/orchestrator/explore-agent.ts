@@ -1,5 +1,5 @@
-import { runAgentLoop, type ToolHandler, type ToolSchema } from "./agent-loop";
-import { getAIClient } from "./kimi-client";
+import { runAgentLoop, type ToolHandler, type ToolSchema } from "../loop/agent-loop";
+import { getAIClient } from "../providers/kimi-client";
 
 const EXPLORE_SYSTEM_PROMPT = `You are a fast codebase scanner. Your job is to quickly understand the most relevant parts of an existing project for a given user request.
 

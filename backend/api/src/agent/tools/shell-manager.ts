@@ -1,6 +1,6 @@
 import Docker from "dockerode";
 import path from "path";
-import type { Framework } from "./framework-detector";
+import type { Framework } from "../../compiler/framework-detector";
 
 const SANDBOX_IMAGE_DEFAULT = "node:20-slim";
 const SANDBOX_IMAGE_FLUTTER = "ghcr.io/cirruslabs/flutter:stable";

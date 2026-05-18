@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, users, projects, projectFiles } from "@shared/schema";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, users, projects, projectFiles } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 

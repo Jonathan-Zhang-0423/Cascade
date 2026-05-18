@@ -6,7 +6,7 @@
  * on the session, giving us addressable history and consistent event payloads.
  */
 import { randomUUID } from "crypto";
-import type { SseEmit } from "./build-orchestrator";
+import type { SseEmit } from "../agent/orchestrator/build-orchestrator";
 
 // ---------------------------------------------------------------------------
 // Base

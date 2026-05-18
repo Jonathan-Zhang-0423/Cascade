@@ -1,19 +1,19 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { EDITOR_AGENT_SYSTEM_PROMPT } from "./editor-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT } from "./verifier-prompt";
-import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "./communicator-prompt";
-import { detectSkillsFromText, loadSkills, getSkillForFramework } from "./skill-loader";
-import { runAgentLoop } from "./agent-loop";
-import { buildFallbackChain, withFallback, type AIProvider } from "./kimi-client";
-import { storage } from "./storage";
-import { BuildTelemetry } from "./telemetry";
+import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
+import { VERIFIER_AGENT_SYSTEM_PROMPT } from "../prompts/verifier-prompt";
+import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
+import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
+import { runAgentLoop } from "../loop/agent-loop";
+import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
+import { storage } from "../../infra/storage";
+import { BuildTelemetry } from "../../infra/telemetry";
 import {
   buildBuilderTools,
   buildVerifierTools,
   buildFixerTools,
   type VerifierSessionState,
-} from "./agent-tools";
+} from "../tools/agent-tools";
 import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
 import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "./compile-checks";
 import { detectFramework, type Framework } from "./framework-detector";

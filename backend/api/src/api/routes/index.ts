@@ -11,47 +11,47 @@ import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
 import archiver from "archiver";
 import { z } from "zod";
-import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
-import { withRetry } from "./retry";
-import { compressMessages } from "./context-compressor";
-import { storage } from "./storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users } from "@shared/schema";
-import { db } from "./db";
+import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
+import { withRetry } from "../../agent/providers/retry";
+import { compressMessages } from "../../infra/context-compressor";
+import { storage } from "../../infra/storage";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users } from "@cascade/database";
+import { db } from "../../infra/db";
 import { eq, and } from "drizzle-orm";
-import { getTemplateFiles } from "./templates";
-import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "./framework-detector";
-import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
+import { getTemplateFiles } from "../../compiler/templates/index";
+import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
+import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   EDITOR_CHAT_SYSTEM_PROMPT,
   buildEditorContextMessage,
   buildEditorChatContextMessage,
-} from "./editor-prompt";
+} from "../../agent/prompts/editor-prompt";
 import {
   MANAGER_AGENT_SYSTEM_PROMPT,
   MANAGER_FIX_MODE_SYSTEM_PROMPT,
   buildManagerContextMessage,
   buildManagerFixPlanMessage,
-} from "./manager-prompt";
+} from "../../agent/prompts/manager-prompt";
 import {
   VERIFIER_AGENT_SYSTEM_PROMPT,
   buildHolisticVerifierMessage,
-} from "./verifier-prompt";
-import { AB_TEST_SCENARIOS } from "./ab-test-scenarios";
-import { runBuildSession, type BuildSessionState, type BufferedEvent } from "./build-orchestrator";
-import { lspManager } from "./lsp-manager";
-import { shellManager } from "./shell-manager";
-import { detectSkillFromText, loadSkill, getSkillForFramework } from "./skill-loader";
-import { runAgentLoop } from "./agent-loop";
-import { buildManagerTools, type ManagerSessionState } from "./agent-tools";
-import { getAIClient, getOptimalClient, type AIProvider } from "./kimi-client";
-import { setupPreviewServer } from "./preview-server";
-import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "./kotlin-wasm-compiler";
-import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "./swift-wasm-compiler";
-import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "./rn-web-compiler";
-import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "./flutter-compiler";
-import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "./wechat-web-compiler";
-import { runExploreAgent } from "./explore-agent";
+} from "../../agent/prompts/verifier-prompt";
+import { AB_TEST_SCENARIOS } from "../ab-test-scenarios";
+import { runBuildSession, type BuildSessionState, type BufferedEvent } from "../../agent/orchestrator/build-orchestrator";
+import { lspManager } from "../../agent/tools/lsp-manager";
+import { shellManager } from "../../agent/tools/shell-manager";
+import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
+import { runAgentLoop } from "../../agent/loop/agent-loop";
+import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
+import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
+import { setupPreviewServer } from "../../compiler/preview-server";
+import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "../../compiler/kotlin-wasm/kotlin-wasm-compiler";
+import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "../../compiler/kotlin-wasm/swift-wasm-compiler";
+import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "../../compiler/rn-web/rn-web-compiler";
+import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
+import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
+import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;

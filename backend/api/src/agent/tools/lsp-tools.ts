@@ -1,5 +1,5 @@
-import type { ToolSchema, ToolHandler } from "./agent-loop";
-import type { BuildSessionState } from "./build-orchestrator";
+import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
+import type { BuildSessionState } from "../orchestrator/build-orchestrator";
 import { lspManager } from "./lsp-manager";
 
 export function buildLspTools(session: BuildSessionState): {
