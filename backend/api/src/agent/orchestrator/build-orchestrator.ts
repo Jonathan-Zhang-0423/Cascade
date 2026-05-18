@@ -14,14 +14,14 @@ import {
   buildFixerTools,
   type VerifierSessionState,
 } from "../tools/agent-tools";
-import { getMobilePromptSupplement } from "./mobile-prompt-supplements";
-import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "./compile-checks";
-import { detectFramework, type Framework } from "./framework-detector";
-import { type Part, type SessionStatus, type PartEmitContext } from "./parts";
-import { lspManager } from "./lsp-manager";
-import { shellManager } from "./shell-manager";
+import { getMobilePromptSupplement } from "../prompts/mobile-prompt-supplements";
+import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "../tools/compile-checks";
+import { detectFramework, type Framework } from "../../compiler/framework-detector";
+import { type Part, type SessionStatus, type PartEmitContext } from "../../infra/parts";
+import { lspManager } from "../tools/lsp-manager";
+import { shellManager } from "../tools/shell-manager";
 import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-dependency-analyzer";
-import { loadUserSkills } from "./user-skill-loader";
+import { loadUserSkills } from "../../skills/user-skill-loader";
 
 export interface BuildFile {
   path: string;
