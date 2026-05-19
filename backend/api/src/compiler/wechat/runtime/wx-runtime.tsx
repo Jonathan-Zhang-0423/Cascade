@@ -197,6 +197,14 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
     hoverStayTimer.current = setTimeout(() => setHovered(false), hoverStayTime);
   };
 
+  // Clean up hover timers on unmount to prevent memory leaks.
+  useEffect(() => {
+    return () => {
+      hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+      hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+    };
+  }, []);
+
   // animation prop from wx.createAnimation().export() — apply the last step's styles.
   const animProp = rest.animation as { actions?: Array<{ animates?: Array<{ type: string; value: unknown }> }> } | undefined;
   const animStyle: React.CSSProperties = {};
@@ -372,7 +380,25 @@ interface ButtonProps extends WxBaseProps {
 
 export function Button({ id, className, style, children, bindtap, catchtap, type = "default", size = "default", disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
   const hoverClass = rest.hoverClass as string | undefined;
+  const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 20;
+  const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 70;
   const [hovered, setHovered] = useState(false);
+  const hoverStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverStayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+    hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+  }, []);
+  const startHover = () => {
+    if (!hoverClass || disabled) return;
+    hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+    hoverStartTimer.current = setTimeout(() => setHovered(true), hoverStartTime);
+  };
+  const endHover = () => {
+    if (!hoverClass) return;
+    hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+    hoverStayTimer.current = setTimeout(() => setHovered(false), hoverStayTime);
+  };
   const isMini = size === "mini";
   const baseStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -439,9 +465,9 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
       disabled={disabled}
       type={formType === "submit" ? "submit" : formType === "reset" ? "reset" : "button"}
       onClick={handleClick}
-      onMouseDown={hoverClass && !disabled ? () => setHovered(true) : undefined}
-      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
-      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
+      onMouseDown={hoverClass && !disabled ? () => startHover() : undefined}
+      onMouseUp={hoverClass ? () => endHover() : undefined}
+      onMouseLeave={hoverClass ? () => endHover() : undefined}
       {...touch}
     >
       {loading && (
@@ -845,11 +871,28 @@ interface NavigatorProps extends WxBaseProps {
 
 export function Navigator({ id, className, style, children, url, openType = "navigate", delta, target = "self", appId, bindtap, ...rest }: NavigatorProps) {
   const hoverClass = rest.hoverClass as string | undefined;
+  const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 50;
+  const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 600;
   const [hovered, setHovered] = useState(false);
+  const hoverStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverStayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+    hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+  }, []);
+  const startHover = () => {
+    if (!hoverClass) return;
+    hoverStayTimer.current && clearTimeout(hoverStayTimer.current);
+    hoverStartTimer.current = setTimeout(() => setHovered(true), hoverStartTime);
+  };
+  const endHover = () => {
+    if (!hoverClass) return;
+    hoverStartTimer.current && clearTimeout(hoverStartTimer.current);
+    hoverStayTimer.current = setTimeout(() => setHovered(false), hoverStayTime);
+  };
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (bindtap) { bindtap(makeWxEvent("tap", {}, e.currentTarget)); return; }
-    // target="miniProgram" — delegate to wx.navigateToMiniProgram
     if (target === "miniProgram") {
       const wx = (window as unknown as { wx?: { navigateToMiniProgram: (o: unknown) => void } }).wx;
       wx?.navigateToMiniProgram({ appId, path: url });
@@ -872,9 +915,9 @@ export function Navigator({ id, className, style, children, url, openType = "nav
       style={{ textDecoration: "none", color: "inherit", display: "block", ...style }}
       href={url ?? "#"}
       onClick={handleClick}
-      onMouseDown={hoverClass ? () => setHovered(true) : undefined}
-      onMouseUp={hoverClass ? () => setHovered(false) : undefined}
-      onMouseLeave={hoverClass ? () => setHovered(false) : undefined}
+      onMouseDown={hoverClass ? () => startHover() : undefined}
+      onMouseUp={hoverClass ? () => endHover() : undefined}
+      onMouseLeave={hoverClass ? () => endHover() : undefined}
     >
       {children}
     </a>
