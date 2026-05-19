@@ -231,6 +231,9 @@ function WxApp() {
       setNavBgOverride(null);
       setNavTextOverride(null);
       setNavLoading(false);
+      // Reset tab badges/red-dots — they are page-specific state.
+      setTabBadges({});
+      setTabRedDots({});
       return next;
     });
   }, []);
@@ -322,6 +325,32 @@ function WxApp() {
           </button>
         )}
         <span style={{ fontSize: 17, fontWeight: 600 }}>{pageTitle}</span>
+        {/* Share button — triggers onShareAppMessage on the current page */}
+        {current && (PAGE_REGISTRY[current.path]?.config?.enableShareAppMessage !== false) && (
+          <button
+            onClick={() => {
+              const inst = current.inst;
+              if (typeof (inst.onShareAppMessage as unknown) === "function") {
+                try {
+                  const shareInfo = (inst.onShareAppMessage as Function).call(inst, { from: "button", target: {} });
+                  if (shareInfo) {
+                    (window as unknown as { wx?: { showShareMenu: (o: unknown) => void } }).wx?.showShareMenu?.({});
+                  }
+                } catch {}
+              }
+            }}
+            style={{ position: "absolute", right: navLoading ? 36 : 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "inherit", cursor: "pointer", padding: "0 8px", opacity: 0.7 }}
+            title="分享"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.8"/>
+              <circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
+              <circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.8"/>
+              <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
         {navLoading && (
           <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
             <svg width="16" height="16" viewBox="0 0 32 32" fill="none" style={{ animation: "__wx_spin__ 0.8s linear infinite" }}>
