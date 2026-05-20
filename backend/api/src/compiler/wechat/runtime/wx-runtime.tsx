@@ -1002,8 +1002,25 @@ export function Form({ id, className, style, children, bindsubmit, bindreset }: 
         e.preventDefault();
         if (!bindsubmit) return;
         // Collect all named form controls into a value map.
+        // WeChat semantics:
+        //   - checkbox inside checkbox-group → array of checked values (keyed by group name)
+        //   - standalone checkbox → boolean (keyed by checkbox name/id)
+        //   - radio → selected value string
+        //   - other inputs → string value
         const formValue: Record<string, unknown> = {};
         if (formRef.current) {
+          // First pass: identify which checkbox names are inside a CheckboxGroup
+          // (CheckboxGroup renders a div with onChange delegation — we detect by
+          // checking if the checkbox's closest named ancestor is a div, not a form).
+          const groupNames = new Set<string>();
+          const checkboxGroupDivs = formRef.current.querySelectorAll<HTMLDivElement>("div[id]");
+          checkboxGroupDivs.forEach((div) => {
+            div.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((cb) => {
+              const n = cb.getAttribute("name") || cb.id;
+              if (n) groupNames.add(n);
+            });
+          });
+
           const els = formRef.current.elements;
           for (let i = 0; i < els.length; i++) {
             const el = els[i] as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -1011,9 +1028,14 @@ export function Form({ id, className, style, children, bindsubmit, bindreset }: 
             if (!name) continue;
             if (el instanceof HTMLInputElement) {
               if (el.type === "checkbox") {
-                // Collect checkbox-group values as array
-                if (!(name in formValue)) formValue[name] = [];
-                if (el.checked) (formValue[name] as string[]).push(el.value);
+                if (groupNames.has(name)) {
+                  // Inside a CheckboxGroup — collect as array
+                  if (!(name in formValue)) formValue[name] = [];
+                  if (el.checked) (formValue[name] as string[]).push(el.value);
+                } else {
+                  // Standalone checkbox — return boolean
+                  formValue[name] = el.checked;
+                }
               } else if (el.type === "radio") {
                 if (el.checked) formValue[name] = el.value;
               } else {
@@ -1089,21 +1111,27 @@ export function CheckboxGroup({ id, className, style, children, bindchange }: Ch
   );
 }
 
-export function Radio({ id, className, style, value, checked, disabled, bindchange }: CheckboxProps) {
+interface RadioProps extends WxBaseProps {
+  value?: string;
+  name?: string;
+  checked?: boolean;
+  disabled?: boolean;
+  bindchange?: (e: unknown) => void;
+}
+
+export function Radio({ id, className, style, value, name, checked, disabled, bindchange }: RadioProps) {
   return (
     <input
       id={id}
       className={className}
       style={style}
       type="radio"
+      name={name}
       value={value}
       defaultChecked={checked}
       disabled={disabled}
       onChange={(e) => {
         // Only fire bindchange if this Radio is standalone (not inside a RadioGroup).
-        // RadioGroup uses event delegation on its container div, so firing here too
-        // would cause duplicate events. We detect RadioGroup by checking if the
-        // closest ancestor with role="radiogroup" exists.
         const inGroup = !!e.currentTarget.closest("[data-wx-radiogroup]");
         if (!inGroup) bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
       }}
