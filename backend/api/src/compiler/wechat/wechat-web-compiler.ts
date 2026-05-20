@@ -191,6 +191,8 @@ button, [role="button"], .wx-tap-area {
 }
 /* Native-feel momentum scroll inside scroll containers */
 .wx-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* WeChat default button hover class — applied when no hover-class prop is set */
+.button-hover { opacity: 0.7; }
 </style>
 <style id="__wx_styles__">${escapedCss}</style>
 </head>

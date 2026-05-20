@@ -198,6 +198,10 @@ function _sysInfo() {
     theme: prefersDark ? "dark" : "light",
     enableDebug: false,
     host: { env: "WeChat" },
+    appName: "WeChat",
+    appVersion: "8.0.0",
+    appLanguage: navigator.language || "zh_CN",
+    deviceOrientation: "portrait",
     safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 },
     errMsg: "getSystemInfo:ok",
   };
