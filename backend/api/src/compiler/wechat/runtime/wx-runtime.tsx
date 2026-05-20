@@ -310,12 +310,13 @@ interface ImageProps extends WxBaseProps {
   mode?: ImageMode;
   lazyLoad?: boolean;
   showMenuByLongpress?: boolean;
+  draggable?: boolean;
   bindload?: (e: unknown) => void;
   binderror?: (e: unknown) => void;
   bindlongpress?: (e: unknown) => void;
 }
 
-export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoad, showMenuByLongpress, bindtap, catchtap, bindload, binderror, bindlongpress, ...rest }: ImageProps) {
+export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoad, showMenuByLongpress, draggable, bindtap, catchtap, bindload, binderror, bindlongpress, ...rest }: ImageProps) {
   const modeStyle = MODE_STYLE[mode] ?? { objectFit: "fill" };
   const touch = useTouchProps(extractTouchBindings(rest));
 
@@ -346,6 +347,7 @@ export function Image({ id, className, style, src, mode = "scaleToFill", lazyLoa
       className={className}
       src={src}
       loading={lazyLoad ? "lazy" : undefined}
+      draggable={draggable}
       style={{ display: "block", width: "100%", height: "100%", ...modeStyle, ...style }}
       onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onContextMenu={handleContextMenu}
@@ -666,6 +668,8 @@ interface ScrollViewProps extends WxBaseProps {
   upperThreshold?: number;
   enableFlex?: boolean;
   scrollWithAnimation?: boolean;
+  scrollAnchoring?: boolean;
+  enhanced?: boolean;
   refresherEnabled?: boolean;
   refresherThreshold?: number;
   refresherDefaultStyle?: "black" | "white" | "none";
@@ -680,7 +684,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, scrollAnchoring, enhanced, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -760,6 +764,10 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
           overflowX: scrollX ? "auto" : "hidden",
           WebkitOverflowScrolling: "touch",
           display: enableFlex ? "flex" : undefined,
+          // scroll-anchoring: prevent scroll position jumping when content above changes
+          overflowAnchor: scrollAnchoring ? "auto" : "none",
+          // enhanced mode: enable momentum scrolling and snap
+          scrollSnapType: enhanced ? "x mandatory" : undefined,
           transform: refresherEnabled && (pulling > 0 || refreshing) ? `translateY(${refreshing ? 40 : pulling}px)` : undefined,
           transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out",
           height: "100%",
@@ -794,10 +802,20 @@ interface SwiperProps extends WxBaseProps {
   previousMargin?: string;
   nextMargin?: string;
   displayMultipleItems?: number;
+  easingFunction?: "default" | "linear" | "easeInCubic" | "easeOutCubic" | "easeInOutCubic";
   bindchange?: (e: unknown) => void;
 }
 
-export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, bindchange }: SwiperProps) {
+// Maps WeChat easing-function names to CSS easing values.
+const SWIPER_EASING: Record<string, string> = {
+  default: "ease",
+  linear: "linear",
+  easeInCubic: "cubic-bezier(0.55, 0.055, 0.675, 0.19)",
+  easeOutCubic: "cubic-bezier(0.215, 0.61, 0.355, 1)",
+  easeInOutCubic: "cubic-bezier(0.645, 0.045, 0.355, 1)",
+};
+
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, easingFunction = "default", bindchange }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
   const count = items.length;
@@ -827,7 +845,7 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
       <div style={{
         display: "flex",
         flexDirection: vertical ? "column" : "row",
-        transition: `transform ${duration}ms ease`,
+        transition: `transform ${duration}ms ${SWIPER_EASING[easingFunction] ?? "ease"}`,
         // Offset by previousMargin so the previous slide peeks in.
         transform: `translate${axis}(calc(-${idx * 100}% + ${parsePx(previousMargin)}))`,
         height: "100%",
@@ -1464,12 +1482,11 @@ interface CanvasProps extends WxBaseProps {
   width?: number | string;
   height?: number | string;
   type?: "2d" | "webgl";
+  disableScroll?: boolean;
 }
 
-export function Canvas({ id, className, style, width, height, type, bindtap, catchtap, ...rest }: CanvasProps) {
+export function Canvas({ id, className, style, width, height, type, disableScroll, bindtap, catchtap, ...rest }: CanvasProps) {
   const touch = useTouchProps(extractTouchBindings(rest));
-  // For webgl, set the canvas context type hint via a data attribute so
-  // wx.createCanvasContext can pick it up.
   return (
     <canvas
       id={id}
@@ -1477,7 +1494,11 @@ export function Canvas({ id, className, style, width, height, type, bindtap, cat
       data-canvas-type={type ?? "2d"}
       width={typeof width === "number" ? width : undefined}
       height={typeof height === "number" ? height : undefined}
-      style={{ display: "block", width: "100%", height: "100%", ...style }}
+      style={{
+        display: "block", width: "100%", height: "100%",
+        touchAction: disableScroll ? "none" : undefined,
+        ...style,
+      }}
       onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       {...touch}
     />

@@ -196,6 +196,8 @@ function _sysInfo() {
     fontSizeSetting: 16,
     benchmarkLevel: 50,
     theme: prefersDark ? "dark" : "light",
+    enableDebug: false,
+    host: { env: "WeChat" },
     safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 },
     errMsg: "getSystemInfo:ok",
   };
