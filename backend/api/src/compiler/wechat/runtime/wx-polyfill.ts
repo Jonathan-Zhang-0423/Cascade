@@ -571,7 +571,16 @@ export const wx = {
     };
   },
   getLaunchOptionsSync() {
-    return { scene: 1001, path: "", query: {}, referrerInfo: {}, forwardMaterials: [], chatType: 1 };
+    // Restore exitState saved by onSaveExitState if available.
+    let exitState: unknown = undefined;
+    try {
+      const keys = Object.keys(sessionStorage).filter((k) => k.startsWith("wx_exit_state_"));
+      if (keys.length > 0) {
+        const raw = sessionStorage.getItem(keys[0]);
+        if (raw) exitState = JSON.parse(raw);
+      }
+    } catch {}
+    return { scene: 1001, path: "", query: {}, referrerInfo: {}, forwardMaterials: [], chatType: 1, exitState };
   },
   getEnterOptionsSync() {
     return { scene: 1001, path: "", query: {}, referrerInfo: {}, forwardMaterials: [], chatType: 1 };
