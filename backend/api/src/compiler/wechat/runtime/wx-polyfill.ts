@@ -211,6 +211,16 @@ function _sysInfo() {
     appVersion: "8.0.0",
     appLanguage: navigator.language || "zh_CN",
     deviceOrientation: "portrait",
+    // Permission fields — mirrors getAppAuthorizeSetting
+    albumAuthorized: "authorized",
+    cameraAuthorized: "authorized",
+    locationAuthorized: "authorized",
+    locationReducedAccuracy: false,
+    microphoneAuthorized: "authorized",
+    notificationAuthorized: "authorized",
+    bluetoothEnabled: true,
+    locationEnabled: true,
+    wifiEnabled: true,
     safeArea: { left: 0, right: window.innerWidth, top: statusBarHeight, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - statusBarHeight - 34 },
     errMsg: "getSystemInfo:ok",
   };
