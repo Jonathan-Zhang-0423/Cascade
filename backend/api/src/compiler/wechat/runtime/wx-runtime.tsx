@@ -506,6 +506,7 @@ interface InputProps extends WxBaseProps {
   maxlength?: number;
   confirmType?: ConfirmType;
   confirmHold?: boolean;
+  holdKeyboard?: boolean;
   cursor?: number;
   selectionStart?: number;
   selectionEnd?: number;
@@ -597,6 +598,8 @@ interface TextareaProps extends WxBaseProps {
   focus?: boolean;
   autoHeight?: boolean;
   cursor?: number;
+  holdKeyboard?: boolean;
+  disableDefaultPadding?: boolean;
   bindinput?: (e: unknown) => void;
   bindchange?: (e: unknown) => void;
   bindfocus?: (e: unknown) => void;
@@ -604,7 +607,7 @@ interface TextareaProps extends WxBaseProps {
   bindlinechange?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, bindinput, bindchange, bindfocus, bindblur, bindlinechange }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, disableDefaultPadding, bindinput, bindchange, bindfocus, bindblur, bindlinechange }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   const [lineCount, setLineCount] = useState(1);
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
@@ -636,7 +639,7 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
         ref={taRef}
         id={styleId ?? id}
         className={className}
-        style={{ display: "block", width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
+        style={{ display: "block", width: "100%", padding: disableDefaultPadding ? "0" : "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
         value={localVal}
         placeholder={placeholder}
         disabled={disabled}
@@ -680,6 +683,8 @@ interface ScrollViewProps extends WxBaseProps {
   scrollWithAnimation?: boolean;
   scrollAnchoring?: boolean;
   enhanced?: boolean;
+  showScrollbar?: boolean;
+  pagingEnabled?: boolean;
   refresherEnabled?: boolean;
   refresherThreshold?: number;
   refresherDefaultStyle?: "black" | "white" | "none";
@@ -694,7 +699,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, scrollAnchoring, enhanced, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindrefresherrestore, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, scrollAnchoring, enhanced, showScrollbar = true, pagingEnabled, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindrefresherrestore, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -785,10 +790,11 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
           overflowX: scrollX ? "auto" : "hidden",
           WebkitOverflowScrolling: "touch",
           display: enableFlex ? "flex" : undefined,
+          scrollbarWidth: showScrollbar ? undefined : "none",
           // scroll-anchoring: prevent scroll position jumping when content above changes
           overflowAnchor: scrollAnchoring ? "auto" : "none",
-          // enhanced mode: enable momentum scrolling and snap
-          scrollSnapType: enhanced ? "x mandatory" : undefined,
+          // paging-enabled or enhanced mode: snap to items
+          scrollSnapType: pagingEnabled ? (scrollX ? "x mandatory" : "y mandatory") : (enhanced ? "x mandatory" : undefined),
           transform: refresherEnabled && (pulling > 0 || refreshing) ? `translateY(${refreshing ? 40 : pulling}px)` : undefined,
           transition: touchStartY.current != null ? "none" : "transform 0.2s ease-out",
           height: "100%",
@@ -824,6 +830,7 @@ interface SwiperProps extends WxBaseProps {
   nextMargin?: string;
   displayMultipleItems?: number;
   easingFunction?: "default" | "linear" | "easeInCubic" | "easeOutCubic" | "easeInOutCubic";
+  snapToEdge?: boolean;
   bindchange?: (e: unknown) => void;
 }
 
@@ -836,7 +843,7 @@ const SWIPER_EASING: Record<string, string> = {
   easeInOutCubic: "cubic-bezier(0.645, 0.045, 0.355, 1)",
 };
 
-export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, easingFunction = "default", bindchange }: SwiperProps) {
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, easingFunction = "default", snapToEdge, bindchange }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
   const count = items.length;
@@ -862,7 +869,7 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
   const axis = vertical ? "Y" : "X";
 
   return (
-    <div id={id} className={className} style={{ position: "relative", overflow: "hidden", ...style }}>
+    <div id={id} className={className} style={{ position: "relative", overflow: "hidden", scrollSnapType: snapToEdge ? (vertical ? "y mandatory" : "x mandatory") : undefined, ...style }}>
       <div style={{
         display: "flex",
         flexDirection: vertical ? "column" : "row",
@@ -1604,17 +1611,24 @@ interface VideoProps extends WxBaseProps {
   muted?: boolean;
   controls?: boolean;
   objectFit?: string;
+  showFullscreenBtn?: boolean;
+  showPlayBtn?: boolean;
+  showCenterPlayBtn?: boolean;
+  enableProgressGesture?: boolean;
   bindplay?: (e: unknown) => void;
   bindpause?: (e: unknown) => void;
   bindended?: (e: unknown) => void;
   binderror?: (e: unknown) => void;
   bindtimeupdate?: (e: unknown) => void;
+  bindfullscreenchange?: (e: unknown) => void;
 }
 
 export function Video({
   id, className, style, src, poster, autoplay, loop, muted,
   controls = true, objectFit = "contain",
-  bindplay, bindpause, bindended, binderror, bindtimeupdate,
+  showFullscreenBtn = true, showPlayBtn = true, showCenterPlayBtn = true,
+  enableProgressGesture = true,
+  bindplay, bindpause, bindended, binderror, bindtimeupdate, bindfullscreenchange,
 }: VideoProps) {
   return (
     <div id={id} className={className} style={{ position: "relative", background: "#000", ...style }}>
@@ -1625,6 +1639,10 @@ export function Video({
         loop={loop}
         muted={muted}
         controls={controls}
+        controlsList={[
+          !showFullscreenBtn ? "nofullscreen" : "",
+          !enableProgressGesture ? "noremoteplayback" : "",
+        ].filter(Boolean).join(" ") || undefined}
         style={{ width: "100%", height: "100%", objectFit: (objectFit as React.CSSProperties["objectFit"]) }}
         onPlay={(e) => bindplay?.(makeWxEvent("play", {}, e.currentTarget))}
         onPause={(e) => bindpause?.(makeWxEvent("pause", {}, e.currentTarget))}
@@ -1635,6 +1653,14 @@ export function Video({
           bindtimeupdate?.(makeWxEvent("timeupdate", { currentTime: v.currentTime, duration: v.duration }, v));
         }}
       />
+      {/* Center play button overlay when showCenterPlayBtn is true and video is paused */}
+      {showCenterPlayBtn && !autoplay && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 22, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="white"><polygon points="6,4 16,10 6,16"/></svg>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
