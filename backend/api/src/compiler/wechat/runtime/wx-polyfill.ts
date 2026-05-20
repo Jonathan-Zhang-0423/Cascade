@@ -584,6 +584,43 @@ export const wx = {
   base64ToArrayBuffer(str: string) { const binary = atob(str); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes.buffer; },
   arrayBufferToBase64(buf: ArrayBuffer) { const bytes = new Uint8Array(buf); let binary = ""; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); },
 
+  // ── Phone number ───────────────────────────────────────────────────────────
+  getPhoneNumber(opts: WxOpts = {}) {
+    // Standalone wx.getPhoneNumber — not available in preview (requires WeChat auth).
+    fail(opts, "getPhoneNumber:fail not supported in preview");
+  },
+
+  // ── Address ────────────────────────────────────────────────────────────────
+  chooseAddress(opts: WxOpts = {}) {
+    // Return a mock address for UI testing.
+    ok(opts, {
+      userName: "预览用户",
+      postalCode: "100000",
+      provinceName: "北京市",
+      cityName: "北京市",
+      countyName: "朝阳区",
+      detailInfo: "某某街道1号",
+      nationalCode: "CN",
+      telNumber: "13800138000",
+      errMsg: "chooseAddress:ok",
+    });
+  },
+
+  // ── Page not found ─────────────────────────────────────────────────────────
+  onPageNotFound(cb: (res: { path: string; query: Record<string, string>; isEntryPage: boolean }) => void) {
+    (window as unknown as { __wxOnPageNotFound?: typeof cb }).__wxOnPageNotFound = cb;
+  },
+  offPageNotFound() {
+    delete (window as unknown as { __wxOnPageNotFound?: unknown }).__wxOnPageNotFound;
+  },
+
+  // ── Theme change ───────────────────────────────────────────────────────────
+  onThemeChange(cb: (res: { theme: "light" | "dark" }) => void) {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (mq) mq.addEventListener("change", (e) => cb({ theme: e.matches ? "dark" : "light" }));
+  },
+  offThemeChange() {},
+
   // ── Error / rejection handlers ─────────────────────────────────────────────
   onError(cb: (msg: string) => void) { window.addEventListener("error", (e) => cb(e.message)); },
   offError() {},

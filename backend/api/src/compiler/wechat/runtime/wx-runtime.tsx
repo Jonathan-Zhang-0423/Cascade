@@ -604,8 +604,9 @@ interface TextareaProps extends WxBaseProps {
   bindlinechange?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, bindinput, bindchange, bindfocus, bindblur }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, bindinput, bindchange, bindfocus, bindblur, bindlinechange }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
+  const [lineCount, setLineCount] = useState(1);
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const styleId = id ? `__wx_ta_${id}__` : null;
@@ -642,8 +643,17 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
         maxLength={maxlength}
         autoFocus={autoFocus || focus}
         onChange={(e) => {
-          setLocalVal(e.target.value);
-          bindinput?.(makeWxEvent("input", { value: e.target.value }, e.currentTarget));
+          const newVal = e.target.value;
+          setLocalVal(newVal);
+          bindinput?.(makeWxEvent("input", { value: newVal }, e.currentTarget));
+          // bindlinechange: fire when line count changes
+          if (bindlinechange) {
+            const newLines = newVal.split("\n").length;
+            if (newLines !== lineCount) {
+              setLineCount(newLines);
+              bindlinechange(makeWxEvent("linechange", { lineCount: newLines, height: e.currentTarget.scrollHeight, heightRpx: e.currentTarget.scrollHeight * 2 }, e.currentTarget));
+            }
+          }
         }}
         onBlur={(e) => {
           bindchange?.(makeWxEvent("change", { value: e.target.value }, e.currentTarget));
@@ -684,7 +694,7 @@ interface ScrollViewProps extends WxBaseProps {
   bindrefresherabort?: (e: unknown) => void;
 }
 
-export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, scrollAnchoring, enhanced, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindtap, catchtap, ...rest }: ScrollViewProps) {
+export function ScrollView({ id, className, style, children, scrollY, scrollX, scrollIntoView, scrollTop, lowerThreshold = 50, upperThreshold = 50, enableFlex, scrollWithAnimation, scrollAnchoring, enhanced, refresherEnabled, refresherTriggered, bindscroll, bindscrolltolower, bindscrolltoupper, bindrefresherrefresh, bindrefresherrestore, bindtap, catchtap, ...rest }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(!!refresherTriggered);
@@ -741,9 +751,20 @@ export function ScrollView({ id, className, style, children, scrollY, scrollX, s
       setPulling(60);
       bindrefresherrefresh?.(makeWxEvent("refresherrefresh", {}, null));
     } else {
+      // User released before threshold — abort
       setPulling(0);
     }
   } : undefined;
+
+  // When refresherTriggered goes false (page called wx.stopPullDownRefresh),
+  // fire bindrefresherrestore to signal the animation has ended.
+  useEffect(() => {
+    if (!refresherTriggered && refreshing) {
+      setRefreshing(false);
+      setPulling(0);
+      bindrefresherrestore?.(makeWxEvent("refresherrestore", {}, null));
+    }
+  }, [refresherTriggered, refreshing, bindrefresherrestore]);
 
   return (
     <div style={{ position: "relative", overflow: "hidden", ...style }}>
