@@ -219,6 +219,14 @@ function WxApp() {
       const popped = prev.slice(Math.max(1, prev.length - delta));
       for (const entry of popped) {
         try { (entry.inst.onHide as Function)?.call(entry.inst); } catch {}
+        // onSaveExitState fires before onUnload — return value is saved state.
+        try {
+          const savedState = (entry.inst.onSaveExitState as Function)?.call(entry.inst);
+          if (savedState != null) {
+            // Store in sessionStorage so it can be retrieved via getLaunchOptionsSync.
+            try { sessionStorage.setItem("wx_exit_state_" + entry.path, JSON.stringify(savedState)); } catch {}
+          }
+        } catch {}
         try { (entry.inst.onUnload as Function)?.call(entry.inst); } catch {}
       }
       const next = prev.slice(0, Math.max(1, prev.length - delta));

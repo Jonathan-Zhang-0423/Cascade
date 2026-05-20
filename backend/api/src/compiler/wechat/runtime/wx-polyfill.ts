@@ -179,6 +179,12 @@ function _sysInfo() {
   const ua = navigator.userAgent;
   const isIOS = /iPhone|iPad|iPod/.test(ua);
   const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  // Navbar height (44px) + status bar (20px) = 64px windowTop
+  // Tab bar height (50px) = windowBottom when tab bar is present
+  const navBarHeight = 44;
+  const statusBarHeight = 20;
+  const windowTop = navBarHeight + statusBarHeight;
+  const windowBottom = 0; // 0 when no tab bar; pages with tab bar should use 50
   return {
     brand: isIOS ? "Apple" : "Android",
     model: isIOS ? "iPhone" : "Android Device",
@@ -186,8 +192,11 @@ function _sysInfo() {
     screenWidth: window.screen.width,
     screenHeight: window.screen.height,
     windowWidth: window.innerWidth,
-    windowHeight: window.innerHeight,
-    statusBarHeight: 20,
+    windowHeight: window.innerHeight - windowTop - windowBottom,
+    statusBarHeight,
+    titleBarHeight: navBarHeight,
+    windowTop,
+    windowBottom,
     language: navigator.language || "zh_CN",
     version: "8.0.0",
     system: isIOS ? "iOS 16.0" : "Android 12",
@@ -202,7 +211,7 @@ function _sysInfo() {
     appVersion: "8.0.0",
     appLanguage: navigator.language || "zh_CN",
     deviceOrientation: "portrait",
-    safeArea: { left: 0, right: window.innerWidth, top: 20, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - 54 },
+    safeArea: { left: 0, right: window.innerWidth, top: statusBarHeight, bottom: window.innerHeight - 34, width: window.innerWidth, height: window.innerHeight - statusBarHeight - 34 },
     errMsg: "getSystemInfo:ok",
   };
 }
