@@ -412,8 +412,16 @@ export const wx = {
   removeStorageSync(key: string) { localStorage.removeItem(_key(key)); },
   clearStorage(opts: WxOpts = {}) { Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).forEach((k) => localStorage.removeItem(k)); ok(opts, { errMsg: "clearStorage:ok" }); },
   clearStorageSync() { Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).forEach((k) => localStorage.removeItem(k)); },
-  getStorageInfo(opts: WxOpts = {}) { const keys = Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length)); ok(opts, { keys, currentSize: 0, limitSize: 10240, errMsg: "getStorageInfo:ok" }); },
-  getStorageInfoSync() { return { keys: Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length)), currentSize: 0, limitSize: 10240 }; },
+  getStorageInfo(opts: WxOpts = {}) {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length));
+    const currentSize = Math.round(keys.reduce((sum, k) => sum + (localStorage.getItem(_pfx + k)?.length ?? 0), 0) / 1024);
+    ok(opts, { keys, currentSize, limitSize: 10240, errMsg: "getStorageInfo:ok" });
+  },
+  getStorageInfoSync() {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(_pfx)).map((k) => k.slice(_pfx.length));
+    const currentSize = Math.round(keys.reduce((sum, k) => sum + (localStorage.getItem(_pfx + k)?.length ?? 0), 0) / 1024);
+    return { keys, currentSize, limitSize: 10240 };
+  },
 
   getSystemInfo(opts: WxOpts = {}) { ok(opts, _sysInfo()); },
   getSystemInfoSync: _sysInfo,

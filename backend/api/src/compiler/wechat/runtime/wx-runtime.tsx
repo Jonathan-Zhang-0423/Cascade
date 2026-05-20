@@ -178,7 +178,9 @@ export function View({ id, className, style, children, bindtap, catchtap, ...res
   const animIter  = rest.bindanimationiteration as ((e: unknown) => void) | undefined;
   const animEnd   = rest.bindanimationend as ((e: unknown) => void) | undefined;
   const transEnd  = rest.bindtransitionend as ((e: unknown) => void) | undefined;
-  const hoverClass = rest.hoverClass as string | undefined;
+  const rawHoverClass = rest.hoverClass as string | undefined;
+  // hover-class="none" explicitly disables hover effect
+  const hoverClass = rawHoverClass === "none" ? undefined : rawHoverClass;
   const hoverStopPropagation = !!(rest.hoverStopPropagation);
   const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 50;
   const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 400;
@@ -367,6 +369,7 @@ type ButtonOpenType =
 interface ButtonProps extends WxBaseProps {
   type?: "primary" | "default" | "warn";
   size?: "default" | "mini";
+  plain?: boolean;
   disabled?: boolean;
   loading?: boolean;
   openType?: ButtonOpenType;
@@ -378,8 +381,10 @@ interface ButtonProps extends WxBaseProps {
   binderror?: (e: unknown) => void;
 }
 
-export function Button({ id, className, style, children, bindtap, catchtap, type = "default", size = "default", disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
-  const hoverClass = rest.hoverClass as string | undefined;
+export function Button({ id, className, style, children, bindtap, catchtap, type = "default", size = "default", plain, disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
+  const rawHoverClass = rest.hoverClass as string | undefined;
+  // hover-class="none" disables hover effect entirely
+  const hoverClass = rawHoverClass === "none" ? undefined : rawHoverClass;
   const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 20;
   const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 70;
   const [hovered, setHovered] = useState(false);
@@ -400,16 +405,20 @@ export function Button({ id, className, style, children, bindtap, catchtap, type
     hoverStayTimer.current = setTimeout(() => setHovered(false), hoverStayTime);
   };
   const isMini = size === "mini";
+  const bgColor = type === "primary" ? "#07c160" : type === "warn" ? "#e64340" : "#f5f5f5";
+  const fgColor = type === "default" ? "#333" : "#fff";
   const baseStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
     padding: isMini ? "0 16px" : "0 32px",
     height: isMini ? "30px" : "44px",
     borderRadius: isMini ? "15px" : "4px",
     fontSize: isMini ? "13px" : "18px",
-    fontWeight: 500, border: "none", cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 500,
+    border: plain ? `1px solid ${bgColor}` : "none",
+    cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,
-    background: type === "primary" ? "#07c160" : type === "warn" ? "#e64340" : "#f5f5f5",
-    color: type === "default" ? "#333" : "#fff",
+    background: plain ? "transparent" : bgColor,
+    color: plain ? bgColor : fgColor,
     ...style,
   };
   const touch = useTouchProps(extractTouchBindings(rest));
@@ -870,7 +879,8 @@ interface NavigatorProps extends WxBaseProps {
 }
 
 export function Navigator({ id, className, style, children, url, openType = "navigate", delta, target = "self", appId, bindtap, ...rest }: NavigatorProps) {
-  const hoverClass = rest.hoverClass as string | undefined;
+  const rawHoverClass = rest.hoverClass as string | undefined;
+  const hoverClass = rawHoverClass === "none" ? undefined : rawHoverClass;
   const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 50;
   const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 600;
   const [hovered, setHovered] = useState(false);

@@ -508,6 +508,13 @@ function convertChildren(nodes: ChildNode[], templates: TemplateMap, indent: num
     const attribs = el.attribs ?? {};
     const wxIf = attribs["wx:if"];
 
+    // Orphaned wx:elif / wx:else without a preceding wx:if — silently skip.
+    // In real WeChat DevTools these are also ignored.
+    if (!wxIf && ("wx:elif" in attribs || "wx:else" in attribs)) {
+      i++;
+      continue;
+    }
+
     if (!wxIf) {
       result.push(convertNode(node, templates, indent));
       i++;
