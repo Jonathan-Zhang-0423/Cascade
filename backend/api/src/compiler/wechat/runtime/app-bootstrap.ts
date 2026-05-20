@@ -325,19 +325,37 @@ function WxApp() {
           </button>
         )}
         <span style={{ fontSize: 17, fontWeight: 600 }}>{pageTitle}</span>
-        {/* Share button — triggers onShareAppMessage on the current page */}
+        {/* Share button — triggers onShareAppMessage / onShareTimeline / onAddToFavorites */}
         {current && (PAGE_REGISTRY[current.path]?.config?.enableShareAppMessage !== false) && (
           <button
             onClick={() => {
               const inst = current.inst;
-              if (typeof (inst.onShareAppMessage as unknown) === "function") {
-                try {
-                  const shareInfo = (inst.onShareAppMessage as Function).call(inst, { from: "button", target: {} });
-                  if (shareInfo) {
-                    (window as unknown as { wx?: { showShareMenu: (o: unknown) => void } }).wx?.showShareMenu?.({});
-                  }
-                } catch {}
-              }
+              const hasShareMsg = typeof (inst.onShareAppMessage as unknown) === "function";
+              const hasShareTimeline = typeof (inst.onShareTimeline as unknown) === "function";
+              const hasFavorites = typeof (inst.onAddToFavorites as unknown) === "function";
+              // Build a mini share menu.
+              const menu = document.createElement("div");
+              menu.style.cssText = "position:fixed;right:8px;top:52px;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);z-index:99999;overflow:hidden;font-size:14px;min-width:140px;";
+              const addItem = (label: string, fn: () => void) => {
+                const btn = document.createElement("button");
+                btn.textContent = label;
+                btn.style.cssText = "display:block;width:100%;padding:12px 16px;background:none;border:none;cursor:pointer;text-align:left;font-size:14px;border-bottom:1px solid rgba(0,0,0,0.06);";
+                btn.onclick = () => { menu.remove(); fn(); };
+                menu.appendChild(btn);
+              };
+              if (hasShareMsg) addItem("发送给朋友", () => {
+                try { (inst.onShareAppMessage as Function).call(inst, { from: "menu", target: {} }); } catch {}
+              });
+              if (hasShareTimeline) addItem("分享到朋友圈", () => {
+                try { (inst.onShareTimeline as Function).call(inst, {}); } catch {}
+              });
+              if (hasFavorites) addItem("收藏", () => {
+                try { (inst.onAddToFavorites as Function).call(inst, {}); } catch {}
+              });
+              if (!hasShareMsg && !hasShareTimeline && !hasFavorites) addItem("（页面未定义分享）", () => {});
+              document.body.appendChild(menu);
+              const close = (e: MouseEvent) => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("click", close); } };
+              setTimeout(() => document.addEventListener("click", close), 0);
             }}
             style={{ position: "absolute", right: navLoading ? 36 : 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "inherit", cursor: "pointer", padding: "0 8px", opacity: 0.7 }}
             title="分享"

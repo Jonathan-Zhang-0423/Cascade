@@ -385,8 +385,8 @@ interface ButtonProps extends WxBaseProps {
 
 export function Button({ id, className, style, children, bindtap, catchtap, type = "default", size = "default", plain, disabled, loading, openType, formType, bindgetuserinfo, bindgetphonenumber, bindopensetting, bindchooseavatar, ...rest }: ButtonProps) {
   const rawHoverClass = rest.hoverClass as string | undefined;
-  // hover-class="none" disables hover effect entirely
-  const hoverClass = rawHoverClass === "none" ? undefined : rawHoverClass;
+  // hover-class="none" disables hover; undefined falls back to WeChat's default "button-hover"
+  const hoverClass = rawHoverClass === "none" ? undefined : (rawHoverClass ?? "button-hover");
   const hoverStartTime = (rest.hoverStartTime as number | undefined) ?? 20;
   const hoverStayTime = (rest.hoverStayTime as number | undefined) ?? 70;
   const [hovered, setHovered] = useState(false);
