@@ -1009,9 +1009,12 @@ export function Form({ id, className, style, children, bindsubmit, bindreset }: 
         //   - other inputs → string value
         const formValue: Record<string, unknown> = {};
         if (formRef.current) {
-          // Identify checkboxes inside a CheckboxGroup using the data-wx-checkboxgroup marker.
+          // First pass: identify which checkbox names are inside a CheckboxGroup
+          // (CheckboxGroup renders a div with onChange delegation — we detect by
+          // checking if the checkbox's closest named ancestor is a div, not a form).
           const groupNames = new Set<string>();
-          formRef.current.querySelectorAll<HTMLDivElement>("[data-wx-checkboxgroup]").forEach((div) => {
+          const checkboxGroupDivs = formRef.current.querySelectorAll<HTMLDivElement>("div[id]");
+          checkboxGroupDivs.forEach((div) => {
             div.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((cb) => {
               const n = cb.getAttribute("name") || cb.id;
               if (n) groupNames.add(n);
@@ -1102,7 +1105,7 @@ export function CheckboxGroup({ id, className, style, children, bindchange }: Ch
   }, [bindchange, id]);
 
   return (
-    <div id={id} className={className} style={style} data-wx-checkboxgroup="1" onChange={handleChange as unknown as React.ChangeEventHandler<HTMLDivElement>}>
+    <div id={id} className={className} style={style} onChange={handleChange as unknown as React.ChangeEventHandler<HTMLDivElement>}>
       {children}
     </div>
   );
@@ -1123,7 +1126,7 @@ export function Radio({ id, className, style, value, name, checked, disabled, bi
       className={className}
       style={style}
       type="radio"
-      name={name ?? id}
+      name={name}
       value={value}
       defaultChecked={checked}
       disabled={disabled}
