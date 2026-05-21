@@ -8,5 +8,6 @@ vite.config.ts.*
 telemetry/
 # Runtime build artifacts
 backend/api/artifacts/
+backend/artifacts/
 backend/api/assets/rn-vendor.js
 backend/api/assets/wx-vendor.js
