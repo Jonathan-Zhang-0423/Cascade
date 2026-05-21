@@ -42,7 +42,7 @@ import { runBuildSession, type BuildSessionState, type BufferedEvent } from "../
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
-import { runAgentLoop } from "../../agent/loop/agent-loop";
+import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
 import { setupPreviewServer } from "../../compiler/preview-server";
@@ -880,11 +880,19 @@ export async function registerRoutes(
         : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
 
       let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
+      const isNewProject = !files || files.length === 0;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
         systemPrompt = `${systemPrompt}\n\n${contextMsg}`;
       } else {
-        systemPrompt = `${systemPrompt}\n\nThe project currently has no files.`;
+        systemPrompt = `${systemPrompt}\n\nThe project currently has no files.
+
+## SESSION OVERRIDE — ONE-SHOT MODE (new empty project)
+This is a brand-new empty project. The user's first message IS the spec. Skip Stage 2 and go directly to Stage 3:
+- Do NOT produce a confirmation summary asking "does this match what you want?".
+- Pick the most reasonable interpretation of the request and call submit_plan immediately.
+- Fall back to Stage 1 (ask 1–2 clarifying questions) ONLY if the message is completely uninterpretable (e.g., "做个东西", "help me").
+This override applies to THIS message only — it does not change behavior for projects that already have files.`;
       }
 
       if (detectedSkill) {
@@ -1109,7 +1117,7 @@ export async function registerRoutes(
         } catch {}
       };
 
-      const chatToolSchemas: import("./agent-loop").ToolSchema[] = [
+      const chatToolSchemas: ToolSchema[] = [
         {
           type: "function",
           function: {
@@ -1141,7 +1149,7 @@ export async function registerRoutes(
         },
       ];
 
-      const chatToolHandlers: Record<string, import("./agent-loop").ToolHandler> = {
+      const chatToolHandlers: Record<string, ToolHandler> = {
         write_file: async (args, toolEmit) => {
           const path = args.path as string;
           const content = args.content as string;

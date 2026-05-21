@@ -163,6 +163,46 @@ export function useBuildStream() {
     }, delay);
   }, []);
 
+  const resetLiveState = useCallback(() => {
+    if (buildLiveClearTimerRef.current) {
+      clearTimeout(buildLiveClearTimerRef.current);
+      buildLiveClearTimerRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (thinkingFadeTimerRef.current) {
+      clearTimeout(thinkingFadeTimerRef.current);
+      thinkingFadeTimerRef.current = null;
+    }
+    if (heartbeatWatchdogRef.current) {
+      clearTimeout(heartbeatWatchdogRef.current);
+      heartbeatWatchdogRef.current = null;
+    }
+    if (buildReaderRef.current) {
+      try { buildReaderRef.current.cancel(); } catch {}
+      buildReaderRef.current = null;
+    }
+    buildSessionIdRef.current = null;
+    lastReceivedEventIdRef.current = -1;
+    reconnectRetryRef.current = 0;
+    isReconnectingRef.current = false;
+    actionLogRef.current = [];
+    thinkingStartTimeRef.current = null;
+    thinkingElapsedComputedRef.current = false;
+    buildResultMsgIdRef.current = null;
+    beforeBuildCheckpointCreatedRef.current = false;
+    buildCompleteCheckpointCreatedRef.current = false;
+    connectionErrorAddedRef.current = false;
+    setLiveActionLog([]);
+    setLiveThinkingText("");
+    setLiveNarrationText("");
+    setBuildPhase(null);
+    setIsReconnecting(false);
+    setThinkingElapsedSec(null);
+  }, []);
+
   const appendActionLog = useCallback((entry: ActionLogEntry) => {
     actionLogRef.current = [...actionLogRef.current, entry];
     setLiveActionLog([...actionLogRef.current]);
@@ -1914,5 +1954,6 @@ export function useBuildStream() {
     handleStopExecution,
     userConfirmationRef,
     buildSessionIdRef,
+    resetLiveState,
   };
 }

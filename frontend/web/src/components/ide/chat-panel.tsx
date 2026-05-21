@@ -51,6 +51,8 @@ export function ChatPanel() {
     holisticReview,
     fixCycle,
     completionData,
+    clearManagerPlan,
+    addManagerMessage,
   } = useIDEStore();
 
   const tGlobal = useT();
@@ -65,6 +67,7 @@ export function ChatPanel() {
     mgrLiveActionLog,
     autoExecutePlanRef,
     abortRef: mgrAbortRef,
+    resetLiveState: resetManagerLiveState,
   } = manager;
 
   const {
@@ -77,6 +80,7 @@ export function ChatPanel() {
     handleExecutePlan,
     handleStopExecution,
     buildSessionIdRef,
+    resetLiveState: resetBuildLiveState,
   } = build;
 
   const {
@@ -185,6 +189,17 @@ export function ChatPanel() {
 
   useEffect(() => { pendingHandled.current = false; }, [projectId]);
 
+  const prevProjectIdRef = useRef<string | null | undefined>(projectId);
+  useEffect(() => {
+    const prev = prevProjectIdRef.current;
+    const curr = projectId;
+    if (prev && curr && prev !== curr) {
+      resetManagerLiveState();
+      resetBuildLiveState();
+    }
+    prevProjectIdRef.current = curr;
+  }, [projectId, resetManagerLiveState, resetBuildLiveState]);
+
   useEffect(() => {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
       pendingHandled.current = true;
@@ -224,9 +239,26 @@ export function ChatPanel() {
     setManagerResponding(false);
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, mgrAbortRef, editorAbortRef]);
 
-  const handleRevisePlan = useCallback(() => {
-    setChatMode("manager");
-  }, [setChatMode]);
+  const handleRevisePlan = useCallback((note?: string) => {
+    const firstUserMsg = managerMessages.find((m) => m.role === "user");
+    const originalPrompt = firstUserMsg?.content?.trim() || "";
+    if (!originalPrompt) {
+      setChatMode("manager");
+      return;
+    }
+
+    clearManagerPlan();
+
+    const trimmedNote = note?.trim();
+    if (trimmedNote) {
+      addManagerMessage({
+        role: "user",
+        content: `[重新规划] ${trimmedNote}`,
+      });
+    }
+
+    handleManagerSend(originalPrompt);
+  }, [managerMessages, clearManagerPlan, addManagerMessage, handleManagerSend, setChatMode]);
 
   const handleCurrentSend = useCallback(async () => {
     if (pendingConfirmation) {
