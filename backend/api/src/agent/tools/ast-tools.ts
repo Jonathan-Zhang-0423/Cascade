@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
 import type { BuildSessionState } from "../orchestrator/build-orchestrator";
+import { storage } from "../../infra/storage";
 
 function isLanguageMatch(filePath: string, language: string): boolean {
   const ext = filePath.split(".").pop()?.toLowerCase();
@@ -140,6 +141,14 @@ export function buildAstTools(session: BuildSessionState): {
             : content;
           if (newContent !== content) {
             session.files.set(filePath, newContent);
+            if (session.projectId) {
+              storage.upsertProjectFile(session.projectId, filePath, newContent).catch((err) => {
+                console.warn(
+                  `[BuildSession ${session.id}] mid-build DB persist failed for ${filePath}:`,
+                  err instanceof Error ? err.message : err,
+                );
+              });
+            }
             emit({ type: "code_applied", filePath, code: newContent });
             // Mirror to disk
             if (session.sessionDir) {

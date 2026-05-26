@@ -12,7 +12,6 @@ import { ChatInputArea } from "./chat/ChatInputArea";
 import { type AgentStatus } from "./chat/AgentStatusLine";
 import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { useAgentStream } from "@/components/ide/AgentStreamProvider";
-import { useEditorStream } from "./chat/hooks/useEditorStream";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -78,19 +77,19 @@ export function ChatPanel() {
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
+    handleDirectBuild,
     handleStopExecution,
     buildSessionIdRef,
     resetLiveState: resetBuildLiveState,
   } = build;
 
-  const {
-    handleEditorSend,
-    editorAbortRef,
-    smartResponseLoading,
-    setSmartResponseLoading,
-    providers,
-    setProviders,
-  } = useEditorStream();
+  const [smartResponseLoading, setSmartResponseLoading] = useState(false);
+  const [providers, setProviders] = useState<{
+    doubao: boolean;
+    kimi: boolean;
+    minimax: boolean;
+    glm: boolean;
+  }>({ doubao: true, kimi: false, minimax: false, glm: false });
 
   const handleSmartResponse = useSmartResponse(
     chatMode,
@@ -234,10 +233,9 @@ export function ChatPanel() {
   const handleStop = useCallback(() => {
     if (isExecuting) handleStopExecution();
     if (mgrAbortRef.current) { mgrAbortRef.current.abort(); mgrAbortRef.current = null; }
-    if (editorAbortRef.current) { editorAbortRef.current.abort(); editorAbortRef.current = null; }
     setAiResponding(false);
     setManagerResponding(false);
-  }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, mgrAbortRef, editorAbortRef]);
+  }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, mgrAbortRef]);
 
   const handleRevisePlan = useCallback((note?: string) => {
     const firstUserMsg = managerMessages.find((m) => m.role === "user");
@@ -272,12 +270,13 @@ export function ChatPanel() {
     }
     const busy = isAiResponding || isManagerResponding;
     if (chatMode === "build") {
-      if (!input.trim() || busy) {
+      if (!input.trim() || busy || isExecuting) {
         if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
         return;
       }
+      const text = input;
       setInput("");
-      handleEditorSend(input);
+      handleDirectBuild(text);
       return;
     }
     if (!input.trim() || busy) {
@@ -286,7 +285,7 @@ export function ChatPanel() {
     }
     setInput("");
     handleManagerSend(undefined, input);
-  }, [handleManagerSend, handleEditorSend, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
+  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");

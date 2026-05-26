@@ -51,6 +51,8 @@ export interface ManagerPlan {
   narrated_what_and_why?: string;
   narrated_done_looks_like?: string;
   narrated_out_of_scope?: string;
+  /** "direct": plan was synthesized for a direct build (no verifier, slim UI). Default is plan-mode. */
+  mode?: "plan" | "direct";
 }
 
 export interface VerificationItem {
@@ -871,6 +873,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     fetchWithRetry().then((serverFiles) => {
       if (!serverFiles || serverFiles.length === 0) return;
+      // If a build session is still active for this project, the SSE replay
+      // path will re-apply every code_applied event and reconstruct file
+      // contents authoritatively. Overwriting from the server here would
+      // race against the (debounced) syncFilesToServer + the in-flight build
+      // tools, and could briefly flash stale content before the replay
+      // catches up. Skip it; the build's mid-write DB upserts and the SSE
+      // replay together cover refresh-during-build.
+      let buildInFlight = false;
+      try {
+        buildInFlight = !!localStorage.getItem(`cascade-build-session-${id}`);
+      } catch {}
+      if (buildInFlight) return;
+
       const fileTree = rebuildFileTree(serverFiles);
       const currentState = get();
       if (currentState.projectId !== id) return;

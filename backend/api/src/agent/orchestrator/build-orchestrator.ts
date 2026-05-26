@@ -78,6 +78,8 @@ export interface BuildSessionState {
   pendingUserInputResolve?: () => void;
   /** Console errors/warnings captured from the preview iframe during this build */
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
+  /** "plan": full pipeline (builder + verifier + fix cycle). "direct": single-shot, no review. */
+  mode?: "plan" | "direct";
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -494,6 +496,11 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   let passed = false;
   let currentPlanSteps = normalizedSteps;
 
+  if (session.mode === "direct") {
+    // Direct mode: builder ran once, no verifier, no fix cycle.
+    passed = true;
+  }
+
   while (currentCycle < MAX_FIX_CYCLES && !passed && !session.aborted) {
     currentCycle++;
 
@@ -633,28 +640,31 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
       .filter(f => !beforeMap.has(f.path) || beforeMap.get(f.path) !== f.content)
       .map(f => f.path);
 
-    // Generate completion summary server-side so the client doesn't need a second fetch
+    // Generate completion summary server-side so the client doesn't need a second fetch.
+    // Direct mode skips this second LLM call — the builder's narration is already the summary.
     let summaryText = "";
-    try {
-      const commPrompt = buildCommunicatorMessage({
-        event: "all_complete",
-        userLanguage: session.userLang || "English",
-        changedFiles,
-        planSummary: plan.summary ?? "",
-      } as CommunicatorEvent);
-      const summaryCompletion = await withFallback(providerChainEditor, async (client, model) =>
-        client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-            { role: "user", content: commPrompt },
-          ],
-          stream: false,
-          max_tokens: 1024,
-        })
-      );
-      summaryText = summaryCompletion.choices[0]?.message?.content || "";
-    } catch {}
+    if (session.mode !== "direct") {
+      try {
+        const commPrompt = buildCommunicatorMessage({
+          event: "all_complete",
+          userLanguage: session.userLang || "English",
+          changedFiles,
+          planSummary: plan.summary ?? "",
+        } as CommunicatorEvent);
+        const summaryCompletion = await withFallback(providerChainEditor, async (client, model) =>
+          client.chat.completions.create({
+            model,
+            messages: [
+              { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+              { role: "user", content: commPrompt },
+            ],
+            stream: false,
+            max_tokens: 1024,
+          })
+        );
+        summaryText = summaryCompletion.choices[0]?.message?.content || "";
+      } catch {}
+    }
 
     let nextStepSuggestion = "";
     const nextStepMatch = summaryText.match(/^NEXT_STEP:\s*(.+)$/m);
@@ -664,6 +674,27 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
     }
 
     emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
+
+    // Persist changed files to the DB BEFORE the client triggers its post-build
+    // file refetch. The frontend's syncFilesToServer is debounced (1s), so on a
+    // refresh shortly after all_complete the server might still hold the previous
+    // iteration. Awaiting the upsert here makes the DB authoritative the moment
+    // the client receives all_complete.
+    if (session.projectId && changedFiles.length > 0) {
+      const finalMap = new Map(finalFiles.map(f => [f.path, f.content]));
+      try {
+        await Promise.all(
+          changedFiles.map((p) =>
+            storage.upsertProjectFile(session.projectId!, p, finalMap.get(p) ?? ""),
+          ),
+        );
+      } catch (err) {
+        console.warn(
+          "[BuildSession] Failed to persist changed files:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     if (session.projectId) {
       storage.updateProjectBuildResult(session.projectId, {

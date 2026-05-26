@@ -525,10 +525,14 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId } = req.body as {
+      const {
+        sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
+        provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
+        mode: reqMode, userMessage,
+      } = req.body as {
         sessionId: string;
-        plan: any;
-        userRequest: string;
+        plan?: any;
+        userRequest?: string;
         userLang: string;
         files: Array<{ path: string; content: string }>;
         taskStatuses?: Record<string, string>;
@@ -537,11 +541,24 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
         userId?: string;
+        mode?: "plan" | "direct";
+        userMessage?: string;
       };
-      if (!sessionId || !plan || !userRequest) {
-        res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
-        return;
+
+      const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
+
+      if (resolvedMode === "plan") {
+        if (!sessionId || !plan || !userRequest) {
+          res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
+          return;
+        }
+      } else {
+        if (!sessionId || !userMessage) {
+          res.status(400).json({ error: "sessionId and userMessage are required for direct mode" });
+          return;
+        }
       }
+
       const fileMap = new Map<string, string>();
       if (files && Array.isArray(files)) {
         for (const f of files) {
@@ -558,19 +575,46 @@ export async function registerRoutes(
         } catch {}
       }
 
+      let resolvedPlan: any = plan;
+      let resolvedUserRequest = userRequest ?? "";
+
+      if (resolvedMode === "direct") {
+        // Run ExploreAgent (same as plan mode) with 8s timeout to gather codebase context
+        let exploreContext = "";
+        if (files && files.length > 0) {
+          const explorePromise = runExploreAgent(files, userMessage!);
+          const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
+          exploreContext = await Promise.race([explorePromise, timeoutPromise]);
+        }
+        // Synthesize a single-step plan so we can reuse the entire builder pipeline
+        resolvedPlan = {
+          mode: "direct",
+          summary: userMessage!,
+          steps: [{
+            step: 1,
+            title: userMessage!.length > 80 ? userMessage!.slice(0, 80) + "…" : userMessage!,
+            description: exploreContext
+              ? `${userMessage}\n\n## Codebase context (fast scan)\n${exploreContext}`
+              : userMessage!,
+          }],
+        };
+        resolvedUserRequest = userMessage!;
+      }
+
       const session: BuildSessionState & { _startedAt: number } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
         userId: reqUserId || undefined,
         aborted: false,
         files: fileMap,
-        plan,
-        userRequest,
+        plan: resolvedPlan,
+        userRequest: resolvedUserRequest,
         userLang: userLang || "English",
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
         provider: provider || "doubao",
         framework: resolvedFramework,
+        mode: resolvedMode,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,
@@ -656,11 +700,11 @@ export async function registerRoutes(
       res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
       return;
     }
-    const done = entries.find(([, s]) => s.projectId === projectId && s.done && !s.aborted);
-    if (done) {
-      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
-      return;
-    }
+    // No active session — do NOT fall back to a done session here. The caller
+    // (mount-time auto-reconnect) treats any 200 as "reconnect this", which
+    // would re-enter executing state for an already-finished build and lock
+    // the Build button. Done-session reconnects use the explicit per-session
+    // status endpoint instead.
     res.status(404).json({ error: "No active build session for this project" });
   });
 
@@ -1069,6 +1113,9 @@ This override applies to THIS message only — it does not change behavior for p
     }
   });
 
+  // DEPRECATED: superseded by /api/build-session direct mode. Retained for rollback
+  // safety; no frontend caller as of the build-mode redesign. Schedule for removal
+  // once direct-mode has been stable in production.
   app.post("/api/chat", async (req, res) => {
     try {
       const { messages, files, provider } = req.body as {

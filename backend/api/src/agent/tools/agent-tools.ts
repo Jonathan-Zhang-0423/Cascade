@@ -9,6 +9,22 @@ import { buildShellTools } from "./shell-tools";
 import { buildTestTools } from "./test-tools";
 import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "./block-hash";
 import type { BuildTelemetry } from "../../infra/telemetry";
+import { storage } from "../../infra/storage";
+
+/**
+ * Fire-and-forget persist of a single file to the DB. Used by write tools to
+ * keep the project_files table in sync mid-build so a page refresh during a
+ * long build doesn't lose intermediate iterations.
+ */
+export function persistFileToDb(session: BuildSessionState, filePath: string, content: string): void {
+  if (!session.projectId) return;
+  storage.upsertProjectFile(session.projectId, filePath, content).catch((err) => {
+    console.warn(
+      `[BuildSession ${session.id}] mid-build DB persist failed for ${filePath}:`,
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
 
 export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
@@ -186,6 +202,7 @@ export function buildBuilderTools(
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path_ });
       session.files.set(path_, content);
+      persistFileToDb(session, path_, content);
       emit({ type: "code_applied", filePath: path_, code: content });
 
       // Mirror to disk
@@ -245,6 +262,7 @@ export function buildBuilderTools(
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
       session.files.set(path_, patched);
+      persistFileToDb(session, path_, patched);
       emit({ type: "code_applied", filePath: path_, code: patched });
 
       if (session.sessionDir) {
@@ -317,6 +335,7 @@ export function buildBuilderTools(
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
       session.files.set(path_, patched);
+      persistFileToDb(session, path_, patched);
       emit({ type: "code_applied", filePath: path_, code: patched });
 
       if (session.sessionDir) {
