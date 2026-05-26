@@ -2610,6 +2610,33 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // === GitHub OAuth ===
 
+  // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
+  // default, which makes github.com unreachable behind a local proxy. We
+  // import undici's own fetch + ProxyAgent so the dispatcher and fetch come
+  // from the same undici version (mixing the npm package's ProxyAgent with
+  // the built-in fetch causes "invalid onRequestStart method" errors).
+  // Built lazily so prod, where HTTPS_PROXY is unset, pays no cost.
+  let githubFetch: typeof fetch = fetch;
+  let githubFetchInited = false;
+  const getGithubFetch = async (): Promise<typeof fetch> => {
+    if (githubFetchInited) return githubFetch;
+    githubFetchInited = true;
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
+      || process.env.HTTP_PROXY || process.env.http_proxy;
+    if (proxyUrl) {
+      try {
+        const undici = await import("undici");
+        const dispatcher = new undici.ProxyAgent(proxyUrl);
+        githubFetch = ((url: any, init: any = {}) =>
+          (undici.fetch as any)(url, { ...init, dispatcher })) as unknown as typeof fetch;
+        console.log(`[auth/github] routing GitHub fetches via proxy ${proxyUrl}`);
+      } catch (err) {
+        console.warn("[auth/github] failed to init undici proxy fetch:", err instanceof Error ? err.message : err);
+      }
+    }
+    return githubFetch;
+  };
+
   // 1) Kick off the OAuth dance: store a state token in the session and
   //    redirect the browser to GitHub's authorize URL.
   app.get("/api/auth/github", (req, res) => {
@@ -2657,7 +2684,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
 
       // Exchange the temporary code for an access token.
-      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      const ghFetch = await getGithubFetch();
+      const tokenRes = await ghFetch("https://github.com/login/oauth/access_token", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
@@ -2679,7 +2707,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const accessToken = tokenData.access_token;
 
       // Fetch the GitHub user profile.
-      const userRes = await fetch("https://api.github.com/user", {
+      const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
       if (!userRes.ok) {
@@ -2695,7 +2723,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       // to find the verified primary email for account merging.
       let primaryEmail: string | null = ghUser.email;
       if (!primaryEmail) {
-        const emailsRes = await fetch("https://api.github.com/user/emails", {
+        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
         });
         if (emailsRes.ok) {
