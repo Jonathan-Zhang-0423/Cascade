@@ -51,6 +51,8 @@ export interface ManagerPlan {
   narrated_what_and_why?: string;
   narrated_done_looks_like?: string;
   narrated_out_of_scope?: string;
+  /** "direct": plan was synthesized for a direct build (no verifier, slim UI). Default is plan-mode. */
+  mode?: "plan" | "direct";
 }
 
 export interface VerificationItem {
@@ -268,6 +270,7 @@ interface IDEState {
   previewRefreshKey: number;
   previewOverrideHtml: string | null;
   pendingPrompt: string | null;
+  pendingPromptMode: ChatMode | null;
   checkpoints: Checkpoint[];
   lastBuildFileDiffs: Record<string, { old: string; new: string }>;
   setLastBuildFileDiff: (filePath: string, old: string, newContent: string) => void;
@@ -316,7 +319,7 @@ interface IDEState {
 
   loadProject: (id: string, framework?: string) => void;
   saveProject: () => void;
-  setPendingPrompt: (prompt: string) => void;
+  setPendingPrompt: (prompt: string, mode?: ChatMode) => void;
   clearPendingPrompt: () => void;
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => void;
   setActiveFile: (path: string) => void;
@@ -476,6 +479,7 @@ function persistState(state: IDEState) {
       : state.chatMessages,
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
+    pendingPromptMode: state.pendingPromptMode,
     chatMode: state.chatMode,
     _nextSeq: state._nextSeq,
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
@@ -603,6 +607,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   previewRefreshKey: 0,
   previewOverrideHtml: null,
   pendingPrompt: null,
+  pendingPromptMode: null,
   checkpoints: [],
   lastBuildFileDiffs: {},
   setLastBuildFileDiff: (filePath, old, newContent) =>
@@ -683,9 +688,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   selectedProvider: (() => {
     try {
       const saved = localStorage.getItem("cascade-selected-provider") as AIProvider | null;
-      if (saved === "doubao" || saved === "kimi" || saved === "minimax") return saved;
+      if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm") return saved;
     } catch {}
-    return "doubao";
+    return "glm";
   })(),
   setSelectedProvider: (provider) => {
     try { localStorage.setItem("cascade-selected-provider", provider); } catch {}
@@ -787,6 +792,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       previewFile: saved.previewFile || "/project/index.html",
       chatMessages: chatMsgsWithSeq,
       pendingPrompt: saved.pendingPrompt || null,
+      pendingPromptMode: (saved.pendingPromptMode === "manager" || saved.pendingPromptMode === "build") ? saved.pendingPromptMode : null,
       checkpoints: savedCheckpoints,
       consoleEntries: [],
       isAiResponding: false,
@@ -826,6 +832,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       previewFile: "/project/index.html",
       chatMessages: defaultChat,
       pendingPrompt: null,
+      pendingPromptMode: null,
       checkpoints: [],
       consoleEntries: [],
       isAiResponding: false,
@@ -871,6 +878,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     fetchWithRetry().then((serverFiles) => {
       if (!serverFiles || serverFiles.length === 0) return;
+      // If a build session is still active for this project, the SSE replay
+      // path will re-apply every code_applied event and reconstruct file
+      // contents authoritatively. Overwriting from the server here would
+      // race against the (debounced) syncFilesToServer + the in-flight build
+      // tools, and could briefly flash stale content before the replay
+      // catches up. Skip it; the build's mid-write DB upserts and the SSE
+      // replay together cover refresh-during-build.
+      let buildInFlight = false;
+      try {
+        buildInFlight = !!localStorage.getItem(`cascade-build-session-${id}`);
+      } catch {}
+      if (buildInFlight) return;
+
       const fileTree = rebuildFileTree(serverFiles);
       const currentState = get();
       if (currentState.projectId !== id) return;
@@ -899,14 +919,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     persistState(get());
   },
 
-  setPendingPrompt: (prompt: string) => {
-    set({ pendingPrompt: prompt });
+  setPendingPrompt: (prompt: string, mode?: ChatMode) => {
+    set({ pendingPrompt: prompt, pendingPromptMode: mode ?? null });
     const state = get();
     debouncedPersist(state);
   },
 
   clearPendingPrompt: () => {
-    set({ pendingPrompt: null });
+    set({ pendingPrompt: null, pendingPromptMode: null });
     const state = get();
     debouncedPersist(state);
   },

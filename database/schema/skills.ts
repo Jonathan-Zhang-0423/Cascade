@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { projects } from "./projects.js";
+import { projects } from "./projects";
 
 export const userSkills = pgTable("user_skills", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

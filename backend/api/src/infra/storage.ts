@@ -6,7 +6,16 @@ import { randomUUID } from "crypto";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByGithubId(githubId: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  createGithubUser(input: {
+    username: string;
+    githubId: string;
+    email: string | null;
+    avatarUrl: string | null;
+  }): Promise<User>;
+  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null }): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
   getProjects(userId?: string): Promise<Project[]>;
@@ -33,9 +42,48 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByGithubId(githubId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.githubId, githubId));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const [user] = await db.insert(users).values({ ...insertUser, id }).returning();
+    return user;
+  }
+
+  async createGithubUser(input: {
+    username: string;
+    githubId: string;
+    email: string | null;
+    avatarUrl: string | null;
+  }): Promise<User> {
+    const id = randomUUID();
+    const [user] = await db.insert(users).values({
+      id,
+      username: input.username,
+      password: null,
+      githubId: input.githubId,
+      email: input.email,
+      avatarUrl: input.avatarUrl,
+    }).returning();
+    return user;
+  }
+
+  async linkGithubToUser(
+    userId: string,
+    input: { githubId: string; avatarUrl: string | null },
+  ): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
+      .where(eq(users.id, userId))
+      .returning();
     return user;
   }
 

@@ -35,6 +35,11 @@ const zh: Dict = {
   "dashboard.frameworkRN": "React Native (Expo)",
   "dashboard.frameworkFlutter": "Flutter",
   "dashboard.frameworkKotlin": "Kotlin Compose (Android)",
+  "dashboard.startMode": "启动方式",
+  "dashboard.modePlanLabel": "先规划",
+  "dashboard.modePlanDesc": "AI 先生成计划，确认后再开始构建",
+  "dashboard.modeBuildLabel": "直接构建",
+  "dashboard.modeBuildDesc": "跳过规划，立即根据描述生成代码",
   "dashboard.comingSoon": "即将推出",
 
   "preview.buildFailed": "构建失败",
@@ -281,6 +286,9 @@ const zh: Dict = {
   "auth.noAccount": "还没有账户？ ",
   "auth.hasAccount": "已有账户？ ",
   "auth.signUp": "注册",
+  "auth.continueWithGithub": "使用 GitHub 继续",
+  "auth.or": "或",
+  "auth.githubError": "GitHub 登录失败，请重试。",
 
   "onboarding.title": "一个小问题",
   "onboarding.subtitle": "这有助于我们根据您的经验水平调整 AI 的指导方式。",
@@ -353,6 +361,11 @@ const en: Dict = {
   "dashboard.frameworkRN": "React Native (Expo)",
   "dashboard.frameworkFlutter": "Flutter",
   "dashboard.frameworkKotlin": "Kotlin Compose (Android)",
+  "dashboard.startMode": "Start mode",
+  "dashboard.modePlanLabel": "Plan first",
+  "dashboard.modePlanDesc": "AI drafts a plan; you confirm before building",
+  "dashboard.modeBuildLabel": "Build directly",
+  "dashboard.modeBuildDesc": "Skip planning and generate code immediately",
   "dashboard.comingSoon": "Coming Soon",
 
   "preview.buildFailed": "Build Failed",
@@ -599,6 +612,9 @@ const en: Dict = {
   "auth.noAccount": "Don't have an account? ",
   "auth.hasAccount": "Already have an account? ",
   "auth.signUp": "Sign up",
+  "auth.continueWithGithub": "Continue with GitHub",
+  "auth.or": "or",
+  "auth.githubError": "GitHub sign-in failed, please try again.",
 
   "onboarding.title": "One quick question",
   "onboarding.subtitle": "This helps us tailor the AI's guidance to your experience level.",

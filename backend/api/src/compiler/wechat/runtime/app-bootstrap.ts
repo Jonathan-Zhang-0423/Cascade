@@ -65,9 +65,17 @@ ${pageImports}
       orig(...args);
     };
   });
-  window.onerror = function(msg, _src, line) {
-    try { window.parent.postMessage({ type: "__cascade_console__", level: "error", message: msg + (line ? " (line " + line + ")" : "") }, "*"); } catch(e) {}
-  };
+  window.addEventListener("error", function(e) {
+    const msg = (e && e.message) || "Script error";
+    const line = e && e.lineno;
+    try { window.parent.postMessage({ type: "__cascade_console__", level: "error", message: msg + (line ? " (line " + line + ")" : "") }, "*"); } catch(_) {}
+    try { window.parent.postMessage({ type: "__cascade_runtime_error__", message: String(msg) + (line ? " (line " + line + ")" : "") }, "*"); } catch(_) {}
+  });
+  window.addEventListener("unhandledrejection", function(e) {
+    const reason = e.reason && (e.reason.stack || e.reason.message || String(e.reason)) || "Unhandled promise rejection";
+    try { window.parent.postMessage({ type: "__cascade_console__", level: "error", message: reason }, "*"); } catch(_) {}
+    try { window.parent.postMessage({ type: "__cascade_runtime_error__", message: reason }, "*"); } catch(_) {}
+  });
 })();
 
 // ── Page registry ──
@@ -113,7 +121,7 @@ function createPageInst(pagePath: string, options: Record<string, string> = {}) 
   // Supports exact match, wildcard (**), and dot-path prefix matching.
   function matchesObserver(changedKey: string, observerPath: string): boolean {
     if (observerPath === "**") return true;
-    const op = observerPath.replace(/\.\*\*$/, "");
+    const op = observerPath.replace(/\\.\\*\\*$/, "");
     return changedKey === op || changedKey.startsWith(op + ".") || op.startsWith(changedKey + ".");
   }
 
@@ -139,7 +147,7 @@ function createPageInst(pagePath: string, options: Record<string, string> = {}) 
           const matched = paths.some((p) => changedKeys.some((k) => matchesObserver(k, p)));
           if (matched) {
             // Pass current values for each observed path as arguments.
-            const args = paths.map((p) => getByPath(this.data as Record<string, unknown>, p.replace(/\.\*\*$/, "")));
+            const args = paths.map((p) => getByPath(this.data as Record<string, unknown>, p.replace(/\\.\\*\\*$/, "")));
             try { fn.apply(inst, args); } catch (e) { console.error("[observer]", e); }
           }
         }

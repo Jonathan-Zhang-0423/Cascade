@@ -25,6 +25,11 @@ import { generateAppBootstrap } from "./runtime/app-bootstrap.js";
 // Constants
 // ---------------------------------------------------------------------------
 
+// Bumped whenever the compiler / bootstrap / runtime changes in a way that
+// invalidates previously-built bundles. Mixed into the artifact hash so old
+// URLs naturally point to fresh content instead of stale browser-cached bundles.
+const COMPILER_VERSION = "2";
+
 const VENDOR_PATH = join(import.meta.dirname, "../../../assets", "wx-vendor.js");
 const BUILD_CACHE_MAX_AGE = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
@@ -198,6 +203,30 @@ button, [role="button"], .wx-tap-area {
 </head>
 <body>
 <div id="root"></div>
+<script>
+// Early error trap — registered before bundle.js loads so syntax/parse errors
+// in the bundle itself still reach the parent IDE (otherwise the iframe stays
+// blank with no signal).
+(function(){
+  function report(msg){
+    try { parent.postMessage({ type: "__cascade_runtime_error__", message: String(msg) }, "*"); } catch(_) {}
+    try { parent.postMessage({ type: "__cascade_console__", level: "error", message: String(msg) }, "*"); } catch(_) {}
+  }
+  window.addEventListener("error", function(e){
+    var m = (e && (e.error && (e.error.stack || e.error.message)) || e.message) || "Script error";
+    report(m + (e && e.lineno ? " (line " + e.lineno + ")" : ""));
+  }, true);
+  window.addEventListener("unhandledrejection", function(e){
+    var r = e && e.reason; report((r && (r.stack || r.message)) || String(r));
+  });
+  // If the bundle finishes loading but never mounts anything into #root,
+  // surface that as an error too — covers silent failures with no exception.
+  setTimeout(function(){
+    var root = document.getElementById("root");
+    if (root && root.childElementCount === 0) report("Preview bundle loaded but rendered nothing.");
+  }, 3000);
+})();
+</script>
 <script src="./${bundleFilename}"></script>
 </body>
 </html>`;
@@ -221,7 +250,9 @@ export async function compileWeChatWeb(
 
   // Include projectId in the hash so each project gets its own artifact dir
   // with its own __WX_PROJECT_ID__ baked in — even if source is identical.
-  const hash = hashSources(files, projectId);
+  // Also include COMPILER_VERSION so bumping the compiler invalidates any
+  // browser-cached bundles built against the old code.
+  const hash = hashSources(files, (projectId ?? "") + ":v" + COMPILER_VERSION);
 
   // Return cached result if available
   const cached = artifactCache.get(hash);

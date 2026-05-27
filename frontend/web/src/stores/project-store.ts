@@ -22,7 +22,7 @@ interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
   _syncing: boolean;
-  createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string) => Promise<string>;
+  createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => Promise<string>;
   deleteProject: (id: string) => void;
   renameProject: (id: string, newName: string) => void;
   syncFromServer: () => Promise<void>;
@@ -91,7 +91,7 @@ _Populated after the first plan is created._
   },
 ];
 
-function getDefaultProjectState(initialPrompt?: string, framework?: string) {
+function getDefaultProjectState(initialPrompt?: string, framework?: string, initialMode?: "manager" | "build") {
   const entryFile = getMainEntryFile(framework);
   const isWeb = !framework || framework === "web";
   return {
@@ -110,6 +110,7 @@ function getDefaultProjectState(initialPrompt?: string, framework?: string) {
     ],
     theme: "vs-dark",
     pendingPrompt: initialPrompt || null,
+    pendingPromptMode: initialPrompt ? (initialMode ?? "manager") : null,
   };
 }
 
@@ -213,10 +214,10 @@ export const useProjectStore = create<ProjectStoreState>()(
       serverSynced: false,
       _syncing: false,
 
-      createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string) => {
+      createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => {
         const id = generateId();
         const isWeb = !framework || framework === "web";
-        const state = getDefaultProjectState(initialPrompt, framework);
+        const state = getDefaultProjectState(initialPrompt, framework, initialMode);
         localStorage.setItem(
           `cascade-project-${id}`,
           JSON.stringify(state)

@@ -23,7 +23,7 @@ interface ChatMessageListProps {
   liveNarrationText?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
   handleExecutePlan?: () => void;
-  handleRevisePlan?: () => void;
+  handleRevisePlan?: (note?: string) => void;
   handleStopExecution?: () => void;
   handleContinueExecution?: (input?: string) => void;
   setUserConfirmationInput?: (v: string) => void;

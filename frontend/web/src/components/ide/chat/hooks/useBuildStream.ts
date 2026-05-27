@@ -17,6 +17,7 @@ import type { BuildPhase } from "../BuildPhaseIndicator";
 export function useBuildStream() {
   const {
     addManagerMessage,
+    addChatMessage,
     setExecutingTaskIndex,
     setManagerResponding,
     setAiResponding,
@@ -161,6 +162,46 @@ export function useBuildStream() {
       setLiveNarrationText("");
       buildLiveClearTimerRef.current = null;
     }, delay);
+  }, []);
+
+  const resetLiveState = useCallback(() => {
+    if (buildLiveClearTimerRef.current) {
+      clearTimeout(buildLiveClearTimerRef.current);
+      buildLiveClearTimerRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (thinkingFadeTimerRef.current) {
+      clearTimeout(thinkingFadeTimerRef.current);
+      thinkingFadeTimerRef.current = null;
+    }
+    if (heartbeatWatchdogRef.current) {
+      clearTimeout(heartbeatWatchdogRef.current);
+      heartbeatWatchdogRef.current = null;
+    }
+    if (buildReaderRef.current) {
+      try { buildReaderRef.current.cancel(); } catch {}
+      buildReaderRef.current = null;
+    }
+    buildSessionIdRef.current = null;
+    lastReceivedEventIdRef.current = -1;
+    reconnectRetryRef.current = 0;
+    isReconnectingRef.current = false;
+    actionLogRef.current = [];
+    thinkingStartTimeRef.current = null;
+    thinkingElapsedComputedRef.current = false;
+    buildResultMsgIdRef.current = null;
+    beforeBuildCheckpointCreatedRef.current = false;
+    buildCompleteCheckpointCreatedRef.current = false;
+    connectionErrorAddedRef.current = false;
+    setLiveActionLog([]);
+    setLiveThinkingText("");
+    setLiveNarrationText("");
+    setBuildPhase(null);
+    setIsReconnecting(false);
+    setThinkingElapsedSec(null);
   }, []);
 
   const appendActionLog = useCallback((entry: ActionLogEntry) => {
@@ -694,9 +735,12 @@ export function useBuildStream() {
     [projectId, addManagerMessage],
   );
 
-  const handleExecutePlan = useCallback(async () => {
-    const plan = useIDEStore.getState().managerPlan;
-    if (!plan) return;
+  const handleExecutePlan = useCallback(async (directOpts?: { userMessage: string }) => {
+    // Guard: React event handlers (onClick={handleExecutePlan}) pass a MouseEvent;
+    // only treat as direct mode when caller passes a real {userMessage} object.
+    const isDirect = !!directOpts && typeof (directOpts as any).userMessage === "string";
+    const existingPlan = useIDEStore.getState().managerPlan;
+    if (!isDirect && !existingPlan) return;
     if (buildSessionIdRef.current) return;
 
     if (buildLiveClearTimerRef.current) {
@@ -707,25 +751,55 @@ export function useBuildStream() {
     setManagerResponding(false);
     setBuildPhase("thinking");
     setChatMode("build");
-    setReviewPhase("building");
+    // Direct mode skips verifier; never enter the "building → reviewing → review_passed" path.
+    if (!isDirect) setReviewPhase("building");
     setFixCycle(0);
     setHolisticReview(null);
     setCompletionData(null);
 
+    if (isDirect) {
+      addChatMessage({ role: "user", content: directOpts!.userMessage });
+    }
+
     if (!beforeBuildCheckpointCreatedRef.current) {
       beforeBuildCheckpointCreatedRef.current = true;
       buildCompleteCheckpointCreatedRef.current = false;
-      createCheckpoint("Before build");
+      createCheckpoint(isDirect ? "Before direct build" : "Before build");
     }
     clearLastBuildFileDiffs();
+
+    // For direct mode, synthesize a 1-step plan client-side so downstream UI/state
+    // (taskStatuses, executingTaskIndex, normalizedSteps2) works uniformly.
+    // The backend will synthesize its own plan from userMessage; the client copy is
+    // for UI display only.
+    const plan = isDirect
+      ? {
+          mode: "direct" as const,
+          summary: directOpts!.userMessage,
+          steps: [
+            {
+              step: 1,
+              title:
+                directOpts!.userMessage.length > 80
+                  ? directOpts!.userMessage.slice(0, 80) + "…"
+                  : directOpts!.userMessage,
+              description: directOpts!.userMessage,
+            },
+          ],
+        }
+      : existingPlan!;
 
     const normalizedSteps2 = normalizeSteps(plan);
     const firstUserMsg = useIDEStore
       .getState()
       .managerMessages.find((m) => m.role === "user");
     // Use plan summary as canonical user request — it reflects confirmed intent after multi-turn planning
-    const userRequest = plan.summary || firstUserMsg?.content || "";
-    const userLang = firstUserMsg ? detectLanguage(firstUserMsg.content) : "English";
+    const userRequest = isDirect
+      ? directOpts!.userMessage
+      : (plan.summary || firstUserMsg?.content || "");
+    const userLang = isDirect
+      ? detectLanguage(directOpts!.userMessage)
+      : firstUserMsg ? detectLanguage(firstUserMsg.content) : "English";
 
     const allFiles = flattenFiles(useIDEStore.getState().files);
     const filesForServer = allFiles
@@ -786,8 +860,10 @@ export function useBuildStream() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
-          plan,
-          userRequest,
+          mode: isDirect ? "direct" : "plan",
+          ...(isDirect
+            ? { userMessage: directOpts!.userMessage }
+            : { plan, userRequest }),
           userLang,
           files: filesForServer,
           taskStatuses: taskStatuses2,
@@ -1059,6 +1135,7 @@ export function useBuildStream() {
     applyCodeBlock,
     refreshPreview,
     addManagerMessage,
+    addChatMessage,
     updateTaskStatus,
     setTaskFailureReason,
     setExecutingTaskIndex,
@@ -1675,7 +1752,10 @@ export function useBuildStream() {
       fetch(`/api/build-session/active/${projectId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
-          if (cancelled || !data?.sessionId) {
+          // Only reconnect to a TRULY active session. A done/aborted session
+          // returned by the server (e.g. legacy fallback) must not lock the UI
+          // into executing state — fall through to restore-from-DB instead.
+          if (cancelled || !data?.sessionId || data?.active !== true) {
             useIDEStore.getState().setStreamingSnapshot(null);
             setAiResponding(false);
             setExecutingTaskIndex(null);
@@ -1719,7 +1799,7 @@ export function useBuildStream() {
           return fetch(`/api/build-session/active/${projectId}`)
             .then((r2) => (r2.ok ? r2.json() : null))
             .then((activeData) => {
-              if (cancelled || !activeData?.sessionId) {
+              if (cancelled || !activeData?.sessionId || activeData?.active !== true) {
                 useIDEStore.getState().setStreamingSnapshot(null);
                 setAiResponding(false);
                 setExecutingTaskIndex(null);
@@ -1903,6 +1983,11 @@ export function useBuildStream() {
     }
   }, [setAiResponding, setExecutingTaskIndex, setReviewPhase, projectId]);
 
+  const handleDirectBuild = useCallback(
+    (userMessage: string) => handleExecutePlan({ userMessage }),
+    [handleExecutePlan],
+  );
+
   return {
     buildPhase,
     liveActionLog,
@@ -1911,8 +1996,10 @@ export function useBuildStream() {
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
+    handleDirectBuild,
     handleStopExecution,
     userConfirmationRef,
     buildSessionIdRef,
+    resetLiveState,
   };
 }

@@ -222,7 +222,7 @@ export function TaskPlanCard({
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
-  onRevise?: () => void;
+  onRevise?: (note?: string) => void;
   isExecuting?: boolean;
   onStop?: () => void;
   onContinueWithInput?: (userInput?: string) => void;
@@ -252,6 +252,7 @@ export function TaskPlanCard({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
 
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
@@ -441,7 +442,7 @@ export function TaskPlanCard({
               <div className="flex items-center gap-2">
                 <button
                   className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-2.5 py-1 transition-colors"
-                  onClick={onRevise}
+                  onClick={() => setRegenerateOpen(true)}
                   data-testid="button-revise-plan"
                 >
                   <span className="flex items-center gap-1">
@@ -554,7 +555,7 @@ export function TaskPlanCard({
           <div className="px-6 py-3 border-t border-[rgba(255,255,255,0.04)] shrink-0 flex gap-2">
             <button
               className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
-              onClick={() => { setModalOpen(false); onRevise?.(); }}
+              onClick={() => { setModalOpen(false); setRegenerateOpen(true); }}
               data-testid="button-revise-plan-modal"
             >
               <PenLine className="w-2.5 h-2.5" />
@@ -572,7 +573,102 @@ export function TaskPlanCard({
           </div>
         </DialogContent>
       </Dialog>
+      <RegeneratePlanDialog
+        open={regenerateOpen}
+        onOpenChange={setRegenerateOpen}
+        onConfirm={(note) => {
+          setRegenerateOpen(false);
+          onRevise?.(note);
+        }}
+        lang={lang}
+      />
     </>
+  );
+}
+
+export function RegeneratePlanDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  lang,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (note?: string) => void;
+  lang: PlanCardLang;
+}) {
+  const [mode, setMode] = useState<"simple" | "with-note">("with-note");
+  const [note, setNote] = useState("");
+
+  const handleConfirm = () => {
+    if (mode === "with-note") {
+      onConfirm(note.trim() || undefined);
+    } else {
+      onConfirm(undefined);
+    }
+    setNote("");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md p-0 bg-[#0c0c14] border-[rgba(255,255,255,0.08)]">
+        <DialogHeader className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)]">
+          <DialogTitle className="text-sm font-mono font-medium">
+            {t(lang, "regenerateTitle")}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="px-5 py-4 space-y-3">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="radio"
+              className="mt-0.5"
+              checked={mode === "simple"}
+              onChange={() => setMode("simple")}
+            />
+            <span className="text-[12px] font-mono text-[rgba(238,238,246,0.85)] leading-snug">
+              {t(lang, "regenerateModeSimple")}
+            </span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="radio"
+              className="mt-0.5"
+              checked={mode === "with-note"}
+              onChange={() => setMode("with-note")}
+            />
+            <span className="text-[12px] font-mono text-[rgba(238,238,246,0.85)] leading-snug">
+              {t(lang, "regenerateModeWithNote")}
+            </span>
+          </label>
+          {mode === "with-note" && (
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t(lang, "regenerateNotePlaceholder")}
+              className="min-h-[80px] text-[12px] font-mono bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.08)]"
+              autoFocus
+            />
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.06)] flex justify-end gap-2">
+          <button
+            className="font-mono text-[11px] text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.9)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors"
+            onClick={() => onOpenChange(false)}
+            data-testid="button-regenerate-cancel"
+          >
+            {t(lang, "cancel")}
+          </button>
+          <button
+            className="font-mono text-[11px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleConfirm}
+            disabled={mode === "with-note" && !note.trim()}
+            data-testid="button-regenerate-confirm"
+          >
+            {t(lang, "regenerateConfirm")}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -637,7 +733,7 @@ export function ManagerMessageBubble({
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons?: Record<string, string>;
   onExecute?: () => void;
-  onRevise?: () => void;
+  onRevise?: (note?: string) => void;
   isExecuting?: boolean;
   onStop?: () => void;
   onContinueWithInput?: (userInput?: string) => void;

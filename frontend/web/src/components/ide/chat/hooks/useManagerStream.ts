@@ -130,6 +130,34 @@ export function useManagerStream() {
     }, delay);
   }, []);
 
+  const resetLiveState = useCallback(() => {
+    if (mgrLiveClearTimerRef.current) {
+      clearTimeout(mgrLiveClearTimerRef.current);
+      mgrLiveClearTimerRef.current = null;
+    }
+    if (mgrInactivityTimerRef.current) {
+      clearTimeout(mgrInactivityTimerRef.current);
+      mgrInactivityTimerRef.current = null;
+    }
+    if (mgrReconnectTimerRef.current) {
+      clearTimeout(mgrReconnectTimerRef.current);
+      mgrReconnectTimerRef.current = null;
+    }
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch {}
+      abortRef.current = null;
+    }
+    mgrSessionIdRef.current = null;
+    mgrLastEventIdRef.current = -1;
+    mgrReconnectRetryRef.current = 0;
+    autoExecutePlanRef.current = false;
+    setMgrLiveThinkingText("");
+    setMgrLiveNarrationText("");
+    setMgrLiveActionLog([]);
+    setMgrPreparingPlan(false);
+    setIsMgrReconnecting(false);
+  }, []);
+
   const removeTypingBubble = useCallback((excludeId?: string | null) => {
     const msgs = useIDEStore.getState().managerMessages;
     const typingIdx = msgs.findIndex(
@@ -1179,5 +1207,6 @@ export function useManagerStream() {
     autoExecutePlanRef,
     abortRef,
     mgrSessionIdRef,
+    resetLiveState,
   };
 }

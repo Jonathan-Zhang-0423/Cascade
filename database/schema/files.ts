@@ -1,7 +1,7 @@
 import { pgTable, text, varchar, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { projects } from "./projects.js";
+import { projects } from "./projects";
 
 export const projectFiles = pgTable("project_files", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

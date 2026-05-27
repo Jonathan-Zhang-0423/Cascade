@@ -42,7 +42,7 @@ import { runBuildSession, type BuildSessionState, type BufferedEvent } from "../
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
-import { runAgentLoop } from "../../agent/loop/agent-loop";
+import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
 import { setupPreviewServer } from "../../compiler/preview-server";
@@ -525,10 +525,14 @@ export async function registerRoutes(
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
         return;
       }
-      const { sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation, provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId } = req.body as {
+      const {
+        sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
+        provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
+        mode: reqMode, userMessage,
+      } = req.body as {
         sessionId: string;
-        plan: any;
-        userRequest: string;
+        plan?: any;
+        userRequest?: string;
         userLang: string;
         files: Array<{ path: string; content: string }>;
         taskStatuses?: Record<string, string>;
@@ -537,11 +541,24 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
         userId?: string;
+        mode?: "plan" | "direct";
+        userMessage?: string;
       };
-      if (!sessionId || !plan || !userRequest) {
-        res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
-        return;
+
+      const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
+
+      if (resolvedMode === "plan") {
+        if (!sessionId || !plan || !userRequest) {
+          res.status(400).json({ error: "sessionId, plan, and userRequest are required" });
+          return;
+        }
+      } else {
+        if (!sessionId || !userMessage) {
+          res.status(400).json({ error: "sessionId and userMessage are required for direct mode" });
+          return;
+        }
       }
+
       const fileMap = new Map<string, string>();
       if (files && Array.isArray(files)) {
         for (const f of files) {
@@ -558,19 +575,46 @@ export async function registerRoutes(
         } catch {}
       }
 
+      let resolvedPlan: any = plan;
+      let resolvedUserRequest = userRequest ?? "";
+
+      if (resolvedMode === "direct") {
+        // Run ExploreAgent (same as plan mode) with 8s timeout to gather codebase context
+        let exploreContext = "";
+        if (files && files.length > 0) {
+          const explorePromise = runExploreAgent(files, userMessage!);
+          const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
+          exploreContext = await Promise.race([explorePromise, timeoutPromise]);
+        }
+        // Synthesize a single-step plan so we can reuse the entire builder pipeline
+        resolvedPlan = {
+          mode: "direct",
+          summary: userMessage!,
+          steps: [{
+            step: 1,
+            title: userMessage!.length > 80 ? userMessage!.slice(0, 80) + "…" : userMessage!,
+            description: exploreContext
+              ? `${userMessage}\n\n## Codebase context (fast scan)\n${exploreContext}`
+              : userMessage!,
+          }],
+        };
+        resolvedUserRequest = userMessage!;
+      }
+
       const session: BuildSessionState & { _startedAt: number } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
         userId: reqUserId || undefined,
         aborted: false,
         files: fileMap,
-        plan,
-        userRequest,
+        plan: resolvedPlan,
+        userRequest: resolvedUserRequest,
         userLang: userLang || "English",
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
-        provider: provider || "doubao",
+        provider: provider || "glm",
         framework: resolvedFramework,
+        mode: resolvedMode,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,
@@ -656,11 +700,11 @@ export async function registerRoutes(
       res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
       return;
     }
-    const done = entries.find(([, s]) => s.projectId === projectId && s.done && !s.aborted);
-    if (done) {
-      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
-      return;
-    }
+    // No active session — do NOT fall back to a done session here. The caller
+    // (mount-time auto-reconnect) treats any 200 as "reconnect this", which
+    // would re-enter executing state for an already-finished build and lock
+    // the Build button. Done-session reconnects use the explicit per-session
+    // status endpoint instead.
     res.status(404).json({ error: "No active build session for this project" });
   });
 
@@ -774,8 +818,9 @@ export async function registerRoutes(
     let mgrSessionId: string | undefined;
     let clientDisconnected = false;
     try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+      const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
+      if (!hasAnyProvider) {
+        res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, or MINIMAX_API_KEY)" });
         return;
       }
       const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
@@ -785,7 +830,7 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
       };
-      const activeProvider: AIProvider = provider || "doubao";
+      const activeProvider: AIProvider = provider || "glm";
       const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -880,11 +925,19 @@ export async function registerRoutes(
         : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
 
       let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
+      const isNewProject = !files || files.length === 0;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
         systemPrompt = `${systemPrompt}\n\n${contextMsg}`;
       } else {
-        systemPrompt = `${systemPrompt}\n\nThe project currently has no files.`;
+        systemPrompt = `${systemPrompt}\n\nThe project currently has no files.
+
+## SESSION OVERRIDE — ONE-SHOT MODE (new empty project)
+This is a brand-new empty project. The user's first message IS the spec. Skip Stage 2 and go directly to Stage 3:
+- Do NOT produce a confirmation summary asking "does this match what you want?".
+- Pick the most reasonable interpretation of the request and call submit_plan immediately.
+- Fall back to Stage 1 (ask 1–2 clarifying questions) ONLY if the message is completely uninterpretable (e.g., "做个东西", "help me").
+This override applies to THIS message only — it does not change behavior for projects that already have files.`;
       }
 
       if (detectedSkill) {
@@ -1061,6 +1114,9 @@ export async function registerRoutes(
     }
   });
 
+  // DEPRECATED: superseded by /api/build-session direct mode. Retained for rollback
+  // safety; no frontend caller as of the build-mode redesign. Schedule for removal
+  // once direct-mode has been stable in production.
   app.post("/api/chat", async (req, res) => {
     try {
       const { messages, files, provider } = req.body as {
@@ -1069,7 +1125,7 @@ export async function registerRoutes(
         provider?: AIProvider;
       };
 
-      const selectedProvider = provider ?? "doubao";
+      const selectedProvider = provider ?? "glm";
       const providerKeyMap: Record<string, string | undefined> = {
         doubao: process.env.DOUBAO_API_KEY,
         kimi: process.env.KIMI_API_KEY || process.env.DOUBAO_API_KEY,
@@ -1109,7 +1165,7 @@ export async function registerRoutes(
         } catch {}
       };
 
-      const chatToolSchemas: import("./agent-loop").ToolSchema[] = [
+      const chatToolSchemas: ToolSchema[] = [
         {
           type: "function",
           function: {
@@ -1141,7 +1197,7 @@ export async function registerRoutes(
         },
       ];
 
-      const chatToolHandlers: Record<string, import("./agent-loop").ToolHandler> = {
+      const chatToolHandlers: Record<string, ToolHandler> = {
         write_file: async (args, toolEmit) => {
           const path = args.path as string;
           const content = args.content as string;
@@ -2490,6 +2546,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!username || !password) return res.status(400).json({ error: "username and password required" });
       const user = await storage.getUserByUsername(username.trim());
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
+      // GitHub-only users (created via OAuth) have no password — reject the
+      // password-based login path with the same generic error so we don't
+      // leak which accounts are GitHub-only.
+      if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
       (req.session as any).userId = user.id;
@@ -2547,6 +2607,172 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (err) console.error("[auth/logout]", err);
       res.status(204).end();
     });
+  });
+
+  // === GitHub OAuth ===
+
+  // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
+  // default, which makes github.com unreachable behind a local proxy. We
+  // import undici's own fetch + ProxyAgent so the dispatcher and fetch come
+  // from the same undici version (mixing the npm package's ProxyAgent with
+  // the built-in fetch causes "invalid onRequestStart method" errors).
+  // Built lazily so prod, where HTTPS_PROXY is unset, pays no cost.
+  let githubFetch: typeof fetch = fetch;
+  let githubFetchInited = false;
+  const getGithubFetch = async (): Promise<typeof fetch> => {
+    if (githubFetchInited) return githubFetch;
+    githubFetchInited = true;
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
+      || process.env.HTTP_PROXY || process.env.http_proxy;
+    if (proxyUrl) {
+      try {
+        const undici = await import("undici");
+        const dispatcher = new undici.ProxyAgent(proxyUrl);
+        githubFetch = ((url: any, init: any = {}) =>
+          (undici.fetch as any)(url, { ...init, dispatcher })) as unknown as typeof fetch;
+        console.log(`[auth/github] routing GitHub fetches via proxy ${proxyUrl}`);
+      } catch (err) {
+        console.warn("[auth/github] failed to init undici proxy fetch:", err instanceof Error ? err.message : err);
+      }
+    }
+    return githubFetch;
+  };
+
+  // 1) Kick off the OAuth dance: store a state token in the session and
+  //    redirect the browser to GitHub's authorize URL.
+  app.get("/api/auth/github", (req, res) => {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) {
+      res.status(500).json({ error: "GitHub OAuth not configured" });
+      return;
+    }
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const state = randomBytes(16).toString("hex");
+    (req.session as any).githubOAuthState = state;
+    const redirectUri = `${baseUrl}/api/auth/github/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: "read:user user:email",
+      state,
+      allow_signup: "true",
+    });
+    res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+  });
+
+  // 2) Callback: exchange the code for an access token, fetch the user,
+  //    then either link to an existing local user (matched by verified
+  //    primary email) or create a new GitHub-only user. Finally seat the
+  //    session and send the browser back to the SPA.
+  app.get("/api/auth/github/callback", async (req, res) => {
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const failRedirect = (reason: string) => {
+      res.redirect(`${baseUrl}/auth?github_error=${encodeURIComponent(reason)}`);
+    };
+    try {
+      const clientId = process.env.GITHUB_CLIENT_ID;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        failRedirect("not_configured");
+        return;
+      }
+      const { code, state } = req.query as { code?: string; state?: string };
+      const expectedState = (req.session as any)?.githubOAuthState;
+      (req.session as any).githubOAuthState = undefined;
+      if (!code || !state || !expectedState || state !== expectedState) {
+        failRedirect("bad_state");
+        return;
+      }
+
+      // Exchange the temporary code for an access token.
+      const ghFetch = await getGithubFetch();
+      const tokenRes = await ghFetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: `${baseUrl}/api/auth/github/callback`,
+        }),
+      });
+      if (!tokenRes.ok) {
+        failRedirect("token_exchange_failed");
+        return;
+      }
+      const tokenData = await tokenRes.json() as { access_token?: string; error?: string };
+      if (!tokenData.access_token) {
+        failRedirect(tokenData.error || "no_access_token");
+        return;
+      }
+      const accessToken = tokenData.access_token;
+
+      // Fetch the GitHub user profile.
+      const userRes = await ghFetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+      });
+      if (!userRes.ok) {
+        failRedirect("user_fetch_failed");
+        return;
+      }
+      const ghUser = await userRes.json() as {
+        id: number; login: string; email: string | null; avatar_url: string | null;
+      };
+
+      // The /user endpoint returns email = null when the user marks it
+      // private. Fetch /user/emails (which the user:email scope grants)
+      // to find the verified primary email for account merging.
+      let primaryEmail: string | null = ghUser.email;
+      if (!primaryEmail) {
+        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+        });
+        if (emailsRes.ok) {
+          const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
+          primaryEmail = emails.find(e => e.primary && e.verified)?.email
+            ?? emails.find(e => e.verified)?.email
+            ?? null;
+        }
+      }
+
+      const githubId = String(ghUser.id);
+
+      // Resolve to a local user. Lookup priority:
+      //   1. existing user already linked to this GitHub id
+      //   2. existing user with matching verified email -> link the github id
+      //   3. otherwise create a new GitHub-only user with a unique username
+      let user = await storage.getUserByGithubId(githubId);
+      if (!user && primaryEmail) {
+        const matched = await storage.getUserByEmail(primaryEmail);
+        if (matched) {
+          user = await storage.linkGithubToUser(matched.id, {
+            githubId,
+            avatarUrl: ghUser.avatar_url,
+          });
+        }
+      }
+      if (!user) {
+        // Pick a username that doesn't collide with an existing local user.
+        let candidate = ghUser.login;
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${ghUser.login}-${suffix}`;
+        }
+        user = await storage.createGithubUser({
+          username: candidate,
+          githubId,
+          email: primaryEmail,
+          avatarUrl: ghUser.avatar_url,
+        });
+      }
+
+      (req.session as any).userId = user.id;
+      res.redirect(`${baseUrl}/`);
+    } catch (err) {
+      console.error("[auth/github/callback]", err);
+      failRedirect("server_error");
+    }
   });
 
   // === SKILLS API ===

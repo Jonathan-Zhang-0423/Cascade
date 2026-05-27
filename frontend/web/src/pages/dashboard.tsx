@@ -75,6 +75,7 @@ export default function DashboardPage() {
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
   const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "kotlin" | "wechat">("web");
+  const [usePlanFirst, setUsePlanFirst] = useState(true);
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -98,9 +99,11 @@ export default function DashboardPage() {
     const idea = ideaText.trim();
     if (!idea) return;
     const emoji = getProjectEmoji(idea);
-    const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework);
+    const initialMode = usePlanFirst ? "manager" : "build";
+    const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework, initialMode);
     setIdeaText("");
     setSelectedFramework("web");
+    setUsePlanFirst(true);
     setShowNewDialog(false);
     navigate(`/project/${id}`);
     // Auto-name the project based on the idea — fire and forget
@@ -500,6 +503,40 @@ export default function DashboardPage() {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">{t("dashboard.startMode")}</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setUsePlanFirst(true)}
+                className={[
+                  "flex-1 px-3 py-2 rounded-md border text-left transition-colors",
+                  usePlanFirst
+                    ? "border-primary/60 bg-primary/5"
+                    : "border-border/60 hover:border-border",
+                ].join(" ")}
+                data-testid="button-mode-plan"
+              >
+                <div className="text-sm font-medium text-foreground">{t("dashboard.modePlanLabel")}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modePlanDesc")}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUsePlanFirst(false)}
+                className={[
+                  "flex-1 px-3 py-2 rounded-md border text-left transition-colors",
+                  !usePlanFirst
+                    ? "border-primary/60 bg-primary/5"
+                    : "border-border/60 hover:border-border",
+                ].join(" ")}
+                data-testid="button-mode-build"
+              >
+                <div className="text-sm font-medium text-foreground">{t("dashboard.modeBuildLabel")}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modeBuildDesc")}</div>
+              </button>
+            </div>
           </div>
 
           <DialogFooter>

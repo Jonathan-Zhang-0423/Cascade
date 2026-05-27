@@ -140,6 +140,23 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
     };
   }, []);
 
+  // Surface iframe runtime errors as a build failure — a successful compile can
+  // still produce a bundle that throws on load (e.g. bad regex inside generated
+  // code), which would otherwise appear as a silent white screen.
+  useEffect(() => {
+    if (compileState.status !== "success" || !compileState.buildId) return;
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type !== "__cascade_runtime_error__") return;
+      setCompileState((prev) =>
+        prev.status === "success" && prev.buildId === compileState.buildId
+          ? { status: "error", errors: [String(e.data.message ?? "Runtime error in preview")] }
+          : prev,
+      );
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [compileState.status, compileState.buildId]);
+
   const handleAskAiFix = useCallback(() => {
     if (!compileState.errors?.length) return;
     const prompt = `The WeChat Mini Program code has errors. Please fix:\n\n${compileState.errors.join("\n")}`;
