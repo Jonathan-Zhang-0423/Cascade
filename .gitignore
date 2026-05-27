@@ -6,7 +6,11 @@ vite.config.ts.*
 *.tar.gz
 .worktrees
 telemetry/
+.env
+.env.local
+.env.*.local
 # Runtime build artifacts
 backend/api/artifacts/
+backend/artifacts/
 backend/api/assets/rn-vendor.js
 backend/api/assets/wx-vendor.js
