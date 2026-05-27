@@ -97,6 +97,7 @@ export function Navbar({ projectName }: NavbarProps) {
     : currentProject.framework === "flutter" ? "Flutter"
     : currentProject.framework === "kotlin" ? "Kotlin"
     : currentProject.framework === "swiftui" ? "SwiftUI"
+    : currentProject.framework === "wechat" ? "WeChat Mini Program"
     : currentProject.framework === "web" ? "Web"
     : currentProject.framework
     : "";
@@ -126,7 +127,7 @@ export function Navbar({ projectName }: NavbarProps) {
     }
 
     // Mobile/other frameworks: refresh the preview (Expo Snack, DartPad, Wasm)
-    if (framework === "rn-expo" || framework === "flutter" || framework === "kotlin" || framework === "swiftui") {
+    if (framework === "rn-expo" || framework === "flutter" || framework === "kotlin" || framework === "swiftui" || framework === "wechat") {
       refreshPreview();
       return;
     }
