@@ -270,6 +270,7 @@ interface IDEState {
   previewRefreshKey: number;
   previewOverrideHtml: string | null;
   pendingPrompt: string | null;
+  pendingPromptMode: ChatMode | null;
   checkpoints: Checkpoint[];
   lastBuildFileDiffs: Record<string, { old: string; new: string }>;
   setLastBuildFileDiff: (filePath: string, old: string, newContent: string) => void;
@@ -318,7 +319,7 @@ interface IDEState {
 
   loadProject: (id: string, framework?: string) => void;
   saveProject: () => void;
-  setPendingPrompt: (prompt: string) => void;
+  setPendingPrompt: (prompt: string, mode?: ChatMode) => void;
   clearPendingPrompt: () => void;
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => void;
   setActiveFile: (path: string) => void;
@@ -478,6 +479,7 @@ function persistState(state: IDEState) {
       : state.chatMessages,
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
+    pendingPromptMode: state.pendingPromptMode,
     chatMode: state.chatMode,
     _nextSeq: state._nextSeq,
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
@@ -605,6 +607,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   previewRefreshKey: 0,
   previewOverrideHtml: null,
   pendingPrompt: null,
+  pendingPromptMode: null,
   checkpoints: [],
   lastBuildFileDiffs: {},
   setLastBuildFileDiff: (filePath, old, newContent) =>
@@ -685,9 +688,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   selectedProvider: (() => {
     try {
       const saved = localStorage.getItem("cascade-selected-provider") as AIProvider | null;
-      if (saved === "doubao" || saved === "kimi" || saved === "minimax") return saved;
+      if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm") return saved;
     } catch {}
-    return "doubao";
+    return "glm";
   })(),
   setSelectedProvider: (provider) => {
     try { localStorage.setItem("cascade-selected-provider", provider); } catch {}
@@ -789,6 +792,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       previewFile: saved.previewFile || "/project/index.html",
       chatMessages: chatMsgsWithSeq,
       pendingPrompt: saved.pendingPrompt || null,
+      pendingPromptMode: (saved.pendingPromptMode === "manager" || saved.pendingPromptMode === "build") ? saved.pendingPromptMode : null,
       checkpoints: savedCheckpoints,
       consoleEntries: [],
       isAiResponding: false,
@@ -828,6 +832,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       previewFile: "/project/index.html",
       chatMessages: defaultChat,
       pendingPrompt: null,
+      pendingPromptMode: null,
       checkpoints: [],
       consoleEntries: [],
       isAiResponding: false,
@@ -914,14 +919,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     persistState(get());
   },
 
-  setPendingPrompt: (prompt: string) => {
-    set({ pendingPrompt: prompt });
+  setPendingPrompt: (prompt: string, mode?: ChatMode) => {
+    set({ pendingPrompt: prompt, pendingPromptMode: mode ?? null });
     const state = get();
     debouncedPersist(state);
   },
 
   clearPendingPrompt: () => {
-    set({ pendingPrompt: null });
+    set({ pendingPrompt: null, pendingPromptMode: null });
     const state = get();
     debouncedPersist(state);
   },

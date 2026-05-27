@@ -35,6 +35,11 @@ const zh: Dict = {
   "dashboard.frameworkRN": "React Native (Expo)",
   "dashboard.frameworkFlutter": "Flutter",
   "dashboard.frameworkKotlin": "Kotlin Compose (Android)",
+  "dashboard.startMode": "启动方式",
+  "dashboard.modePlanLabel": "先规划",
+  "dashboard.modePlanDesc": "AI 先生成计划，确认后再开始构建",
+  "dashboard.modeBuildLabel": "直接构建",
+  "dashboard.modeBuildDesc": "跳过规划，立即根据描述生成代码",
   "dashboard.comingSoon": "即将推出",
 
   "preview.buildFailed": "构建失败",
@@ -353,6 +358,11 @@ const en: Dict = {
   "dashboard.frameworkRN": "React Native (Expo)",
   "dashboard.frameworkFlutter": "Flutter",
   "dashboard.frameworkKotlin": "Kotlin Compose (Android)",
+  "dashboard.startMode": "Start mode",
+  "dashboard.modePlanLabel": "Plan first",
+  "dashboard.modePlanDesc": "AI drafts a plan; you confirm before building",
+  "dashboard.modeBuildLabel": "Build directly",
+  "dashboard.modeBuildDesc": "Skip planning and generate code immediately",
   "dashboard.comingSoon": "Coming Soon",
 
   "preview.buildFailed": "Build Failed",
