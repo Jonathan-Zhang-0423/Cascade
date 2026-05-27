@@ -31,6 +31,7 @@ export function ChatPanel() {
     isAiResponding,
     setAiResponding,
     pendingPrompt,
+    pendingPromptMode,
     clearPendingPrompt,
     projectId,
     chatMode,
@@ -203,10 +204,15 @@ export function ChatPanel() {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
+      const mode = pendingPromptMode;
       clearPendingPrompt();
-      handleManagerSend(prompt);
+      if (mode === "build") {
+        handleDirectBuild(prompt);
+      } else {
+        handleManagerSend(prompt);
+      }
     }
-  }, [pendingPrompt, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
 
   useEffect(() => {
     if (!isManagerResponding && autoExecutePlanRef.current) {

@@ -612,7 +612,7 @@ export async function registerRoutes(
         userLang: userLang || "English",
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
-        provider: provider || "doubao",
+        provider: provider || "glm",
         framework: resolvedFramework,
         mode: resolvedMode,
         _startedAt: Date.now(),
@@ -818,8 +818,9 @@ export async function registerRoutes(
     let mgrSessionId: string | undefined;
     let clientDisconnected = false;
     try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+      const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
+      if (!hasAnyProvider) {
+        res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, or MINIMAX_API_KEY)" });
         return;
       }
       const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
@@ -829,7 +830,7 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
       };
-      const activeProvider: AIProvider = provider || "doubao";
+      const activeProvider: AIProvider = provider || "glm";
       const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -1124,7 +1125,7 @@ This override applies to THIS message only — it does not change behavior for p
         provider?: AIProvider;
       };
 
-      const selectedProvider = provider ?? "doubao";
+      const selectedProvider = provider ?? "glm";
       const providerKeyMap: Record<string, string | undefined> = {
         doubao: process.env.DOUBAO_API_KEY,
         kimi: process.env.KIMI_API_KEY || process.env.DOUBAO_API_KEY,

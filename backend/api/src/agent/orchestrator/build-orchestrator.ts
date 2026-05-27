@@ -350,7 +350,7 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
 
-  const userProvider = session.provider ?? "doubao";
+  const userProvider = session.provider ?? "glm";
 
   // AG-17: Telemetry accumulator. Writes one JSONL record on exit via
   // finally-block flush. Counter wiring happens inside tool handlers.
