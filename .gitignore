@@ -6,6 +6,9 @@ vite.config.ts.*
 *.tar.gz
 .worktrees
 telemetry/
+.env
+.env.local
+.env.*.local
 # Runtime build artifacts
 backend/api/artifacts/
 backend/artifacts/

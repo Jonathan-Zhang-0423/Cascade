@@ -2546,6 +2546,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!username || !password) return res.status(400).json({ error: "username and password required" });
       const user = await storage.getUserByUsername(username.trim());
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
+      // GitHub-only users (created via OAuth) have no password — reject the
+      // password-based login path with the same generic error so we don't
+      // leak which accounts are GitHub-only.
+      if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
       (req.session as any).userId = user.id;
@@ -2603,6 +2607,172 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (err) console.error("[auth/logout]", err);
       res.status(204).end();
     });
+  });
+
+  // === GitHub OAuth ===
+
+  // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
+  // default, which makes github.com unreachable behind a local proxy. We
+  // import undici's own fetch + ProxyAgent so the dispatcher and fetch come
+  // from the same undici version (mixing the npm package's ProxyAgent with
+  // the built-in fetch causes "invalid onRequestStart method" errors).
+  // Built lazily so prod, where HTTPS_PROXY is unset, pays no cost.
+  let githubFetch: typeof fetch = fetch;
+  let githubFetchInited = false;
+  const getGithubFetch = async (): Promise<typeof fetch> => {
+    if (githubFetchInited) return githubFetch;
+    githubFetchInited = true;
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
+      || process.env.HTTP_PROXY || process.env.http_proxy;
+    if (proxyUrl) {
+      try {
+        const undici = await import("undici");
+        const dispatcher = new undici.ProxyAgent(proxyUrl);
+        githubFetch = ((url: any, init: any = {}) =>
+          (undici.fetch as any)(url, { ...init, dispatcher })) as unknown as typeof fetch;
+        console.log(`[auth/github] routing GitHub fetches via proxy ${proxyUrl}`);
+      } catch (err) {
+        console.warn("[auth/github] failed to init undici proxy fetch:", err instanceof Error ? err.message : err);
+      }
+    }
+    return githubFetch;
+  };
+
+  // 1) Kick off the OAuth dance: store a state token in the session and
+  //    redirect the browser to GitHub's authorize URL.
+  app.get("/api/auth/github", (req, res) => {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) {
+      res.status(500).json({ error: "GitHub OAuth not configured" });
+      return;
+    }
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const state = randomBytes(16).toString("hex");
+    (req.session as any).githubOAuthState = state;
+    const redirectUri = `${baseUrl}/api/auth/github/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: "read:user user:email",
+      state,
+      allow_signup: "true",
+    });
+    res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+  });
+
+  // 2) Callback: exchange the code for an access token, fetch the user,
+  //    then either link to an existing local user (matched by verified
+  //    primary email) or create a new GitHub-only user. Finally seat the
+  //    session and send the browser back to the SPA.
+  app.get("/api/auth/github/callback", async (req, res) => {
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const failRedirect = (reason: string) => {
+      res.redirect(`${baseUrl}/auth?github_error=${encodeURIComponent(reason)}`);
+    };
+    try {
+      const clientId = process.env.GITHUB_CLIENT_ID;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        failRedirect("not_configured");
+        return;
+      }
+      const { code, state } = req.query as { code?: string; state?: string };
+      const expectedState = (req.session as any)?.githubOAuthState;
+      (req.session as any).githubOAuthState = undefined;
+      if (!code || !state || !expectedState || state !== expectedState) {
+        failRedirect("bad_state");
+        return;
+      }
+
+      // Exchange the temporary code for an access token.
+      const ghFetch = await getGithubFetch();
+      const tokenRes = await ghFetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: `${baseUrl}/api/auth/github/callback`,
+        }),
+      });
+      if (!tokenRes.ok) {
+        failRedirect("token_exchange_failed");
+        return;
+      }
+      const tokenData = await tokenRes.json() as { access_token?: string; error?: string };
+      if (!tokenData.access_token) {
+        failRedirect(tokenData.error || "no_access_token");
+        return;
+      }
+      const accessToken = tokenData.access_token;
+
+      // Fetch the GitHub user profile.
+      const userRes = await ghFetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+      });
+      if (!userRes.ok) {
+        failRedirect("user_fetch_failed");
+        return;
+      }
+      const ghUser = await userRes.json() as {
+        id: number; login: string; email: string | null; avatar_url: string | null;
+      };
+
+      // The /user endpoint returns email = null when the user marks it
+      // private. Fetch /user/emails (which the user:email scope grants)
+      // to find the verified primary email for account merging.
+      let primaryEmail: string | null = ghUser.email;
+      if (!primaryEmail) {
+        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+        });
+        if (emailsRes.ok) {
+          const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
+          primaryEmail = emails.find(e => e.primary && e.verified)?.email
+            ?? emails.find(e => e.verified)?.email
+            ?? null;
+        }
+      }
+
+      const githubId = String(ghUser.id);
+
+      // Resolve to a local user. Lookup priority:
+      //   1. existing user already linked to this GitHub id
+      //   2. existing user with matching verified email -> link the github id
+      //   3. otherwise create a new GitHub-only user with a unique username
+      let user = await storage.getUserByGithubId(githubId);
+      if (!user && primaryEmail) {
+        const matched = await storage.getUserByEmail(primaryEmail);
+        if (matched) {
+          user = await storage.linkGithubToUser(matched.id, {
+            githubId,
+            avatarUrl: ghUser.avatar_url,
+          });
+        }
+      }
+      if (!user) {
+        // Pick a username that doesn't collide with an existing local user.
+        let candidate = ghUser.login;
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${ghUser.login}-${suffix}`;
+        }
+        user = await storage.createGithubUser({
+          username: candidate,
+          githubId,
+          email: primaryEmail,
+          avatarUrl: ghUser.avatar_url,
+        });
+      }
+
+      (req.session as any).userId = user.id;
+      res.redirect(`${baseUrl}/`);
+    } catch (err) {
+      console.error("[auth/github/callback]", err);
+      failRedirect("server_error");
+    }
   });
 
   // === SKILLS API ===

@@ -286,6 +286,9 @@ const zh: Dict = {
   "auth.noAccount": "还没有账户？ ",
   "auth.hasAccount": "已有账户？ ",
   "auth.signUp": "注册",
+  "auth.continueWithGithub": "使用 GitHub 继续",
+  "auth.or": "或",
+  "auth.githubError": "GitHub 登录失败，请重试。",
 
   "onboarding.title": "一个小问题",
   "onboarding.subtitle": "这有助于我们根据您的经验水平调整 AI 的指导方式。",
@@ -609,6 +612,9 @@ const en: Dict = {
   "auth.noAccount": "Don't have an account? ",
   "auth.hasAccount": "Already have an account? ",
   "auth.signUp": "Sign up",
+  "auth.continueWithGithub": "Continue with GitHub",
+  "auth.or": "or",
+  "auth.githubError": "GitHub sign-in failed, please try again.",
 
   "onboarding.title": "One quick question",
   "onboarding.subtitle": "This helps us tailor the AI's guidance to your experience level.",
