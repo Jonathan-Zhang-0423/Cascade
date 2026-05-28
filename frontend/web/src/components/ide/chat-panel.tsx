@@ -36,6 +36,8 @@ export function ChatPanel() {
     projectId,
     chatMode,
     setChatMode,
+    reviewEnabled,
+    setReviewEnabled,
     managerPlan,
     managerMessages,
     taskStatuses,
@@ -169,17 +171,18 @@ export function ChatPanel() {
   const handleContinueExecution = useCallback(
     (userInput?: string) => {
       const plan = useIDEStore.getState().managerPlan;
-      if (!plan) return;
       const inputText = userInput || useIDEStore.getState().userConfirmationInput || "";
       if (inputText.trim()) {
         addChatMessage({ role: "user", content: inputText.trim() });
       }
       setPendingConfirmation(null);
       setUserConfirmationInput("");
-      for (const s of normalizeSteps(plan)) {
-        const key = String(s.step);
-        if (useIDEStore.getState().taskStatuses[key] === "needs-input") {
-          useIDEStore.getState().updateTaskStatus(key, "pending");
+      if (plan) {
+        for (const s of normalizeSteps(plan)) {
+          const key = String(s.step);
+          if (useIDEStore.getState().taskStatuses[key] === "needs-input") {
+            useIDEStore.getState().updateTaskStatus(key, "pending");
+          }
         }
       }
       // POST input to the running session — do NOT restart the build
@@ -305,6 +308,10 @@ export function ChatPanel() {
     setChatMode(chatMode === "manager" ? "build" : "manager");
   }, [chatMode, setChatMode]);
 
+  const handleToggleReview = useCallback(() => {
+    setReviewEnabled(!reviewEnabled);
+  }, [reviewEnabled, setReviewEnabled]);
+
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
@@ -371,6 +378,7 @@ export function ChatPanel() {
         onStop={handleStop}
         onSmartResponse={handleSmartResponse}
         onToggleMode={handleToggleMode}
+        onToggleReview={handleToggleReview}
       />
     </div>
   );

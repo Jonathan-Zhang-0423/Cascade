@@ -509,6 +509,8 @@ export function useBuildStream() {
         updateTaskStatus(String(ev.stepNumber), "pending");
       } else if (type === "reviewing") {
         setReviewPhase("reviewing");
+      } else if (type === "review_skipped") {
+        setReviewPhase("review_skipped");
       } else if (type === "review_passed") {
         setReviewPhase("review_passed");
         if (reviewWatchdogRef.current) {
@@ -536,8 +538,19 @@ export function useBuildStream() {
           stepKey: "review",
           items: ev.items || [],
         });
+        if (!useIDEStore.getState().managerPlan) {
+          const summary = (ev.items && ev.items[0]) || "";
+          addChatMessage({
+            role: "assistant",
+            content: summary
+              ? `${summary}\n\n${tr(useLanguageStore.getState().lang, "chat.reviewNeedsInput")}`
+              : tr(useLanguageStore.getState().lang, "chat.reviewNeedsInput"),
+          });
+        }
       } else if (type === "all_complete") {
-        setReviewPhase("review_passed");
+        if (useIDEStore.getState().reviewPhase !== "review_skipped") {
+          setReviewPhase("review_passed");
+        }
         setBuildPhase(null);
         if (reviewWatchdogRef.current) {
           reviewWatchdogRef.current.clear();
@@ -861,6 +874,7 @@ export function useBuildStream() {
         body: JSON.stringify({
           sessionId,
           mode: isDirect ? "direct" : "plan",
+          reviewEnabled: useIDEStore.getState().reviewEnabled,
           ...(isDirect
             ? { userMessage: directOpts!.userMessage }
             : { plan, userRequest }),
@@ -1374,6 +1388,8 @@ export function useBuildStream() {
               } else if (type === "reviewing") {
                 setReviewPhase("reviewing");
                 setBuildPhase("verifying");
+              } else if (type === "review_skipped") {
+                setReviewPhase("review_skipped");
               } else if (type === "review_passed") {
                 setReviewPhase("review_passed");
                 nSteps.forEach((step) => {
@@ -1396,6 +1412,15 @@ export function useBuildStream() {
                   stepKey: "review",
                   items: ev.items || [],
                 });
+                if (!useIDEStore.getState().managerPlan) {
+                  const summary = (ev.items && ev.items[0]) || "";
+                  addChatMessage({
+                    role: "assistant",
+                    content: summary
+                      ? `${summary}\n\n${tr(useLanguageStore.getState().lang, "chat.reviewNeedsInput")}`
+                      : tr(useLanguageStore.getState().lang, "chat.reviewNeedsInput"),
+                  });
+                }
               } else if (type === "build_error") {
                 setBuildPhase(null);
                 setExecutingTaskIndex(null);
@@ -1405,7 +1430,9 @@ export function useBuildStream() {
                 helpers.resetNarration();
               } else if (type === "all_complete") {
                 buildCompleted = true;
-                setReviewPhase("review_passed");
+                if (useIDEStore.getState().reviewPhase !== "review_skipped") {
+                  setReviewPhase("review_passed");
+                }
                 const changedFiles = ev.changedFiles || [];
                 const finalLog = [...actionLogRef.current];
                 helpers.resetNarration();
@@ -1935,6 +1962,44 @@ export function useBuildStream() {
   useEffect(() => {
     buildSnapshotReconnect();
   }, [buildSnapshotReconnect]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const sessionId = buildSessionIdRef.current;
+      if (!sessionId) return;
+      if (isReconnectingRef.current) return;
+      fetch(`/api/build-session/${sessionId}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (buildSessionIdRef.current !== sessionId) return;
+          const localLast = lastReceivedEventIdRef.current;
+          const serverCount = typeof data.eventCount === "number" ? data.eventCount : 0;
+          const behind = serverCount > localLast + 1;
+          const serverFinished = !!data.done;
+          if (data.active && !behind) return;
+          if (!data.active && !serverFinished) return;
+          isReconnectingRef.current = true;
+          setIsReconnecting(true);
+          const oldReader = buildReaderRef.current;
+          buildReaderRef.current = null;
+          try {
+            oldReader?.cancel();
+          } catch {}
+          connectToBuildStreamRef
+            .current?.(sessionId, lastReceivedEventIdRef.current)
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
 
   const handleStopExecution = useCallback(() => {
     if (buildSessionIdRef.current) {

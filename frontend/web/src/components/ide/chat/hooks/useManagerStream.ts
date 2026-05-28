@@ -1197,6 +1197,37 @@ export function useManagerStream() {
     };
   }, [projectId, connectToMgrStream, setManagerResponding]);
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const sessionId = mgrSessionIdRef.current;
+      if (!sessionId) return;
+      if (isMgrReconnecting) return;
+      fetch(`/api/manager-chat/${sessionId}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (mgrSessionIdRef.current !== sessionId) return;
+          const localLast = mgrLastEventIdRef.current;
+          const serverCount = typeof data.eventCount === "number" ? data.eventCount : 0;
+          const behind = serverCount > localLast + 1;
+          const serverFinished = !!data.done;
+          if (data.active && !behind) return;
+          if (!data.active && !serverFinished) return;
+          connectToMgrStreamRef
+            .current?.(sessionId, localLast)
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [isMgrReconnecting]);
+
   return {
     handleManagerSend,
     mgrPreparingPlan,

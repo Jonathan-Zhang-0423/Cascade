@@ -90,7 +90,7 @@ export interface HolisticReviewResult {
   suggestion: string;
 }
 
-export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing";
+export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
 
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
@@ -282,6 +282,7 @@ interface IDEState {
   toggleCodeVisible: () => void;
 
   chatMode: ChatMode;
+  reviewEnabled: boolean;
   managerPlan: ManagerPlan | null;
   managerMessages: ManagerMessage[];
   _nextSeq: number;
@@ -345,6 +346,7 @@ interface IDEState {
   restoreCheckpoint: (id: string) => void;
 
   setChatMode: (mode: ChatMode) => void;
+  setReviewEnabled: (v: boolean) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
@@ -481,6 +483,7 @@ function persistState(state: IDEState) {
     pendingPrompt: state.pendingPrompt,
     pendingPromptMode: state.pendingPromptMode,
     chatMode: state.chatMode,
+    reviewEnabled: state.reviewEnabled,
     _nextSeq: state._nextSeq,
     managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
       ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
@@ -620,6 +623,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   toggleCodeVisible: () => { set((s) => ({ codeVisible: !s.codeVisible })); debouncedPersist(get()); },
 
   chatMode: "build",
+  reviewEnabled: false,
   managerPlan: null,
   managerMessages: [],
   _nextSeq: 1,
@@ -803,6 +807,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isChatOpen: true,
       isSidebarOpen: false,
       chatMode: (saved.chatMode === "manager" ? "manager" : "build") as ChatMode,
+      reviewEnabled: !!saved.reviewEnabled,
       managerMessages: mgrMsgsWithSeq,
       _nextSeq: finalNextSeq,
       streamingSnapshot: saved.streamingSnapshot || null,
@@ -843,6 +848,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       isChatOpen: true,
       isSidebarOpen: false,
       chatMode: "build" as ChatMode,
+      reviewEnabled: false,
       managerMessages: [],
       _nextSeq: 2,
       streamingSnapshot: null,
@@ -1247,6 +1253,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setChatMode: (mode) =>
     set((state) => {
       const next = { ...state, chatMode: mode };
+      debouncedPersist(next);
+      return next;
+    }),
+
+  setReviewEnabled: (v) =>
+    set((state) => {
+      const next = { ...state, reviewEnabled: v };
       debouncedPersist(next);
       return next;
     }),
