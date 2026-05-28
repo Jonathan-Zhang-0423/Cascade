@@ -18,6 +18,8 @@ interface ProviderFlags {
   kimi: boolean;
   minimax: boolean;
   glm: boolean;
+  "deepseek-pro": boolean;
+  "deepseek-flash": boolean;
 }
 
 interface ChatInputAreaProps {
@@ -207,7 +209,11 @@ export function ChatInputArea({
                       ? "minimax"
                       : selectedProvider === "glm"
                         ? "glm"
-                        : "doubao"}
+                        : selectedProvider === "deepseek-pro"
+                          ? "deepseek-pro"
+                          : selectedProvider === "deepseek-flash"
+                            ? "deepseek-flash"
+                            : "doubao"}
                 </span>
               </SelectValue>
             </SelectTrigger>
@@ -228,6 +234,16 @@ export function ChatInputArea({
               {providers.glm && (
                 <SelectItem value="glm" className="text-xs font-mono">
                   glm
+                </SelectItem>
+              )}
+              {providers["deepseek-pro"] && (
+                <SelectItem value="deepseek-pro" className="text-xs font-mono">
+                  deepseek-pro
+                </SelectItem>
+              )}
+              {providers["deepseek-flash"] && (
+                <SelectItem value="deepseek-flash" className="text-xs font-mono">
+                  deepseek-flash
                 </SelectItem>
               )}
             </SelectContent>

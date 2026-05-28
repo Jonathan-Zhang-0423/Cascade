@@ -28,7 +28,7 @@ export interface ConsoleEntry {
 
 export type ToolPanel = "files" | "chat" | "history" | "skills" | null;
 export type ChatMode = "build" | "manager";
-export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
+export type AIProvider = "doubao" | "kimi" | "minimax" | "glm" | "deepseek-pro" | "deepseek-flash";
 
 export interface ManagerSubTask {
   step: number;
@@ -687,8 +687,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   selectedProvider: (() => {
     try {
-      const saved = localStorage.getItem("cascade-selected-provider") as AIProvider | null;
-      if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm") return saved;
+      const saved = localStorage.getItem("cascade-selected-provider");
+      // Migrate old "deepseek" value (pre-pro/flash split) to deepseek-pro.
+      if (saved === "deepseek") return "deepseek-pro";
+      if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm" || saved === "deepseek-pro" || saved === "deepseek-flash") return saved;
     } catch {}
     return "glm";
   })(),

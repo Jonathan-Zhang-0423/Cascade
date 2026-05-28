@@ -90,7 +90,9 @@ export function ChatPanel() {
     kimi: boolean;
     minimax: boolean;
     glm: boolean;
-  }>({ doubao: true, kimi: false, minimax: false, glm: false });
+    "deepseek-pro": boolean;
+    "deepseek-flash": boolean;
+  }>({ doubao: true, kimi: false, minimax: false, glm: false, "deepseek-pro": false, "deepseek-flash": false });
 
   const handleSmartResponse = useSmartResponse(
     chatMode,
@@ -109,12 +111,16 @@ export function ChatPanel() {
           kimi?: boolean;
           minimax?: boolean;
           glm?: boolean;
+          "deepseek-pro"?: boolean;
+          "deepseek-flash"?: boolean;
         }) => {
           const loaded = {
             doubao: !!data.doubao,
             kimi: !!data.kimi,
             minimax: !!data.minimax,
             glm: !!data.glm,
+            "deepseek-pro": !!data["deepseek-pro"],
+            "deepseek-flash": !!data["deepseek-flash"],
           };
           setProviders(loaded);
           const current = useIDEStore.getState().selectedProvider;
@@ -122,6 +128,8 @@ export function ChatPanel() {
           if (current === "kimi" && !loaded.kimi) setSelectedProvider("doubao");
           if (current === "minimax" && !loaded.minimax) setSelectedProvider("doubao");
           if (current === "glm" && !loaded.glm) setSelectedProvider("doubao");
+          if (current === "deepseek-pro" && !loaded["deepseek-pro"]) setSelectedProvider("doubao");
+          if (current === "deepseek-flash" && !loaded["deepseek-flash"]) setSelectedProvider("doubao");
         },
       )
       .catch(() => {});

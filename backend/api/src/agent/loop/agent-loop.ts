@@ -85,21 +85,26 @@ export async function runAgentLoop(
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
   const isGLMModel = activeModel.toLowerCase().startsWith("glm");
+  const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
   const thinkingParam = opts.disableThinking
     ? {}
     : isDoubaoModel
       ? { thinking: { type: "enabled", budget_tokens: 8192 } }
       : isKimiModel
         ? { thinking: { type: "enabled" } }
-        : {};
+        : isDeepseekModel
+          ? { reasoning_effort: "high" }
+          : {};
   const extraBody = opts.disableThinking
     ? undefined
     : isMinimaxModel
       ? { reasoning_split: true }
       : isGLMModel
         ? { thinking: { type: "enabled" } }
-        : undefined;
-  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel) ? 90_000 : 30_000;
+        : isDeepseekModel
+          ? { thinking: { type: "enabled" } }
+          : undefined;
+  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective

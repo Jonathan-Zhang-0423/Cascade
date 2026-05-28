@@ -516,6 +516,8 @@ export async function registerRoutes(
       kimi: !!process.env.KIMI_API_KEY,
       minimax: !!process.env.MINIMAX_API_KEY,
       glm: !!process.env.GLM_API_KEY,
+      "deepseek-pro": !!process.env.DEEPSEEK_API_KEY,
+      "deepseek-flash": !!process.env.DEEPSEEK_API_KEY,
     });
   });
 
