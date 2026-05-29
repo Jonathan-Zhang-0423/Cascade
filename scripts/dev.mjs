@@ -132,8 +132,10 @@ function checkDeps() {
   console.log(`  ${c("36", "→")} running npm install...`);
   // The repo has known peer-dep conflicts (react-native expects react 19,
   // app uses react 18). Use --legacy-peer-deps to match how the lockfile
-  // was generated.
-  const r = spawnSync(NPM, ["install", "--legacy-peer-deps"], { cwd: ROOT, stdio: "inherit" });
+  // was generated. shell:true with a single string command avoids both
+  // the Node 24 EINVAL on Windows .cmd spawning and the DEP0190 warning
+  // about un-escaped args.
+  const r = spawnSync(`${NPM} install --legacy-peer-deps`, { cwd: ROOT, stdio: "inherit", shell: true });
   if (r.status !== 0) { fail(`npm install exited ${r.status}`); hadFailure = true; return; }
   ok("dependencies installed");
 }
@@ -162,7 +164,7 @@ function checkDbSchema() {
   }
   if (FORCE_DB) console.log(`  ${c("36", "→")} --force-db passed`);
   else console.log(`  ${c("36", "→")} schema files newer than last push, running db:push...`);
-  const r = spawnSync(NPM, ["run", "db:push"], { cwd: ROOT, stdio: "inherit" });
+  const r = spawnSync(`${NPM} run db:push`, { cwd: ROOT, stdio: "inherit", shell: true });
   if (r.status !== 0) { fail(`db:push exited ${r.status}`); hadFailure = true; return; }
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
   writeFileSync(DB_PUSH_MARKER, new Date().toISOString() + "\n");
@@ -181,8 +183,16 @@ async function main() {
   }
   console.log(`\n${c("32;1", "Setup complete.")}`);
   if (SETUP_ONLY) return;
-  console.log(c("36;1", "▸ Starting dev server (npm run dev)\n"));
-  const child = spawn(NPM, ["run", "dev"], { cwd: ROOT, stdio: "inherit" });
+  console.log(c("36;1", "▸ Starting dev server\n"));
+  // Spawn tsx directly via node so we don't go through npm.cmd. This
+  // avoids both Node 24's EINVAL on Windows .cmd files and the DEP0190
+  // warning about shell:true + args. Mirrors `npm run dev`.
+  const tsxEntry = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+  const child = spawn(process.execPath, [tsxEntry, "backend/api/src/infra/index.ts"], {
+    cwd: ROOT,
+    stdio: "inherit",
+    env: { ...process.env, NODE_ENV: "development" },
+  });
   const forward = (sig) => () => { try { child.kill(sig); } catch {} };
   process.on("SIGINT", forward("SIGINT"));
   process.on("SIGTERM", forward("SIGTERM"));
