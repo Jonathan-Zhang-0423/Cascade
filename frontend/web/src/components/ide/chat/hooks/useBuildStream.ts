@@ -1060,7 +1060,7 @@ export function useBuildStream() {
                 return;
               }
               const statusData = await statusRes.json();
-              if (statusData.active === false && !statusData.done) {
+              if (statusData.done || statusData.active === false) {
                 finalizeSessionCleanup();
                 return;
               }
@@ -1552,8 +1552,8 @@ export function useBuildStream() {
                 }
                 const statusData = await statusRes.json();
                 if (
-                  statusData.active === false &&
-                  !statusData.done
+                  statusData.done ||
+                  statusData.active === false
                 ) {
                   finalizeSessionCleanup();
                   return;

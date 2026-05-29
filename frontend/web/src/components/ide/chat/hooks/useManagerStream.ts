@@ -658,7 +658,7 @@ export function useManagerStream() {
                   return;
                 }
                 const statusData = await statusRes.json();
-                if (!statusData.active && !statusData.done) {
+                if (statusData.done || !statusData.active) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
@@ -923,7 +923,7 @@ export function useManagerStream() {
                   `/api/manager-chat/${retrySessionId}/status`,
                 );
                 const statusData = statusRes.ok ? await statusRes.json() : null;
-                if (!statusData || (!statusData.active && !statusData.done)) {
+                if (!statusData || statusData.done || !statusData.active) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);

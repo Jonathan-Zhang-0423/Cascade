@@ -245,6 +245,8 @@ const zh: Dict = {
 
   "error.chatPanel": "聊天面板出现错误。",
   "error.retry": "重试",
+  "error.appCrash": "页面渲染出错了，刷新一下应该就好。",
+  "error.appCrashReload": "刷新页面",
 
   "preview.scanPhone": "扫码在手机上预览",
   "preview.hideTerminal": "隐藏终端",
@@ -575,6 +577,8 @@ const en: Dict = {
 
   "error.chatPanel": "Something went wrong in the chat panel.",
   "error.retry": "Retry",
+  "error.appCrash": "The page hit a rendering error. Reloading should fix it.",
+  "error.appCrashReload": "Reload page",
 
   "preview.scanPhone": "Scan to preview on phone",
   "preview.hideTerminal": "Hide terminal",

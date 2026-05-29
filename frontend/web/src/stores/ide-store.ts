@@ -471,24 +471,49 @@ const MAX_PERSISTED_MANAGER_MESSAGES = 200;
 
 function persistState(state: IDEState) {
   if (!state.projectId) return;
+  const MAX_SNAPSHOT_TEXT = 4000;
+  const truncateSnapshot = (snap: IDEState["streamingSnapshot"]) => {
+    if (!snap) return null;
+    const tt = (snap as { thinkingText?: string }).thinkingText;
+    const nt = (snap as { narrationText?: string }).narrationText;
+    return {
+      ...snap,
+      ...(typeof tt === "string" && tt.length > MAX_SNAPSHOT_TEXT
+        ? { thinkingText: tt.slice(-MAX_SNAPSHOT_TEXT) }
+        : {}),
+      ...(typeof nt === "string" && nt.length > MAX_SNAPSHOT_TEXT
+        ? { narrationText: nt.slice(-MAX_SNAPSHOT_TEXT) }
+        : {}),
+    };
+  };
+  const MAX_THINKING_PER_MSG = 8000;
+  const trimMessages = <T extends { thinking?: string; content?: string }>(arr: T[]): T[] =>
+    arr.map((m) => {
+      if (typeof m.thinking === "string" && m.thinking.length > MAX_THINKING_PER_MSG) {
+        return { ...m, thinking: m.thinking.slice(-MAX_THINKING_PER_MSG) };
+      }
+      return m;
+    });
+  const chatSlice = state.chatMessages.length > MAX_PERSISTED_CHAT_MESSAGES
+    ? state.chatMessages.slice(-MAX_PERSISTED_CHAT_MESSAGES)
+    : state.chatMessages;
+  const mgrSlice = state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
+    ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
+    : state.managerMessages;
   const toSave = {
     files: state.files,
     openFiles: state.openFiles,
     activeFile: state.activeFile,
     previewFile: state.previewFile,
-    chatMessages: state.chatMessages.length > MAX_PERSISTED_CHAT_MESSAGES
-      ? state.chatMessages.slice(-MAX_PERSISTED_CHAT_MESSAGES)
-      : state.chatMessages,
+    chatMessages: trimMessages(chatSlice),
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
     pendingPromptMode: state.pendingPromptMode,
     chatMode: state.chatMode,
     reviewEnabled: state.reviewEnabled,
     _nextSeq: state._nextSeq,
-    managerMessages: state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
-      ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
-      : state.managerMessages,
-    streamingSnapshot: state.streamingSnapshot,
+    managerMessages: trimMessages(mgrSlice),
+    streamingSnapshot: truncateSnapshot(state.streamingSnapshot),
     managerPlan: state.managerPlan,
     selectedDevice: state.selectedDevice,
     deviceOrientation: state.deviceOrientation,
@@ -499,10 +524,44 @@ function persistState(state: IDEState) {
     layoutMode: state.layoutMode,
     codeVisible: state.codeVisible,
   };
-  localStorage.setItem(
-    `cascade-project-${state.projectId}`,
-    JSON.stringify(toSave)
-  );
+  const key = `cascade-project-${state.projectId}`;
+  const isQuotaErr = (e: unknown) =>
+    e instanceof DOMException &&
+    (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014);
+  try {
+    localStorage.setItem(key, JSON.stringify(toSave));
+    return;
+  } catch (err) {
+    if (!isQuotaErr(err)) {
+      console.warn("[persistState] failed:", err);
+      return;
+    }
+  }
+  // Quota fallback 1: drop streamingSnapshot (often the largest accumulator)
+  try {
+    localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null }));
+    console.warn("[persistState] dropped streamingSnapshot to fit quota");
+    return;
+  } catch (err) {
+    if (!isQuotaErr(err)) return;
+  }
+  // Quota fallback 2: also slim message history aggressively
+  try {
+    const slimChat = chatSlice.slice(-50).map((m) => ({ ...m, thinking: undefined }));
+    const slimMgr = mgrSlice.slice(-50).map((m) => ({ ...m, thinking: undefined }));
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        ...toSave,
+        streamingSnapshot: null,
+        chatMessages: slimChat,
+        managerMessages: slimMgr,
+      }),
+    );
+    console.warn("[persistState] aggressively trimmed messages to fit quota");
+  } catch (err) {
+    console.warn("[persistState] still over quota after trimming, skipping save:", err);
+  }
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
