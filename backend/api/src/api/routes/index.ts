@@ -15,6 +15,7 @@ import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/provi
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
+import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users } from "@cascade/database";
 import { db } from "../../infra/db";
 import { eq, and } from "drizzle-orm";
@@ -1900,6 +1901,94 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ result: JSON.parse(project.lastBuildResult) });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get build result" });
+    }
+  });
+
+  app.get("/api/projects/:id/messages", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      const kindParam = String(req.query.kind ?? "");
+      const kind = kindParam === "chat" || kindParam === "manager" ? kindParam : undefined;
+      const beforeRaw = req.query.before;
+      const before = typeof beforeRaw === "string" && beforeRaw.length > 0 ? Number(beforeRaw) : undefined;
+      const limitRaw = req.query.limit;
+      const limit = typeof limitRaw === "string" && limitRaw.length > 0 ? Number(limitRaw) : 100;
+      const rows = await storage.listChatMessages(projectId, {
+        kind,
+        before: Number.isFinite(before) ? (before as number) : undefined,
+        limit: Number.isFinite(limit) ? limit : 100,
+      });
+      res.json({ messages: rows });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to list messages" });
+    }
+  });
+
+  app.post("/api/projects/:id/messages", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      const body = req.body as { messages?: unknown };
+      if (!Array.isArray(body?.messages)) {
+        res.status(400).json({ error: "messages must be an array" });
+        return;
+      }
+      const allowedKinds = new Set(["chat", "manager"]);
+      const sanitized: ChatMessageInput[] = [];
+      for (const raw of body.messages) {
+        if (!raw || typeof raw !== "object") continue;
+        const m = raw as Record<string, unknown>;
+        if (typeof m.clientId !== "string" || !m.clientId) continue;
+        if (typeof m.kind !== "string" || !allowedKinds.has(m.kind)) continue;
+        if (typeof m.role !== "string") continue;
+        if (typeof m.seq !== "number" || !Number.isFinite(m.seq)) continue;
+        if (typeof m.timestamp !== "number" || !Number.isFinite(m.timestamp)) continue;
+        sanitized.push({
+          clientId: m.clientId,
+          kind: m.kind as "chat" | "manager",
+          role: m.role,
+          content: typeof m.content === "string" ? m.content : "",
+          thinking: typeof m.thinking === "string" ? m.thinking : null,
+          source: typeof m.source === "string" ? m.source : null,
+          seq: m.seq,
+          timestamp: m.timestamp,
+          metadata: typeof m.metadata === "string" ? m.metadata : null,
+        });
+      }
+      await storage.upsertChatMessages(projectId, sanitized);
+      res.json({ ok: true, count: sanitized.length });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to save messages" });
+    }
+  });
+
+  app.delete("/api/projects/:id/messages", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      const afterSeqRaw = req.query.afterSeq;
+      const afterSeq = typeof afterSeqRaw === "string" ? Number(afterSeqRaw) : NaN;
+      if (!Number.isFinite(afterSeq)) {
+        res.status(400).json({ error: "afterSeq query param required" });
+        return;
+      }
+      await storage.deleteChatMessagesAfter(projectId, afterSeq);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to delete messages" });
     }
   });
 

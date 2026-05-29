@@ -349,6 +349,7 @@ interface IDEState {
   setReviewEnabled: (v: boolean) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
+  loadOlderMessages: (kind: "chat" | "manager", limit?: number) => Promise<number>;
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
@@ -486,33 +487,18 @@ function persistState(state: IDEState) {
         : {}),
     };
   };
-  const MAX_THINKING_PER_MSG = 8000;
-  const trimMessages = <T extends { thinking?: string; content?: string }>(arr: T[]): T[] =>
-    arr.map((m) => {
-      if (typeof m.thinking === "string" && m.thinking.length > MAX_THINKING_PER_MSG) {
-        return { ...m, thinking: m.thinking.slice(-MAX_THINKING_PER_MSG) };
-      }
-      return m;
-    });
-  const chatSlice = state.chatMessages.length > MAX_PERSISTED_CHAT_MESSAGES
-    ? state.chatMessages.slice(-MAX_PERSISTED_CHAT_MESSAGES)
-    : state.chatMessages;
-  const mgrSlice = state.managerMessages.length > MAX_PERSISTED_MANAGER_MESSAGES
-    ? state.managerMessages.slice(-MAX_PERSISTED_MANAGER_MESSAGES)
-    : state.managerMessages;
+  // chatMessages, managerMessages, files are now persisted server-side (DB).
+  // localStorage only holds lightweight UI/session state.
   const toSave = {
-    files: state.files,
     openFiles: state.openFiles,
     activeFile: state.activeFile,
     previewFile: state.previewFile,
-    chatMessages: trimMessages(chatSlice),
     theme: state.theme,
     pendingPrompt: state.pendingPrompt,
     pendingPromptMode: state.pendingPromptMode,
     chatMode: state.chatMode,
     reviewEnabled: state.reviewEnabled,
     _nextSeq: state._nextSeq,
-    managerMessages: trimMessages(mgrSlice),
     streamingSnapshot: truncateSnapshot(state.streamingSnapshot),
     managerPlan: state.managerPlan,
     selectedDevice: state.selectedDevice,
@@ -537,31 +523,150 @@ function persistState(state: IDEState) {
       return;
     }
   }
-  // Quota fallback 1: drop streamingSnapshot (often the largest accumulator)
+  // Quota fallback: drop streamingSnapshot (often the largest remaining accumulator)
   try {
     localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null }));
     console.warn("[persistState] dropped streamingSnapshot to fit quota");
-    return;
   } catch (err) {
-    if (!isQuotaErr(err)) return;
+    console.warn("[persistState] still over quota, skipping save:", err);
   }
-  // Quota fallback 2: also slim message history aggressively
+}
+
+// ── Chat message → DB sync ─────────────────────────────────────────────
+type PendingChatMsg = {
+  clientId: string;
+  kind: "chat" | "manager";
+  role: string;
+  content: string;
+  thinking?: string | null;
+  source?: string | null;
+  seq: number;
+  timestamp: number;
+  metadata?: string | null;
+};
+const pendingMsgUploads = new Map<string, Map<string, PendingChatMsg>>();
+let msgUploadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPendingMsgUploads() {
+  msgUploadTimer = null;
+  for (const [pid, byClientId] of pendingMsgUploads) {
+    if (byClientId.size === 0) continue;
+    const messages = Array.from(byClientId.values());
+    byClientId.clear();
+    fetch(`/api/projects/${pid}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    }).catch(() => {});
+  }
+}
+
+function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
+  let byClientId = pendingMsgUploads.get(projectId);
+  if (!byClientId) {
+    byClientId = new Map();
+    pendingMsgUploads.set(projectId, byClientId);
+  }
+  // Latest write per clientId wins (covers updates to the same message).
+  byClientId.set(msg.clientId, msg);
+  if (msgUploadTimer) clearTimeout(msgUploadTimer);
+  msgUploadTimer = setTimeout(flushPendingMsgUploads, 500);
+}
+
+async function fetchMessagesFromServer(
+  projectId: string,
+  kind: "chat" | "manager",
+  before?: number,
+  limit = 100,
+): Promise<unknown[]> {
   try {
-    const slimChat = chatSlice.slice(-50).map((m) => ({ ...m, thinking: undefined }));
-    const slimMgr = mgrSlice.slice(-50).map((m) => ({ ...m, thinking: undefined }));
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        ...toSave,
-        streamingSnapshot: null,
-        chatMessages: slimChat,
-        managerMessages: slimMgr,
-      }),
-    );
-    console.warn("[persistState] aggressively trimmed messages to fit quota");
-  } catch (err) {
-    console.warn("[persistState] still over quota after trimming, skipping save:", err);
+    const params = new URLSearchParams({ kind, limit: String(limit) });
+    if (typeof before === "number") params.set("before", String(before));
+    const resp = await fetch(`/api/projects/${projectId}/messages?${params.toString()}`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.messages) ? data.messages : [];
+  } catch {
+    return [];
   }
+}
+
+function dbRowToChatMessage(row: any): ChatMessage {
+  let metadata: any = null;
+  if (typeof row.metadata === "string" && row.metadata) {
+    try { metadata = JSON.parse(row.metadata); } catch {}
+  }
+  return {
+    id: row.clientId,
+    role: row.role,
+    content: row.content ?? "",
+    timestamp: Number(row.timestamp) || Date.now(),
+    seq: row.seq,
+    checkpointId: metadata?.checkpointId,
+    hidden: metadata?.hidden,
+  };
+}
+
+function dbRowToManagerMessage(row: any): ManagerMessage {
+  let metadata: any = null;
+  if (typeof row.metadata === "string" && row.metadata) {
+    try { metadata = JSON.parse(row.metadata); } catch {}
+  }
+  return {
+    id: row.clientId,
+    role: row.role,
+    content: row.content ?? "",
+    plan: metadata?.plan,
+    timestamp: Number(row.timestamp) || Date.now(),
+    seq: row.seq,
+    source: row.source ?? metadata?.source,
+    typing: metadata?.typing,
+    hidden: metadata?.hidden,
+    checkpointId: metadata?.checkpointId,
+    thinking: row.thinking ?? undefined,
+    preparingPlan: metadata?.preparingPlan,
+    buildResult: metadata?.buildResult,
+    errorCode: metadata?.errorCode,
+  };
+}
+
+function chatMessageToDbInput(m: ChatMessage, projectId: string): PendingChatMsg {
+  const metadata: Record<string, unknown> = {};
+  if (m.checkpointId) metadata.checkpointId = m.checkpointId;
+  if (m.hidden) metadata.hidden = m.hidden;
+  return {
+    clientId: m.id,
+    kind: "chat",
+    role: m.role,
+    content: m.content ?? "",
+    thinking: null,
+    source: null,
+    seq: m.seq,
+    timestamp: m.timestamp,
+    metadata: Object.keys(metadata).length ? JSON.stringify(metadata) : null,
+  };
+}
+
+function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingChatMsg {
+  const metadata: Record<string, unknown> = {};
+  if (m.plan) metadata.plan = m.plan;
+  if (m.typing) metadata.typing = m.typing;
+  if (m.hidden) metadata.hidden = m.hidden;
+  if (m.checkpointId) metadata.checkpointId = m.checkpointId;
+  if (m.preparingPlan) metadata.preparingPlan = m.preparingPlan;
+  if (m.buildResult) metadata.buildResult = m.buildResult;
+  if (m.errorCode) metadata.errorCode = m.errorCode;
+  return {
+    clientId: m.id,
+    kind: "manager",
+    role: m.role,
+    content: m.content ?? "",
+    thinking: m.thinking ?? null,
+    source: m.source ?? null,
+    seq: m.seq,
+    timestamp: m.timestamp,
+    metadata: Object.keys(metadata).length ? JSON.stringify(metadata) : null,
+  };
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -934,6 +1039,60 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     set(baseState);
 
+    // Migrate legacy localStorage messages → DB (one-time per project).
+    // Older clients persisted full chatMessages / managerMessages arrays into
+    // localStorage; the new client reads from /api/projects/:id/messages.
+    // Detect leftovers and upload them so history is preserved, then strip
+    // them from the saved blob on the next persist.
+    if (saved && (Array.isArray(saved.chatMessages) || Array.isArray(saved.managerMessages))) {
+      const legacy: PendingChatMsg[] = [];
+      const seen = new Set<string>();
+      for (const m of (saved.chatMessages as ChatMessage[] | undefined) || []) {
+        if (!m?.id || seen.has(m.id)) continue;
+        seen.add(m.id);
+        legacy.push(chatMessageToDbInput(m, id));
+      }
+      for (const m of (saved.managerMessages as ManagerMessage[] | undefined) || []) {
+        if (!m?.id || seen.has(m.id)) continue;
+        seen.add(m.id);
+        legacy.push(managerMessageToDbInput(m, id));
+      }
+      if (legacy.length > 0) {
+        fetch(`/api/projects/${id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: legacy }),
+        }).catch(() => {});
+      }
+    }
+
+    // Pull latest persisted history from server and replace local arrays.
+    // Use limit=100 per kind; older messages can be fetched on scroll-up.
+    Promise.all([
+      fetchMessagesFromServer(id, "chat", undefined, 100),
+      fetchMessagesFromServer(id, "manager", undefined, 100),
+    ]).then(([chatRows, mgrRows]) => {
+      const cur = get();
+      if (cur.projectId !== id) return; // user switched projects
+      const chat = chatRows.map(dbRowToChatMessage);
+      const mgr = mgrRows.map(dbRowToManagerMessage);
+      // Only adopt server history if we got something. Otherwise keep whatever
+      // we already restored from the (legacy) saved blob.
+      if (chat.length === 0 && mgr.length === 0) return;
+      const maxSeq = Math.max(
+        cur._nextSeq,
+        ...chat.map((m) => m.seq + 1),
+        ...mgr.map((m) => m.seq + 1),
+      );
+      const lastPlan = mgr.slice().reverse().find((m) => m.plan)?.plan ?? cur.managerPlan;
+      set({
+        chatMessages: chat.length > 0 ? chat : cur.chatMessages,
+        managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
+        _nextSeq: maxSeq,
+        managerPlan: lastPlan,
+      });
+    }).catch(() => {});
+
     const fetchWithRetry = async (retries = 0): Promise<{ path: string; content: string }[] | null> => {
       const result = await fetchFilesFromServer(id);
       if ((!result || result.length === 0) && framework && framework !== "web" && retries < 3) {
@@ -1158,34 +1317,36 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   addChatMessage: (message) =>
     set((state) => {
       const seq = state._nextSeq;
+      const newMsg: ChatMessage = {
+        ...message,
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        seq,
+      };
       const next = {
         ...state,
         _nextSeq: seq + 1,
-        chatMessages: [
-          ...state.chatMessages,
-          {
-            ...message,
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            seq,
-          },
-        ],
+        chatMessages: [...state.chatMessages, newMsg],
       };
       debouncedPersist(next);
+      if (state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(newMsg, state.projectId));
       return next;
     }),
 
   updateLastAssistantMessage: (content) =>
     set((state) => {
       const msgs = [...state.chatMessages];
+      let updated: ChatMessage | null = null;
       for (let i = msgs.length - 1; i >= 0; i--) {
         if (msgs[i].role === "assistant") {
           msgs[i] = { ...msgs[i], content };
+          updated = msgs[i];
           break;
         }
       }
       const next = { ...state, chatMessages: msgs };
       debouncedPersist(next);
+      if (updated && state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(updated, state.projectId));
       return next;
     }),
 
@@ -1328,22 +1489,45 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   addManagerMessage: (message) =>
     set((state) => {
       const seq = state._nextSeq;
+      const newMsg: ManagerMessage = {
+        ...message,
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        seq,
+      };
       const next = {
         ...state,
         _nextSeq: seq + 1,
-        managerMessages: [
-          ...state.managerMessages,
-          {
-            ...message,
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            seq,
-          },
-        ],
+        managerMessages: [...state.managerMessages, newMsg],
       };
       debouncedPersist(next);
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(newMsg, state.projectId));
       return next;
     }),
+
+  loadOlderMessages: async (kind, limit = 50) => {
+    const state = get();
+    if (!state.projectId) return 0;
+    const arr = kind === "chat" ? state.chatMessages : state.managerMessages;
+    const earliestSeq = arr.length > 0 ? arr[0].seq : undefined;
+    const rows = await fetchMessagesFromServer(state.projectId, kind, earliestSeq, limit);
+    if (rows.length === 0) return 0;
+    const cur = get();
+    if (cur.projectId !== state.projectId) return 0;
+    if (kind === "chat") {
+      const newer = rows.map(dbRowToChatMessage);
+      const existingIds = new Set(cur.chatMessages.map((m) => m.id));
+      const dedup = newer.filter((m) => !existingIds.has(m.id));
+      set({ chatMessages: [...dedup, ...cur.chatMessages] });
+      return dedup.length;
+    } else {
+      const newer = rows.map(dbRowToManagerMessage);
+      const existingIds = new Set(cur.managerMessages.map((m) => m.id));
+      const dedup = newer.filter((m) => !existingIds.has(m.id));
+      set({ managerMessages: [...dedup, ...cur.managerMessages] });
+      return dedup.length;
+    }
+  },
 
   updateTaskStatus: (subTaskId, status) =>
     set((state) => ({
@@ -1403,7 +1587,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const target = msgs[index];
       if (!target || target.role !== "assistant") return state;
       msgs[index] = { ...target, thinking };
-      return { ...state, managerMessages: msgs };
+      const next = { ...state, managerMessages: msgs };
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[index], state.projectId));
+      return next;
     }),
 }));
 

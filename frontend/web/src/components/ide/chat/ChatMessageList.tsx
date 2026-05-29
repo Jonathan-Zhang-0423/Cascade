@@ -1,4 +1,6 @@
 import type { ChatMessage, ManagerMessage, HolisticReviewResult, ReviewPhase } from "@/stores/ide-store";
+import { useIDEStore } from "@/stores/ide-store";
+import { useEffect, useRef, useState } from "react";
 import type { ActionLogEntry } from "./chat-types";
 import { ActionLogCollapsed } from "./action-log";
 import {
@@ -84,8 +86,42 @@ export function ChatMessageList({
 
   const seenCheckpointIds = new Set<string>();
 
+  const loadOlderMessages = useIDEStore((s) => s.loadOlderMessages);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
+  const [hasMoreChat, setHasMoreChat] = useState(true);
+  const [hasMoreMgr, setHasMoreMgr] = useState(true);
+  const totalMsgs = chatMessages.length + managerMessages.length;
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    if (!hasMoreChat && !hasMoreMgr) return;
+    if (totalMsgs === 0) return;
+    const el = sentinelRef.current;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+      Promise.all([
+        hasMoreChat ? loadOlderMessages("chat", 50) : Promise.resolve(0),
+        hasMoreMgr ? loadOlderMessages("manager", 50) : Promise.resolve(0),
+      ]).then(([chatCount, mgrCount]) => {
+        if (chatCount === 0) setHasMoreChat(false);
+        if (mgrCount === 0) setHasMoreMgr(false);
+      }).finally(() => {
+        loadingRef.current = false;
+      });
+    }, { rootMargin: "200px 0px 0px 0px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreChat, hasMoreMgr, totalMsgs, loadOlderMessages]);
+
   return (
     <>
+      {(hasMoreChat || hasMoreMgr) && totalMsgs > 0 && (
+        <div ref={sentinelRef} aria-hidden className="h-1" data-testid="chat-load-more-sentinel" />
+      )}
       {merged.map((item) => {
         if (item.kind === "chat") {
           const { msg, idx } = item;
