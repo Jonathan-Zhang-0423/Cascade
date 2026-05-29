@@ -658,7 +658,7 @@ export function useManagerStream() {
                   return;
                 }
                 const statusData = await statusRes.json();
-                if (!statusData.active && !statusData.done) {
+                if (statusData.done || !statusData.active) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
@@ -923,7 +923,7 @@ export function useManagerStream() {
                   `/api/manager-chat/${retrySessionId}/status`,
                 );
                 const statusData = statusRes.ok ? await statusRes.json() : null;
-                if (!statusData || (!statusData.active && !statusData.done)) {
+                if (!statusData || statusData.done || !statusData.active) {
                   useIDEStore.getState().setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
@@ -1196,6 +1196,37 @@ export function useManagerStream() {
       cancelled = true;
     };
   }, [projectId, connectToMgrStream, setManagerResponding]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const sessionId = mgrSessionIdRef.current;
+      if (!sessionId) return;
+      if (isMgrReconnecting) return;
+      fetch(`/api/manager-chat/${sessionId}/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (mgrSessionIdRef.current !== sessionId) return;
+          const localLast = mgrLastEventIdRef.current;
+          const serverCount = typeof data.eventCount === "number" ? data.eventCount : 0;
+          const behind = serverCount > localLast + 1;
+          const serverFinished = !!data.done;
+          if (data.active && !behind) return;
+          if (!data.active && !serverFinished) return;
+          connectToMgrStreamRef
+            .current?.(sessionId, localLast)
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [isMgrReconnecting]);
 
   return {
     handleManagerSend,

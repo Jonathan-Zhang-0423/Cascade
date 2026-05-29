@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
 import { minimaxClient, MINIMAX_MODEL } from "./minimax-client";
 import { glmClient, GLM_MODEL } from "./glm-client";
+import { deepseekClient, DEEPSEEK_PRO_MODEL, DEEPSEEK_FLASH_MODEL } from "./deepseek-client";
 
 export const kimiClient = new OpenAI({
   baseURL: "https://api.moonshot.ai/v1",
@@ -10,17 +11,17 @@ export const kimiClient = new OpenAI({
 
 export const KIMI_MODEL = "kimi-k2.5";
 
-export type AIProvider = "doubao" | "kimi" | "minimax" | "glm";
+export type AIProvider = "doubao" | "kimi" | "minimax" | "glm" | "deepseek-pro" | "deepseek-flash";
 
 export type AgentRole = "manager" | "editor" | "verifier" | "fixer";
 
 export type BuildPhase = "planning" | "editing" | "verifying" | "fixing";
 
 const SYSTEM_FALLBACK_DEFAULTS: Record<AgentRole, AIProvider[]> = {
-  manager:   ["kimi", "doubao", "glm"],
-  editor:    ["doubao", "kimi", "minimax"],
-  verifier:  ["minimax", "doubao", "kimi"],
-  fixer:     ["doubao", "kimi", "minimax"],
+  manager:   ["kimi", "deepseek-pro", "doubao", "glm"],
+  editor:    ["doubao", "kimi", "deepseek-flash", "minimax"],
+  verifier:  ["minimax", "doubao", "deepseek-flash", "kimi"],
+  fixer:     ["doubao", "kimi", "deepseek-flash", "minimax"],
 };
 
 export function buildFallbackChain(role: AgentRole, userProvider: AIProvider): AIProvider[] {
@@ -75,15 +76,29 @@ export function getAIClient(provider: AIProvider): { client: OpenAI; model: stri
     }
     return { client: glmClient, model: GLM_MODEL };
   }
+  if (provider === "deepseek-pro") {
+    if (!process.env.DEEPSEEK_API_KEY) {
+      console.warn("[getAIClient] DEEPSEEK_API_KEY not set, falling back to Doubao");
+      return { client: doubaoClient, model: DOUBAO_MODEL };
+    }
+    return { client: deepseekClient, model: DEEPSEEK_PRO_MODEL };
+  }
+  if (provider === "deepseek-flash") {
+    if (!process.env.DEEPSEEK_API_KEY) {
+      console.warn("[getAIClient] DEEPSEEK_API_KEY not set, falling back to Doubao");
+      return { client: doubaoClient, model: DOUBAO_MODEL };
+    }
+    return { client: deepseekClient, model: DEEPSEEK_FLASH_MODEL };
+  }
   return { client: doubaoClient, model: DOUBAO_MODEL };
 }
 
 // Phase-to-provider preference order — used by getOptimalClient
 const PHASE_PROVIDER_PREFERENCE: Record<BuildPhase, AIProvider[]> = {
-  planning:  ["kimi", "glm", "doubao"],
-  editing:   ["doubao", "kimi", "minimax"],
-  verifying: ["minimax", "doubao", "kimi"],
-  fixing:    ["doubao", "kimi", "minimax"],
+  planning:  ["deepseek-pro", "kimi", "glm", "doubao"],
+  editing:   ["doubao", "kimi", "deepseek-flash", "minimax"],
+  verifying: ["minimax", "doubao", "deepseek-flash", "kimi"],
+  fixing:    ["doubao", "kimi", "deepseek-flash", "minimax"],
 };
 
 /**
@@ -98,9 +113,10 @@ export function getOptimalClient(
 ): { client: OpenAI; model: string } {
   // Check which providers are actually configured
   const configured = new Set<AIProvider>(["doubao"]); // doubao is always the fallback
-  if (process.env.KIMI_API_KEY)    configured.add("kimi");
-  if (process.env.MINIMAX_API_KEY) configured.add("minimax");
-  if (process.env.GLM_API_KEY)     configured.add("glm");
+  if (process.env.KIMI_API_KEY)     configured.add("kimi");
+  if (process.env.MINIMAX_API_KEY)  configured.add("minimax");
+  if (process.env.GLM_API_KEY)      configured.add("glm");
+  if (process.env.DEEPSEEK_API_KEY) { configured.add("deepseek-pro"); configured.add("deepseek-flash"); }
 
   // User's choice first
   if (configured.has(userPreferredProvider)) {

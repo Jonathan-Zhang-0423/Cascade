@@ -80,6 +80,8 @@ export interface BuildSessionState {
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
   /** "plan": full pipeline (builder + verifier + fix cycle). "direct": single-shot, no review. */
   mode?: "plan" | "direct";
+  /** When true, run verifier + fix cycle after build. Independent of `mode`. */
+  reviewEnabled?: boolean;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -344,7 +346,13 @@ async function runBuilderParallelWaves(
   }
 }
 
-export async function runBuildSession(session: BuildSessionState, emit: SseEmit): Promise<void> {
+export async function runBuildSession(session: BuildSessionState, rawEmit: SseEmit): Promise<void> {
+  const emit: SseEmit = session.reviewEnabled
+    ? rawEmit
+    : (data) => {
+        if (data && (data as { type?: string }).type === "reviewing") return;
+        rawEmit(data);
+      };
   const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
@@ -496,9 +504,9 @@ export async function runBuildSession(session: BuildSessionState, emit: SseEmit)
   let passed = false;
   let currentPlanSteps = normalizedSteps;
 
-  if (session.mode === "direct") {
-    // Direct mode: builder ran once, no verifier, no fix cycle.
+  if (!session.reviewEnabled) {
     passed = true;
+    rawEmit({ type: "review_skipped" });
   }
 
   while (currentCycle < MAX_FIX_CYCLES && !passed && !session.aborted) {

@@ -149,6 +149,11 @@ export function ReviewStatusBadge({
         : t(lang, "reviewPassed"),
       color: "text-[#34d68a]",
     },
+    review_skipped: {
+      icon: <ShieldCheck className="w-2.5 h-2.5" />,
+      text: t(lang, "reviewSkipped"),
+      color: "text-[rgba(238,238,246,0.4)]",
+    },
     review_failed: {
       icon: <AlertTriangle className="w-2.5 h-2.5" />,
       text: review

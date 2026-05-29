@@ -36,6 +36,8 @@ export function ChatPanel() {
     projectId,
     chatMode,
     setChatMode,
+    reviewEnabled,
+    setReviewEnabled,
     managerPlan,
     managerMessages,
     taskStatuses,
@@ -90,7 +92,9 @@ export function ChatPanel() {
     kimi: boolean;
     minimax: boolean;
     glm: boolean;
-  }>({ doubao: true, kimi: false, minimax: false, glm: false });
+    "deepseek-pro": boolean;
+    "deepseek-flash": boolean;
+  }>({ doubao: true, kimi: false, minimax: false, glm: false, "deepseek-pro": false, "deepseek-flash": false });
 
   const handleSmartResponse = useSmartResponse(
     chatMode,
@@ -109,12 +113,16 @@ export function ChatPanel() {
           kimi?: boolean;
           minimax?: boolean;
           glm?: boolean;
+          "deepseek-pro"?: boolean;
+          "deepseek-flash"?: boolean;
         }) => {
           const loaded = {
             doubao: !!data.doubao,
             kimi: !!data.kimi,
             minimax: !!data.minimax,
             glm: !!data.glm,
+            "deepseek-pro": !!data["deepseek-pro"],
+            "deepseek-flash": !!data["deepseek-flash"],
           };
           setProviders(loaded);
           const current = useIDEStore.getState().selectedProvider;
@@ -122,6 +130,8 @@ export function ChatPanel() {
           if (current === "kimi" && !loaded.kimi) setSelectedProvider("doubao");
           if (current === "minimax" && !loaded.minimax) setSelectedProvider("doubao");
           if (current === "glm" && !loaded.glm) setSelectedProvider("doubao");
+          if (current === "deepseek-pro" && !loaded["deepseek-pro"]) setSelectedProvider("doubao");
+          if (current === "deepseek-flash" && !loaded["deepseek-flash"]) setSelectedProvider("doubao");
         },
       )
       .catch(() => {});
@@ -161,17 +171,18 @@ export function ChatPanel() {
   const handleContinueExecution = useCallback(
     (userInput?: string) => {
       const plan = useIDEStore.getState().managerPlan;
-      if (!plan) return;
       const inputText = userInput || useIDEStore.getState().userConfirmationInput || "";
       if (inputText.trim()) {
         addChatMessage({ role: "user", content: inputText.trim() });
       }
       setPendingConfirmation(null);
       setUserConfirmationInput("");
-      for (const s of normalizeSteps(plan)) {
-        const key = String(s.step);
-        if (useIDEStore.getState().taskStatuses[key] === "needs-input") {
-          useIDEStore.getState().updateTaskStatus(key, "pending");
+      if (plan) {
+        for (const s of normalizeSteps(plan)) {
+          const key = String(s.step);
+          if (useIDEStore.getState().taskStatuses[key] === "needs-input") {
+            useIDEStore.getState().updateTaskStatus(key, "pending");
+          }
         }
       }
       // POST input to the running session — do NOT restart the build
@@ -297,6 +308,10 @@ export function ChatPanel() {
     setChatMode(chatMode === "manager" ? "build" : "manager");
   }, [chatMode, setChatMode]);
 
+  const handleToggleReview = useCallback(() => {
+    setReviewEnabled(!reviewEnabled);
+  }, [reviewEnabled, setReviewEnabled]);
+
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
@@ -363,6 +378,7 @@ export function ChatPanel() {
         onStop={handleStop}
         onSmartResponse={handleSmartResponse}
         onToggleMode={handleToggleMode}
+        onToggleReview={handleToggleReview}
       />
     </div>
   );

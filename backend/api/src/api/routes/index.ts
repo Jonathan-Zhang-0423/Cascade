@@ -516,6 +516,8 @@ export async function registerRoutes(
       kimi: !!process.env.KIMI_API_KEY,
       minimax: !!process.env.MINIMAX_API_KEY,
       glm: !!process.env.GLM_API_KEY,
+      "deepseek-pro": !!process.env.DEEPSEEK_API_KEY,
+      "deepseek-flash": !!process.env.DEEPSEEK_API_KEY,
     });
   });
 
@@ -528,7 +530,7 @@ export async function registerRoutes(
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
         provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage,
+        mode: reqMode, userMessage, reviewEnabled,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -543,6 +545,7 @@ export async function registerRoutes(
         userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
+        reviewEnabled?: boolean;
       };
 
       const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
@@ -615,6 +618,7 @@ export async function registerRoutes(
         provider: provider || "glm",
         framework: resolvedFramework,
         mode: resolvedMode,
+        reviewEnabled: !!reviewEnabled,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,

@@ -526,7 +526,7 @@ const CONFIRM_TYPE_MAP: Record<ConfirmType, React.InputHTMLAttributes<HTMLInputE
   send: "send", search: "search", next: "next", go: "go", done: "done",
 };
 
-export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, cursor, selectionStart, selectionEnd, bindinput, bindchange, bindfocus, bindblur, bindconfirm }: InputProps) {
+export function Input({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, type = "text", password, disabled, maxlength, confirmType, autoFocus, focus, cursor, selectionStart, selectionEnd, bindinput, bindchange, bindfocus, bindblur, bindconfirm, bindtap, catchtap }: InputProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
 
@@ -555,6 +555,7 @@ export function Input({ id, className, style, value, placeholder, placeholderSty
         maxLength={maxlength}
         autoFocus={autoFocus || focus}
         enterKeyHint={confirmType ? CONFIRM_TYPE_MAP[confirmType] : undefined}
+        onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
         ref={(el) => {
           if (!el) return;
           if (selectionStart != null) {
@@ -607,7 +608,7 @@ interface TextareaProps extends WxBaseProps {
   bindlinechange?: (e: unknown) => void;
 }
 
-export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, disableDefaultPadding, bindinput, bindchange, bindfocus, bindblur, bindlinechange }: TextareaProps) {
+export function Textarea({ id, className, style, value, placeholder, placeholderStyle, placeholderClass, disabled, maxlength, autoFocus, focus, autoHeight, cursor, disableDefaultPadding, bindinput, bindchange, bindfocus, bindblur, bindlinechange, bindtap, catchtap }: TextareaProps) {
   const [localVal, setLocalVal] = useState(value ?? "");
   const [lineCount, setLineCount] = useState(1);
   useEffect(() => { setLocalVal(value ?? ""); }, [value]);
@@ -640,6 +641,7 @@ export function Textarea({ id, className, style, value, placeholder, placeholder
         id={styleId ?? id}
         className={className}
         style={{ display: "block", width: "100%", padding: disableDefaultPadding ? "0" : "8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "14px", background: "#fff", resize: "none", overflow: autoHeight ? "hidden" : "auto", ...style }}
+        onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
         value={localVal}
         placeholder={placeholder}
         disabled={disabled}
@@ -843,7 +845,7 @@ const SWIPER_EASING: Record<string, string> = {
   easeInOutCubic: "cubic-bezier(0.645, 0.045, 0.355, 1)",
 };
 
-export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, easingFunction = "default", snapToEdge, bindchange }: SwiperProps) {
+export function Swiper({ id, className, style, children, indicatorDots, indicatorColor = "rgba(0,0,0,.3)", indicatorActiveColor = "#000", autoplay, interval = 3000, duration = 500, current = 0, circular, vertical, previousMargin = "0px", nextMargin = "0px", displayMultipleItems = 1, easingFunction = "default", snapToEdge, bindchange, bindtap, catchtap }: SwiperProps) {
   const [idx, setIdx] = useState(current);
   const items = React.Children.toArray(children);
   const count = items.length;
@@ -869,7 +871,7 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
   const axis = vertical ? "Y" : "X";
 
   return (
-    <div id={id} className={className} style={{ position: "relative", overflow: "hidden", scrollSnapType: snapToEdge ? (vertical ? "y mandatory" : "x mandatory") : undefined, ...style }}>
+    <div id={id} className={className} style={{ position: "relative", overflow: "hidden", scrollSnapType: snapToEdge ? (vertical ? "y mandatory" : "x mandatory") : undefined, ...style }} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>
       <div style={{
         display: "flex",
         flexDirection: vertical ? "column" : "row",
@@ -906,8 +908,8 @@ export function Swiper({ id, className, style, children, indicatorDots, indicato
   );
 }
 
-export function SwiperItem({ children, style }: WxBaseProps) {
-  return <div style={{ width: "100%", height: "100%", ...style }}>{children}</div>;
+export function SwiperItem({ id, className, children, style, bindtap, catchtap }: WxBaseProps) {
+  return <div id={id} className={className} style={{ width: "100%", height: "100%", ...style }} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>{children}</div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -990,7 +992,7 @@ interface FormProps extends WxBaseProps {
   reportSubmit?: boolean;
 }
 
-export function Form({ id, className, style, children, bindsubmit, bindreset }: FormProps) {
+export function Form({ id, className, style, children, bindsubmit, bindreset, bindtap, catchtap }: FormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
@@ -998,6 +1000,7 @@ export function Form({ id, className, style, children, bindsubmit, bindreset }: 
       id={id}
       className={className}
       style={style}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onSubmit={(e) => {
         e.preventDefault();
         if (!bindsubmit) return;
@@ -1064,7 +1067,7 @@ interface CheckboxProps extends WxBaseProps {
   bindchange?: (e: unknown) => void;
 }
 
-export function Checkbox({ id, className, style, value, name, checked, disabled, bindchange }: CheckboxProps) {
+export function Checkbox({ id, className, style, value, name, checked, disabled, bindchange, bindtap, catchtap }: CheckboxProps) {
   const [localChecked, setLocalChecked] = useState(checked ?? false);
   useEffect(() => { setLocalChecked(checked ?? false); }, [checked]);
   return (
@@ -1077,6 +1080,7 @@ export function Checkbox({ id, className, style, value, name, checked, disabled,
       value={value}
       checked={localChecked}
       disabled={disabled}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onChange={(e) => {
         setLocalChecked(e.target.checked);
         bindchange?.(makeWxEvent("change", { value: e.target.checked ? [value] : [] }, e.currentTarget));
@@ -1089,7 +1093,7 @@ interface CheckboxGroupProps extends WxBaseProps {
   bindchange?: (e: unknown) => void;
 }
 
-export function CheckboxGroup({ id, className, style, children, bindchange }: CheckboxGroupProps) {
+export function CheckboxGroup({ id, className, style, children, bindchange, bindtap, catchtap }: CheckboxGroupProps) {
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!bindchange) return;
     // Collect all checked checkboxes within this group.
@@ -1102,7 +1106,7 @@ export function CheckboxGroup({ id, className, style, children, bindchange }: Ch
   }, [bindchange, id]);
 
   return (
-    <div id={id} className={className} style={style} data-wx-checkboxgroup="1" onChange={handleChange as unknown as React.ChangeEventHandler<HTMLDivElement>}>
+    <div id={id} className={className} style={style} data-wx-checkboxgroup="1" onChange={handleChange as unknown as React.ChangeEventHandler<HTMLDivElement>} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>
       {children}
     </div>
   );
@@ -1116,7 +1120,7 @@ interface RadioProps extends WxBaseProps {
   bindchange?: (e: unknown) => void;
 }
 
-export function Radio({ id, className, style, value, name, checked, disabled, bindchange }: RadioProps) {
+export function Radio({ id, className, style, value, name, checked, disabled, bindchange, bindtap, catchtap }: RadioProps) {
   return (
     <input
       id={id}
@@ -1127,6 +1131,7 @@ export function Radio({ id, className, style, value, name, checked, disabled, bi
       value={value}
       defaultChecked={checked}
       disabled={disabled}
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onChange={(e) => {
         // Only fire bindchange if this Radio is standalone (not inside a RadioGroup).
         const inGroup = !!e.currentTarget.closest("[data-wx-radiogroup]");
@@ -1136,13 +1141,14 @@ export function Radio({ id, className, style, value, name, checked, disabled, bi
   );
 }
 
-export function RadioGroup({ id, className, style, children, bindchange }: WxBaseProps & { bindchange?: (e: unknown) => void }) {
+export function RadioGroup({ id, className, style, children, bindchange, bindtap, catchtap }: WxBaseProps & { bindchange?: (e: unknown) => void }) {
   return (
     <div
       id={id}
       className={className}
       style={style}
       data-wx-radiogroup="1"
+      onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}
       onChange={(e) => {
         const target = e.target as HTMLInputElement;
         if (target.type === "radio" && target.checked) {
@@ -1161,7 +1167,7 @@ interface SwitchProps extends WxBaseProps {
   bindchange?: (e: unknown) => void;
 }
 
-export function Switch({ id, className, style, checked, disabled, bindchange }: SwitchProps) {
+export function Switch({ id, className, style, checked, disabled, bindchange, bindtap, catchtap }: SwitchProps) {
   const [on, setOn] = useState(checked ?? false);
   useEffect(() => { setOn(checked ?? false); }, [checked]);
   return (
@@ -1180,10 +1186,12 @@ export function Switch({ id, className, style, checked, disabled, bindchange }: 
       }}
       role="switch"
       aria-checked={on}
-      onClick={disabled ? undefined : () => {
+      onClick={disabled ? undefined : (e) => {
+        if (catchtap) e.stopPropagation();
         const next = !on;
         setOn(next);
         bindchange?.(makeWxEvent("change", { value: next }, null));
+        (bindtap ?? catchtap)?.(makeWxEvent("tap", { x: e.clientX, y: e.clientY }, e.currentTarget));
       }}
     >
       <div style={{
@@ -1212,12 +1220,12 @@ interface SliderProps extends WxBaseProps {
   bindchanging?: (e: unknown) => void;
 }
 
-export function Slider({ id, className, style, value = 0, min = 0, max = 100, step = 1, disabled, showValue, activeColor = "#1aad19", backgroundColor = "#e9e9e9", blockColor = "#fff", blockSize = 28, bindchange, bindchanging }: SliderProps) {
+export function Slider({ id, className, style, value = 0, min = 0, max = 100, step = 1, disabled, showValue, activeColor = "#1aad19", backgroundColor = "#e9e9e9", blockColor = "#fff", blockSize = 28, bindchange, bindchanging, bindtap, catchtap }: SliderProps) {
   const [val, setVal] = useState(value);
   useEffect(() => { setVal(value); }, [value]);
   const pct = ((val - min) / (max - min)) * 100;
   return (
-    <div id={id} className={className} style={{ display: "flex", alignItems: "center", gap: 8, ...style }}>
+    <div id={id} className={className} style={{ display: "flex", alignItems: "center", gap: 8, ...style }} onClick={tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap)}>
       <div style={{ flex: 1, position: "relative", height: blockSize, display: "flex", alignItems: "center" }}>
         {/* Track background */}
         <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: backgroundColor }} />
@@ -1269,12 +1277,13 @@ interface PickerProps extends WxBaseProps {
   bindcancel?: (e: unknown) => void;
 }
 
-export function Picker({ id, className, style, children, range = [], value = 0, mode = "selector", start, end, fields, disabled, bindchange, bindcolumnchange, bindcancel }: PickerProps) {
+export function Picker({ id, className, style, children, range = [], value = 0, mode = "selector", start, end, fields, disabled, bindchange, bindcolumnchange, bindcancel, bindtap, catchtap }: PickerProps) {
+  const tap = tapHandler(bindtap ?? catchtap, !bindtap && !!catchtap);
   // date / time — use native HTML inputs.
   if (mode === "date") {
     const dateType = fields === "year" ? "number" : fields === "month" ? "month" : "date";
     return (
-      <div id={id} className={className} style={{ display: "inline-block", ...style }}>
+      <div id={id} className={className} style={{ display: "inline-block", ...style }} onClick={tap}>
         <input
           type={dateType === "number" ? "number" : dateType}
           min={start}
@@ -1290,7 +1299,7 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
   }
   if (mode === "time") {
     return (
-      <div id={id} className={className} style={{ display: "inline-block", ...style }}>
+      <div id={id} className={className} style={{ display: "inline-block", ...style }} onClick={tap}>
         <input
           type="time"
           min={start}
@@ -1309,7 +1318,7 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
     const cols = Array.isArray(range) && Array.isArray(range[0]) ? range as Array<string[] | number[]> : [range as string[] | number[]];
     const vals = Array.isArray(value) ? value as number[] : cols.map(() => 0);
     return (
-      <div id={id} className={className} style={{ display: "flex", gap: 4, alignItems: "center", ...style }}>
+      <div id={id} className={className} style={{ display: "flex", gap: 4, alignItems: "center", ...style }} onClick={tap}>
         {cols.map((col, ci) => (
           <select
             key={ci}
@@ -1336,7 +1345,7 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
   // In preview we show a simple text input since we don't have the full region dataset.
   if (mode === "region") {
     return (
-      <div id={id} className={className} style={{ display: "inline-flex", alignItems: "center", gap: 4, ...style }}>
+      <div id={id} className={className} style={{ display: "inline-flex", alignItems: "center", gap: 4, ...style }} onClick={tap}>
         <input
           type="text"
           placeholder="省/市/区"
@@ -1351,7 +1360,7 @@ export function Picker({ id, className, style, children, range = [], value = 0, 
   }
   // selector (default) — single <select>.
   return (
-    <div id={id} className={className} style={{ display: "inline-block", ...style }}>
+    <div id={id} className={className} style={{ display: "inline-block", ...style }} onClick={tap}>
       <select
         value={value as number}
         disabled={disabled}

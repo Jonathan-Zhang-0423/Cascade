@@ -129,6 +129,10 @@ const zh: Dict = {
   "chat.switchToBuild": "切换到构建模式",
   "chat.switchToPlan": "切换到规划模式",
   "chat.planMode": "规划",
+  "chat.toggleReviewOn": "开启构建后审查",
+  "chat.toggleReviewOff": "关闭构建后审查",
+  "chat.reviewMode": "审查",
+  "chat.reviewNeedsInput": "审查发现了上述问题。请回复确认或描述要改的内容（直接发送可批准当前修复方案）。",
   "chat.smartResponse": "智能回复 — 让 AI 建议回复内容",
   "chat.placeholderResponse": "输入回复以继续...",
   "chat.placeholderManager": "提问、头脑风暴，或描述你想构建的内容...",
@@ -241,6 +245,8 @@ const zh: Dict = {
 
   "error.chatPanel": "聊天面板出现错误。",
   "error.retry": "重试",
+  "error.appCrash": "页面渲染出错了，刷新一下应该就好。",
+  "error.appCrashReload": "刷新页面",
 
   "preview.scanPhone": "扫码在手机上预览",
   "preview.hideTerminal": "隐藏终端",
@@ -455,6 +461,10 @@ const en: Dict = {
   "chat.switchToBuild": "Switch to Build mode",
   "chat.switchToPlan": "Switch to Plan mode",
   "chat.planMode": "Plan",
+  "chat.toggleReviewOn": "Enable post-build review",
+  "chat.toggleReviewOff": "Disable post-build review",
+  "chat.reviewMode": "Review",
+  "chat.reviewNeedsInput": "Review found the issues above. Reply to approve or describe what to fix (sending an empty message approves).",
   "chat.smartResponse": "Smart Response — let AI suggest a reply",
   "chat.placeholderResponse": "Type your response to continue...",
   "chat.placeholderManager": "Ask questions, brainstorm, or describe what to build...",
@@ -567,6 +577,8 @@ const en: Dict = {
 
   "error.chatPanel": "Something went wrong in the chat panel.",
   "error.retry": "Retry",
+  "error.appCrash": "The page hit a rendering error. Reloading should fix it.",
+  "error.appCrashReload": "Reload page",
 
   "preview.scanPhone": "Scan to preview on phone",
   "preview.hideTerminal": "Hide terminal",
