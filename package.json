@@ -6,6 +6,8 @@
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx backend/api/src/infra/index.ts",
+    "dev:setup": "node scripts/dev.mjs --setup-only",
+    "dev:start": "node scripts/dev.mjs",
     "build": "tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
