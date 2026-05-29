@@ -1,7 +1,19 @@
-import { eq, and } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, users, projects, projectFiles } from "@cascade/database";
+import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, users, projects, projectFiles, chatMessages } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
+
+export interface ChatMessageInput {
+  clientId: string;
+  kind: "chat" | "manager";
+  role: string;
+  content: string;
+  thinking?: string | null;
+  source?: string | null;
+  seq: number;
+  timestamp: number;
+  metadata?: string | null;
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -29,6 +41,10 @@ export interface IStorage {
   upsertProjectFile(projectId: string, path: string, content: string): Promise<void>;
   upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void>;
   deleteProjectFile(projectId: string, path: string): Promise<void>;
+
+  listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number }): Promise<ChatMessageRow[]>;
+  upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void>;
+  deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -182,6 +198,55 @@ export class DatabaseStorage implements IStorage {
   async deleteProjectFile(projectId: string, path: string): Promise<void> {
     await db.delete(projectFiles)
       .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+  }
+
+  async listChatMessages(
+    projectId: string,
+    opts: { kind?: "chat" | "manager"; before?: number; limit?: number } = {},
+  ): Promise<ChatMessageRow[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    const conditions = [eq(chatMessages.projectId, projectId)];
+    if (opts.kind) conditions.push(eq(chatMessages.kind, opts.kind));
+    if (typeof opts.before === "number") conditions.push(lt(chatMessages.seq, opts.before));
+    const rows = await db.select().from(chatMessages)
+      .where(and(...conditions))
+      .orderBy(desc(chatMessages.seq))
+      .limit(limit);
+    // Return in ascending order so the client can append directly.
+    return rows.reverse();
+  }
+
+  async upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void> {
+    if (msgs.length === 0) return;
+    const rows: InsertChatMessage[] = msgs.map((m) => ({
+      projectId,
+      clientId: m.clientId,
+      kind: m.kind,
+      role: m.role,
+      content: m.content,
+      thinking: m.thinking ?? null,
+      source: m.source ?? null,
+      seq: m.seq,
+      timestamp: m.timestamp,
+      metadata: m.metadata ?? null,
+    }));
+    // ON CONFLICT on (project_id, client_id) → update mutable fields.
+    await db.insert(chatMessages).values(rows).onConflictDoUpdate({
+      target: [chatMessages.projectId, chatMessages.clientId],
+      set: {
+        content: sql`excluded.content`,
+        thinking: sql`excluded.thinking`,
+        source: sql`excluded.source`,
+        seq: sql`excluded.seq`,
+        timestamp: sql`excluded.timestamp`,
+        metadata: sql`excluded.metadata`,
+      },
+    });
+  }
+
+  async deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void> {
+    await db.delete(chatMessages)
+      .where(and(eq(chatMessages.projectId, projectId), gt(chatMessages.seq, afterSeq)));
   }
 }
 
