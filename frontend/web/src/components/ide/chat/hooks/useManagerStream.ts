@@ -237,6 +237,12 @@ export function useManagerStream() {
         });
       };
 
+      // Captured per-call so finally / catch can both check whether
+      // we're still the current generation. Declared outside the try
+      // so the catch block has access.
+      const myGen = ++mgrStreamGenerationRef.current;
+      let mgrDoneSeen = false;
+
       try {
         const allFiles = flattenFiles(useIDEStore.getState().files);
         const fileContext = allFiles
@@ -454,6 +460,7 @@ export function useManagerStream() {
                 } catch {}
               }
             } else if (evType === "manager_done") {
+              mgrDoneSeen = true;
               useIDEStore.getState().setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
@@ -656,11 +663,22 @@ export function useManagerStream() {
           if (nameFromMarker && projectId)
             renameProject(projectId, nameFromMarker);
         }
+
+        // Stream ended without an explicit manager_done — silent
+        // disconnect. Throw so the catch path schedules a retry.
+        if (
+          !mgrDoneSeen &&
+          myGen === mgrStreamGenerationRef.current &&
+          mgrSessionIdRef.current
+        ) {
+          throw new Error("mgr_stream_closed_before_done");
+        }
         return true;
       } catch (error: unknown) {
         let mgrReconnectScheduled = false;
         const isAbort = error instanceof DOMException && error.name === "AbortError";
-        if (!isAbort && mgrSessionIdRef.current) {
+        const stillCurrent = myGen === mgrStreamGenerationRef.current;
+        if (!isAbort && stillCurrent && mgrSessionIdRef.current) {
           const maxRetries = 8;
           if (mgrReconnectRetryRef.current < maxRetries) {
             mgrReconnectRetryRef.current++;
@@ -735,7 +753,9 @@ export function useManagerStream() {
         if (abortRef.current === controller) abortRef.current = null;
         // Clean up any stale typing bubbles (e.g. from reconnect path)
         removeTypingBubble();
+        const isCurrentGen = myGen === mgrStreamGenerationRef.current;
         if (
+          isCurrentGen &&
           !mgrSessionIdRef.current &&
           useIDEStore.getState().projectId === projectId
         ) {
@@ -764,6 +784,8 @@ export function useManagerStream() {
   const connectToMgrStream = useCallback(
     async (sessionId: string, lastEventId: number) => {
       mgrSessionIdRef.current = sessionId;
+      const myGen = ++mgrStreamGenerationRef.current;
+      let mgrDoneSeen = false;
 
       try {
         const response = await fetch(
@@ -894,6 +916,7 @@ export function useManagerStream() {
                 }
               }
             } else if (evType === "manager_done") {
+              mgrDoneSeen = true;
               if (!planEmittedInReconnect && isCurrentProject && managerAccumulated2.trim()) {
                 const stripped = stripProjectNameMarker(managerAccumulated2).trim();
                 if (stripped) {
@@ -940,9 +963,22 @@ export function useManagerStream() {
             }
           },
         });
+
+        // Reader returned `{done: true}` without an explicit `manager_done`:
+        // socket killed mid-thinking. Throw so catch can schedule a
+        // retry; otherwise finally would clear the session and the UI
+        // would look "complete" while the manager agent is still working.
+        if (
+          !mgrDoneSeen &&
+          myGen === mgrStreamGenerationRef.current &&
+          mgrSessionIdRef.current === sessionId
+        ) {
+          throw new Error("mgr_stream_closed_before_done");
+        }
       } catch (err: unknown) {
         const isAbort = err instanceof DOMException && err.name === "AbortError";
-        if (!isAbort && mgrSessionIdRef.current) {
+        const stillCurrent = myGen === mgrStreamGenerationRef.current;
+        if (!isAbort && stillCurrent && mgrSessionIdRef.current) {
           const maxRetries = 8;
           if (mgrReconnectRetryRef.current < maxRetries) {
             mgrReconnectRetryRef.current++;
@@ -998,7 +1034,12 @@ export function useManagerStream() {
           }
         }
       } finally {
-        if (!mgrReconnectTimerRef.current && !isUnmountingRef.current) {
+        const isCurrentGen = myGen === mgrStreamGenerationRef.current;
+        if (
+          isCurrentGen &&
+          !mgrReconnectTimerRef.current &&
+          !isUnmountingRef.current
+        ) {
           useIDEStore.getState().setStreamingSnapshot(null);
           mgrSessionIdRef.current = null;
           if (projectId) {

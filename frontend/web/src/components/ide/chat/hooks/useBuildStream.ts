@@ -56,6 +56,14 @@ export function useBuildStream() {
   // dead socket — setTimeout-based watchdogs are unreliable in backgrounded
   // tabs because of browser timer throttling.
   const lastActivityTsRef = useRef<number>(0);
+  // Monotonic counter, bumped on every connectToBuildStream invocation. Each
+  // call captures its own generation; the finally-block cleanup only touches
+  // shared state (sessionId, buildPhase, localStorage) when the running call
+  // is still the current generation. Without this, a silently-disconnected
+  // old call's finally block runs *after* the visibility handler has already
+  // started a fresh connection, and wipes the new connection's state — the
+  // UI then looks "complete" while the server is still building.
+  const streamGenerationRef = useRef<number>(0);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -858,6 +866,12 @@ export function useBuildStream() {
     buildSessionIdRef.current = sessionId;
     lastReceivedEventIdRef.current = -1;
     reconnectRetryRef.current = 0;
+    // Capture our generation. The finally block at the end of this stack
+    // only touches shared refs/UI state if it's still the current
+    // generation — otherwise a silently-closed old socket's finally would
+    // wipe state that a freshly-started reconnect already populated.
+    const myGen = ++streamGenerationRef.current;
+    let allCompleteSeen = false;
     if (projectId) {
       try {
         localStorage.setItem(
@@ -974,6 +988,7 @@ export function useBuildStream() {
           const type = ev.type;
 
           if (type === "all_complete") {
+            allCompleteSeen = true;
             if (useIDEStore.getState().projectId === projectId) {
               createCheckpoint("Build complete", {
                 includeManagerThread: true,
@@ -1060,13 +1075,32 @@ export function useBuildStream() {
       });
 
       watchdog.clear();
+
+      // The reader returned `{done: true}` without us ever observing an
+      // `all_complete` event — the socket was closed mid-build (background
+      // throttling, proxy idle-kill, etc). Throw so the catch block
+      // schedules a retry instead of falling through to finally and
+      // wiping the session. Skip if our generation has already been
+      // superseded (e.g. the visibility handler started a fresh stack):
+      // the new stack is in charge, this one should just exit quietly.
+      if (
+        !allCompleteSeen &&
+        myGen === streamGenerationRef.current &&
+        buildSessionIdRef.current === sessionId
+      ) {
+        throw new Error("stream_closed_before_completion");
+      }
     } catch (err: unknown) {
       if (heartbeatWatchdogRef.current) {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
       }
       const isAbort = err instanceof DOMException && err.name === "AbortError";
-      if (!isAbort) {
+      // If a newer stack already took over, don't compete: just let
+      // finally exit (which will also skip cleanup since we're not the
+      // current generation).
+      const stillCurrent = myGen === streamGenerationRef.current;
+      if (!isAbort && stillCurrent) {
         const maxRetries = 10;
         if (
           reconnectRetryRef.current < maxRetries &&
@@ -1118,27 +1152,32 @@ export function useBuildStream() {
         clearTimeout(heartbeatWatchdogRef.current);
         heartbeatWatchdogRef.current = null;
       }
-      // Always clear reconnecting flag — stream has ended one way or another
-      isReconnectingRef.current = false;
-      setIsReconnecting(false);
-      // Refs, timers, and localStorage are unmount-safe. Clear them unconditionally
-      // so a stale buildSessionIdRef can't poison the next handleExecutePlan call.
-      buildSessionIdRef.current = null;
-      beforeBuildCheckpointCreatedRef.current = false;
-      buildCompleteCheckpointCreatedRef.current = false;
-      buildReaderRef.current = null;
-      if (projectId) {
-        try {
-          localStorage.removeItem(
-            `cascade-build-session-${projectId}`,
-          );
-        } catch {}
+      // Only run the global cleanup when we're still the current generation.
+      // A reconnect (visibility-driven or catch-scheduled) bumps the
+      // generation; if a silently-disconnected old stack reaches finally
+      // after that, it must NOT wipe the new stack's session/UI state.
+      const isCurrentGen = myGen === streamGenerationRef.current;
+      if (isCurrentGen) {
+        // Always clear reconnecting flag — stream has ended one way or another
+        isReconnectingRef.current = false;
+        setIsReconnecting(false);
+        buildSessionIdRef.current = null;
+        beforeBuildCheckpointCreatedRef.current = false;
+        buildCompleteCheckpointCreatedRef.current = false;
+        buildReaderRef.current = null;
+        if (projectId) {
+          try {
+            localStorage.removeItem(
+              `cascade-build-session-${projectId}`,
+            );
+          } catch {}
+        }
+        if (thinkingFadeTimerRef.current) {
+          clearTimeout(thinkingFadeTimerRef.current);
+          thinkingFadeTimerRef.current = null;
+        }
       }
-      if (thinkingFadeTimerRef.current) {
-        clearTimeout(thinkingFadeTimerRef.current);
-        thinkingFadeTimerRef.current = null;
-      }
-      if (!isUnmountingRef.current) {
+      if (isCurrentGen && !isUnmountingRef.current) {
         helpers.flushNarrationToStore();
         useIDEStore.getState().setStreamingSnapshot(null);
         setBuildPhase(null);
@@ -1222,6 +1261,9 @@ export function useBuildStream() {
 
       buildSessionIdRef.current = sessionId;
       let buildCompleted = false;
+      // See top-of-file comment on streamGenerationRef. Capture our own
+      // generation; finally only touches shared state if we're still it.
+      const myGen = ++streamGenerationRef.current;
 
       const buildSnapshot = useIDEStore.getState().streamingSnapshot;
 
@@ -1557,13 +1599,27 @@ export function useBuildStream() {
         });
 
         watchdog.clear();
+
+        // Reader returned `{done: true}` without an `all_complete` event:
+        // the socket was killed mid-build. Throw so catch schedules a
+        // retry; otherwise finally would unconditionally clean up and
+        // make the UI look "complete" while the server is still building.
+        // Skip if a fresh stack already took over.
+        if (
+          !buildCompleted &&
+          myGen === streamGenerationRef.current &&
+          buildSessionIdRef.current === sessionId
+        ) {
+          throw new Error("stream_closed_before_completion");
+        }
       } catch (err: unknown) {
         if (heartbeatWatchdogRef.current) {
           clearTimeout(heartbeatWatchdogRef.current);
           heartbeatWatchdogRef.current = null;
         }
         const isAbort = err instanceof DOMException && err.name === "AbortError";
-        if (!isAbort) {
+        const stillCurrent = myGen === streamGenerationRef.current;
+        if (!isAbort && stillCurrent) {
           const maxRetries = 10;
           if (
             reconnectRetryRef.current < maxRetries &&
@@ -1631,26 +1687,28 @@ export function useBuildStream() {
           clearTimeout(heartbeatWatchdogRef.current);
           heartbeatWatchdogRef.current = null;
         }
-        // Always clear reconnecting flag — stream has ended one way or another
-        isReconnectingRef.current = false;
-        setIsReconnecting(false);
-        // Refs, timers, and localStorage are unmount-safe. Clear them
-        // unconditionally so a stale buildSessionIdRef can't poison the next
-        // handleExecutePlan call.
-        buildSessionIdRef.current = null;
-        buildReaderRef.current = null;
-        if (projectId) {
-          try {
-            localStorage.removeItem(
-              `cascade-build-session-${projectId}`,
-            );
-          } catch {}
+        // See the matching guard in the initial-connect path. A
+        // silently-disconnected old stack must not wipe state belonging
+        // to whichever stack is now actually streaming.
+        const isCurrentGen = myGen === streamGenerationRef.current;
+        if (isCurrentGen) {
+          isReconnectingRef.current = false;
+          setIsReconnecting(false);
+          buildSessionIdRef.current = null;
+          buildReaderRef.current = null;
+          if (projectId) {
+            try {
+              localStorage.removeItem(
+                `cascade-build-session-${projectId}`,
+              );
+            } catch {}
+          }
+          if (thinkingFadeTimerRef.current) {
+            clearTimeout(thinkingFadeTimerRef.current);
+            thinkingFadeTimerRef.current = null;
+          }
         }
-        if (thinkingFadeTimerRef.current) {
-          clearTimeout(thinkingFadeTimerRef.current);
-          thinkingFadeTimerRef.current = null;
-        }
-        if (!isUnmountingRef.current) {
+        if (isCurrentGen && !isUnmountingRef.current) {
           helpers.flushNarrationToStore();
           useIDEStore.getState().setStreamingSnapshot(null);
           setBuildPhase(null);
