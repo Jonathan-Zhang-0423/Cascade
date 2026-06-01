@@ -51,6 +51,11 @@ export function useBuildStream() {
   const isReconnectingRef = useRef(false);
   const isUnmountingRef = useRef(false);
   const heartbeatWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Wall-clock timestamp of the last byte received on the current SSE reader
+  // (event or heartbeat). Used by the visibility handler to detect a silently
+  // dead socket — setTimeout-based watchdogs are unreliable in backgrounded
+  // tabs because of browser timer throttling.
+  const lastActivityTsRef = useRef<number>(0);
   const actionLogRef = useRef<ActionLogEntry[]>([]);
   const thinkingFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -754,7 +759,28 @@ export function useBuildStream() {
     const isDirect = !!directOpts && typeof (directOpts as any).userMessage === "string";
     const existingPlan = useIDEStore.getState().managerPlan;
     if (!isDirect && !existingPlan) return;
-    if (buildSessionIdRef.current) return;
+    // Self-heal a stale buildSessionIdRef. The finally blocks below clear it
+    // unconditionally, but if a future path leaks a stale sessionId here, ask
+    // the server whether it's still alive — if not, clear and proceed instead
+    // of silently dropping the click (which left users staring at an
+    // unresponsive button until they refreshed).
+    if (buildSessionIdRef.current) {
+      const staleId = buildSessionIdRef.current;
+      let stillActive = false;
+      try {
+        const r = await fetch(`/api/build-session/${staleId}/status`);
+        if (r.ok) {
+          const data = await r.json();
+          stillActive = !!data?.active && !data?.done;
+        }
+      } catch {}
+      if (stillActive) return;
+      buildSessionIdRef.current = null;
+      buildReaderRef.current = null;
+      if (projectId) {
+        try { localStorage.removeItem(`cascade-build-session-${projectId}`); } catch {}
+      }
+    }
 
     if (buildLiveClearTimerRef.current) {
       clearTimeout(buildLiveClearTimerRef.current);
@@ -911,6 +937,7 @@ export function useBuildStream() {
       const reader = response.body?.getReader();
       if (!reader) return;
       buildReaderRef.current = reader;
+      lastActivityTsRef.current = Date.now();
 
       const watchdog = createHeartbeatWatchdog(15000, () => {
         try {
@@ -927,11 +954,13 @@ export function useBuildStream() {
 
       await parseSseStream<BuildSseEvent>(reader, {
         onHeartbeat: () => {
+          lastActivityTsRef.current = Date.now();
           watchdog.reset();
           reviewWatchdogRef.current?.reset();
         },
         validate: validateBuildEvent,
         onEvent: async (ev) => {
+          lastActivityTsRef.current = Date.now();
           watchdog.reset();
           reviewWatchdogRef.current?.reset();
 
@@ -1089,24 +1118,26 @@ export function useBuildStream() {
       // Always clear reconnecting flag — stream has ended one way or another
       isReconnectingRef.current = false;
       setIsReconnecting(false);
+      // Refs, timers, and localStorage are unmount-safe. Clear them unconditionally
+      // so a stale buildSessionIdRef can't poison the next handleExecutePlan call.
+      buildSessionIdRef.current = null;
+      beforeBuildCheckpointCreatedRef.current = false;
+      buildCompleteCheckpointCreatedRef.current = false;
+      buildReaderRef.current = null;
+      if (projectId) {
+        try {
+          localStorage.removeItem(
+            `cascade-build-session-${projectId}`,
+          );
+        } catch {}
+      }
+      if (thinkingFadeTimerRef.current) {
+        clearTimeout(thinkingFadeTimerRef.current);
+        thinkingFadeTimerRef.current = null;
+      }
       if (!isUnmountingRef.current) {
         helpers.flushNarrationToStore();
         useIDEStore.getState().setStreamingSnapshot(null);
-        buildSessionIdRef.current = null;
-        beforeBuildCheckpointCreatedRef.current = false;
-        buildCompleteCheckpointCreatedRef.current = false;
-        buildReaderRef.current = null;
-        if (projectId) {
-          try {
-            localStorage.removeItem(
-              `cascade-build-session-${projectId}`,
-            );
-          } catch {}
-        }
-        if (thinkingFadeTimerRef.current) {
-          clearTimeout(thinkingFadeTimerRef.current);
-          thinkingFadeTimerRef.current = null;
-        }
         setBuildPhase(null);
         clearBuildLive();
         const finalLog = [...actionLogRef.current];
@@ -1246,6 +1277,7 @@ export function useBuildStream() {
         const reader = response.body?.getReader();
         if (!reader) return;
         buildReaderRef.current = reader;
+        lastActivityTsRef.current = Date.now();
         setIsReconnecting(false);
         isReconnectingRef.current = false;
         reconnectRetryRef.current = 0;
@@ -1265,11 +1297,13 @@ export function useBuildStream() {
 
         await parseSseStream<BuildSseEvent>(reader, {
           onHeartbeat: () => {
+            lastActivityTsRef.current = Date.now();
             watchdog.reset();
             reviewWatchdogRef.current?.reset();
           },
           validate: validateBuildEvent,
           onEvent: async (ev) => {
+            lastActivityTsRef.current = Date.now();
             watchdog.reset();
             reviewWatchdogRef.current?.reset();
 
@@ -1596,22 +1630,25 @@ export function useBuildStream() {
         // Always clear reconnecting flag — stream has ended one way or another
         isReconnectingRef.current = false;
         setIsReconnecting(false);
+        // Refs, timers, and localStorage are unmount-safe. Clear them
+        // unconditionally so a stale buildSessionIdRef can't poison the next
+        // handleExecutePlan call.
+        buildSessionIdRef.current = null;
+        buildReaderRef.current = null;
+        if (projectId) {
+          try {
+            localStorage.removeItem(
+              `cascade-build-session-${projectId}`,
+            );
+          } catch {}
+        }
+        if (thinkingFadeTimerRef.current) {
+          clearTimeout(thinkingFadeTimerRef.current);
+          thinkingFadeTimerRef.current = null;
+        }
         if (!isUnmountingRef.current) {
           helpers.flushNarrationToStore();
           useIDEStore.getState().setStreamingSnapshot(null);
-          buildSessionIdRef.current = null;
-          buildReaderRef.current = null;
-          if (projectId) {
-            try {
-              localStorage.removeItem(
-                `cascade-build-session-${projectId}`,
-              );
-            } catch {}
-          }
-          if (thinkingFadeTimerRef.current) {
-            clearTimeout(thinkingFadeTimerRef.current);
-            thinkingFadeTimerRef.current = null;
-          }
           setBuildPhase(null);
           clearBuildLive();
           if (useIDEStore.getState().projectId === projectId) {
@@ -1964,22 +2001,46 @@ export function useBuildStream() {
   }, [buildSnapshotReconnect]);
 
   useEffect(() => {
+    // Threshold for treating the local SSE connection as silently dead.
+    // The server emits a `: heartbeat` every 2s, so anything past ~5s
+    // means the socket has been quiet for at least two missed beats —
+    // overwhelmingly because the browser threw the connection out while
+    // the tab was backgrounded.
+    const STALE_MS = 5000;
+
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       const sessionId = buildSessionIdRef.current;
       if (!sessionId) return;
       if (isReconnectingRef.current) return;
-      fetch(`/api/build-session/${sessionId}/status`)
+
+      const lastTs = lastActivityTsRef.current;
+      const localStale = lastTs > 0 && Date.now() - lastTs > STALE_MS;
+
+      fetch(`/api/build-session/${sessionId}/status`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (!data) return;
           if (buildSessionIdRef.current !== sessionId) return;
           const localLast = lastReceivedEventIdRef.current;
-          const serverCount = typeof data.eventCount === "number" ? data.eventCount : 0;
+          const serverCount =
+            typeof data.eventCount === "number" ? data.eventCount : 0;
           const behind = serverCount > localLast + 1;
           const serverFinished = !!data.done;
-          if (data.active && !behind) return;
-          if (!data.active && !serverFinished) return;
+
+          // Reconnect if any of:
+          //  - local connection looks stale (no bytes in STALE_MS) and
+          //    the server still has the session,
+          //  - server has events we haven't received,
+          //  - server says done but we never saw the terminal event.
+          const sessionAlive = data.active || serverFinished;
+          const shouldReconnect =
+            sessionAlive && (localStale || behind || (serverFinished && !data.active));
+          if (!shouldReconnect) return;
+
           isReconnectingRef.current = true;
           setIsReconnecting(true);
           const oldReader = buildReaderRef.current;
