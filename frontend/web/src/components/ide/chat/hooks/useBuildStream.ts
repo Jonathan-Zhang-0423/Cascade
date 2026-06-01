@@ -16,25 +16,102 @@ import type { BuildPhase } from "../BuildPhaseIndicator";
 
 export function useBuildStream() {
   const {
-    addManagerMessage,
-    addChatMessage,
-    setExecutingTaskIndex,
-    setManagerResponding,
-    setAiResponding,
-    updateTaskStatus,
-    setTaskFailureReason,
-    setReviewPhase,
-    setHolisticReview,
-    setFixCycle,
-    setPendingConfirmation,
+    addManagerMessage: rawAddManagerMessage,
+    addChatMessage: rawAddChatMessage,
+    setExecutingTaskIndex: rawSetExecutingTaskIndex,
+    setManagerResponding: rawSetManagerResponding,
+    setAiResponding: rawSetAiResponding,
+    updateTaskStatus: rawUpdateTaskStatus,
+    setTaskFailureReason: rawSetTaskFailureReason,
+    setReviewPhase: rawSetReviewPhase,
+    setHolisticReview: rawSetHolisticReview,
+    setFixCycle: rawSetFixCycle,
+    setPendingConfirmation: rawSetPendingConfirmation,
     setChatMode,
     refreshPreview,
     createCheckpoint,
     projectId,
     setLastBuildFileDiff,
     clearLastBuildFileDiffs,
-    setCompletionData,
+    setCompletionData: rawSetCompletionData,
   } = useIDEStore();
+
+  // Project-scoped guards. Build streams are long-lived and the user might
+  // switch to another project mid-build — every store write below has to
+  // refuse if the active projectId no longer matches the projectId this
+  // hook instance was bound to. Without this, the SSE handler keeps emitting
+  // narration/messages/task statuses into the new project's chat.
+  const isOurProject = useCallback(
+    () => useIDEStore.getState().projectId === projectId,
+    [projectId],
+  );
+  const addManagerMessage: typeof rawAddManagerMessage = useCallback(
+    (msg) => { if (isOurProject()) rawAddManagerMessage(msg); },
+    [isOurProject, rawAddManagerMessage],
+  );
+  const addChatMessage: typeof rawAddChatMessage = useCallback(
+    (msg) => { if (isOurProject()) rawAddChatMessage(msg); },
+    [isOurProject, rawAddChatMessage],
+  );
+  const setExecutingTaskIndex: typeof rawSetExecutingTaskIndex = useCallback(
+    (idx) => { if (isOurProject()) rawSetExecutingTaskIndex(idx); },
+    [isOurProject, rawSetExecutingTaskIndex],
+  );
+  const setManagerResponding: typeof rawSetManagerResponding = useCallback(
+    (v) => { if (isOurProject()) rawSetManagerResponding(v); },
+    [isOurProject, rawSetManagerResponding],
+  );
+  const setAiResponding: typeof rawSetAiResponding = useCallback(
+    (v) => { if (isOurProject()) rawSetAiResponding(v); },
+    [isOurProject, rawSetAiResponding],
+  );
+  const updateTaskStatus: typeof rawUpdateTaskStatus = useCallback(
+    (id, status) => { if (isOurProject()) rawUpdateTaskStatus(id, status); },
+    [isOurProject, rawUpdateTaskStatus],
+  );
+  const setTaskFailureReason: typeof rawSetTaskFailureReason = useCallback(
+    (id, reason) => { if (isOurProject()) rawSetTaskFailureReason(id, reason); },
+    [isOurProject, rawSetTaskFailureReason],
+  );
+  const setReviewPhase: typeof rawSetReviewPhase = useCallback(
+    (phase) => { if (isOurProject()) rawSetReviewPhase(phase); },
+    [isOurProject, rawSetReviewPhase],
+  );
+  const setHolisticReview: typeof rawSetHolisticReview = useCallback(
+    (r) => { if (isOurProject()) rawSetHolisticReview(r); },
+    [isOurProject, rawSetHolisticReview],
+  );
+  const setFixCycle: typeof rawSetFixCycle = useCallback(
+    (n) => { if (isOurProject()) rawSetFixCycle(n); },
+    [isOurProject, rawSetFixCycle],
+  );
+  const setPendingConfirmation: typeof rawSetPendingConfirmation = useCallback(
+    (c) => { if (isOurProject()) rawSetPendingConfirmation(c); },
+    [isOurProject, rawSetPendingConfirmation],
+  );
+  const setCompletionData: typeof rawSetCompletionData = useCallback(
+    (d) => { if (isOurProject()) rawSetCompletionData(d); },
+    [isOurProject, rawSetCompletionData],
+  );
+  const setStreamingSnapshot = useCallback(
+    (snap: Parameters<ReturnType<typeof useIDEStore.getState>["setStreamingSnapshot"]>[0]) => {
+      if (!isOurProject()) return;
+      const store = useIDEStore.getState();
+      store.setStreamingSnapshot(snap);
+    },
+    [isOurProject],
+  );
+  // Guarded zustand.setState — drops writes when our hook's projectId no
+  // longer matches the active store. _rawSet is captured by name to keep
+  // it from getting rewritten by the bulk replace below.
+  const _rawSet = useIDEStore.setState;
+  const guardedSetState: typeof _rawSet = useCallback(
+    ((partial: any, replace?: any) => {
+      if (!isOurProject()) return;
+      _rawSet(partial, replace);
+    }) as typeof _rawSet,
+    [isOurProject],
+  );
 
   const [buildPhase, setBuildPhase] = useState<BuildPhase>(null);
   const [liveActionLog, setLiveActionLog] = useState<ActionLogEntry[]>([]);
@@ -96,7 +173,7 @@ export function useBuildStream() {
         } catch {}
         const existingSnap = useIDEStore.getState().streamingSnapshot;
         if (existingSnap?.type === "build" && existingSnap.sessionId === sessionId) {
-          useIDEStore.getState().setStreamingSnapshot({
+          setStreamingSnapshot({
             ...existingSnap,
             updatedAt: Date.now(),
             lastEventId: lastReceivedEventIdRef.current,
@@ -653,7 +730,7 @@ export function useBuildStream() {
               }
             : m,
         );
-        useIDEStore.setState({ managerMessages: updated });
+        guardedSetState({ managerMessages: updated });
         return;
       }
       if (savedBuildSessionIdsRef.current.has(activeSessionId)) return;
@@ -718,7 +795,7 @@ export function useBuildStream() {
         if (target?.role === "assistant") {
           const updated = [...useIDEStore.getState().managerMessages];
           updated[idx] = { ...target, thinking: thinkingAccumulated };
-          useIDEStore.setState({ managerMessages: updated });
+          guardedSetState({ managerMessages: updated });
         }
       };
 
@@ -738,7 +815,7 @@ export function useBuildStream() {
         if (target?.role === "assistant" && target.typing) {
           const updated = [...msgs];
           updated[commMsgIndex] = { ...target, typing: false };
-          useIDEStore.setState({ managerMessages: updated });
+          guardedSetState({ managerMessages: updated });
         }
       };
 
@@ -899,7 +976,7 @@ export function useBuildStream() {
       if (now - lastPrimaryBuildSnapshotFlush < PRIMARY_BUILD_SNAPSHOT_INTERVAL)
         return;
       lastPrimaryBuildSnapshotFlush = now;
-      useIDEStore.getState().setStreamingSnapshot({
+      setStreamingSnapshot({
         type: "build",
         thinkingText: helpers.thinkingAccumulated.value,
         narrationText: helpers.commAccumulated.value,
@@ -1004,7 +1081,7 @@ export function useBuildStream() {
             setExecutingTaskIndex(null);
             // Clear snapshot and session key now so re-entry after all_complete
             // (but before done) doesn't trigger a phantom reconnect.
-            useIDEStore.getState().setStreamingSnapshot(null);
+            setStreamingSnapshot(null);
             if (projectId) {
               try { localStorage.removeItem(`cascade-build-session-${projectId}`); } catch {}
             }
@@ -1061,7 +1138,7 @@ export function useBuildStream() {
                       }
                     : m,
                 );
-                useIDEStore.setState({ managerMessages: updated });
+                guardedSetState({ managerMessages: updated });
               } else {
                 saveBuildResult(finalLog, [], userLang);
               }
@@ -1179,7 +1256,7 @@ export function useBuildStream() {
       }
       if (isCurrentGen && !isUnmountingRef.current) {
         helpers.flushNarrationToStore();
-        useIDEStore.getState().setStreamingSnapshot(null);
+        setStreamingSnapshot(null);
         setBuildPhase(null);
         clearBuildLive();
         const finalLog = [...actionLogRef.current];
@@ -1198,7 +1275,7 @@ export function useBuildStream() {
                   }
                 : m,
             );
-            useIDEStore.setState({ managerMessages: updated });
+            guardedSetState({ managerMessages: updated });
           } else if (useIDEStore.getState().projectId === projectId) {
             const alreadyHasResult = useIDEStore.getState().managerMessages.some((m) => !!m.buildResult);
             if (!alreadyHasResult) {
@@ -1290,7 +1367,7 @@ export function useBuildStream() {
         const now = Date.now();
         if (now - lastBuildSnapshotFlush < BUILD_SNAPSHOT_INTERVAL) return;
         lastBuildSnapshotFlush = now;
-        useIDEStore.getState().setStreamingSnapshot({
+        setStreamingSnapshot({
           type: "build",
           thinkingText: helpers.thinkingAccumulated.value,
           narrationText: helpers.commAccumulated.value,
@@ -1521,7 +1598,7 @@ export function useBuildStream() {
                 const replaySummary = ev.summaryText || "";
                 if (replaySummary && replayTargetId) {
                   const curMsgs = useIDEStore.getState().managerMessages;
-                  useIDEStore.setState({
+                  guardedSetState({
                     managerMessages: curMsgs.map((m) =>
                       m.id === replayTargetId && m.buildResult
                         ? { ...m, buildResult: { ...m.buildResult, completionData: { ...m.buildResult.completionData, summary: replaySummary } } }
@@ -1567,7 +1644,7 @@ export function useBuildStream() {
               });
               // Clear snapshot and session key now so re-entry after all_complete
               // (but before done) doesn't trigger a phantom reconnect.
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               if (projectId) {
                 try { localStorage.removeItem(`cascade-build-session-${projectId}`); } catch {}
               }
@@ -1710,7 +1787,7 @@ export function useBuildStream() {
         }
         if (isCurrentGen && !isUnmountingRef.current) {
           helpers.flushNarrationToStore();
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           setBuildPhase(null);
           clearBuildLive();
           if (useIDEStore.getState().projectId === projectId) {
@@ -1780,7 +1857,7 @@ export function useBuildStream() {
             const updated = store.managerMessages.map((m) =>
               m.id === planMsg.id ? { ...m, buildResult } : m,
             );
-            useIDEStore.setState({ managerMessages: updated });
+            guardedSetState({ managerMessages: updated });
             if (planMsg.plan) {
               for (const step of planMsg.plan.steps) {
                 updateTaskStatus(String(step.step), "done");
@@ -1888,7 +1965,7 @@ export function useBuildStream() {
           // returned by the server (e.g. legacy fallback) must not lock the UI
           // into executing state — fall through to restore-from-DB instead.
           if (cancelled || !data?.sessionId || data?.active !== true) {
-            useIDEStore.getState().setStreamingSnapshot(null);
+            setStreamingSnapshot(null);
             setAiResponding(false);
             setExecutingTaskIndex(null);
             setBuildPhase(null);
@@ -1907,7 +1984,7 @@ export function useBuildStream() {
           connectToBuildStream(data.sessionId, -1).catch(() => {});
         })
         .catch(() => {
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           setAiResponding(false);
           setExecutingTaskIndex(null);
           setBuildPhase(null);
@@ -1938,7 +2015,7 @@ export function useBuildStream() {
             .then((r2) => (r2.ok ? r2.json() : null))
             .then((activeData) => {
               if (cancelled || !activeData?.sessionId || activeData?.active !== true) {
-                useIDEStore.getState().setStreamingSnapshot(null);
+                setStreamingSnapshot(null);
                 setAiResponding(false);
                 setExecutingTaskIndex(null);
                 setBuildPhase(null);
@@ -1963,7 +2040,7 @@ export function useBuildStream() {
               connectToBuildStream(activeData.sessionId, -1).catch(() => {});
             })
             .catch(() => {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               setAiResponding(false);
               setExecutingTaskIndex(null);
               setBuildPhase(null);
@@ -1987,7 +2064,7 @@ export function useBuildStream() {
             `cascade-build-session-${projectId}`,
           );
         } catch {}
-        useIDEStore.getState().setStreamingSnapshot(null);
+        setStreamingSnapshot(null);
         setAiResponding(false);
         setExecutingTaskIndex(null);
         setBuildPhase(null);
@@ -2043,7 +2120,7 @@ export function useBuildStream() {
                 resumeBuildEventId,
               );
             } else {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               try {
                 localStorage.removeItem(
                   `cascade-build-session-${projectId}`,
@@ -2054,7 +2131,7 @@ export function useBuildStream() {
             }
           })
           .catch(() => {
-            useIDEStore.getState().setStreamingSnapshot(null);
+            setStreamingSnapshot(null);
             try {
               localStorage.removeItem(
                 `cascade-build-session-${projectId}`,
@@ -2065,7 +2142,7 @@ export function useBuildStream() {
           });
       } else if (!buildSessionToReconnect) {
         setTimeout(() => {
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           setLiveThinkingText("");
           setLiveNarrationText("");
         }, 2000);
@@ -2180,7 +2257,7 @@ export function useBuildStream() {
     const msgs = useIDEStore.getState().managerMessages;
     const hasTyping = msgs.some((m) => m.typing);
     if (hasTyping) {
-      useIDEStore.setState({
+      guardedSetState({
         managerMessages: msgs.map((m) => (m.typing ? { ...m, typing: false } : m)),
       });
     }

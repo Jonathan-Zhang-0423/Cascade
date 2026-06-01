@@ -33,16 +33,66 @@ export interface ManagerStreamState {
 
 export function useManagerStream() {
   const {
-    addManagerMessage,
-    setManagerResponding,
-    setManagerPlan,
-    updateTaskStatus,
-    clearManagerPlan,
+    addManagerMessage: rawAddManagerMessage,
+    setManagerResponding: rawSetManagerResponding,
+    setManagerPlan: rawSetManagerPlan,
+    updateTaskStatus: rawUpdateTaskStatus,
+    clearManagerPlan: rawClearManagerPlan,
     isManagerResponding,
     isAiResponding,
     projectId,
   } = useIDEStore();
   const { renameProject } = useProjectStore();
+
+  // Project-scoped guards. Every store write below the SSE handler tier
+  // funnels through these so a stream that out-lives a project switch can
+  // never bleed text/messages/plan-state into another project's IDE.
+  // Critical for the "I opened a new project while the old build was
+  // streaming and saw its narration in the new chat" symptom.
+  const isOurProject = useCallback(
+    () => useIDEStore.getState().projectId === projectId,
+    [projectId],
+  );
+  const addManagerMessage: typeof rawAddManagerMessage = useCallback(
+    (msg) => { if (isOurProject()) rawAddManagerMessage(msg); },
+    [isOurProject, rawAddManagerMessage],
+  );
+  const setManagerResponding: typeof rawSetManagerResponding = useCallback(
+    (v) => { if (isOurProject()) rawSetManagerResponding(v); },
+    [isOurProject, rawSetManagerResponding],
+  );
+  const setManagerPlan: typeof rawSetManagerPlan = useCallback(
+    (plan) => { if (isOurProject()) rawSetManagerPlan(plan); },
+    [isOurProject, rawSetManagerPlan],
+  );
+  const updateTaskStatus: typeof rawUpdateTaskStatus = useCallback(
+    (id, status) => { if (isOurProject()) rawUpdateTaskStatus(id, status); },
+    [isOurProject, rawUpdateTaskStatus],
+  );
+  const clearManagerPlan: typeof rawClearManagerPlan = useCallback(
+    () => { if (isOurProject()) rawClearManagerPlan(); },
+    [isOurProject, rawClearManagerPlan],
+  );
+  const setStreamingSnapshot = useCallback(
+    (snap: Parameters<ReturnType<typeof useIDEStore.getState>["setStreamingSnapshot"]>[0]) => {
+      if (!isOurProject()) return;
+      const store = useIDEStore.getState();
+      store.setStreamingSnapshot(snap);
+    },
+    [isOurProject],
+  );
+  // Guarded zustand.setState — drops writes when our hook's projectId no
+  // longer matches the active store. _rawSet is captured by name so the
+  // bulk replacement of useIDEStore.setState below doesn't rewrite the
+  // wrapper into a self-recursive call.
+  const _rawSet = useIDEStore.setState;
+  const guardedSetState: typeof _rawSet = useCallback(
+    ((partial: any, replace?: any) => {
+      if (!isOurProject()) return;
+      _rawSet(partial, replace);
+    }) as typeof _rawSet,
+    [isOurProject],
+  );
 
   const [mgrPreparingPlan, setMgrPreparingPlan] = useState(false);
   const [mgrLiveThinkingText, setMgrLiveThinkingText] = useState("");
@@ -51,6 +101,14 @@ export function useManagerStream() {
   const [isMgrReconnecting, setIsMgrReconnecting] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  // Reader for the connectToMgrStream() reconnect path. Stored so unmount can
+  // cancel() it — without this, switching projects mid-stream leaves the old
+  // socket alive and its addManagerMessage / setManagerPlan calls bleed into
+  // the new project's store.
+  const mgrReconnectReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  // Separate AbortController for the reconnect-path fetch, distinct from
+  // abortRef (which belongs to handleManagerSend's first-shot fetch).
+  const mgrReconnectAbortRef = useRef<AbortController | null>(null);
   const mgrSessionIdRef = useRef<string | null>(null);
   const mgrLastEventIdRef = useRef<number>(-1);
   // Wall-clock timestamp of the last byte received on the current SSE reader
@@ -106,7 +164,7 @@ export function useManagerStream() {
         } catch {}
         const existingSnap = useIDEStore.getState().streamingSnapshot;
         if (existingSnap?.type === "manager" && existingSnap.sessionId === sessionId) {
-          useIDEStore.getState().setStreamingSnapshot({
+          setStreamingSnapshot({
             ...existingSnap,
             updatedAt: Date.now(),
             lastEventId: mgrLastEventIdRef.current,
@@ -116,6 +174,19 @@ export function useManagerStream() {
       if (abortRef.current) {
         abortRef.current.abort();
         abortRef.current = null;
+      }
+      // Cancel the reconnect-path stream too — without this, a connect that
+      // started while we were mounted keeps reading bytes after unmount and
+      // its handler writes go into the next project's store. Both refs are
+      // belt+suspenders: cancel() the reader for an immediate stop, abort()
+      // the fetch in case the body hasn't been received yet.
+      if (mgrReconnectReaderRef.current) {
+        try { mgrReconnectReaderRef.current.cancel().catch(() => {}); } catch {}
+        mgrReconnectReaderRef.current = null;
+      }
+      if (mgrReconnectAbortRef.current) {
+        try { mgrReconnectAbortRef.current.abort(); } catch {}
+        mgrReconnectAbortRef.current = null;
       }
       if (mgrReconnectTimerRef.current) {
         clearTimeout(mgrReconnectTimerRef.current);
@@ -169,16 +240,17 @@ export function useManagerStream() {
   }, []);
 
   const removeTypingBubble = useCallback((excludeId?: string | null) => {
+    if (!isOurProject()) return;
     const msgs = useIDEStore.getState().managerMessages;
     const typingIdx = msgs.findIndex(
       (m) => m.typing === true && (!excludeId || m.id !== excludeId),
     );
     if (typingIdx !== -1) {
-      useIDEStore.setState({
+      guardedSetState({
         managerMessages: msgs.filter((_, i) => i !== typingIdx),
       });
     }
-  }, []);
+  }, [isOurProject]);
 
   const handleManagerSend = useCallback(
     async (overrideMessage?: string, input?: string): Promise<boolean> => {
@@ -226,7 +298,7 @@ export function useManagerStream() {
         const now = Date.now();
         if (now - lastMgrSnapshotFlush < MGR_SNAPSHOT_INTERVAL) return;
         lastMgrSnapshotFlush = now;
-        useIDEStore.getState().setStreamingSnapshot({
+        setStreamingSnapshot({
           type: "manager",
           thinkingText: managerThinkingAccumulated,
           narrationText: managerAccumulated,
@@ -461,7 +533,7 @@ export function useManagerStream() {
               }
             } else if (evType === "manager_done") {
               mgrDoneSeen = true;
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
               if (projectId) {
@@ -573,7 +645,7 @@ export function useManagerStream() {
                 renameProject(projectId, nameFromDone);
               }
             } else if (evType === "manager_error") {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
               if (projectId) {
@@ -696,20 +768,20 @@ export function useManagerStream() {
                   `/api/manager-chat/${retrySessionId}/status`,
                 );
                 if (!statusRes.ok) {
-                  useIDEStore.getState().setStreamingSnapshot(null);
+                  setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
                   return;
                 }
                 const statusData = await statusRes.json();
                 if (statusData.done || !statusData.active) {
-                  useIDEStore.getState().setStreamingSnapshot(null);
+                  setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
                   return;
                 }
               } catch {
-                useIDEStore.getState().setStreamingSnapshot(null);
+                setStreamingSnapshot(null);
                 mgrSessionIdRef.current = null;
                 setManagerResponding(false);
                 return;
@@ -722,7 +794,7 @@ export function useManagerStream() {
           }
         }
         if (!mgrReconnectScheduled) {
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           mgrSessionIdRef.current = null;
           mgrReconnectRetryRef.current = 0;
           if (projectId) {
@@ -787,13 +859,20 @@ export function useManagerStream() {
       const myGen = ++mgrStreamGenerationRef.current;
       let mgrDoneSeen = false;
 
+      // Replace any existing controller — only one connect-stream at a time.
+      if (mgrReconnectAbortRef.current) {
+        try { mgrReconnectAbortRef.current.abort(); } catch {}
+      }
+      const controller = new AbortController();
+      mgrReconnectAbortRef.current = controller;
+
       try {
         const response = await fetch(
           `/api/manager-chat/${sessionId}/stream?lastEventId=${lastEventId}`,
-          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+          { cache: "no-store", headers: { "Cache-Control": "no-cache" }, signal: controller.signal },
         );
         if (!response.ok || !response.body) {
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           mgrSessionIdRef.current = null;
           if (projectId) {
             try {
@@ -807,6 +886,7 @@ export function useManagerStream() {
         mgrReconnectRetryRef.current = 0;
 
         const reader = response.body.getReader();
+        mgrReconnectReaderRef.current = reader;
         mgrLastActivityTsRef.current = Date.now();
         const existingSnapshot = useIDEStore.getState().streamingSnapshot;
         let managerAccumulated2 =
@@ -829,7 +909,7 @@ export function useManagerStream() {
           )
             return;
           lastMgrReconnectSnapshotFlush = now;
-          useIDEStore.getState().setStreamingSnapshot({
+          setStreamingSnapshot({
             type: "manager",
             thinkingText: managerThinkingAccumulated2,
             narrationText: managerAccumulated2,
@@ -890,22 +970,22 @@ export function useManagerStream() {
                   // Replay of an already-rendered plan — keep the existing card
                   // (preserves live task statuses). Just drop any typing bubbles.
                   planEmittedInReconnect = true;
-                  useIDEStore.setState({
+                  guardedSetState({
                     managerMessages: msgs.filter((m: ManagerMessage) => !m.typing),
                   });
                 } else {
                   // Different plan (or first one) — strip the last plan card + typing
                   // bubbles and render the new one.
-                  useIDEStore.setState({
+                  guardedSetState({
                     managerMessages: msgs.filter((m: ManagerMessage, i: number) => !m.typing && (i !== lastPlanIdx || !m.plan)),
                   });
                   if (plan) {
                     planEmittedInReconnect = true;
-                    useIDEStore.getState().clearManagerPlan();
+                    clearManagerPlan();
                     const steps = normalizeSteps(plan);
                     for (const step of steps)
                       updateTaskStatus(String(step.step), "pending");
-                    useIDEStore.getState().setManagerPlan(plan);
+                    setManagerPlan(plan);
                     addManagerMessage({
                       role: "assistant",
                       content: "",
@@ -929,7 +1009,7 @@ export function useManagerStream() {
               }
               return;
             } else if (evType === "manager_error") {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               mgrSessionIdRef.current = null;
               mgrReconnectRetryRef.current = 0;
               if (projectId) {
@@ -996,13 +1076,13 @@ export function useManagerStream() {
                 );
                 const statusData = statusRes.ok ? await statusRes.json() : null;
                 if (!statusData || statusData.done || !statusData.active) {
-                  useIDEStore.getState().setStreamingSnapshot(null);
+                  setStreamingSnapshot(null);
                   mgrSessionIdRef.current = null;
                   setManagerResponding(false);
                   return;
                 }
               } catch {
-                useIDEStore.getState().setStreamingSnapshot(null);
+                setStreamingSnapshot(null);
                 mgrSessionIdRef.current = null;
                 setManagerResponding(false);
                 return;
@@ -1040,7 +1120,7 @@ export function useManagerStream() {
           !mgrReconnectTimerRef.current &&
           !isUnmountingRef.current
         ) {
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           mgrSessionIdRef.current = null;
           if (projectId) {
             try {
@@ -1136,7 +1216,7 @@ export function useManagerStream() {
           .then((r) => (r.ok ? r.json() : null))
           .then((activeData) => {
             if (cancelled || !activeData?.sessionId) {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               setManagerResponding(false);
               setMgrLiveThinkingText("");
               setMgrLiveNarrationText("");
@@ -1145,7 +1225,7 @@ export function useManagerStream() {
             }
             const existingSnap = useIDEStore.getState().streamingSnapshot;
             if (existingSnap?.sessionId !== activeData.sessionId) {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
               setMgrLiveThinkingText("");
               setMgrLiveNarrationText("");
             }
@@ -1161,7 +1241,7 @@ export function useManagerStream() {
             connectToMgrStream(activeData.sessionId, -1);
           })
           .catch(() => {
-            useIDEStore.getState().setStreamingSnapshot(null);
+            setStreamingSnapshot(null);
             setManagerResponding(false);
             setMgrLiveThinkingText("");
             setMgrLiveNarrationText("");
@@ -1218,7 +1298,7 @@ export function useManagerStream() {
       ) {
         setTimeout(() => {
           if (cancelled) return;
-          useIDEStore.getState().setStreamingSnapshot(null);
+          setStreamingSnapshot(null);
           setManagerResponding(false);
           setMgrLiveThinkingText("");
           setMgrLiveNarrationText("");
@@ -1260,7 +1340,7 @@ export function useManagerStream() {
             mgrSessionIdRef.current = null;
             const snap = useIDEStore.getState().streamingSnapshot;
             if (snap?.sessionId === staleSessionId) {
-              useIDEStore.getState().setStreamingSnapshot(null);
+              setStreamingSnapshot(null);
             }
             setManagerResponding(false);
             setMgrLiveThinkingText("");
