@@ -768,7 +768,10 @@ export function useBuildStream() {
       const staleId = buildSessionIdRef.current;
       let stillActive = false;
       try {
-        const r = await fetch(`/api/build-session/${staleId}/status`);
+        const r = await fetch(`/api/build-session/${staleId}/status`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        });
         if (r.ok) {
           const data = await r.json();
           stillActive = !!data?.active && !data?.done;
@@ -1259,6 +1262,7 @@ export function useBuildStream() {
       try {
         const response = await fetch(
           `/api/build-session/${sessionId}/stream?lastEventId=${lastEventId}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
         );
         if (!response.ok) {
           if (projectId) {
@@ -1755,7 +1759,10 @@ export function useBuildStream() {
       isReconnectingRef.current = true;
       setIsReconnecting(true);
 
-      fetch(`/api/build-session/${existingSessionId}/status`)
+      fetch(`/api/build-session/${existingSessionId}/status`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (cancelled) { setIsReconnecting(false); isReconnectingRef.current = false; return; }
@@ -1813,7 +1820,10 @@ export function useBuildStream() {
     })();
 
     if (!savedSessionId) {
-      fetch(`/api/build-session/active/${projectId}`)
+      fetch(`/api/build-session/active/${projectId}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           // Only reconnect to a TRULY active session. A done/aborted session
@@ -1850,7 +1860,10 @@ export function useBuildStream() {
       };
     }
 
-    fetch(`/api/build-session/${savedSessionId}/status`)
+    fetch(`/api/build-session/${savedSessionId}/status`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -1860,7 +1873,10 @@ export function useBuildStream() {
               `cascade-build-session-${projectId}`,
             );
           } catch {}
-          return fetch(`/api/build-session/active/${projectId}`)
+          return fetch(`/api/build-session/active/${projectId}`, {
+            cache: "no-store",
+            headers: { "Cache-Control": "no-cache" },
+          })
             .then((r2) => (r2.ok ? r2.json() : null))
             .then((activeData) => {
               if (cancelled || !activeData?.sessionId || activeData?.active !== true) {
@@ -1957,7 +1973,10 @@ export function useBuildStream() {
           typeof buildSnapshot.lastEventId === "number"
             ? buildSnapshot.lastEventId
             : -1;
-        fetch(`/api/build-session/${buildSessionToReconnect}/status`)
+        fetch(`/api/build-session/${buildSessionToReconnect}/status`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (data?.active) {

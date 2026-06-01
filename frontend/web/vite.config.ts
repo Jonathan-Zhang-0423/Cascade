@@ -14,7 +14,18 @@ export default defineConfig({
         navigateFallback: "/index.html",
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            // Cache GET API responses, but NEVER intercept SSE streams or
+            // session status checks — the SW's NetworkFirst handler will
+            // hold the request for `networkTimeoutSeconds` and then try
+            // to serve from cache, which is fatal for streaming endpoints
+            // and silently stales-out the visibility-change reconnect.
+            urlPattern: ({ url }) => {
+              if (!url.pathname.startsWith("/api/")) return false;
+              if (url.pathname.endsWith("/stream")) return false;
+              if (url.pathname.endsWith("/status")) return false;
+              if (url.pathname.includes("/active/")) return false;
+              return true;
+            },
             handler: "NetworkFirst",
             options: {
               cacheName: "api-cache",

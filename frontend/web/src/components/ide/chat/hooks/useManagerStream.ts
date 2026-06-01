@@ -53,6 +53,11 @@ export function useManagerStream() {
   const abortRef = useRef<AbortController | null>(null);
   const mgrSessionIdRef = useRef<string | null>(null);
   const mgrLastEventIdRef = useRef<number>(-1);
+  // Wall-clock timestamp of the last byte received on the current SSE reader
+  // (event or heartbeat). Used by the visibility handler to detect a silently
+  // dead socket — setTimeout-based watchdogs are unreliable in backgrounded
+  // tabs because of browser timer throttling.
+  const mgrLastActivityTsRef = useRef<number>(0);
   const mgrReconnectRetryRef = useRef<number>(0);
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -263,11 +268,16 @@ export function useManagerStream() {
         }
 
         const reader = response.body.getReader();
+        mgrLastActivityTsRef.current = Date.now();
 
         await parseSseStream<ManagerSseEvent>(reader, {
           signal: controller.signal,
           validate: validateManagerEvent,
+          onHeartbeat: () => {
+            mgrLastActivityTsRef.current = Date.now();
+          },
           onEvent: async (ev) => {
+            mgrLastActivityTsRef.current = Date.now();
             resetInactivityTimer();
             if (typeof ev.eventId === "number") {
               mgrLastEventIdRef.current = ev.eventId;
@@ -742,6 +752,7 @@ export function useManagerStream() {
       try {
         const response = await fetch(
           `/api/manager-chat/${sessionId}/stream?lastEventId=${lastEventId}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
         );
         if (!response.ok || !response.body) {
           useIDEStore.getState().setStreamingSnapshot(null);
@@ -758,6 +769,7 @@ export function useManagerStream() {
         mgrReconnectRetryRef.current = 0;
 
         const reader = response.body.getReader();
+        mgrLastActivityTsRef.current = Date.now();
         const existingSnapshot = useIDEStore.getState().streamingSnapshot;
         let managerAccumulated2 =
           (existingSnapshot?.type === "manager"
@@ -792,7 +804,11 @@ export function useManagerStream() {
 
         await parseSseStream<ManagerSseEvent>(reader, {
           validate: validateManagerEvent,
+          onHeartbeat: () => {
+            mgrLastActivityTsRef.current = Date.now();
+          },
           onEvent: async (ev) => {
+            mgrLastActivityTsRef.current = Date.now();
             resetInactivityTimer();
             if (typeof ev.eventId === "number") {
               mgrLastEventIdRef.current = ev.eventId;
@@ -1052,7 +1068,10 @@ export function useManagerStream() {
       }
 
       const fallbackToActiveEndpoint = () => {
-        fetch(`/api/manager-chat/active/${projectId}`)
+        fetch(`/api/manager-chat/active/${projectId}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
           .then((r) => (r.ok ? r.json() : null))
           .then((activeData) => {
             if (cancelled || !activeData?.sessionId) {
@@ -1102,7 +1121,10 @@ export function useManagerStream() {
                 } catch { return -1; }
               })();
         setIsMgrReconnecting(true);
-        fetch(`/api/manager-chat/${sessionIdToReconnect}/status`)
+        fetch(`/api/manager-chat/${sessionIdToReconnect}/status`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        })
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (cancelled) { setIsMgrReconnecting(false); return; }
@@ -1156,7 +1178,10 @@ export function useManagerStream() {
           ? snapshot.lastEventId
           : mgrLastEventIdRef.current;
 
-      fetch(`/api/manager-chat/${staleSessionId}/status`)
+      fetch(`/api/manager-chat/${staleSessionId}/status`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (cancelled) return;
@@ -1198,22 +1223,44 @@ export function useManagerStream() {
   }, [projectId, connectToMgrStream, setManagerResponding]);
 
   useEffect(() => {
+    // Threshold for treating the local SSE connection as silently dead.
+    // Server emits `: heartbeat` every 5s for the manager stream, so
+    // ~12s without any byte means the socket has effectively been
+    // killed by background-tab throttling or an intermediate proxy.
+    const STALE_MS = 12000;
+
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       const sessionId = mgrSessionIdRef.current;
       if (!sessionId) return;
       if (isMgrReconnecting) return;
-      fetch(`/api/manager-chat/${sessionId}/status`)
+
+      const lastTs = mgrLastActivityTsRef.current;
+      const localStale = lastTs > 0 && Date.now() - lastTs > STALE_MS;
+
+      fetch(`/api/manager-chat/${sessionId}/status`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (!data) return;
           if (mgrSessionIdRef.current !== sessionId) return;
           const localLast = mgrLastEventIdRef.current;
-          const serverCount = typeof data.eventCount === "number" ? data.eventCount : 0;
+          const serverCount =
+            typeof data.eventCount === "number" ? data.eventCount : 0;
           const behind = serverCount > localLast + 1;
           const serverFinished = !!data.done;
-          if (data.active && !behind) return;
-          if (!data.active && !serverFinished) return;
+
+          // Reconnect when the local connection has gone quiet, or the
+          // server has produced events we never received, or the session
+          // finished while we were away. Don't second-guess: dropping a
+          // reconnect here is what causes "had to refresh to see progress".
+          const sessionAlive = data.active || serverFinished;
+          const shouldReconnect =
+            sessionAlive && (localStale || behind || (serverFinished && !data.active));
+          if (!shouldReconnect) return;
+
           connectToMgrStreamRef
             .current?.(sessionId, localLast)
             .catch(() => {});
