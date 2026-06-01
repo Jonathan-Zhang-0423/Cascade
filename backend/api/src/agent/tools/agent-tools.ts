@@ -682,6 +682,15 @@ export function buildManagerTools(
 
   const handlers: Record<string, ToolHandler> = {
     submit_plan: async (args) => {
+      // Reject empty/missing steps so the agent loop sees a tool-call failure
+      // and can retry submit_plan with a real plan body. Without this, an LLM
+      // that calls submit_plan with steps=[] (or omits the field) would surface
+      // to the user as a plan card showing "0/0 done" — fixed only by sending
+      // another message.
+      const stepsRaw = args.steps;
+      if (!Array.isArray(stepsRaw) || stepsRaw.length === 0) {
+        return "Error: submit_plan requires a non-empty `steps` array. Each step needs at minimum { step, title, description }. Re-call submit_plan with the full ordered build steps.";
+      }
       const plan: Record<string, unknown> = {
         overview: args.overview as string,
         what_and_why: args.what_and_why as string,
@@ -689,7 +698,7 @@ export function buildManagerTools(
         out_of_scope: args.out_of_scope as string,
         relevant_files: args.relevant_files as string[],
         summary: args.summary as string,
-        steps: args.steps as unknown[],
+        steps: stepsRaw,
         needs_input: (args.needs_input as string[] | undefined) ?? [],
       };
       managerState.plan = plan;

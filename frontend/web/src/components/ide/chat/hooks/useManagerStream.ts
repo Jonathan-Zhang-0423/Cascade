@@ -58,6 +58,11 @@ export function useManagerStream() {
   // dead socket — setTimeout-based watchdogs are unreliable in backgrounded
   // tabs because of browser timer throttling.
   const mgrLastActivityTsRef = useRef<number>(0);
+  // Monotonic counter, bumped on every connect call. The finally block
+  // only clears shared state (sessionId, snapshot, localStorage) when
+  // it's still the current generation — otherwise a silently-closed old
+  // socket would wipe the freshly-reconnected stack's state.
+  const mgrStreamGenerationRef = useRef<number>(0);
   const mgrReconnectRetryRef = useRef<number>(0);
   const mgrReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mgrLiveClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -481,7 +486,14 @@ export function useManagerStream() {
                     );
                     if (jsonMatch) {
                       const parsed = JSON.parse(jsonMatch[1]);
-                      if (parsed && (parsed.steps || parsed.sub_tasks)) {
+                      // Reject parsed plans that have no actual steps —
+                      // otherwise the plan card would show "0/0 done".
+                      const stepsArr = Array.isArray(parsed?.steps)
+                        ? parsed.steps
+                        : Array.isArray(parsed?.sub_tasks)
+                          ? parsed.sub_tasks
+                          : null;
+                      if (parsed && stepsArr && stepsArr.length > 0) {
                         plan = parsed;
                       }
                     }
@@ -566,11 +578,15 @@ export function useManagerStream() {
               }
               if (isCurrentProject) {
                 removeTypingBubble();
+                const reason = (ev as { reason?: string }).reason;
+                const i18nKey = reason === "empty_plan"
+                  ? "chat.errorPlanEmpty"
+                  : "chat.errorConnect";
                 addManagerMessage({
                   role: "assistant",
                   content: tr(
                     useLanguageStore.getState().lang,
-                    "chat.errorConnect",
+                    i18nKey,
                   ),
                   source: "communicator",
                 });
@@ -905,11 +921,15 @@ export function useManagerStream() {
                 removeTypingBubble();
                 if (!mgrConnectionErrorAddedRef.current) {
                   mgrConnectionErrorAddedRef.current = true;
+                  const reason = (ev as { reason?: string }).reason;
+                  const i18nKey = reason === "empty_plan"
+                    ? "chat.errorPlanEmpty"
+                    : "chat.errorConnect";
                   addManagerMessage({
                     role: "assistant",
                     content: tr(
                       useLanguageStore.getState().lang,
-                      "chat.errorConnect",
+                      i18nKey,
                     ),
                     source: "communicator",
                     errorCode: "connect",

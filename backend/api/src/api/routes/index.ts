@@ -1050,6 +1050,16 @@ This override applies to THIS message only — it does not change behavior for p
 
         if (result.exitTool === "submit_plan" && managerState.plan) {
           const plan = managerState.plan;
+          // Defense in depth: even though submit_plan's handler rejects empty
+          // steps, an older code path / different tool wiring could still
+          // produce a plan with no steps. If we shipped that to the client,
+          // the plan card would render as "0/0 done" with no way to retry.
+          // Surface a manager_error instead so the user knows to re-send.
+          const planSteps = (plan as { steps?: unknown }).steps;
+          if (!Array.isArray(planSteps) || planSteps.length === 0) {
+            console.warn("[manager-chat] submit_plan produced empty steps; surfacing as manager_error");
+            emit({ type: "manager_error", reason: "empty_plan" });
+          } else {
           const projectName = typeof result.exitArgs?.project_name === "string"
             ? result.exitArgs.project_name
             : undefined;
@@ -1073,8 +1083,15 @@ This override applies to THIS message only — it does not change behavior for p
           if (mgrSession.projectId) {
             storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});
           }
+          }
 
           emit({ type: "manager_done" });
+        } else if (result.exitTool === "submit_plan" && !managerState.plan) {
+          // submit_plan was called but the handler refused (e.g. empty steps).
+          // Tell the client so the UI can prompt the user to retry instead of
+          // silently ending the chat with no plan card and no error.
+          console.warn("[manager-chat] submit_plan exit but plan was rejected by handler");
+          emit({ type: "manager_error", reason: "empty_plan" });
         } else {
           emit({ type: "manager_done" });
         }
