@@ -30,8 +30,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PlanCardLang } from "./chat-types";
+import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
+import { BuildLivePanel } from "./BuildLivePanel";
 
 function StepItem({
   task,
@@ -682,30 +683,46 @@ export function BuildResultCard({
 }: {
   buildResult: BuildResultData;
 }) {
-  const { changedFiles, summary } = buildResult.completionData;
-  const lang = usePlanCardLang();
-  const fileCount = changedFiles.length;
+  const hasContent =
+    (buildResult.segments && buildResult.segments.length > 0) ||
+    (buildResult.actionLog && buildResult.actionLog.length > 0);
+  if (!hasContent) return null;
+
+  const segments: NarrationSegment[] | undefined = buildResult.segments?.map(
+    (s) => ({
+      id: s.id,
+      narration: s.narration,
+      actions: s.actions as ActionLogEntry[],
+      isLive: false,
+    }),
+  );
 
   return (
-    <div className="px-3.5 py-1.5 font-mono text-[11px] space-y-1" data-testid="build-result-card">
-      <div className="flex items-center gap-1.5 text-[#34d68a]">
-        <Check className="w-3 h-3 shrink-0" />
-        <span>
-          {t(lang, "completed")}
-          {fileCount > 0 && (
-            <span className="text-[rgba(238,238,246,0.35)] ml-1.5">
-              · {fileCount} {fileCount === 1 ? "file" : "files"} changed
-            </span>
-          )}
-        </span>
-      </div>
-      {summary && (
-        <div className="pl-4 text-[rgba(238,238,246,0.55)] leading-relaxed whitespace-pre-wrap">
-          {summary}
-        </div>
-      )}
+    <div className="mx-2.5 my-1 overflow-hidden" data-testid="build-result-card">
+      <BuildLivePanel
+        entries={buildResult.actionLog as ActionLogEntry[]}
+        segments={segments}
+        isCompleted
+      />
     </div>
   );
+}
+
+function stripMd(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/^[-*+]\s+/gm, "• ")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/_{1,2}(.+?)_{1,2}/g, "$1")
+    .replace(/\|.+\|/g, "")
+    .replace(/^-{3,}$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function ManagerMessageBubble({
@@ -796,12 +813,20 @@ export function ManagerMessageBubble({
 
   if (!message.content) return null;
 
+  const cleanContent = stripMd(message.content);
+  const contentLines = cleanContent.split("\n").filter((l) => l.trim());
   return (
-    <div
-      className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.65)]"
-      data-testid="manager-narration-bubble"
-    >
-      {message.content}
+    <div data-testid="manager-narration-bubble">
+      {message.thinking && (
+        <div className="px-3.5 pb-1">
+          <ThinkingToggle thinking={message.thinking} />
+        </div>
+      )}
+      <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.65)] space-y-1">
+        {contentLines.map((line, i) => (
+          <p key={i}>{line}</p>
+        ))}
+      </div>
     </div>
   );
 }

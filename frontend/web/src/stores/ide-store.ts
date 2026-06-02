@@ -93,7 +93,12 @@ export interface HolisticReviewResult {
 export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
 
 export interface BuildResultData {
-  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
+  segments?: {
+    id: string;
+    narration: string;
+    actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+  }[];
   completionData: { changedFiles: string[]; userLang?: string; summary?: string };
   nextStepSuggestion?: string;
   sessionId?: string;

@@ -14,6 +14,14 @@ export interface ActionLogEntry {
   detail: string;
   timestamp: number;
   filePath?: string;
+  precedingNarration?: string;
+}
+
+export interface NarrationSegment {
+  id: string;
+  narration: string;
+  actions: ActionLogEntry[];
+  isLive: boolean;
 }
 
 export interface ParsedCompletion {
