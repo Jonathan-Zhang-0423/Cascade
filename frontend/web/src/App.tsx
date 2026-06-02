@@ -9,20 +9,29 @@ import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import OnboardingPage from "@/pages/onboarding";
+import LandingPage from "@/pages/landing";
+import AdminPage from "@/pages/admin";
+import InviteGatePage from "@/pages/invite-gate";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AgentStreamProvider } from "@/components/ide/AgentStreamProvider";
 import { useIDEStore } from "@/stores/ide-store";
 
 const ABTestPage = lazy(() => import("@/pages/ab-test"));
 
-const UNGUARDED_PATHS = ["/login", "/onboarding"];
+// Paths that don't require an authenticated session. Landing is public; login
+// and onboarding are pre-auth steps; admin has its own admin-secret gate; the
+// invite gate is the redirect target for authed users without a redeemed code.
+const UNGUARDED_PATHS = ["/", "/login", "/onboarding", "/admin", "/invite-gate"];
 
 function Router() {
   return (
     <Switch>
+      <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
       <Route path="/onboarding" component={OnboardingPage} />
-      <Route path="/" component={DashboardPage} />
+      <Route path="/invite-gate" component={InviteGatePage} />
+      <Route path="/admin" component={AdminPage} />
+      <Route path="/app" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
       {import.meta.env.DEV && (
         <Route path="/ab-test">
@@ -41,22 +50,38 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
+    const path = window.location.pathname;
+    const isUnguarded = UNGUARDED_PATHS.includes(path);
+    if (isUnguarded) {
+      // Best-effort populate the store if a session exists, but never redirect.
+      fetch("/api/auth/me").then((r) => {
+        if (r.ok) {
+          r.json().then((u) => { setUserId(u.id); setUsername(u.username); });
+        }
+      }).catch(() => {});
+      setAuthChecked(true);
+      return;
+    }
     fetch("/api/auth/me").then((r) => {
       if (r.ok) {
         r.json().then((u) => {
           setUserId(u.id);
           setUsername(u.username);
           setAuthChecked(true);
-          if (!u.hasSetExperienceLevel && window.location.pathname !== "/onboarding") {
+          if (!u.inviteCode) {
+            window.location.href = `/invite-gate?next=${encodeURIComponent(path)}`;
+            return;
+          }
+          if (!u.hasSetExperienceLevel && path !== "/onboarding") {
             window.location.href = "/onboarding";
           }
         });
       } else {
-        if (window.location.pathname !== "/login") window.location.href = "/login";
+        window.location.href = "/login";
         setAuthChecked(true);
       }
     }).catch(() => {
-      if (window.location.pathname !== "/login") window.location.href = "/login";
+      window.location.href = "/login";
       setAuthChecked(true);
     });
   }, []);

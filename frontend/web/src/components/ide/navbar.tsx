@@ -108,7 +108,7 @@ export function Navbar({ projectName }: NavbarProps) {
 
   const handleBack = () => {
     saveProject();
-    navigate("/");
+    navigate("/app");
   };
 
   const handleRun = async () => {
