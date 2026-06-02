@@ -23,7 +23,7 @@ function DockButton({
         "relative flex items-center justify-center w-10 h-10 rounded-lg",
         "[transition:var(--transition-fast)]",
         isActive
-          ? "bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
+          ? "bg-blue-50 dark:bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
           : "opacity-[0.18] hover:opacity-55"
       )}
       style={isActive ? { filter: "drop-shadow(0 0 5px rgba(79,130,255,0.40))" } : undefined}
@@ -45,7 +45,7 @@ export function ToolsDock() {
 
   return (
     <div
-      className="flex flex-col items-center justify-between w-11 py-2 bg-[#080810] border-r border-[rgba(255,255,255,0.04)] shrink-0"
+      className="flex flex-col items-center justify-between w-11 py-2 bg-white dark:bg-[#080810] border-r border-black/[0.06] dark:border-white/[0.04] shrink-0"
       data-testid="tools-dock"
     >
       <div className="flex flex-col items-center gap-1">
@@ -91,7 +91,7 @@ export function ToolsDock() {
           className={cn(
             "relative flex items-center justify-center w-10 h-10 rounded-lg [transition:var(--transition-fast)]",
             isMonitorOpen
-              ? "bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
+              ? "bg-blue-50 dark:bg-[#141d34] ring-1 ring-[rgba(79,130,255,0.18)] opacity-100"
               : "opacity-[0.18] hover:opacity-55"
           )}
           style={isMonitorOpen ? { filter: "drop-shadow(0 0 5px rgba(79,130,255,0.40))" } : undefined}

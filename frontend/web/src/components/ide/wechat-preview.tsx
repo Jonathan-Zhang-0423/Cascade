@@ -180,8 +180,8 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
 
   if (compileState.status === "error") {
     return (
-      <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-200">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
+      <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] text-gray-200">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
           <span className="text-xs text-red-400 font-medium">{t("wechat.buildFailed")}</span>
           <div className="flex-1" />
@@ -213,7 +213,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
             ))}
           </div>
         </div>
-        <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
+        <div className="px-3 py-2 border-t border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <p className="text-[10px] text-gray-500 text-center">
             {t("wechat.disclaimer")}
           </p>
@@ -227,7 +227,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
     const showWarnings = warnings.length > 0 && !warningsDismissed;
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-[#07c160] animate-pulse" />
           <span className="text-[10px] text-[#07c160] font-medium">{t("wechat.livePreview")}</span>
           <div className="flex-1" />
@@ -278,7 +278,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
             </button>
           </div>
         )}
-        <div className="flex-1 min-h-0 bg-[#111] flex items-center justify-center overflow-auto p-4">
+        <div className="flex-1 min-h-0 bg-slate-100 dark:bg-[#111] flex items-center justify-center overflow-auto p-4">
           <div
             className="relative shrink-0 bg-black rounded-[44px] shadow-[0_20px_50px_rgba(0,0,0,0.4),inset_0_0_0_3px_#222]"
             style={{ width: 375, height: 770, padding: 4 }}
@@ -330,7 +330,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
 
   // idle or compiling
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] items-center justify-center">
+    <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-center px-6">
         <div className="w-10 h-10 rounded-xl bg-[#07c160]/15 flex items-center justify-center">
           <span className="text-lg">💬</span>
@@ -344,7 +344,7 @@ export function WeChatPreview({ files, refreshKey, projectId }: WeChatPreviewPro
             : t("wechat.waitingFiles")}
         </p>
         {compileState.status === "compiling" && (
-          <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">
+          <div className="w-32 h-1 bg-slate-200 dark:bg-[#333] rounded-full overflow-hidden mt-2">
             <div className="h-full bg-[#07c160] rounded-full animate-pulse w-2/3" />
           </div>
         )}

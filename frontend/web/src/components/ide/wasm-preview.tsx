@@ -235,10 +235,10 @@ export function WasmPreview({
   if (compileState.status === "error") {
     return (
       <div
-        className="flex flex-col h-full bg-[#1e1e1e] text-gray-200"
+        className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] text-gray-200"
         data-testid="wasm-preview-error"
       >
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
           <span className="text-xs text-red-400 font-medium">
             {t("wasm.compilationFailed")}
@@ -282,7 +282,7 @@ export function WasmPreview({
           </div>
         </div>
 
-        <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
+        <div className="px-3 py-2 border-t border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <p className="text-[10px] text-gray-500 text-center">
             {t("wasm.askAiFixNote")}
           </p>
@@ -295,7 +295,7 @@ export function WasmPreview({
     const iframeSrc = `/api/compile/artifacts/${compileState.buildId}/index.html`;
     return (
       <div className="flex flex-col h-full" data-testid="wasm-preview-live">
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#333] bg-[#252526]">
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           <span className="text-[10px] text-green-400 font-medium">
             {t("wasm.livePreview", { lang: langLabel })}
@@ -328,7 +328,7 @@ export function WasmPreview({
 
   return (
     <div
-      className="flex flex-col h-full bg-[#1e1e1e] items-center justify-center"
+      className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] items-center justify-center"
       data-testid="wasm-preview-idle"
     >
       <div className="flex flex-col items-center gap-3 text-center px-6">
@@ -344,7 +344,7 @@ export function WasmPreview({
             : t("wasm.waitingFiles", { ext: getFileExtension(compileTarget) })}
         </p>
         {compileState.status === "compiling" && (
-          <div className="w-32 h-1 bg-[#333] rounded-full overflow-hidden mt-2">
+          <div className="w-32 h-1 bg-slate-200 dark:bg-[#333] rounded-full overflow-hidden mt-2">
             <div className={`h-full ${styles.progressClass} rounded-full animate-pulse w-2/3`} />
           </div>
         )}

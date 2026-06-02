@@ -212,8 +212,8 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
     : { label: "Kotlin Compose", ide: "Android Studio", icon: "🤖" };
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-200" data-testid="code-preview-panel">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#333] bg-[#252526]">
+    <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] text-gray-200" data-testid="code-preview-panel">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
         <FileCode className="w-4 h-4 text-muted-foreground shrink-0" />
         <span className="text-xs text-muted-foreground truncate">
           {frameworkInfo.icon} {frameworkInfo.label} Preview
@@ -222,7 +222,7 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs gap-1.5 border-[#555] bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-200"
+          className="h-7 text-xs gap-1.5 border-slate-400 dark:border-[#555] bg-slate-100 dark:bg-[#2d2d2d] hover:bg-slate-300 dark:hover:bg-[#3d3d3d] text-gray-200"
           onClick={handleDownload}
           disabled={downloading || !projectId}
           data-testid="button-download-project"
@@ -233,7 +233,7 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-48 border-r border-[#333] bg-[#252526] overflow-y-auto shrink-0" data-testid="code-preview-file-list">
+        <div className="w-48 border-r border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526] overflow-y-auto shrink-0" data-testid="code-preview-file-list">
           {projectFiles.map((f) => {
             const displayPath = f.path.replace(/^\/project\//, "");
             const isSelected = f.path === selectedFile;
@@ -242,8 +242,8 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
                 key={f.path}
                 className={`w-full text-left px-3 py-1.5 text-xs truncate flex items-center gap-1 transition-colors ${
                   isSelected
-                    ? "bg-[#37373d] text-white"
-                    : "text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200"
+                    ? "bg-slate-200 dark:bg-[#37373d] text-white"
+                    : "text-gray-400 hover:bg-slate-200 dark:hover:bg-[#2a2d2e] hover:text-gray-200"
                 }`}
                 onClick={() => setSelectedFile(f.path)}
                 data-testid={`code-preview-file-${displayPath}`}
@@ -258,8 +258,8 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
         <div className="flex-1 overflow-auto" data-testid="code-preview-content">
           <div className="p-0 font-mono text-xs leading-5">
             {lines.map((line, i) => (
-              <div key={i} className="flex hover:bg-[#2a2d2e]">
-                <span className="inline-block w-10 text-right pr-3 text-gray-600 select-none shrink-0 bg-[#1e1e1e]">
+              <div key={i} className="flex hover:bg-slate-200 dark:hover:bg-[#2a2d2e]">
+                <span className="inline-block w-10 text-right pr-3 text-gray-600 select-none shrink-0 bg-white dark:bg-[#1e1e1e]">
                   {i + 1}
                 </span>
                 <span className="pl-2 whitespace-pre">{highlightLine(line, lang)}</span>
@@ -269,7 +269,7 @@ export function CodePreview({ files, framework, projectId, mainEntryFile }: Code
         </div>
       </div>
 
-      <div className="px-3 py-2 border-t border-[#333] bg-[#252526]">
+      <div className="px-3 py-2 border-t border-slate-300 dark:border-[#333] bg-slate-100 dark:bg-[#252526]">
         <p className="text-[10px] text-gray-500 text-center">
           {frameworkInfo.label} projects require {frameworkInfo.ide} for live preview. Download the project to run it locally.
         </p>

@@ -125,7 +125,7 @@ export function LLMMonitor() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 w-[520px] max-w-[calc(100vw-32px)] h-[360px] flex flex-col rounded-lg border border-border/60 bg-[#0d0d0d]/95 backdrop-blur-md shadow-2xl"
+      className="fixed bottom-4 right-4 z-50 w-[520px] max-w-[calc(100vw-32px)] h-[360px] flex flex-col rounded-lg border border-border/60 bg-slate-50 dark:bg-[#0d0d0d]/95 backdrop-blur-md shadow-2xl"
       data-testid="llm-monitor-panel"
     >
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 shrink-0">

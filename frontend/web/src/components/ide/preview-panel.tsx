@@ -347,7 +347,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
 
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
-      <div className="preview-toolbar flex items-center gap-1.5 px-2 h-[38px] border-b border-[rgba(255,255,255,0.07)] bg-[#101018] shrink-0 flex-wrap">
+      <div className="preview-toolbar flex items-center gap-1.5 px-2 h-[38px] border-b border-black/[0.07] dark:border-white/[0.07] bg-slate-50 dark:bg-[#101018] shrink-0 flex-wrap">
         <span
           className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
           data-testid="badge-framework"
@@ -355,13 +355,13 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
           {getFrameworkLabel(framework)}
         </span>
 
-        <div className="flex items-center bg-[#14141e] border border-[rgba(255,255,255,0.07)] rounded-lg p-[3px] gap-[1px]">
+        <div className="flex items-center bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] rounded-lg p-[3px] gap-[1px]">
           <button
             className={cn(
               "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "ios"
-                ? "bg-[rgba(255,255,255,0.08)] text-[#eeeef6]"
-                : "text-[#484860] hover:text-[#8888a8]"
+                ? "bg-black/[0.06] dark:bg-white/[0.08] text-slate-900 dark:text-[#eeeef6]"
+                : "text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
             )}
             onClick={() => handlePlatformChange("ios")}
             data-testid="button-platform-ios"
@@ -372,8 +372,8 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             className={cn(
               "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
               devicePlatform === "android"
-                ? "bg-[rgba(255,255,255,0.08)] text-[#eeeef6]"
-                : "text-[#484860] hover:text-[#8888a8]"
+                ? "bg-black/[0.06] dark:bg-white/[0.08] text-slate-900 dark:text-[#eeeef6]"
+                : "text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
             )}
             onClick={() => handlePlatformChange("android")}
             data-testid="button-platform-android"
@@ -414,7 +414,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
               className="w-14 h-6 text-xs px-1 text-center"
               data-testid="input-custom-width"
             />
-            <span className="text-xs text-[#8888a8]">x</span>
+            <span className="text-xs text-slate-500 dark:text-[#8888a8]">x</span>
             <Input
               type="number"
               min={100}
@@ -433,7 +433,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
         )}
 
         <button
-          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
+          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
           onClick={() =>
             setDeviceOrientation(
               deviceOrientation === "portrait" ? "landscape" : "portrait"
@@ -446,7 +446,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
         </button>
 
         <button
-          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
+          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
           onClick={() =>
             setDeviceFrameStyle(deviceFrameStyle === "dark" ? "light" : "dark")
           }
@@ -465,7 +465,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
         <Popover>
           <PopoverTrigger asChild>
             <button
-              className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
+              className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
               onClick={handleQrOpen}
               aria-label="QR Preview"
               data-testid="button-qr-preview"
@@ -481,8 +481,8 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             <div className="flex flex-col items-center gap-3">
               <p className="text-xs font-medium text-foreground">{t("preview.scanPhone")}</p>
               {qrLoading ? (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-[rgba(255,255,255,0.04)] rounded-md">
-                  <RefreshCw className="w-5 h-5 animate-spin text-[#8888a8]" />
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-black/[0.03] dark:bg-white/[0.04] rounded-md">
+                  <RefreshCw className="w-5 h-5 animate-spin text-slate-500 dark:text-[#8888a8]" />
                 </div>
               ) : previewUrl ? (
                 <div className="bg-white p-3 rounded-lg" data-testid="qr-code-container">
@@ -494,8 +494,8 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
                   />
                 </div>
               ) : (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-[rgba(255,255,255,0.04)] rounded-md">
-                  <p className="text-xs text-[#8888a8] text-center px-4">
+                <div className="w-[180px] h-[180px] flex items-center justify-center bg-black/[0.03] dark:bg-white/[0.04] rounded-md">
+                  <p className="text-xs text-slate-500 dark:text-[#8888a8] text-center px-4">
                     Click to generate preview URL
                   </p>
                 </div>
@@ -503,7 +503,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
               {previewUrl && (
                 <div className="w-full flex flex-col gap-2">
                   <div className="flex items-center gap-1 w-full">
-                    <div className="flex-1 text-[10px] font-mono text-[#8888a8] truncate bg-[rgba(255,255,255,0.04)] rounded px-2 py-1" data-testid="text-preview-url">
+                    <div className="flex-1 text-[10px] font-mono text-slate-500 dark:text-[#8888a8] truncate bg-black/[0.03] dark:bg-white/[0.04] rounded px-2 py-1" data-testid="text-preview-url">
                       {previewUrl}
                     </div>
                     <Button
@@ -529,7 +529,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
                       <ExternalLink className="w-3 h-3" />
                     </Button>
                   </div>
-                  <p className="text-[10px] text-[#8888a8] text-center">
+                  <p className="text-[10px] text-slate-500 dark:text-[#8888a8] text-center">
                     Live reload enabled — changes sync automatically
                   </p>
                 </div>
@@ -539,7 +539,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
         </Popover>
 
         <button
-          className="h-[26px] w-7 rounded-md bg-[#14141e] border border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-[#484860]"
+          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
           onClick={handleRefresh}
           aria-label={t("preview.refresh")}
           data-testid="button-refresh-preview"
@@ -552,7 +552,7 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             "h-[26px] w-7 rounded-md border transition-colors shrink-0 flex items-center justify-center",
             isConsoleOpen
               ? "bg-[rgba(79,130,255,0.10)] border-[rgba(79,130,255,0.20)] text-[#4f82ff]"
-              : "bg-[#14141e] border-[rgba(255,255,255,0.07)] hover:bg-[#1a1a26] text-[#484860] hover:text-[#8888a8]"
+              : "bg-slate-100 dark:bg-[#14141e] border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
           )}
           onClick={toggleConsole}
           title={isConsoleOpen ? t("preview.hideTerminal") : t("preview.showTerminal")}
@@ -609,14 +609,14 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             <>
               {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#080810]"
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white dark:bg-[#080810]"
                   style={{ animation: "fade-up 150ms ease" }}
                 >
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-[#484860]">
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400 dark:text-[#484860]">
                     <rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" />
                     <path d="M11 10l7 4-7 4V10z" fill="currentColor" />
                   </svg>
-                  <p className="text-[12px] text-[#484860]">{t("preview.runFirst")}</p>
+                  <p className="text-[12px] text-slate-400 dark:text-[#484860]">{t("preview.runFirst")}</p>
                 </div>
               ) : (
                 <iframe
