@@ -303,6 +303,7 @@ export async function runAgentLoop(
       let result = "";
       const handler = handlers[tc.name];
 
+      let handlerSucceeded = false;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
         if (toolPart && partCtx) {
@@ -317,7 +318,7 @@ export async function runAgentLoop(
       } else {
         try {
           result = await handler(args, emit);
-          // Transition to completed
+          handlerSucceeded = true;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {
               status: "completed",
@@ -349,7 +350,11 @@ export async function runAgentLoop(
       };
       messages.push(toolResultMsg);
 
-      if (exitTools.has(tc.name)) {
+      // Only treat this as an exit if the handler actually succeeded.
+      // A throwing handler signals "rejected, retry" — keep looping so the
+      // LLM sees the error message and can re-invoke the tool with fixed args.
+      // maxIterations bounds the retry budget.
+      if (handlerSucceeded && exitTools.has(tc.name)) {
         shouldExit = true;
         exitTool = tc.name;
         exitArgs = args;

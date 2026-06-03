@@ -100,6 +100,16 @@ export function useManagerStream() {
   const [mgrLiveActionLog, setMgrLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [isMgrReconnecting, setIsMgrReconnecting] = useState(false);
 
+  // Clear stale live text when the active project changes. The old SSE closure
+  // won't write new values (isCurrentProject guard prevents it), but the
+  // useState still holds whatever was accumulated before the switch.
+  useEffect(() => {
+    setMgrLiveThinkingText("");
+    setMgrLiveNarrationText("");
+    setMgrLiveActionLog([]);
+    setMgrPreparingPlan(false);
+  }, [projectId]);
+
   const abortRef = useRef<AbortController | null>(null);
   // Reader for the connectToMgrStream() reconnect path. Stored so unmount can
   // cancel() it — without this, switching projects mid-stream leaves the old
