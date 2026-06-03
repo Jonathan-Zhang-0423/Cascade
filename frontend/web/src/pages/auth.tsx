@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 
+type Tab = "username" | "email" | "phone";
 type Mode = "login" | "register";
 
 export default function AuthPage() {
@@ -10,15 +11,27 @@ export default function AuthPage() {
   const setUserId = useIDEStore((s) => s.setUserId);
   const setStoredUsername = useIDEStore((s) => s.setUsername);
   const [, setLocation] = useLocation();
+
+  const [tab, setTab] = useState<Tab>("username");
+
+  // Username/password state
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+
+  // OTP state (shared between email + phone tabs, reset on tab switch)
+  const [otpTarget, setOtpTarget] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpInviteCode, setOtpInviteCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const resendTimerRef = useRef<number | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // The GitHub callback redirects back to /auth?github_error=<reason> when
-  // OAuth fails. Surface it as a normal error message so the user knows.
+  // GitHub callback may bounce us back with ?github_error=…
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("github_error")) {
@@ -30,10 +43,59 @@ export default function AuthPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Resend countdown
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    resendTimerRef.current = window.setInterval(() => {
+      setResendIn((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => {
+      if (resendTimerRef.current) window.clearInterval(resendTimerRef.current);
+    };
+  }, [resendIn > 0]);
+
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    setError(null);
+    setOtpCode("");
+    setOtpInviteCode("");
+    setOtpSent(false);
+  };
+
+  const validateOtpTarget = (): string | null => {
+    if (tab === "email") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpTarget.trim().toLowerCase())) {
+        return t("auth.otpInvalidEmail");
+      }
+    } else if (tab === "phone") {
+      if (!/^\+\d{8,15}$/.test(otpTarget.trim())) {
+        return t("auth.otpInvalidPhone");
+      }
+    }
+    return null;
+  };
+
+  const mapServerError = (msg: string): string => {
+    const map: Record<string, string> = {
+      "Username already taken": t("auth.usernameTaken"),
+      "Invalid credentials": t("auth.invalidCredentials"),
+      "username and password required": t("auth.fillBothFields"),
+      "Invite code required": t("auth.inviteCodeRequired"),
+      "Invalid invite code": t("auth.inviteCodeInvalid"),
+      "Invite code already used": t("auth.inviteCodeUsed"),
+      "Invite code expired": t("auth.inviteCodeExpired"),
+      "Invalid email": t("auth.otpInvalidEmail"),
+      "Invalid phone": t("auth.otpInvalidPhone"),
+      "Invalid or expired code": t("auth.otpInvalidOrExpired"),
+      "Code locked - request a new one": t("auth.otpLocked"),
+      "Send rate-limited": t("auth.otpRateLimited"),
+    };
+    return map[msg] ?? t("auth.genericError");
+  };
+
+  const handleUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
     if (!username.trim()) { setError(t("auth.usernameRequired")); return; }
     if (password.length < 6) { setError(t("auth.passwordTooShort")); return; }
     if (mode === "register" && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
@@ -49,19 +111,61 @@ export default function AuthPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
+      if (!res.ok) { setError(mapServerError(data.error)); return; }
+      setUserId(data.id);
+      setStoredUsername(data.username);
+      setLocation("/app");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    const validationError = validateOtpTarget();
+    if (validationError) { setError(validationError); return; }
+    setError(null);
+    setLoading(true);
+    try {
+      const channel = tab === "email" ? "email" : "sms";
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, target: otpTarget.trim() }),
+      });
+      const data = await res.json();
       if (!res.ok) {
-        const knownErrors: Record<string, string> = {
-          "Username already taken": t("auth.usernameTaken"),
-          "Invalid credentials": t("auth.invalidCredentials"),
-          "username and password required": t("auth.fillBothFields"),
-          "Invite code required": t("auth.inviteCodeRequired"),
-          "Invalid invite code": t("auth.inviteCodeInvalid"),
-          "Invite code already used": t("auth.inviteCodeUsed"),
-          "Invite code expired": t("auth.inviteCodeExpired"),
-        };
-        setError(knownErrors[data.error] ?? t("auth.genericError"));
+        setError(mapServerError(data.error));
+        if (typeof data.retryAfterSec === "number") setResendIn(data.retryAfterSec);
         return;
       }
+      setOtpSent(true);
+      setResendIn(data.retryAfterSec ?? 60);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
+
+    setLoading(true);
+    try {
+      const channel = tab === "email" ? "email" : "sms";
+      const body: Record<string, string> = {
+        channel,
+        target: otpTarget.trim(),
+        code: otpCode,
+      };
+      if (otpInviteCode.trim()) body.inviteCode = otpInviteCode.trim();
+      const res = await fetch("/api/auth/otp/verify-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(mapServerError(data.error)); return; }
       setUserId(data.id);
       setStoredUsername(data.username);
       setLocation("/app");
@@ -71,10 +175,10 @@ export default function AuthPage() {
   };
 
   const handleGithubSignIn = () => {
-    // Full-page navigation so the browser handles GitHub's redirect chain
-    // and the session cookie set by the callback is sent back on return.
     window.location.href = "/api/auth/github";
   };
+
+  const channelLabel = tab === "email" ? t("auth.otpChannelEmail") : t("auth.otpChannelPhone");
 
   return (
     <div className="min-h-screen bg-[#080810] flex items-center justify-center">
@@ -82,7 +186,9 @@ export default function AuthPage() {
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-white">Cascade</h1>
           <p className="mt-1 text-sm text-[rgba(255,255,255,0.4)]">
-            {mode === "login" ? t("auth.signInSubtitle") : t("auth.registerSubtitle")}
+            {tab === "username" && mode === "register"
+              ? t("auth.registerSubtitle")
+              : t("auth.signInSubtitle")}
           </p>
         </div>
 
@@ -103,66 +209,158 @@ export default function AuthPage() {
           <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]" />
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.usernameLabel")}</label>
-            <input
-              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={t("auth.usernamePlaceholder")}
-              autoComplete="username"
-              required
-            />
-          </div>
+        {/* Tab switcher */}
+        <div className="grid grid-cols-3 gap-1 mb-5 p-1 bg-[rgba(255,255,255,0.04)] rounded-lg border border-[rgba(255,255,255,0.06)]">
+          {(["username", "email", "phone"] as Tab[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => switchTab(id)}
+              className={`text-xs py-1.5 rounded-md transition-colors ${
+                tab === id
+                  ? "bg-[rgba(255,255,255,0.08)] text-white"
+                  : "text-[rgba(255,255,255,0.5)] hover:text-white"
+              }`}
+            >
+              {id === "username" ? t("auth.tabUsername") : id === "email" ? t("auth.tabEmail") : t("auth.tabPhone")}
+            </button>
+          ))}
+        </div>
 
-          <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.passwordLabel")}</label>
-            <input
-              type="password"
-              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              required
-            />
-          </div>
+        {tab === "username" && (
+          <form onSubmit={handleUsernameSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.usernameLabel")}</label>
+              <input
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={t("auth.usernamePlaceholder")}
+                autoComplete="username"
+                required
+              />
+            </div>
 
-          {mode === "register" && (
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.passwordLabel")}</label>
+              <input
+                type="password"
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+              />
+            </div>
+
+            {mode === "register" && (
+              <div>
+                <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.inviteCodeLabel")}</label>
+                <input
+                  className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-widest"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder={t("auth.inviteCodePlaceholder")}
+                  autoComplete="off"
+                  required
+                />
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-400">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
+            >
+              {loading ? "…" : mode === "login" ? t("auth.signIn") : t("auth.createAccount")}
+            </button>
+
+            <p className="text-center text-xs text-[rgba(255,255,255,0.35)]">
+              {mode === "login" ? t("auth.noAccount") : t("auth.hasAccount")}
+              <button
+                type="button"
+                onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}
+                className="text-blue-400 hover:text-blue-300"
+              >
+                {mode === "login" ? t("auth.signUp") : t("auth.signIn")}
+              </button>
+            </p>
+          </form>
+        )}
+
+        {(tab === "email" || tab === "phone") && (
+          <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">
+                {tab === "email" ? t("auth.emailLabel") : t("auth.phoneLabel")}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type={tab === "email" ? "email" : "tel"}
+                  className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                  value={otpTarget}
+                  onChange={(e) => setOtpTarget(e.target.value)}
+                  placeholder={tab === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
+                  autoComplete={tab === "email" ? "email" : "tel"}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={loading || resendIn > 0 || !otpTarget.trim()}
+                  className="px-3 py-2 rounded-lg bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] text-white text-xs font-medium hover:bg-[rgba(255,255,255,0.1)] disabled:opacity-40 whitespace-nowrap"
+                >
+                  {loading && !otpSent
+                    ? t("auth.otpSending")
+                    : resendIn > 0
+                    ? t("auth.otpResendIn", { n: String(resendIn) })
+                    : t("auth.otpSend")}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.otpCodeLabel")}</label>
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-[0.5em]"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder={t("auth.otpCodePlaceholder")}
+                autoComplete="one-time-code"
+                required
+              />
+            </div>
+
             <div>
               <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.inviteCodeLabel")}</label>
               <input
                 className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-widest"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
+                value={otpInviteCode}
+                onChange={(e) => setOtpInviteCode(e.target.value)}
                 placeholder={t("auth.inviteCodePlaceholder")}
                 autoComplete="off"
-                required
               />
+              <p className="mt-1 text-[10px] text-[rgba(255,255,255,0.35)]">
+                {t("auth.otpInviteHint", { channel: channelLabel })}
+              </p>
             </div>
-          )}
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
-          >
-            {loading ? "…" : mode === "login" ? t("auth.signIn") : t("auth.createAccount")}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-[rgba(255,255,255,0.35)]">
-          {mode === "login" ? t("auth.noAccount") : t("auth.hasAccount")}
-          <button
-            onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}
-            className="text-blue-400 hover:text-blue-300"
-          >
-            {mode === "login" ? t("auth.signUp") : t("auth.signIn")}
-          </button>
-        </p>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
+            >
+              {loading ? "…" : t("auth.otpSubmit")}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

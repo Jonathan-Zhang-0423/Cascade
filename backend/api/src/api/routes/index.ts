@@ -20,6 +20,7 @@ import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, 
 import { db } from "../../infra/db";
 import { eq, and, desc, count, isNull } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
+import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
@@ -2809,6 +2810,132 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (err) console.error("[auth/logout]", err);
       res.status(204).end();
     });
+  });
+
+  // === OTP (email + phone) ===
+
+  app.post("/api/auth/otp/send", async (req, res) => {
+    try {
+      const { channel, target } = req.body as { channel?: string; target?: string };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+      const result = await sendOtp({ channel, target: normalized, purpose: "login" });
+      if (!result.ok) {
+        return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
+      }
+      res.json({ ok: true, retryAfterSec: 60 });
+    } catch (err) {
+      console.error("[auth/otp/send]", err);
+      res.status(500).json({ error: "Failed to send code" });
+    }
+  });
+
+  app.post("/api/auth/otp/verify-login", async (req, res) => {
+    try {
+      const { channel, target, code, inviteCode } = req.body as {
+        channel?: string; target?: string; code?: string; inviteCode?: string;
+      };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+      if (!code || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Invalid or expired code" });
+      }
+
+      const verify = await verifyOtp({ channel, target: normalized, code, purpose: "login" });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      // Look up existing user by email or phone
+      const existing = channel === "email"
+        ? await storage.getUserByEmail(normalized)
+        : await storage.getUserByPhone(normalized);
+
+      if (existing) {
+        const verifiedPatch = channel === "email"
+          ? { emailVerified: true }
+          : { phoneVerified: true };
+        await db.update(users).set(verifiedPatch).where(eq(users.id, existing.id));
+        (req.session as any).userId = existing.id;
+        return res.json({
+          id: existing.id,
+          username: existing.username,
+          experienceLevel: (existing as any).experienceLevel,
+          hasSetExperienceLevel: (existing as any).hasSetExperienceLevel ?? false,
+          inviteCode: (existing as any).inviteCode ?? null,
+          trialExpiresAt: (existing as any).trialExpiresAt
+            ? ((existing as any).trialExpiresAt as Date).toISOString()
+            : null,
+        });
+      }
+
+      // Auto-register: invite code required
+      if (!inviteCode?.trim()) {
+        return res.status(400).json({ error: "Invite code required" });
+      }
+
+      // Create the user first (no password, OTP is the credential)
+      let username = "";
+      let createdUserId = "";
+      for (let i = 0; i < 5; i++) {
+        const candidate = `user_${randomBytes(4).toString("hex")}`;
+        try {
+          const id = randomBytes(16).toString("hex");
+          const [row] = await db.insert(users).values({
+            id,
+            username: candidate,
+            password: null,
+            email: channel === "email" ? normalized : null,
+            phone: channel === "sms" ? normalized : null,
+            emailVerified: channel === "email",
+            phoneVerified: channel === "sms",
+          }).returning({ id: users.id, username: users.username });
+          createdUserId = row.id;
+          username = row.username;
+          break;
+        } catch (err: any) {
+          // Username collision — retry. Anything else: bail.
+          if (!String(err?.message ?? "").includes("users_username")) throw err;
+        }
+      }
+      if (!createdUserId) {
+        return res.status(500).json({ error: "Failed to create account" });
+      }
+
+      const redeem = await redeemInviteCode(inviteCode, createdUserId);
+      if (!redeem.ok) {
+        // Roll back the user so target isn't burned on a bad invite code.
+        await db.delete(users).where(eq(users.id, createdUserId));
+        return res.status(400).json({ error: redeem.error });
+      }
+      await db.update(users)
+        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .where(eq(users.id, createdUserId));
+
+      (req.session as any).userId = createdUserId;
+      res.status(201).json({
+        id: createdUserId,
+        username,
+        experienceLevel: "intermediate",
+        hasSetExperienceLevel: false,
+        inviteCode: redeem.code,
+        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
+      });
+    } catch (err) {
+      console.error("[auth/otp/verify-login]", err);
+      res.status(500).json({ error: "Login failed" });
+    }
   });
 
   // === GitHub OAuth ===
