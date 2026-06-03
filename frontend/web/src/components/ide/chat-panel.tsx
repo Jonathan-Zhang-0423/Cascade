@@ -349,7 +349,7 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+        {(isManagerResponding || mgrPreparingPlan || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
           <BuildLivePanel
             entries={mgrLiveActionLog}
             thinkingText={mgrLiveThinkingText || undefined}
@@ -362,6 +362,7 @@ export function ChatPanel() {
             thinkingText={liveThinkingText || undefined}
             narrationText={liveNarrationText || undefined}
             thinkingElapsedSec={thinkingElapsedSec}
+            isCompleted={!isExecuting && buildPhase === null}
           />
         )}
       </div>

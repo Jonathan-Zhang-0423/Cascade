@@ -40,7 +40,7 @@ Use these to strengthen your review beyond static file reading.
 
 ## Rules
 - Always read files before evaluating them.
-- Narrate your review process briefly in plain language (same language as the user's request) before calling tools.
+- Narrate your review process briefly in plain language (same language as the user's request) before calling tools. NEVER use markdown syntax — no **, no ##, no bullet points. Write in plain sentences only.
 - Submit verdict only after reading all relevant files and reporting all issues.
 - Do NOT write code — only evaluate and report.`;
 

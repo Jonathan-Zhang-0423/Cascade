@@ -14,6 +14,26 @@ import { detectLanguage, normalizeSteps, generateCascade } from "../chat-utils";
 import { parseSseStream, createHeartbeatWatchdog, type HeartbeatWatchdog } from "./useSSEStream";
 import type { BuildPhase } from "../BuildPhaseIndicator";
 
+// Group a flat action log into narration-bound segments for persistence.
+// Each segment is one narration paragraph followed by the actions that ran
+// under it. "step" and "narration" entries are not displayed as actions, so
+// they are skipped. A new segment starts whenever a fresh precedingNarration
+// is observed; consecutive actions sharing (or lacking) a narration coalesce.
+function buildSegments(finalLog: ActionLogEntry[]): NonNullable<BuildResultData["segments"]> {
+  const segments: NonNullable<BuildResultData["segments"]> = [];
+  for (const entry of finalLog) {
+    if (entry.type === "step" || entry.type === "narration") continue;
+    const narration = entry.precedingNarration || "";
+    const last = segments[segments.length - 1];
+    if (!last || (narration && last.narration !== narration)) {
+      segments.push({ id: String(segments.length), narration, actions: [entry] });
+    } else {
+      last.actions.push(entry);
+    }
+  }
+  return segments;
+}
+
 export function useBuildStream() {
   const {
     addManagerMessage: rawAddManagerMessage,
@@ -294,8 +314,9 @@ export function useBuildStream() {
     setThinkingElapsedSec(null);
   }, []);
 
-  const appendActionLog = useCallback((entry: ActionLogEntry) => {
-    actionLogRef.current = [...actionLogRef.current, entry];
+  const appendActionLog = useCallback((entry: ActionLogEntry, precedingNarration?: string) => {
+    const enriched = precedingNarration ? { ...entry, precedingNarration } : entry;
+    actionLogRef.current = [...actionLogRef.current, enriched];
     setLiveActionLog([...actionLogRef.current]);
   }, []);
 
@@ -433,7 +454,8 @@ export function useBuildStream() {
           detail,
           timestamp: Date.now(),
           filePath,
-        });
+        }, ctx.commAccumulated.value || undefined);
+        ctx.commAccumulated.value = "";
       } else if (type === "narration_token") {
         if (thinkingStartTimeRef.current && !thinkingElapsedComputedRef.current) {
           thinkingElapsedComputedRef.current = true;
@@ -700,6 +722,9 @@ export function useBuildStream() {
       if (useIDEStore.getState().projectId !== projectId) return;
       const activeSessionId = sessionId ?? buildSessionIdRef.current;
       if (!activeSessionId) return;
+      // Group the flat action log into narration-bound segments so the persisted
+      // card can render the same narration + actions structure as the live panel.
+      const segments = buildSegments(finalLog);
       // Session-scoped dedup using the persisted BuildResultData.sessionId field.
       // managerMessages persists to localStorage, so on reload we can look up
       // existing cards by sessionId even though in-memory refs reset. This prevents
@@ -720,6 +745,7 @@ export function useBuildStream() {
                 buildResult: {
                   ...m.buildResult,
                   actionLog: finalLog.length > 0 ? finalLog : m.buildResult.actionLog,
+                  segments: segments.length > 0 ? segments : m.buildResult.segments,
                   completionData: {
                     ...m.buildResult.completionData,
                     changedFiles: changedFiles.length > 0 ? changedFiles : m.buildResult.completionData.changedFiles,
@@ -737,6 +763,7 @@ export function useBuildStream() {
       savedBuildSessionIdsRef.current.add(activeSessionId);
       const buildResult: BuildResultData = {
         actionLog: finalLog,
+        segments: segments.length > 0 ? segments : undefined,
         completionData: { changedFiles, userLang, summary },
         sessionId: activeSessionId,
       };
@@ -1127,23 +1154,27 @@ export function useBuildStream() {
               if (msgId) {
                 const curMsgs =
                   useIDEStore.getState().managerMessages;
-                const updated = curMsgs.map((m) =>
-                  m.id === msgId && m.buildResult
-                    ? {
-                        ...m,
-                        buildResult: {
-                          ...m.buildResult,
-                          actionLog: finalLog,
-                        },
-                      }
-                    : m,
-                );
+                const updated = curMsgs.map((m) => {
+                  if (!(m.id === msgId && m.buildResult)) return m;
+                  const segs = buildSegments(finalLog);
+                  return {
+                    ...m,
+                    buildResult: {
+                      ...m.buildResult,
+                      actionLog: finalLog,
+                      segments: segs.length > 0 ? segs : m.buildResult.segments,
+                    },
+                  };
+                });
                 guardedSetState({ managerMessages: updated });
               } else {
                 saveBuildResult(finalLog, [], userLang);
               }
             }
-            clearBuildLive(400);
+            clearBuildLive(800);
+            setExecutingTaskIndex(null);
+            setAiResponding(false);
+            finalizeSessionCleanup();
             return;
           }
 
@@ -1511,13 +1542,15 @@ export function useBuildStream() {
                 const label = ev.label || "";
                 const detail = ev.detail || "";
                 const filePath = ev.filePath || undefined;
+                setLiveNarrationText("");
                 appendActionLog({
                   type: actionType,
                   label,
                   detail,
                   filePath,
                   timestamp: Date.now(),
-                });
+                }, helpers.commAccumulated.value || undefined);
+                helpers.commAccumulated.value = "";
               } else if (type === "step_completed") {
                 updateTaskStatus(String(ev.stepNumber), "done");
                 helpers.clearTypingOnCurrentMsg();
@@ -1668,6 +1701,9 @@ export function useBuildStream() {
               helpers.finalizeEditor();
               helpers.flushNarrationToStore();
               clearBuildLive(400);
+              setExecutingTaskIndex(null);
+              setAiResponding(false);
+              finalizeSessionCleanup();
               return;
             }
 
