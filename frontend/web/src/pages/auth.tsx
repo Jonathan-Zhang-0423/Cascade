@@ -13,6 +13,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -35,13 +36,17 @@ export default function AuthPage() {
 
     if (!username.trim()) { setError(t("auth.usernameRequired")); return; }
     if (password.length < 6) { setError(t("auth.passwordTooShort")); return; }
+    if (mode === "register" && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
 
     setLoading(true);
     try {
+      const body = mode === "register"
+        ? { username, password, inviteCode }
+        : { username, password };
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -49,13 +54,17 @@ export default function AuthPage() {
           "Username already taken": t("auth.usernameTaken"),
           "Invalid credentials": t("auth.invalidCredentials"),
           "username and password required": t("auth.fillBothFields"),
+          "Invite code required": t("auth.inviteCodeRequired"),
+          "Invalid invite code": t("auth.inviteCodeInvalid"),
+          "Invite code already used": t("auth.inviteCodeUsed"),
+          "Invite code expired": t("auth.inviteCodeExpired"),
         };
         setError(knownErrors[data.error] ?? t("auth.genericError"));
         return;
       }
       setUserId(data.id);
       setStoredUsername(data.username);
-      setLocation("/");
+      setLocation("/app");
     } finally {
       setLoading(false);
     }
@@ -119,6 +128,20 @@ export default function AuthPage() {
               required
             />
           </div>
+
+          {mode === "register" && (
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.inviteCodeLabel")}</label>
+              <input
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-widest"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder={t("auth.inviteCodePlaceholder")}
+                autoComplete="off"
+                required
+              />
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 

@@ -86,7 +86,7 @@ export function CodeEditor() {
       {openFiles.length > 0 ? (
         <>
           <div
-            className="flex items-center border-b border-[rgba(255,255,255,0.07)] shrink-0 overflow-x-auto h-9"
+            className="flex items-center border-b border-black/[0.07] dark:border-white/[0.07] shrink-0 overflow-x-auto h-9"
             role="tablist"
             aria-label={t("editor.openFiles")}
           >
@@ -97,10 +97,10 @@ export function CodeEditor() {
                 aria-selected={filePath === activeFile}
                 tabIndex={filePath === activeFile ? 0 : -1}
                 className={cn(
-                  "group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-r border-[rgba(255,255,255,0.05)] transition-colors min-w-fit",
+                  "group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-r border-black/[0.05] dark:border-white/[0.05] transition-colors min-w-fit",
                   filePath === activeFile
-                    ? "bg-[#0c0c14] text-foreground"
-                    : "bg-[rgba(255,255,255,0.02)] text-[#8888a8] hover:text-foreground hover:bg-[rgba(255,255,255,0.05)]"
+                    ? "bg-slate-50 dark:bg-[#0c0c14] text-foreground"
+                    : "bg-black/[0.02] dark:bg-white/[0.02] text-slate-500 dark:text-[#8888a8] hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
                 )}
                 onClick={() => setActiveFile(filePath)}
                 onKeyDown={(e) => {
@@ -113,7 +113,7 @@ export function CodeEditor() {
                 <FileCode className="w-3.5 h-3.5 shrink-0" />
                 <span>{getFileName(filePath)}</span>
                 <button
-                  className="ml-1 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-[rgba(255,255,255,0.08)] p-0.5 transition-opacity"
+                  className="ml-1 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] p-0.5 transition-opacity"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeFile(filePath);
@@ -126,7 +126,7 @@ export function CodeEditor() {
               </div>
             ))}
             <button
-              className="flex items-center justify-center h-full px-2 text-[#8888a8] hover:text-foreground hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+              className="flex items-center justify-center h-full px-2 text-slate-500 dark:text-[#8888a8] hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05] transition-colors"
               onClick={openCommandPalette}
               aria-label={t("editor.openFile")}
               data-testid="button-open-file-palette"
@@ -170,12 +170,12 @@ export function CodeEditor() {
       ) : (
         <div className="flex-1 flex items-center justify-center" data-testid="editor-empty">
           <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-[rgba(255,255,255,0.04)] flex items-center justify-center mx-auto">
-              <FileCode className="w-7 h-7 text-[#484860]" />
+            <div className="w-14 h-14 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] flex items-center justify-center mx-auto">
+              <FileCode className="w-7 h-7 text-slate-400 dark:text-[#484860]" />
             </div>
             <div>
-              <p className="text-sm text-[#8888a8]">{t("editor.noFileOpen")}</p>
-              <p className="text-xs text-[#484860]">
+              <p className="text-sm text-slate-500 dark:text-[#8888a8]">{t("editor.noFileOpen")}</p>
+              <p className="text-xs text-slate-400 dark:text-[#484860]">
                 {t("editor.selectFile")}
               </p>
             </div>

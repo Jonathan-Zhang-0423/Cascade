@@ -108,7 +108,7 @@ export function Navbar({ projectName }: NavbarProps) {
 
   const handleBack = () => {
     saveProject();
-    navigate("/");
+    navigate("/app");
   };
 
   const handleRun = async () => {
@@ -223,13 +223,13 @@ export function Navbar({ projectName }: NavbarProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-2 px-3 h-11 border-b border-[rgba(255,255,255,0.07)] bg-[#08080e] shrink-0"
+      className="flex items-center justify-between gap-2 px-3 h-11 border-b border-black/[0.07] dark:border-white/[0.07] bg-white dark:bg-[#08080e] shrink-0"
       data-testid="navbar"
     >
       {/* Left */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <button
-          className="flex items-center justify-center w-7 h-7 rounded-md bg-[#0c0c14] border border-[rgba(255,255,255,0.07)] text-[#8888a8] hover:text-[#eeeef6] hover:bg-[#14141e] [transition:var(--transition-fast)] shrink-0"
+          className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-50 dark:bg-[#0c0c14] border border-black/[0.07] dark:border-white/[0.07] text-slate-500 dark:text-[#8888a8] hover:text-slate-900 dark:hover:text-[#eeeef6] hover:bg-slate-100 dark:hover:bg-[#14141e] [transition:var(--transition-fast)] shrink-0"
           onClick={handleBack}
           data-testid="button-back"
           aria-label={t("navbar.backLabel")}
@@ -237,7 +237,7 @@ export function Navbar({ projectName }: NavbarProps) {
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#0c0c14] border border-[rgba(255,255,255,0.07)]" data-testid="emoji-project">
+          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-slate-50 dark:bg-[#0c0c14] border border-black/[0.07] dark:border-white/[0.07]" data-testid="emoji-project">
             {getProjectEmoji(projectName)}
           </div>
           <span className="text-[13px] font-semibold tracking-[-0.02em] truncate" data-testid="text-project-name">
@@ -245,8 +245,8 @@ export function Navbar({ projectName }: NavbarProps) {
           </span>
           {frameworkLabel && (
             <>
-              <span className="text-[#2e2e42] shrink-0">·</span>
-              <span className="text-[11px] text-[#8888a8] shrink-0">{frameworkLabel}</span>
+              <span className="text-slate-300 dark:text-[#2e2e42] shrink-0">·</span>
+              <span className="text-[11px] text-slate-500 dark:text-[#8888a8] shrink-0">{frameworkLabel}</span>
             </>
           )}
         </div>
@@ -255,7 +255,7 @@ export function Navbar({ projectName }: NavbarProps) {
       {/* Right */}
       <div className="flex items-center gap-2 flex-1 justify-end">
         <Select value={themeId} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-[#0c0c14] border-[rgba(255,255,255,0.07)] text-[#8888a8]" data-testid="select-theme">
+          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-slate-50 dark:bg-[#0c0c14] border-black/[0.07] dark:border-white/[0.07] text-slate-500 dark:text-[#8888a8]" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

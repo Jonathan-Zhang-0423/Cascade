@@ -101,21 +101,21 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[560px] max-h-[80vh] flex flex-col bg-[#0d1525] border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.06)]">
+      <div className="w-[560px] max-h-[80vh] flex flex-col bg-white dark:bg-[#0d1525] border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.06]">
           <h2 className="text-sm font-semibold text-white">
             {skill?.id ? t("skillsModal.editTitle") : t("skillsModal.newTitle")}
           </h2>
-          <button onClick={onClose} className="text-[rgba(255,255,255,0.4)] hover:text-white">
+          <button onClick={onClose} className="text-black/[0.4] dark:text-white/[0.4] hover:text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex flex-col gap-4 px-5 py-4 overflow-y-auto">
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelName")}</label>
+            <label className="block text-[11px] text-black/[0.5] dark:text-white/[0.5] mb-1">{t("skillsModal.labelName")}</label>
             <input
-              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
+              className="w-full bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t("skillsModal.placeholderName")}
@@ -123,9 +123,9 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
           </div>
 
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelDesc")}</label>
+            <label className="block text-[11px] text-black/[0.5] dark:text-white/[0.5] mb-1">{t("skillsModal.labelDesc")}</label>
             <input
-              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
+              className="w-full bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-md px-3 py-1.5 text-sm text-white outline-none focus:border-blue-500"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={t("skillsModal.placeholderDesc")}
@@ -133,7 +133,7 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
           </div>
 
           <div>
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("skillsModal.labelType")}</label>
+            <label className="block text-[11px] text-black/[0.5] dark:text-white/[0.5] mb-1">{t("skillsModal.labelType")}</label>
             <div className="flex gap-2">
               {(["knowledge", "tool"] as SkillType[]).map((tp) => (
                 <button
@@ -143,7 +143,7 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border",
                     type === tp
                       ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
-                      : "border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.4)] hover:text-white"
+                      : "border-black/[0.08] dark:border-white/[0.08] text-black/[0.4] dark:text-white/[0.4] hover:text-white"
                   )}
                 >
                   {tp === "knowledge" ? <BookOpen className="w-3 h-3" /> : <Wrench className="w-3 h-3" />}
@@ -154,13 +154,13 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
           </div>
 
           <div className="flex-1">
-            <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">
+            <label className="block text-[11px] text-black/[0.5] dark:text-white/[0.5] mb-1">
               {type === "knowledge" ? t("skillsModal.labelMarkdown") : t("skillsModal.labelJson")}
             </label>
             <textarea
               className={cn(
-                "w-full h-48 bg-[rgba(255,255,255,0.04)] border rounded-md px-3 py-2 text-xs text-white font-mono outline-none resize-none",
-                jsonError ? "border-red-500/60 focus:border-red-500" : "border-[rgba(255,255,255,0.08)] focus:border-blue-500"
+                "w-full h-48 bg-black/[0.03] dark:bg-white/[0.04] border rounded-md px-3 py-2 text-xs text-white font-mono outline-none resize-none",
+                jsonError ? "border-red-500/60 focus:border-red-500" : "border-black/[0.08] dark:border-white/[0.08] focus:border-blue-500"
               )}
               value={content}
               onChange={(e) => {
@@ -176,11 +176,11 @@ export function SkillsModal({ skill, scope, userId, onClose, onSaved }: SkillsMo
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[rgba(255,255,255,0.06)]">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.06]">
           {saveError && <p className="text-[10px] text-red-400 mr-auto">{saveError}</p>}
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-md text-xs text-[rgba(255,255,255,0.5)] hover:text-white border border-[rgba(255,255,255,0.08)]"
+            className="px-4 py-1.5 rounded-md text-xs text-black/[0.5] dark:text-white/[0.5] hover:text-white border border-black/[0.08] dark:border-white/[0.08]"
           >
             {t("skillsModal.cancel")}
           </button>

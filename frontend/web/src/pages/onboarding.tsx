@@ -37,7 +37,7 @@ export default function OnboardingPage() {
       const data = await res.json();
       setUserId(data.id);
       setUsername(data.username);
-      setLocation("/");
+      setLocation("/app");
     } finally {
       setLoading(false);
     }

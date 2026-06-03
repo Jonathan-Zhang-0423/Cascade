@@ -16,9 +16,10 @@ import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
 import { db } from "../../infra/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
@@ -2630,23 +2631,96 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // === AUTH ===
 
+  // Validate an invite code and atomically mark it redeemed by the given user.
+  // Returns the trial expiry to write to users.trialExpiresAt, or an error
+  // string for the caller to map to an HTTP 400 response.
+  async function redeemInviteCode(code: string, userId: string): Promise<
+    | { ok: true; trialExpiresAt: Date; code: string }
+    | { ok: false; error: "Invalid invite code" | "Invite code already used" | "Invite code expired" }
+  > {
+    const trimmed = code.trim();
+    if (!trimmed) return { ok: false, error: "Invalid invite code" };
+    const [invite] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, trimmed));
+    if (!invite) return { ok: false, error: "Invalid invite code" };
+    if (invite.redeemedByUserId) return { ok: false, error: "Invite code already used" };
+    if (invite.expiresAt.getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
+    const now = new Date();
+    const trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
+    const updated = await db.update(inviteCodes)
+      .set({ redeemedByUserId: userId, redeemedAt: now })
+      .where(and(eq(inviteCodes.id, invite.id), isNull(inviteCodes.redeemedByUserId)))
+      .returning({ id: inviteCodes.id });
+    if (updated.length === 0) {
+      // Lost the race against another redemption.
+      return { ok: false, error: "Invite code already used" };
+    }
+    return { ok: true, trialExpiresAt, code: trimmed };
+  }
+
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { username, password } = req.body as {
-        username: string; password: string;
+      const { username, password, inviteCode } = req.body as {
+        username: string; password: string; inviteCode?: string;
       };
       if (!username?.trim() || !password) return res.status(400).json({ error: "username and password required" });
+      if (!inviteCode?.trim()) return res.status(400).json({ error: "Invite code required" });
       const existing = await storage.getUserByUsername(username.trim());
       if (existing) return res.status(409).json({ error: "Username already taken" });
 
       const hashed = await bcrypt.hash(password, 10);
       const user = await storage.createUser({ username: username.trim(), password: hashed });
 
+      const redeem = await redeemInviteCode(inviteCode, user.id);
+      if (!redeem.ok) {
+        // Roll back the user we just created so the username doesn't get
+        // burned on a bad invite code.
+        await db.delete(users).where(eq(users.id, user.id));
+        return res.status(400).json({ error: redeem.error });
+      }
+      await db.update(users)
+        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .where(eq(users.id, user.id));
+
       (req.session as any).userId = user.id;
-      res.status(201).json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
+      res.status(201).json({
+        id: user.id,
+        username: user.username,
+        experienceLevel: (user as any).experienceLevel,
+        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
+        inviteCode: redeem.code,
+        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
+      });
     } catch (err) {
       console.error("[auth/register]", err);
       res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/invite-gate", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { inviteCode } = req.body as { inviteCode?: string };
+      if (!inviteCode?.trim()) return res.status(400).json({ error: "Invite code required" });
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if ((user as any).inviteCode) {
+        // Idempotent — already redeemed.
+        return res.json({ ok: true, alreadyRedeemed: true });
+      }
+
+      const redeem = await redeemInviteCode(inviteCode, userId);
+      if (!redeem.ok) return res.status(400).json({ error: redeem.error });
+
+      await db.update(users)
+        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true, inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt.toISOString() });
+    } catch (err) {
+      console.error("[auth/invite-gate]", err);
+      res.status(500).json({ error: "Failed to redeem invite code" });
     }
   });
 
@@ -2663,7 +2737,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
       (req.session as any).userId = user.id;
-      res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
+      res.json({
+        id: user.id,
+        username: user.username,
+        experienceLevel: (user as any).experienceLevel,
+        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
+        inviteCode: (user as any).inviteCode ?? null,
+        trialExpiresAt: (user as any).trialExpiresAt
+          ? ((user as any).trialExpiresAt as Date).toISOString()
+          : null,
+      });
     } catch (err) {
       console.error("[auth/login]", err);
       res.status(500).json({ error: "Login failed" });
@@ -2675,7 +2758,16 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json({ id: user.id, username: user.username, experienceLevel: (user as any).experienceLevel, hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false });
+    res.json({
+      id: user.id,
+      username: user.username,
+      experienceLevel: (user as any).experienceLevel,
+      hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
+      inviteCode: (user as any).inviteCode ?? null,
+      trialExpiresAt: (user as any).trialExpiresAt
+        ? ((user as any).trialExpiresAt as Date).toISOString()
+        : null,
+    });
   });
 
   app.put("/api/auth/me/experience", async (req, res) => {
@@ -2878,7 +2970,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
 
       (req.session as any).userId = user.id;
-      res.redirect(`${baseUrl}/`);
+      // Users without a redeemed invite code (new GitHub-only signups, or any
+      // pre-existing user that was created before invite gating) must visit
+      // the invite gate before reaching the app.
+      const dest = (user as any).inviteCode ? "/app" : "/invite-gate?next=/app";
+      res.redirect(`${baseUrl}${dest}`);
     } catch (err) {
       console.error("[auth/github/callback]", err);
       failRedirect("server_error");
@@ -3090,6 +3186,259 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.status(500).json({ error: String(err) });
     }
   });
+
+  // === WAITLIST / ADMIN INVITES ===
+
+  const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
+  const BATCH_SIZE = 50;
+  const TRIAL_DAYS_NORMAL = 30;
+  const TRIAL_DAYS_EDU = 60;
+  const WAITLIST_BASE_URL = process.env.BASE_URL ?? process.env.APP_BASE_URL ?? "https://cascadeai.co";
+
+  function isEduEmail(email: string): boolean {
+    const lower = email.toLowerCase();
+    return lower.endsWith(".edu.cn") || lower.endsWith(".edu");
+  }
+  function formatInviteCode(isEdu: boolean, seq: number): string {
+    return isEdu
+      ? `CASC-EDU-${String(seq).padStart(4, "0")}`
+      : `CASC-${String(seq).padStart(3, "0")}`;
+  }
+  function checkAdmin(req: any, res: any): boolean {
+    if (!ADMIN_SECRET) {
+      res.status(503).json({ error: "Admin access not configured" });
+      return false;
+    }
+    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+      res.status(401).json({ error: "Unauthorized" });
+      return false;
+    }
+    return true;
+  }
+
+  // POST /api/waitlist — public submit
+  app.post("/api/waitlist", async (req, res) => {
+    try {
+      const schema = z.object({ email: z.string().email() });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Valid email required" });
+      const email = parsed.data.email.trim().toLowerCase();
+      const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
+      const isEdu = isEduEmail(email);
+
+      const existing = await db.select().from(waitlistSubscribers).where(eq(waitlistSubscribers.email, email));
+      if (existing.length > 0) {
+        return res.json({ queued: true, alreadyOnList: true });
+      }
+
+      await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu });
+
+      // Send batch alert when pending count crosses a multiple of BATCH_SIZE.
+      const [{ pending }] = await db
+        .select({ pending: count() })
+        .from(waitlistSubscribers)
+        .where(eq(waitlistSubscribers.status, "pending"));
+      if (pending > 0 && pending % BATCH_SIZE === 0) {
+        // Fire-and-forget; don't block the request on the email send.
+        notifyAdminOfBatch(pending).catch((err) => console.error("[waitlist/notify]", err));
+      }
+
+      res.json({ queued: true });
+    } catch (err) {
+      console.error("[waitlist/submit]", err);
+      res.status(500).json({ error: "Failed to join waitlist" });
+    }
+  });
+
+  // GET /api/waitlist — admin list
+  app.get("/api/waitlist", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const [subs, [totalRow]] = await Promise.all([
+        db.select().from(waitlistSubscribers).orderBy(desc(waitlistSubscribers.createdAt)),
+        db.select({ total: count() }).from(waitlistSubscribers),
+      ]);
+      // Pull the most recent invite code per subscriber for the admin view.
+      const issuedCodes = await db.select().from(inviteCodes);
+      const codeBySubId = new Map<number, typeof issuedCodes[number]>();
+      for (const c of issuedCodes) {
+        if (c.waitlistSubscriberId) codeBySubId.set(c.waitlistSubscriberId, c);
+      }
+      res.json({
+        total: totalRow?.total ?? 0,
+        subscribers: subs.map((s) => {
+          const c = codeBySubId.get(s.id);
+          return {
+            id: s.id,
+            email: s.email,
+            createdAt: s.createdAt,
+            isEdu: s.isEdu,
+            status: s.status,
+            batchId: s.batchId,
+            inviteCode: c?.code ?? null,
+            invitedAt: c?.createdAt ?? null,
+            expiresAt: c?.expiresAt ?? null,
+            seqNum: c?.id ?? null,
+          };
+        }),
+      });
+    } catch (err) {
+      console.error("[waitlist/list]", err);
+      res.status(500).json({ error: "Failed to fetch waitlist" });
+    }
+  });
+
+  // POST /api/admin/send-invites — manual bulk send by IDs
+  app.post("/api/admin/send-invites", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const ids = (req.body as { ids?: number[] })?.ids;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "No subscriber IDs provided" });
+      }
+      const sent = await sendInvitesForSubscribers(ids);
+      res.json({ success: true, sent });
+    } catch (err) {
+      console.error("[admin/send-invites]", err);
+      res.status(500).json({ error: "Failed to send invites" });
+    }
+  });
+
+  // GET /api/admin/confirm-batch?token=... — link target from notification email
+  app.get("/api/admin/confirm-batch", async (req, res) => {
+    const token = req.query.token as string | undefined;
+    if (!token || !ADMIN_SECRET) return res.status(400).send("Invalid token");
+    let batchId: number;
+    try {
+      const decoded = Buffer.from(token, "base64url").toString();
+      const [batchStr, secret] = decoded.split(":");
+      if (secret !== ADMIN_SECRET) return res.status(401).send("Invalid token");
+      batchId = parseInt(batchStr, 10);
+      if (isNaN(batchId)) throw new Error("bad batchId");
+    } catch {
+      return res.status(400).send("Invalid token");
+    }
+    try {
+      const subsInBatch = await db.select({ id: waitlistSubscribers.id })
+        .from(waitlistSubscribers)
+        .where(and(
+          eq(waitlistSubscribers.batchId, batchId),
+          eq(waitlistSubscribers.status, "pending"),
+        ));
+      const sent = await sendInvitesForSubscribers(subsInBatch.map((s) => s.id));
+      res.send(`<html><body style="font-family:sans-serif;padding:40px;max-width:500px;margin:auto">
+        <h2>邀请码已发送</h2>
+        <p>成功向 <strong>${sent}</strong> 位用户发送了邀请码。</p>
+        <a href="/admin" style="color:#2563eb">返回后台</a>
+      </body></html>`);
+    } catch (err) {
+      console.error("[admin/confirm-batch]", err);
+      res.status(500).send("发送失败，请在后台手动重试。");
+    }
+  });
+
+  // ── Helpers (waitlist) ──────────────────────────────────────────────────
+  async function notifyAdminOfBatch(pending: number): Promise<void> {
+    const nextBatchId = Math.floor(pending / BATCH_SIZE);
+    // Tag the BATCH_SIZE most recent untagged pending subscribers.
+    const untagged = await db.select().from(waitlistSubscribers)
+      .where(and(eq(waitlistSubscribers.status, "pending"), isNull(waitlistSubscribers.batchId)))
+      .orderBy(waitlistSubscribers.createdAt);
+    const slice = untagged.slice(0, BATCH_SIZE);
+    if (slice.length === 0) return;
+    await Promise.all(slice.map((u) =>
+      db.update(waitlistSubscribers)
+        .set({ batchId: nextBatchId })
+        .where(eq(waitlistSubscribers.id, u.id))
+    ));
+
+    if (!ADMIN_SECRET) return;
+    const token = Buffer.from(`${nextBatchId}:${ADMIN_SECRET}`).toString("base64url");
+    const confirmUrl = `${WAITLIST_BASE_URL}/api/admin/confirm-batch?token=${token}`;
+    const listHtml = slice
+      .map((u, i) => `<tr><td style="padding:4px 12px">${i + 1}</td><td style="padding:4px 12px">${u.email}</td><td style="padding:4px 12px">${u.isEdu ? "EDU" : "普通"}</td></tr>`)
+      .join("");
+    const html = `
+      <h2>Waitlist Batch #${nextBatchId} — ${slice.length} 位新用户</h2>
+      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
+        <thead><tr><th style="padding:4px 12px">#</th><th style="padding:4px 12px">Email</th><th style="padding:4px 12px">类型</th></tr></thead>
+        <tbody>${listHtml}</tbody>
+      </table>
+      <br/>
+      <a href="${confirmUrl}" style="display:inline-block;padding:12px 24px;background:#111827;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
+        确认并发送邀请码给这 ${slice.length} 位用户
+      </a>
+    `;
+    await sendEmail({
+      to: NOTIFICATION_EMAIL,
+      subject: `[CascadeAI] Waitlist Batch #${nextBatchId} — ${slice.length} 位用户待确认`,
+      html,
+      text: `Waitlist Batch #${nextBatchId}，共 ${slice.length} 位用户。确认链接：${confirmUrl}`,
+    });
+  }
+
+  async function sendInvitesForSubscribers(subscriberIds: number[]): Promise<number> {
+    if (subscriberIds.length === 0) return 0;
+    // Pull the target subscribers (only those still pending).
+    const allTargets = await db.select().from(waitlistSubscribers)
+      .where(eq(waitlistSubscribers.status, "pending"));
+    const targets = allTargets.filter((s) => subscriberIds.includes(s.id));
+    if (targets.length === 0) return 0;
+
+    // Allocate sequence numbers from the current count of issued codes per
+    // (isEdu) bucket. Atomic-ish — we update + count in a tight loop.
+    const [{ count: eduIssued }] = await db.select({ count: count() })
+      .from(inviteCodes).where(eq(inviteCodes.isEdu, true));
+    const [{ count: normalIssued }] = await db.select({ count: count() })
+      .from(inviteCodes).where(eq(inviteCodes.isEdu, false));
+    let eduSeq = eduIssued + 1;
+    let normalSeq = normalIssued + 1;
+
+    const now = new Date();
+    let sent = 0;
+    for (const sub of targets) {
+      const trialDays = sub.isEdu ? TRIAL_DAYS_EDU : TRIAL_DAYS_NORMAL;
+      const seq = sub.isEdu ? eduSeq++ : normalSeq++;
+      const code = formatInviteCode(sub.isEdu, seq);
+      // Code itself expires (unredeemed window) at the same trial duration.
+      const expiresAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
+
+      await db.insert(inviteCodes).values({
+        code,
+        isEdu: sub.isEdu,
+        trialDays,
+        expiresAt,
+        waitlistSubscriberId: sub.id,
+      });
+      await db.update(waitlistSubscribers)
+        .set({ status: "invited" })
+        .where(eq(waitlistSubscribers.id, sub.id));
+
+      const expiryStr = expiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+      const html = `
+        <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:8px">您的 CascadeAI 邀请码</h2>
+          <p style="color:#6b7280;margin-bottom:32px">感谢您申请 CascadeAI，您的专属邀请码如下：</p>
+          <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
+            <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
+          </div>
+          <p style="color:#6b7280;font-size:14px">有效期至：<strong>${expiryStr}</strong></p>
+          <p style="color:#6b7280;font-size:14px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</a> 注册时填写邀请码。</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+          <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+        </div>
+      `;
+      await sendEmail({
+        to: sub.email,
+        subject: `您的 CascadeAI 邀请码：${code}`,
+        html,
+        text: `您的 CascadeAI 邀请码：${code}\n有效期至：${expiryStr}\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
+      }).catch((err) => console.warn("[invite-email]", err, sub.email));
+
+      sent++;
+    }
+    return sent;
+  }
 
   setupPreviewServer(httpServer, app);
 
