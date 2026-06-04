@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import cascadeLogo from "../assets/cascade-logo.png";
-import iconFeature1 from "../assets/icon-feature-1.png.jpg";
-import iconFeature2 from "../assets/icon-feature-2.png.jpg";
-import iconFeature3 from "../assets/icon-feature-3.png.jpg";
-import iconFeature4 from "../assets/icon-feature-4.png.jpg";
+import iconFeature1 from "../assets/icon-feature-1.svg";
+import iconFeature2 from "../assets/icon-feature-2.svg";
+import iconFeature3 from "../assets/icon-feature-3.svg";
+import iconFeature4 from "../assets/icon-feature-4.svg";
 
 // Inter Medium font (local variable font)
 const fontStyle = `
@@ -379,22 +379,22 @@ function PhoneDemo() {
 // ─── Feature cards ──────────────────────────────────────────
 const FEATURES = [
   {
-    icon: <img src={iconFeature1} alt="Build anywhere" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
+    icon: <div className="w-20 h-20 flex items-center justify-center"><img src={iconFeature1} alt="Build anywhere" className="w-full h-full object-contain" /></div>,
     title: "Build anywhere, anytime",
     desc: "Cascade AI works on all your devices — phone, tablet, PC. So you can build anywhere at anytime.",
   },
   {
-    icon: <img src={iconFeature2} alt="Full-stack power" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
+    icon: <div className="w-14 h-14 flex items-center justify-center"><img src={iconFeature2} alt="Full-stack power" className="w-full h-full object-contain" /></div>,
     title: "Full-stack power at your fingertips",
     desc: "From feature planning, coding, to testing, our full-stack agent works across your frontend and backend to ship anything you want.",
   },
   {
-    icon: <img src={iconFeature3} alt="Ready, set, deploy" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
+    icon: <div className="w-14 h-14 flex items-center justify-center"><img src={iconFeature3} alt="Ready, set, deploy" className="w-full h-full object-contain" /></div>,
     title: "Ready, set, deploy",
     desc: "We provide hosting, operation, and domain on our platform, so you can go live whenever you are ready.",
   },
   {
-    icon: <img src={iconFeature4} alt="Unlock value" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
+    icon: <div className="w-14 h-14 flex items-center justify-center bg-white"><img src={iconFeature4} alt="Unlock value" className="w-full h-full object-contain" /></div>,
     title: "Unlock the value in your ideas",
     desc: "Your idea just got more valuable. Our agent helps you go-to-market with everything you need for a successful business.",
   },
@@ -455,13 +455,13 @@ function WaitlistForm({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Enter your email address"
           data-testid={testIdInput}
-          className="flex-1 py-2 sm:py-3 bg-transparent text-[11px] sm:text-[14px] outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
+          className="flex-1 py-2 sm:py-3 bg-transparent text-[13px] sm:text-[14px] outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
         />
         <button
           type="submit"
           disabled={submitting}
           data-testid={testIdButton}
-          className="shrink-0 flex items-center justify-center px-3 py-2 sm:px-5 sm:py-3 rounded-[8px] text-[11px] sm:text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+          className="shrink-0 flex items-center justify-center px-3 py-2 sm:px-5 sm:py-3 rounded-[8px] text-[13px] sm:text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
           style={{ backgroundColor: "#000000" }}
         >
           {submitting ? "…" : "Join Waitlist"}
@@ -537,7 +537,7 @@ export default function LandingPage() {
       </header>
 
       {/* ── Hero ── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-6 pt-40 pb-20 lg:pt-28 lg:pb-20">
+      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-6 pt-40 pb-8 sm:pb-20 lg:pt-28 lg:pb-20">
         <motion.div style={{ opacity: heroOpacity, y: heroY }} className="relative z-10 w-full max-w-3xl mx-auto text-center">
           <motion.div
             initial="hidden"
@@ -563,7 +563,7 @@ export default function LandingPage() {
               See your ideas come to life, and scale to new heights — all with Cascade AI.
             </motion.p>
 
-            <motion.div variants={fadeUp} custom={2} className="flex justify-center w-full px-4 sm:px-0">
+            <motion.div variants={fadeUp} custom={2} className="flex justify-center w-full px-0 sm:px-0">
               <div className="w-full sm:w-auto">
                 <WaitlistForm
                   email={email} setEmail={setEmail}
@@ -582,8 +582,8 @@ export default function LandingPage() {
       </section>
 
       {/* ── Feature highlights ── */}
-      <section className="py-16 sm:py-24 px-6 sm:px-12 bg-white">
-        <div className="max-w-6xl mx-auto">
+      <section className="pt-8 pb-16 sm:py-24 px-6 sm:px-16 bg-white">
+        <div className="max-w-5xl mx-auto">
           <motion.div
             initial="hidden"
             whileInView="visible"
@@ -592,38 +592,41 @@ export default function LandingPage() {
           >
             <motion.p
               variants={fadeUp}
-              className="text-center text-[clamp(12px,1.8vw,15px)] font-semibold tracking-wide text-gray-400 mb-5 mx-auto leading-tight uppercase px-4"
+              className="text-center text-[19px] font-semibold tracking-wide text-gray-400 mb-5 mx-auto leading-tight uppercase px-4 sm:text-[22px]"
             >
               CASCADE AI IS THE ALL-IN-ONE AGENTIC SOLUTION FOR EVERY BUILDER, WITH OR WITHOUT AN IDEA.
             </motion.p>
             <motion.h2
               variants={fadeUp}
               custom={1}
-              className="text-center font-bold text-black mb-12 sm:mb-16 leading-[1.2]"
-              style={{ fontSize: "clamp(22px, 4.5vw, 62px)", fontFamily: FONT }}
+              className="text-center font-bold text-black mb-5 sm:mb-16 leading-[1.2]"
+              style={{ fontFamily: FONT }}
             >
-              <span className="block">One tool.</span>
-              <span className="block">Every platform.</span>
-              <span className="block">Infinite potential.</span>
+              <span className="block sm:hidden text-black whitespace-nowrap" style={{ fontSize: "8.5vw" }}>One tool.</span>
+              <span className="block sm:hidden text-black whitespace-nowrap" style={{ fontSize: "8.5vw" }}>Every platform.</span>
+              <span className="block sm:hidden text-black whitespace-nowrap" style={{ fontSize: "8.5vw" }}>Infinite potential.</span>
+              <span className="hidden sm:block text-black" style={{ fontSize: "clamp(48px, 7vw, 76px)" }}>One tool.</span>
+              <span className="hidden sm:block text-black" style={{ fontSize: "clamp(48px, 7vw, 76px)" }}>Every platform.</span>
+              <span className="hidden sm:block text-black" style={{ fontSize: "clamp(48px, 7vw, 76px)" }}>Infinite potential.</span>
             </motion.h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-10 place-items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-10 place-items-center mx-auto max-w-[360px] sm:max-w-none">
               {FEATURES.map((f, i) => (
                 <motion.div
                   key={f.title}
                   variants={fadeUp}
                   custom={i + 2}
-                  className="flex flex-col gap-4 sm:gap-5 p-6 sm:p-10 rounded-2xl w-full sm:max-w-none text-center sm:text-left items-center sm:items-start"
+                  className="flex flex-col gap-4 sm:gap-5 p-6 sm:p-10 rounded-2xl w-full sm:max-w-none text-center sm:text-left items-center sm:items-start bg-white"
                 >
-                  <div className="text-gray-800">{f.icon}</div>
+                  <div className="text-gray-800 sm:h-20 flex sm:items-end">{f.icon}</div>
                   <div>
                     <p
-                      className="font-semibold text-gray-900 leading-tight mb-2"
-                      style={{ fontSize: "clamp(16px, 3.5vw, 22px)", fontFamily: FONT }}
+                      className="font-semibold text-gray-900 leading-tight mb-2 [text-wrap:balance] sm:[text-wrap:unset] max-w-[260px] sm:max-w-none mx-auto sm:mx-0"
+                      style={{ fontSize: "clamp(20px, 3.5vw, 22px)", fontFamily: FONT }}
                     >
                       {f.title}
                     </p>
-                    <p className="text-[12px] sm:text-[16px] text-gray-700 leading-relaxed [text-wrap:balance] sm:[text-wrap:unset]" lang="en">{f.desc}</p>
+                    <p className="text-[16px] sm:text-[16px] text-gray-700 leading-relaxed [text-wrap:balance] w-full sm:w-[340px] lg:w-[380px]" lang="en">{f.desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -633,7 +636,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Final CTA ── */}
-      <section className="py-28 sm:py-40 px-6 sm:px-12 bg-white">
+      <section className="py-16 sm:py-40 px-6 sm:px-12 bg-white">
         <motion.div
           className="max-w-3xl mx-auto text-center"
           initial="hidden"
@@ -649,7 +652,7 @@ export default function LandingPage() {
             <span className="block">Build More.</span>
             <span className="block">Hustle Less.</span>
           </motion.h2>
-          <motion.div variants={fadeUp} custom={1} className="flex justify-center w-full px-4 sm:px-0">
+          <motion.div variants={fadeUp} custom={1} className="flex justify-center w-full px-0 sm:px-0">
             <div className="w-full sm:w-auto">
               <WaitlistForm
                 email={email} setEmail={setEmail}
