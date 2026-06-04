@@ -52,6 +52,10 @@ export class BuildStreamInstance {
     return this.sessionId !== null;
   }
 
+  get currentSessionId(): string | null {
+    return this.sessionId;
+  }
+
   /**
    * Execute a build plan (or direct build).
    */
