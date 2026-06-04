@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import cascadeLogo from "../assets/cascade-logo.png";
+import iconFeature1 from "../assets/icon-feature-1.png.jpg";
+import iconFeature2 from "../assets/icon-feature-2.png.jpg";
+import iconFeature3 from "../assets/icon-feature-3.png.jpg";
+import iconFeature4 from "../assets/icon-feature-4.png.jpg";
 
 // Inter Medium font (local variable font)
 const fontStyle = `
@@ -375,86 +379,22 @@ function PhoneDemo() {
 // ─── Feature cards ──────────────────────────────────────────
 const FEATURES = [
   {
-    icon: (
-      // Icon 1: Cloud upload with code box — pure outline, no fill
-      <svg width="36" height="36" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Cloud outline */}
-        <path
-          d="M20 38 C12 38 8 32 12 26 C10 18 18 12 26 15 C29 10 36 8 42 13 C50 13 54 20 50 26 C54 30 52 38 44 38 Z"
-          stroke="currentColor" strokeWidth="3" strokeLinejoin="round"
-        />
-        {/* Upward arrow shaft */}
-        <line x1="32" y1="54" x2="32" y2="34" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        {/* Arrowhead (outline only) */}
-        <polyline points="24,42 32,32 40,42" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-        {/* Code box at bottom */}
-        <rect x="18" y="54" width="28" height="16" rx="3" stroke="currentColor" strokeWidth="3"/>
-        {/* </> symbol */}
-        <path d="M26 59 L22 62 L26 65" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M38 59 L42 62 L38 65" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="33" y1="58" x2="31" y2="66" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-      </svg>
-    ),
+    icon: <img src={iconFeature1} alt="Build anywhere" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
     title: "Build anywhere, anytime",
     desc: "Cascade AI works on all your devices — phone, tablet, PC. So you can build anywhere at anytime.",
   },
   {
-    icon: (
-      // Icon 2: iMac + phone — deep navy #282850 stroke, no fill
-      <svg width="36" height="36" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* iMac display */}
-        <rect x="4" y="6" width="38" height="26" rx="3" stroke="#282850" strokeWidth="3"/>
-        {/* iMac neck */}
-        <rect x="18" y="32" width="4" height="6" stroke="#282850" strokeWidth="3"/>
-        {/* iMac stand base */}
-        <line x1="12" y1="38" x2="30" y2="38" stroke="#282850" strokeWidth="3" strokeLinecap="round"/>
-        {/* iMac power button (small circle on bottom bezel) */}
-        <circle cx="23" cy="30" r="1.5" stroke="#282850" strokeWidth="2"/>
-        {/* Phone body — leaning right against iMac */}
-        <rect x="40" y="22" width="20" height="34" rx="3" stroke="#282850" strokeWidth="3"/>
-        {/* Phone home button */}
-        <circle cx="50" cy="51" r="2.5" stroke="#282850" strokeWidth="2.5"/>
-      </svg>
-    ),
+    icon: <img src={iconFeature2} alt="Full-stack power" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
     title: "Full-stack power at your fingertips",
     desc: "From feature planning, coding, to testing, our full-stack agent works across your frontend and backend to ship anything you want.",
   },
   {
-    icon: (
-      // Icon 3: Three stacked diamonds — top complete, middle & bottom open at top
-      <svg width="36" height="36" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Top diamond — fully closed */}
-        <polygon points="32,8 52,18 32,28 12,18" stroke="currentColor" strokeWidth="3" strokeLinejoin="round"/>
-        {/* Middle diamond — left/right/bottom sides only, top gap */}
-        <polyline points="12,28 32,38 52,28" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="12" y1="28" x2="12" y2="36" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="52" y1="28" x2="52" y2="36" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        {/* Bottom diamond — left/right/bottom sides only, top gap */}
-        <polyline points="12,38 32,48 52,38" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="12" y1="38" x2="12" y2="46" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="52" y1="38" x2="52" y2="46" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-      </svg>
-    ),
+    icon: <img src={iconFeature3} alt="Ready, set, deploy" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
     title: "Ready, set, deploy",
     desc: "We provide hosting, operation, and domain on our platform, so you can go live whenever you are ready.",
   },
   {
-    icon: (
-      // Icon 4: Two overlapping coins — front with double ring + $, back partially hidden
-      <svg width="36" height="36" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Back coin — only upper-left arc visible, broken into 3 segments */}
-        <path d="M30 10 A18 18 0 0 0 14 22" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        <path d="M12 27 A18 18 0 0 0 16 37" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        <path d="M20 42 A18 18 0 0 0 30 46" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-        {/* Front coin — outer circle */}
-        <circle cx="38" cy="38" r="18" stroke="currentColor" strokeWidth="3"/>
-        {/* Front coin — inner circle (double ring) */}
-        <circle cx="38" cy="38" r="12" stroke="currentColor" strokeWidth="2.5"/>
-        {/* Dollar sign */}
-        <path d="M41 30 C37 28 31 30 31 34 C31 38 45 39 45 43 C45 47 39 49 35 47" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-        <line x1="38" y1="27" x2="38" y2="49" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-      </svg>
-    ),
+    icon: <img src={iconFeature4} alt="Unlock value" className="w-14 h-14 object-contain" style={{ mixBlendMode: "multiply" }} />,
     title: "Unlock the value in your ideas",
     desc: "Your idea just got more valuable. Our agent helps you go-to-market with everything you need for a successful business.",
   },
@@ -506,7 +446,7 @@ function WaitlistForm({
           background: "rgba(255,255,255,0.90)",
           border: "1px solid rgba(0,0,0,0.12)",
           boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-          padding: "6px 6px 6px 16px",
+          padding: "4px 4px 4px 12px",
         }}
       >
         <input
@@ -515,13 +455,13 @@ function WaitlistForm({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Enter your email address"
           data-testid={testIdInput}
-          className="flex-1 py-3 bg-transparent text-[14px] outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
+          className="flex-1 py-2 sm:py-3 bg-transparent text-[11px] sm:text-[14px] outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
         />
         <button
           type="submit"
           disabled={submitting}
           data-testid={testIdButton}
-          className="shrink-0 flex items-center justify-center px-5 py-3 rounded-[8px] text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+          className="shrink-0 flex items-center justify-center px-3 py-2 sm:px-5 sm:py-3 rounded-[8px] text-[11px] sm:text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
           style={{ backgroundColor: "#000000" }}
         >
           {submitting ? "…" : "Join Waitlist"}
@@ -634,7 +574,7 @@ export default function LandingPage() {
               </div>
             </motion.div>
 
-            <motion.p variants={fadeUp} custom={3} className="mt-4 text-gray-500 text-[13px]">
+            <motion.p variants={fadeUp} custom={3} className="mt-4 text-gray-500 text-[10px] sm:text-[12px]">
               Join our waitlist today. Be the first to get access.
             </motion.p>
           </motion.div>
@@ -660,20 +600,20 @@ export default function LandingPage() {
               variants={fadeUp}
               custom={1}
               className="text-center font-bold text-black mb-12 sm:mb-16 leading-[1.2]"
-              style={{ fontSize: "clamp(36px, 4.5vw, 62px)", fontFamily: FONT }}
+              style={{ fontSize: "clamp(22px, 4.5vw, 62px)", fontFamily: FONT }}
             >
               <span className="block">One tool.</span>
               <span className="block">Every platform.</span>
               <span className="block">Infinite potential.</span>
             </motion.h2>
 
-            <div className="grid grid-cols-2 gap-6 sm:gap-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-10 place-items-center">
               {FEATURES.map((f, i) => (
                 <motion.div
                   key={f.title}
                   variants={fadeUp}
                   custom={i + 2}
-                  className="flex flex-col gap-4 sm:gap-5 p-6 sm:p-10 rounded-2xl"
+                  className="flex flex-col gap-4 sm:gap-5 p-6 sm:p-10 rounded-2xl w-full sm:max-w-none text-center sm:text-left items-center sm:items-start"
                 >
                   <div className="text-gray-800">{f.icon}</div>
                   <div>
@@ -683,7 +623,7 @@ export default function LandingPage() {
                     >
                       {f.title}
                     </p>
-                    <p className="text-[14px] sm:text-[16px] text-gray-700 leading-relaxed hyphens-auto" lang="en">{f.desc}</p>
+                    <p className="text-[12px] sm:text-[16px] text-gray-700 leading-relaxed [text-wrap:balance] sm:[text-wrap:unset]" lang="en">{f.desc}</p>
                   </div>
                 </motion.div>
               ))}
