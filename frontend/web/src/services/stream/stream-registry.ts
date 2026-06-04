@@ -69,6 +69,7 @@ function createStoreActions(projectId: string): StoreActions {
     getTaskStatuses: () => store().taskStatuses,
     getStreamingSnapshot: () => store().streamingSnapshot as any,
     getReviewPhase: () => store().reviewPhase as any,
+    getMessagesReady: () => store().messagesReady,
   };
 }
 

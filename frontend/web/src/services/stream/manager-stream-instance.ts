@@ -82,6 +82,11 @@ export class ManagerStreamInstance {
       this.actions.setManagerResponding(false);
       return false;
     }
+    // Block until messages from DB are loaded
+    if (!this.actions.getMessagesReady()) {
+      this.actions.setManagerResponding(false);
+      return false;
+    }
 
     const historyMessages = this.actions.getManagerMessages()
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)

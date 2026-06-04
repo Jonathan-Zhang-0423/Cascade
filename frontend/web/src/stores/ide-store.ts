@@ -301,6 +301,11 @@ interface IDEState {
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
+  /** True once the async DB fetch for managerMessages/chatMessages has completed
+   *  (or been skipped). Prevents sending stale cross-project messages to the LLM
+   *  during the window between loadProject's synchronous set() and the async
+   *  fetchMessagesFromServer resolve. */
+  messagesReady: boolean;
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
   userConfirmationInput: string;
@@ -807,6 +812,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   taskStatuses: {},
   taskFailureReasons: {},
   isManagerResponding: false,
+  messagesReady: true,
   verificationResults: {},
   pendingConfirmation: null,
   userConfirmationInput: "",
@@ -991,6 +997,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskStatuses: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
       taskFailureReasons: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskFailureReasons)?.frozenTaskFailureReasons || {},
       isManagerResponding: false,
+      messagesReady: false,
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
@@ -1032,6 +1039,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskStatuses: {},
       taskFailureReasons: {},
       isManagerResponding: false,
+      messagesReady: false,
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
@@ -1089,7 +1097,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const mgr = mgrRows.map(dbRowToManagerMessage);
       // Only adopt server history if we got something. Otherwise keep whatever
       // we already restored from the (legacy) saved blob.
-      if (chat.length === 0 && mgr.length === 0) return;
+      if (chat.length === 0 && mgr.length === 0) {
+        const cur2 = get();
+        if (cur2.projectId === id) set({ messagesReady: true });
+        return;
+      }
       const maxSeq = Math.max(
         cur._nextSeq,
         ...chat.map((m) => m.seq + 1),
@@ -1101,8 +1113,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
         _nextSeq: maxSeq,
         managerPlan: lastPlan,
+        messagesReady: true,
       });
-    }).catch(() => {});
+    }).catch(() => {
+      // Even on failure, mark ready so the UI isn't permanently blocked.
+      // The store already has whatever was in localStorage (possibly empty).
+      const cur = get();
+      if (cur.projectId === id) set({ messagesReady: true });
+    });
 
     const fetchWithRetry = async (retries = 0): Promise<{ path: string; content: string }[] | null> => {
       const result = await fetchFilesFromServer(id);

@@ -105,6 +105,7 @@ export interface StoreActions {
   getTaskStatuses: () => Record<string, TaskStatus>;
   getStreamingSnapshot: () => StreamingSnapshot | null;
   getReviewPhase: () => ReviewPhase;
+  getMessagesReady: () => boolean;
 }
 
 // ─── Stream Slot ───────────────────────────────────────────────────────────

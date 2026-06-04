@@ -288,6 +288,12 @@ export function useManagerStream() {
         setManagerResponding(false);
         return false;
       }
+      // Block until messages from DB are loaded — prevents sending stale
+      // messages from a previously-active project.
+      if (!useIDEStore.getState().messagesReady) {
+        setManagerResponding(false);
+        return false;
+      }
 
       const priorManagerMsgs = useIDEStore.getState().managerMessages;
       const historyMessages = priorManagerMsgs
