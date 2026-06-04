@@ -281,6 +281,14 @@ export function useManagerStream() {
       setMgrLiveNarrationText("");
       setMgrLiveActionLog([]);
 
+      // Guard: verify store is showing THIS project's messages before reading.
+      // Prevents cross-project contamination if the user switches projects and
+      // sends a message before loadProject's async DB fetch replaces messages.
+      if (useIDEStore.getState().projectId !== projectId) {
+        setManagerResponding(false);
+        return false;
+      }
+
       const priorManagerMsgs = useIDEStore.getState().managerMessages;
       const historyMessages = priorManagerMsgs
         .filter(

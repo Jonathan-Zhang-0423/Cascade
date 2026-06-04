@@ -74,6 +74,15 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
+    // Guard: only include messages that belong to our project. If the store
+    // hasn't finished loading this project's messages yet (async fetch from DB),
+    // wait a tick and verify projectId matches before reading history.
+    if (this.actions.getProjectId() !== this.projectId) {
+      // Store is still showing another project — abort to prevent cross-project contamination
+      this.actions.setManagerResponding(false);
+      return false;
+    }
+
     const historyMessages = this.actions.getManagerMessages()
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
