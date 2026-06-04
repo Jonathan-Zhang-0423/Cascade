@@ -1,57 +1,119 @@
-import { ObservableState } from "./observable-state";
+import { ManagerStreamInstance } from "./manager-stream-instance";
+import { BuildStreamInstance } from "./build-stream-instance";
 import {
-  type ProjectStreamSlot,
+  type StoreActions,
   type ManagerStreamState,
   type BuildStreamState,
   INITIAL_MANAGER_STREAM_STATE,
   INITIAL_BUILD_STREAM_STATE,
 } from "./types";
+import { useIDEStore, flattenFiles, type ManagerMessage } from "@/stores/ide-store";
+import { useProjectStore } from "@/stores/project-store";
 
-function createSlot(projectId: string): ProjectStreamSlot {
-  const managerState = new ObservableState<ManagerStreamState>({
-    ...INITIAL_MANAGER_STREAM_STATE,
-  });
-  const buildState = new ObservableState<BuildStreamState>({
-    ...INITIAL_BUILD_STREAM_STATE,
-  });
+/**
+ * Create StoreActions bound to a specific projectId.
+ * Actions that write UI state are guarded (only execute when projectId is active).
+ * Actions that persist data (messages, snapshots) always execute.
+ */
+function createStoreActions(projectId: string): StoreActions {
+  const guard = () => useIDEStore.getState().projectId === projectId;
+  const store = () => useIDEStore.getState();
 
   return {
-    projectId,
-    manager: {
-      get state() { return managerState.get(); },
-      subscribe: managerState.subscribe,
-      getSnapshot: managerState.getSnapshot,
+    // Guarded — only write when this project is active
+    addManagerMessage: (msg) => { if (guard()) store().addManagerMessage(msg as any); },
+    setManagerPlan: (plan) => { if (guard()) store().setManagerPlan(plan); },
+    clearManagerPlan: () => { if (guard()) store().clearManagerPlan(); },
+    setManagerResponding: (v) => { if (guard()) store().setManagerResponding(v); },
+    updateTaskStatus: (id, s) => { if (guard()) store().updateTaskStatus(id, s); },
+    setTaskFailureReason: (id, reason) => { if (guard()) store().setTaskFailureReason(id, reason); },
+    freezeLatestPlanStatuses: () => { if (guard()) store().freezeLatestPlanStatuses(); },
+    setAiResponding: (v) => { if (guard()) store().setAiResponding(v); },
+    setExecutingTaskIndex: (idx) => { if (guard()) store().setExecutingTaskIndex(idx); },
+    setChatMode: (mode) => { if (guard()) store().setChatMode(mode); },
+    setReviewPhase: (phase) => { if (guard()) store().setReviewPhase(phase); },
+    setHolisticReview: (review) => { if (guard()) store().setHolisticReview(review as any); },
+    setFixCycle: (cycle) => { if (guard()) store().setFixCycle(cycle); },
+    setPendingConfirmation: (c) => { if (guard()) store().setPendingConfirmation(c); },
+    setCompletionData: (data) => { if (guard()) store().setCompletionData(data); },
+    setStreamingSnapshot: (snap) => { store().setStreamingSnapshot(snap as any); },
+    applyCodeBlock: async (block) => {
+      if (!guard()) return;
+      const s = store();
+      const currentFiles = flattenFiles(s.files);
+      const exists = currentFiles.some((f) => f.path === block.filePath);
+      if (exists) {
+        s.updateFileContent(block.filePath, block.code);
+      } else {
+        const lastSlash = block.filePath.lastIndexOf("/");
+        if (lastSlash > 0) {
+          const parentPath = block.filePath.substring(0, lastSlash);
+          const fileName = block.filePath.substring(lastSlash + 1);
+          s.addFile(parentPath, fileName, "file");
+          await new Promise((r) => setTimeout(r, 80));
+          useIDEStore.getState().updateFileContent(block.filePath, block.code);
+        }
+      }
     },
-    build: {
-      get state() { return buildState.get(); },
-      subscribe: buildState.subscribe,
-      getSnapshot: buildState.getSnapshot,
-    },
-    dispose() {
-      // Future: abort SSE connections, clear timers, etc.
-      managerState.reset({ ...INITIAL_MANAGER_STREAM_STATE });
-      buildState.reset({ ...INITIAL_BUILD_STREAM_STATE });
-    },
+    setLastBuildFileDiff: (path, old, next) => { if (guard()) store().setLastBuildFileDiff(path, old, next); },
+    clearLastBuildFileDiffs: () => { if (guard()) store().clearLastBuildFileDiffs(); },
+    refreshPreview: () => { if (guard()) store().refreshPreview(); },
+    createCheckpoint: (label, opts) => { if (guard()) store().createCheckpoint(label, opts); },
+    renameProject: (id, name) => { useProjectStore.getState().renameProject(id, name); },
+
+    // Read-only — always safe
+    getProjectId: () => store().projectId,
+    getManagerMessages: () => store().managerMessages,
+    getManagerPlan: () => store().managerPlan,
+    getFiles: () => flattenFiles(store().files),
+    getTaskStatuses: () => store().taskStatuses,
+    getStreamingSnapshot: () => store().streamingSnapshot as any,
+    getReviewPhase: () => store().reviewPhase as any,
   };
 }
 
+export interface FullProjectStreamSlot {
+  projectId: string;
+  manager: ManagerStreamInstance;
+  build: BuildStreamInstance;
+  dispose: () => void;
+}
+
 /**
- * Global registry of per-project stream slots.
+ * Global registry of per-project stream instances.
  * Not tied to React lifecycle — streams survive component unmounts.
  */
 class StreamServiceRegistry {
-  private slots = new Map<string, ProjectStreamSlot>();
+  private slots = new Map<string, FullProjectStreamSlot>();
 
   /**
-   * Get or lazily create a stream slot for the given project.
+   * Get or lazily create stream instances for the given project.
    */
-  get(projectId: string): ProjectStreamSlot {
+  get(projectId: string): FullProjectStreamSlot {
     if (!projectId) {
-      return createSlot("");
+      // Return a disposable empty slot — shouldn't happen in practice
+      const actions = createStoreActions("");
+      return {
+        projectId: "",
+        manager: new ManagerStreamInstance("", actions),
+        build: new BuildStreamInstance("", actions),
+        dispose: () => {},
+      };
     }
     let slot = this.slots.get(projectId);
     if (!slot) {
-      slot = createSlot(projectId);
+      const actions = createStoreActions(projectId);
+      const manager = new ManagerStreamInstance(projectId, actions);
+      const build = new BuildStreamInstance(projectId, actions);
+      slot = {
+        projectId,
+        manager,
+        build,
+        dispose: () => {
+          manager.dispose();
+          build.dispose();
+        },
+      };
       this.slots.set(projectId, slot);
     }
     return slot;

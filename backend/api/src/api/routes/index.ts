@@ -15,6 +15,7 @@ import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/provi
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
+import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
 import { db } from "../../infra/db";
@@ -524,6 +525,10 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/concurrency", (_req, res) => {
+    res.json(getConcurrencyMetrics());
+  });
+
   app.post("/api/build-session", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
@@ -550,6 +555,12 @@ export async function registerRoutes(
         userMessage?: string;
         reviewEnabled?: boolean;
       };
+
+      // Per-user session cap
+      if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
+        res.status(429).json({ error: "Too many active sessions. Please wait for a running build to finish." });
+        return;
+      }
 
       const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
 
@@ -644,6 +655,8 @@ export async function registerRoutes(
         .finally(() => {
           session.done = true;
           session.doneAt = Date.now();
+          // Unregister from per-user session tracker
+          if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           // Clean up session directory
           if (session.sessionDir) {
             rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
@@ -824,6 +837,7 @@ export async function registerRoutes(
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let mgrSessionId: string | undefined;
     let clientDisconnected = false;
+    const reqUserId = (req.session as any)?.userId as string | undefined;
     try {
       const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
       if (!hasAnyProvider) {
@@ -846,6 +860,13 @@ export async function registerRoutes(
       }
 
       mgrSessionId = `mgr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      // Per-user session cap for manager chat
+      if (reqUserId && !userSessions.register(reqUserId, mgrSessionId)) {
+        res.status(429).json({ error: "Too many active sessions. Please wait for a running session to finish." });
+        return;
+      }
+
       const mgrSession: ManagerChatSession = {
         id: mgrSessionId,
         projectId: reqProjectId,
@@ -1011,6 +1032,7 @@ This override applies to THIS message only — it does not change behavior for p
         emit({ type: "manager_done" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
+        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1100,6 +1122,7 @@ This override applies to THIS message only — it does not change behavior for p
 
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
+        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1112,6 +1135,7 @@ This override applies to THIS message only — it does not change behavior for p
         emit({ type: "manager_error" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
+        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }

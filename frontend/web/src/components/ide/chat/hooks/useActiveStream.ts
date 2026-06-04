@@ -1,0 +1,103 @@
+import { useSyncExternalStore, useCallback, useMemo } from "react";
+import { useIDEStore } from "@/stores/ide-store";
+import { streamRegistry, type ManagerStreamState, type BuildStreamState } from "@/services/stream";
+
+/**
+ * useActiveStream — thin React bridge that subscribes to the stream
+ * instances for the currently active project. Replaces the old
+ * useManagerStream + useBuildStream combination for UI consumption.
+ *
+ * The underlying ManagerStreamInstance / BuildStreamInstance live in the
+ * registry and are NOT tied to React lifecycle — they survive project
+ * switches and component unmounts.
+ */
+export function useActiveStream() {
+  const projectId = useIDEStore((s) => s.projectId);
+  const slot = useMemo(() => streamRegistry.get(projectId || ""), [projectId]);
+
+  // ─── Manager stream state ────────────────────────────────────────────
+  const mgrState = useSyncExternalStore<ManagerStreamState>(
+    slot.manager.state.subscribe,
+    slot.manager.state.getSnapshot,
+  );
+
+  // ─── Build stream state ──────────────────────────────────────────────
+  const buildState = useSyncExternalStore<BuildStreamState>(
+    slot.build.state.subscribe,
+    slot.build.state.getSnapshot,
+  );
+
+  // ─── Commands (bound to current slot) ────────────────────────────────
+  const handleManagerSend = useCallback(
+    async (overrideMessage?: string, input?: string): Promise<boolean> => {
+      const trimmed = overrideMessage?.trim() || input?.trim() || "";
+      if (!trimmed) return false;
+      return slot.manager.send(trimmed);
+    },
+    [slot],
+  );
+
+  const handleExecutePlan = useCallback(
+    async (directOpts?: { userMessage: string }) => {
+      if (directOpts?.userMessage) {
+        await slot.build.execute({ userMessage: directOpts.userMessage });
+      } else {
+        await slot.build.execute();
+      }
+    },
+    [slot],
+  );
+
+  const handleDirectBuild = useCallback(
+    (userMessage: string) => handleExecutePlan({ userMessage }),
+    [handleExecutePlan],
+  );
+
+  const handleStopExecution = useCallback(() => {
+    slot.build.stop();
+  }, [slot]);
+
+  const resetManagerLiveState = useCallback(() => {
+    slot.manager.resetLive();
+  }, [slot]);
+
+  const resetBuildLiveState = useCallback(() => {
+    slot.build.state.set({
+      thinkingText: "",
+      narrationText: "",
+      actionLog: [],
+      buildPhase: null,
+      thinkingElapsedSec: null,
+    });
+  }, [slot]);
+
+  return {
+    // Manager stream
+    manager: {
+      handleManagerSend,
+      mgrPreparingPlan: mgrState.preparingPlan,
+      mgrLiveThinkingText: mgrState.thinkingText,
+      mgrLiveNarrationText: mgrState.narrationText,
+      mgrLiveActionLog: mgrState.actionLog,
+      isMgrReconnecting: mgrState.isReconnecting,
+      autoExecutePlanRef: { current: slot.manager.autoExecutePlan },
+      resetLiveState: resetManagerLiveState,
+    },
+    // Build stream
+    build: {
+      buildPhase: buildState.buildPhase,
+      liveActionLog: buildState.actionLog,
+      liveThinkingText: buildState.thinkingText,
+      liveNarrationText: buildState.narrationText,
+      isReconnecting: buildState.isReconnecting,
+      thinkingElapsedSec: buildState.thinkingElapsedSec,
+      handleExecutePlan,
+      handleDirectBuild,
+      handleStopExecution,
+      resetLiveState: resetBuildLiveState,
+    },
+    // Shared
+    slot,
+    projectId,
+  };
+}

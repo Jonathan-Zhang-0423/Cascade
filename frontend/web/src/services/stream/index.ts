@@ -1,5 +1,7 @@
 export { ObservableState } from "./observable-state";
 export { streamRegistry } from "./stream-registry";
+export { ManagerStreamInstance } from "./manager-stream-instance";
+export { BuildStreamInstance } from "./build-stream-instance";
 export type {
   ManagerStreamState,
   BuildStreamState,
