@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useCallback, useMemo } from "react";
+import { useSyncExternalStore, useCallback, useMemo, useEffect, useRef } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { streamRegistry, type ManagerStreamState, type BuildStreamState } from "@/services/stream";
 
@@ -14,6 +14,29 @@ import { streamRegistry, type ManagerStreamState, type BuildStreamState } from "
 export function useActiveStream() {
   const projectId = useIDEStore((s) => s.projectId);
   const slot = useMemo(() => streamRegistry.get(projectId || ""), [projectId]);
+
+  // ─── Auto-reconnect on project switch ────────────────────────────────
+  // When the active project changes, attempt to reconnect to any existing
+  // manager/build sessions for that project. This restores live state
+  // without aborting background streams from other projects.
+  const prevProjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    // Skip on first mount if same project — the old hooks handle initial connect
+    if (prevProjectRef.current === projectId) return;
+    prevProjectRef.current = projectId;
+
+    // Give a small delay to avoid racing with loadProject's async state setup
+    const timer = setTimeout(() => {
+      if (!slot.manager.isActive) {
+        slot.manager.attemptReconnect().catch(() => {});
+      }
+      if (!slot.build.isActive) {
+        slot.build.attemptReconnect().catch(() => {});
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [projectId, slot]);
 
   // ─── Manager stream state ────────────────────────────────────────────
   const mgrState = useSyncExternalStore<ManagerStreamState>(
