@@ -43,12 +43,14 @@ if (!RESEND_API_KEY && !DRY_RUN) {
   process.exit(1);
 }
 
-function buildEmail(email: string): { html: string; text: string } {
+function buildEmail(_email: string): { html: string; text: string } {
   const domain = BASE_URL.replace(/^https?:\/\//, "");
+  const logoSvg = `data:image/svg+xml;base64,${Buffer.from('<svg viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="175" y="155" width="56" height="260" fill="#111111"/><rect x="355" y="275" width="56" height="245" fill="#111111"/><rect x="540" y="380" width="65" height="255" fill="#111111"/></svg>').toString("base64")}`;
   const html = `
     <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-      <div style="margin-bottom:32px">
-        <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111827">Cascade AI</span>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px">
+        <img src="${logoSvg}" alt="Cascade AI" width="28" height="28" style="display:inline-block;vertical-align:middle"/>
+        <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111827;vertical-align:middle">Cascade AI</span>
       </div>
       <h2 style="font-size:22px;font-weight:700;margin-bottom:16px;color:#111827">Thanks for signing up!</h2>
       <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">Hi there,</p>
@@ -56,7 +58,7 @@ function buildEmail(email: string): { html: string; text: string } {
         Thanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.
       </p>
       <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
-        Our engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :
+        Our engineering team is shipping non&#8209;stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)
       </p>
       <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:4px">Jonathan</p>
       <p style="color:#6b7280;font-size:14px;line-height:1.6;margin-bottom:32px">Founder, Cascade AI</p>
@@ -64,7 +66,7 @@ function buildEmail(email: string): { html: string; text: string } {
       <p style="color:#9ca3af;font-size:12px">Cascade AI · ${domain}</p>
     </div>
   `;
-  const text = `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${domain}`;
+  const text = `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${domain}`;
   return { html, text };
 }
 
