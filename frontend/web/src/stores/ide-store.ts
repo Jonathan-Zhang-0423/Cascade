@@ -119,6 +119,11 @@ export interface ManagerMessage {
   preparingPlan?: boolean;
   buildResult?: BuildResultData;
   errorCode?: "connect" | "build_interrupted" | "build_generic";
+  // Snapshot of taskStatuses captured when this plan's build finished.
+  // Lets historical PlanCards render their final state instead of reverting
+  // to all-pending once a newer plan takes over the live `taskStatuses`.
+  frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  frozenTaskFailureReasons?: Record<string, string>;
 }
 
 interface FlatFile {
@@ -296,6 +301,11 @@ interface IDEState {
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
+  /** True once the async DB fetch for managerMessages/chatMessages has completed
+   *  (or been skipped). Prevents sending stale cross-project messages to the LLM
+   *  during the window between loadProject's synchronous set() and the async
+   *  fetchMessagesFromServer resolve. */
+  messagesReady: boolean;
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
   userConfirmationInput: string;
@@ -369,6 +379,7 @@ interface IDEState {
   setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
+  freezeLatestPlanStatuses: () => void;
 
   userId: string | null;
   setUserId: (id: string | null) => void;
@@ -801,6 +812,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   taskStatuses: {},
   taskFailureReasons: {},
   isManagerResponding: false,
+  messagesReady: true,
   verificationResults: {},
   pendingConfirmation: null,
   userConfirmationInput: "",
@@ -982,9 +994,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       streamingSnapshot: saved.streamingSnapshot || null,
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
-      taskStatuses: {},
-      taskFailureReasons: {},
+      taskStatuses: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
+      taskFailureReasons: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskFailureReasons)?.frozenTaskFailureReasons || {},
       isManagerResponding: false,
+      messagesReady: false,
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
@@ -1026,6 +1039,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskStatuses: {},
       taskFailureReasons: {},
       isManagerResponding: false,
+      messagesReady: false,
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
@@ -1083,7 +1097,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const mgr = mgrRows.map(dbRowToManagerMessage);
       // Only adopt server history if we got something. Otherwise keep whatever
       // we already restored from the (legacy) saved blob.
-      if (chat.length === 0 && mgr.length === 0) return;
+      if (chat.length === 0 && mgr.length === 0) {
+        const cur2 = get();
+        if (cur2.projectId === id) set({ messagesReady: true });
+        return;
+      }
       const maxSeq = Math.max(
         cur._nextSeq,
         ...chat.map((m) => m.seq + 1),
@@ -1095,8 +1113,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
         _nextSeq: maxSeq,
         managerPlan: lastPlan,
+        messagesReady: true,
       });
-    }).catch(() => {});
+    }).catch(() => {
+      // Even on failure, mark ready so the UI isn't permanently blocked.
+      // The store already has whatever was in localStorage (possibly empty).
+      const cur = get();
+      if (cur.projectId === id) set({ messagesReady: true });
+    });
 
     const fetchWithRetry = async (retries = 0): Promise<{ path: string; content: string }[] | null> => {
       const result = await fetchFilesFromServer(id);
@@ -1594,6 +1618,29 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       msgs[index] = { ...target, thinking };
       const next = { ...state, managerMessages: msgs };
       if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[index], state.projectId));
+      return next;
+    }),
+
+  freezeLatestPlanStatuses: () =>
+    set((state) => {
+      // Snapshot the current live taskStatuses onto the most recent plan-bearing
+      // manager message. Called on build all_complete so historical PlanCards
+      // keep their final state after newer plans take over `taskStatuses`.
+      const msgs = [...state.managerMessages];
+      let lastPlanIdx = -1;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].plan) { lastPlanIdx = i; break; }
+      }
+      if (lastPlanIdx === -1) return state;
+      const target = msgs[lastPlanIdx];
+      msgs[lastPlanIdx] = {
+        ...target,
+        frozenTaskStatuses: { ...state.taskStatuses },
+        frozenTaskFailureReasons: { ...state.taskFailureReasons },
+      };
+      const next = { ...state, managerMessages: msgs };
+      debouncedPersist(next);
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[lastPlanIdx], state.projectId));
       return next;
     }),
 }));

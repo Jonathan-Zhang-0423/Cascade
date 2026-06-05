@@ -11,7 +11,7 @@ import { ChatMessageList } from "./chat/ChatMessageList";
 import { ChatInputArea } from "./chat/ChatInputArea";
 import { type AgentStatus } from "./chat/AgentStatusLine";
 import { useSmartResponse } from "./chat/hooks/useSmartResponse";
-import { useAgentStream } from "@/components/ide/AgentStreamProvider";
+import { useActiveStream } from "./chat/hooks/useActiveStream";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -60,7 +60,7 @@ export function ChatPanel() {
   const tGlobal = useT();
   const { toast } = useToast();
 
-  const { manager, build } = useAgentStream();
+  const { manager, build, slot } = useActiveStream();
   const {
     handleManagerSend,
     mgrPreparingPlan,
@@ -68,7 +68,6 @@ export function ChatPanel() {
     mgrLiveNarrationText,
     mgrLiveActionLog,
     autoExecutePlanRef,
-    abortRef: mgrAbortRef,
     resetLiveState: resetManagerLiveState,
   } = manager;
 
@@ -82,7 +81,6 @@ export function ChatPanel() {
     handleExecutePlan,
     handleDirectBuild,
     handleStopExecution,
-    buildSessionIdRef,
     resetLiveState: resetBuildLiveState,
   } = build;
 
@@ -186,7 +184,7 @@ export function ChatPanel() {
         }
       }
       // POST input to the running session — do NOT restart the build
-      const sessionId = buildSessionIdRef.current;
+      const sessionId = slot.build.currentSessionId;
       if (sessionId) {
         fetch(`/api/build-session/${sessionId}/input`, {
           method: "POST",
@@ -195,7 +193,7 @@ export function ChatPanel() {
         }).catch(() => {});
       }
     },
-    [addChatMessage, setPendingConfirmation, setUserConfirmationInput, buildSessionIdRef],
+    [addChatMessage, setPendingConfirmation, setUserConfirmationInput, slot],
   );
 
   useEffect(() => { pendingHandled.current = false; }, [projectId]);
@@ -249,10 +247,10 @@ export function ChatPanel() {
 
   const handleStop = useCallback(() => {
     if (isExecuting) handleStopExecution();
-    if (mgrAbortRef.current) { mgrAbortRef.current.abort(); mgrAbortRef.current = null; }
+    slot.manager.abort();
     setAiResponding(false);
     setManagerResponding(false);
-  }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, mgrAbortRef]);
+  }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, slot]);
 
   const handleRevisePlan = useCallback((note?: string) => {
     const firstUserMsg = managerMessages.find((m) => m.role === "user");

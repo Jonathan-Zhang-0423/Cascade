@@ -1,5 +1,6 @@
 import { doubaoClient, DOUBAO_MODEL } from "../providers/doubao-client";
 import { withRetry } from "../providers/retry";
+import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency";
 import type { SseEmit } from "../orchestrator/build-orchestrator";
 import type OpenAI from "openai";
 import {
@@ -116,22 +117,25 @@ export async function runAgentLoop(
       emitPart(partCtx, emit, stepStart);
     }
 
-    const response = await withRetry(
-      `runAgentLoop iteration ${iteration + 1}`,
-      () =>
-        activeClient.chat.completions.create(
-          {
-            model: activeModel,
-            messages,
-            ...thinkingParam,
-            ...(extraBody ? { extra_body: extraBody } : {}),
-            tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
-            tool_choice: tools.length > 0 ? "auto" : undefined,
-            stream: true,
-            max_tokens: 16384,
-          } as any,
-          { timeout: timeoutMs },
-        ),
+    const response = await aiSemaphore.run(
+      () => withRetry(
+        `runAgentLoop iteration ${iteration + 1}`,
+        () =>
+          activeClient.chat.completions.create(
+            {
+              model: activeModel,
+              messages,
+              ...thinkingParam,
+              ...(extraBody ? { extra_body: extraBody } : {}),
+              tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
+              tool_choice: tools.length > 0 ? "auto" : undefined,
+              stream: true,
+              max_tokens: 16384,
+            } as any,
+            { timeout: timeoutMs },
+          ),
+      ),
+      CONCURRENCY_QUEUE_TIMEOUT,
     );
 
     let assistantText = "";
@@ -303,6 +307,7 @@ export async function runAgentLoop(
       let result = "";
       const handler = handlers[tc.name];
 
+      let handlerSucceeded = false;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
         if (toolPart && partCtx) {
@@ -317,7 +322,7 @@ export async function runAgentLoop(
       } else {
         try {
           result = await handler(args, emit);
-          // Transition to completed
+          handlerSucceeded = true;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {
               status: "completed",
@@ -349,7 +354,11 @@ export async function runAgentLoop(
       };
       messages.push(toolResultMsg);
 
-      if (exitTools.has(tc.name)) {
+      // Only treat this as an exit if the handler actually succeeded.
+      // A throwing handler signals "rejected, retry" — keep looping so the
+      // LLM sees the error message and can re-invoke the tool with fixed args.
+      // maxIterations bounds the retry budget.
+      if (handlerSucceeded && exitTools.has(tc.name)) {
         shouldExit = true;
         exitTool = tc.name;
         exitArgs = args;

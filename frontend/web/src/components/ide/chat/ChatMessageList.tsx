@@ -179,9 +179,15 @@ export function ChatMessageList({
             <div key={`m-${msg.id}`} className="space-y-2">
               <ManagerMessageBubble
                 message={msg}
-                taskStatuses={isLastPlan ? taskStatuses : {}}
+                taskStatuses={
+                  isLastPlan
+                    ? taskStatuses
+                    : (msg.frozenTaskStatuses ?? {})
+                }
                 taskFailureReasons={
-                  isLastPlan ? taskFailureReasons : undefined
+                  isLastPlan
+                    ? taskFailureReasons
+                    : msg.frozenTaskFailureReasons
                 }
                 onExecute={isLastPlan ? handleExecutePlan : undefined}
                 onRevise={isLastPlan ? handleRevisePlan : undefined}

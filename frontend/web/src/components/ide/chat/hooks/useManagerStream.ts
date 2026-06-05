@@ -100,6 +100,16 @@ export function useManagerStream() {
   const [mgrLiveActionLog, setMgrLiveActionLog] = useState<ActionLogEntry[]>([]);
   const [isMgrReconnecting, setIsMgrReconnecting] = useState(false);
 
+  // Clear stale live text when the active project changes. The old SSE closure
+  // won't write new values (isCurrentProject guard prevents it), but the
+  // useState still holds whatever was accumulated before the switch.
+  useEffect(() => {
+    setMgrLiveThinkingText("");
+    setMgrLiveNarrationText("");
+    setMgrLiveActionLog([]);
+    setMgrPreparingPlan(false);
+  }, [projectId]);
+
   const abortRef = useRef<AbortController | null>(null);
   // Reader for the connectToMgrStream() reconnect path. Stored so unmount can
   // cancel() it — without this, switching projects mid-stream leaves the old
@@ -270,6 +280,20 @@ export function useManagerStream() {
       setMgrLiveThinkingText("");
       setMgrLiveNarrationText("");
       setMgrLiveActionLog([]);
+
+      // Guard: verify store is showing THIS project's messages before reading.
+      // Prevents cross-project contamination if the user switches projects and
+      // sends a message before loadProject's async DB fetch replaces messages.
+      if (useIDEStore.getState().projectId !== projectId) {
+        setManagerResponding(false);
+        return false;
+      }
+      // Block until messages from DB are loaded — prevents sending stale
+      // messages from a previously-active project.
+      if (!useIDEStore.getState().messagesReady) {
+        setManagerResponding(false);
+        return false;
+      }
 
       const priorManagerMsgs = useIDEStore.getState().managerMessages;
       const historyMessages = priorManagerMsgs

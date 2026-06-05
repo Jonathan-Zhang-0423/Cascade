@@ -54,6 +54,7 @@ export function useBuildStream() {
     setLastBuildFileDiff,
     clearLastBuildFileDiffs,
     setCompletionData: rawSetCompletionData,
+    freezeLatestPlanStatuses: rawFreezeLatestPlanStatuses,
   } = useIDEStore();
 
   // Project-scoped guards. Build streams are long-lived and the user might
@@ -92,6 +93,10 @@ export function useBuildStream() {
   const setTaskFailureReason: typeof rawSetTaskFailureReason = useCallback(
     (id, reason) => { if (isOurProject()) rawSetTaskFailureReason(id, reason); },
     [isOurProject, rawSetTaskFailureReason],
+  );
+  const freezeLatestPlanStatuses = useCallback(
+    () => { if (isOurProject()) rawFreezeLatestPlanStatuses(); },
+    [isOurProject, rawFreezeLatestPlanStatuses],
   );
   const setReviewPhase: typeof rawSetReviewPhase = useCallback(
     (phase) => { if (isOurProject()) rawSetReviewPhase(phase); },
@@ -139,6 +144,17 @@ export function useBuildStream() {
   const [liveNarrationText, setLiveNarrationText] = useState("");
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [thinkingElapsedSec, setThinkingElapsedSec] = useState<number | null>(null);
+
+  // Clear stale live text when the active project changes. The old SSE closure
+  // won't write new values (isOurProject guard prevents it), but the useState
+  // still holds whatever was accumulated before the switch.
+  useEffect(() => {
+    setLiveThinkingText("");
+    setLiveNarrationText("");
+    setLiveActionLog([]);
+    setBuildPhase(null);
+    setThinkingElapsedSec(null);
+  }, [projectId]);
 
   const buildSessionIdRef = useRef<string | null>(null);
   const buildReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -673,6 +689,7 @@ export function useBuildStream() {
           const s = useIDEStore.getState().taskStatuses[key];
           if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
         });
+        freezeLatestPlanStatuses();
       } else if (type === "build_error") {
         setBuildPhase(null);
         setExecutingTaskIndex(null);
@@ -1106,6 +1123,7 @@ export function useBuildStream() {
             setCompletionData({ changedFiles, summary: summaryText });
             setBuildPhase(null);
             setExecutingTaskIndex(null);
+            freezeLatestPlanStatuses();
             // Clear snapshot and session key now so re-entry after all_complete
             // (but before done) doesn't trigger a phantom reconnect.
             setStreamingSnapshot(null);
@@ -1120,9 +1138,18 @@ export function useBuildStream() {
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) => {
                   if (!data?.files?.length) return;
-                  if (useIDEStore.getState().projectId === projectId) {
-                    useIDEStore.getState().loadProject(projectId);
-                  }
+                  if (useIDEStore.getState().projectId !== projectId) return;
+                  // Only update the file tree — do NOT call loadProject here
+                  // because it resets taskStatuses, reviewPhase, and other
+                  // build-completion state that the UI still needs.
+                  const files: { path: string; content: string }[] = data.files;
+                  const fileTree = files.map((f: { path: string; content: string }) => ({
+                    name: f.path.split("/").pop() || f.path,
+                    path: f.path,
+                    type: "file" as const,
+                    content: f.content,
+                  }));
+                  useIDEStore.setState({ files: fileTree, previewRefreshKey: Date.now() });
                 })
                 .catch(() => {});
             }
@@ -1647,6 +1674,7 @@ export function useBuildStream() {
                   const s = useIDEStore.getState().taskStatuses[key];
                   if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
                 });
+                freezeLatestPlanStatuses();
                 return;
               } else if (type === "done") {
                 return;
@@ -1675,6 +1703,7 @@ export function useBuildStream() {
                 const s = useIDEStore.getState().taskStatuses[key];
                 if (s === "bug" || s === "failed" || s === "running" || s === "pending") updateTaskStatus(key, "done");
               });
+              freezeLatestPlanStatuses();
               // Clear snapshot and session key now so re-entry after all_complete
               // (but before done) doesn't trigger a phantom reconnect.
               setStreamingSnapshot(null);
@@ -1688,9 +1717,15 @@ export function useBuildStream() {
                   .then((r) => (r.ok ? r.json() : null))
                   .then((data) => {
                     if (!data?.files?.length) return;
-                    if (useIDEStore.getState().projectId === projectId) {
-                      useIDEStore.getState().loadProject(projectId);
-                    }
+                    if (useIDEStore.getState().projectId !== projectId) return;
+                    const files: { path: string; content: string }[] = data.files;
+                    const fileTree = files.map((f: { path: string; content: string }) => ({
+                      name: f.path.split("/").pop() || f.path,
+                      path: f.path,
+                      type: "file" as const,
+                      content: f.content,
+                    }));
+                    useIDEStore.setState({ files: fileTree, previewRefreshKey: Date.now() });
                   })
                   .catch(() => {});
               }

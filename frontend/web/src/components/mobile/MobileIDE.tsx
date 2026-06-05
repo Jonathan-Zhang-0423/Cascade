@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from "react";
 import { useProjectStore } from "@/stores/project-store";
 import { MobileChatPanel } from "./MobileChatPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
-import { AgentStreamProvider } from "@/components/ide/AgentStreamProvider";
 import { useT } from "@/lib/i18n";
 import { ChevronLeft } from "lucide-react";
 
@@ -46,7 +45,6 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   }, []);
 
   return (
-    <AgentStreamProvider>
       <div
         className="h-screen w-screen flex flex-col bg-background overflow-hidden"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
@@ -95,6 +93,5 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
           )}
         </div>
       </div>
-    </AgentStreamProvider>
   );
 }

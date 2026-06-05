@@ -1,0 +1,645 @@
+import { ObservableState } from "./observable-state";
+import {
+  type ManagerStreamState,
+  type StoreActions,
+  type StreamingSnapshot,
+  INITIAL_MANAGER_STREAM_STATE,
+} from "./types";
+import type { ActionLogEntry, ManagerSseEvent } from "@/components/ide/chat/chat-types";
+import {
+  KNOWN_MGR_EVENT_TYPES,
+  MGR_SOURCE_MAP,
+  PROJECT_NAME_REGEX,
+  validateManagerEvent,
+} from "@/components/ide/chat/chat-types";
+import { stripProjectNameMarker } from "@/components/ide/chat/chat-utils";
+import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
+import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
+import { useLanguageStore } from "@/stores/language-store";
+import { tr } from "@/lib/i18n";
+
+/**
+ * ManagerStreamInstance — owns the SSE connection and live state for a single
+ * project's manager (planning) stream. Not tied to React lifecycle.
+ */
+export class ManagerStreamInstance {
+  readonly projectId: string;
+  readonly state: ObservableState<ManagerStreamState>;
+
+  private actions: StoreActions;
+  private abortController: AbortController | null = null;
+  private reconnectAbortController: AbortController | null = null;
+  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  private sessionId: string | null = null;
+  private lastEventId = -1;
+  private lastActivityTs = 0;
+  private generation = 0;
+  private reconnectRetry = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+  private liveClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionErrorAdded = false;
+  private disposed = false;
+  autoExecutePlan = false;
+
+  constructor(projectId: string, actions: StoreActions) {
+    this.projectId = projectId;
+    this.actions = actions;
+    this.state = new ObservableState<ManagerStreamState>({ ...INITIAL_MANAGER_STREAM_STATE });
+  }
+
+  // ─── Public API ───────────────────────────────────────────────────────
+
+  get isActive(): boolean {
+    return this.sessionId !== null;
+  }
+
+  /**
+   * Send a new manager message and start the planning stream.
+   */
+  async send(message: string): Promise<boolean> {
+    if (this.disposed) return false;
+    const trimmed = message.trim();
+    if (!trimmed) return false;
+
+    this.clearLiveTimer();
+    this.actions.addManagerMessage({ role: "user", content: trimmed });
+    this.actions.setManagerResponding(true);
+    this.connectionErrorAdded = false;
+    this.resetInactivityTimer();
+    this.state.set({
+      preparingPlan: false,
+      thinkingText: "",
+      narrationText: "",
+      actionLog: [],
+    });
+
+    // Guard: only include messages that belong to our project. If the store
+    // hasn't finished loading this project's messages yet (async fetch from DB),
+    // wait a tick and verify projectId matches before reading history.
+    if (this.actions.getProjectId() !== this.projectId) {
+      // Store is still showing another project — abort to prevent cross-project contamination
+      this.actions.setManagerResponding(false);
+      return false;
+    }
+    // Block until messages from DB are loaded
+    if (!this.actions.getMessagesReady()) {
+      this.actions.setManagerResponding(false);
+      return false;
+    }
+
+    const historyMessages = this.actions.getManagerMessages()
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    const controller = new AbortController();
+    this.abortController = controller;
+
+    let managerAccumulated = "";
+    let managerThinkingAccumulated = "";
+    let commAccumulated = "";
+    let planEmitted = false;
+    const myGen = ++this.generation;
+    let mgrDoneSeen = false;
+
+    let lastSnapshotFlush = 0;
+    const SNAPSHOT_INTERVAL = 500;
+    const flushSnapshot = () => {
+      const now = Date.now();
+      if (now - lastSnapshotFlush < SNAPSHOT_INTERVAL) return;
+      lastSnapshotFlush = now;
+      if (this.sessionId) {
+        this.actions.setStreamingSnapshot({
+          type: "manager",
+          thinkingText: managerThinkingAccumulated,
+          narrationText: managerAccumulated,
+          projectId: this.projectId,
+          updatedAt: now,
+          sessionId: this.sessionId,
+          lastEventId: this.lastEventId,
+        });
+      }
+    };
+
+    try {
+      const files = this.actions.getFiles().map((f) => ({ path: f.path, content: f.content || "" }));
+      const response = await fetch("/api/manager-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historyMessages,
+          files,
+          projectId: this.projectId,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        this.handleStreamError("connect");
+        return false;
+      }
+
+      const reader = response.body.getReader();
+      this.reader = reader;
+      this.lastActivityTs = Date.now();
+
+      await parseSseStream<ManagerSseEvent>(reader, {
+        signal: controller.signal,
+        validate: validateManagerEvent,
+        onHeartbeat: () => { this.lastActivityTs = Date.now(); },
+        onEvent: async (ev) => {
+          this.lastActivityTs = Date.now();
+          this.resetInactivityTimer();
+          if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
+
+          const evType = ev.type;
+
+          if (evType === "session_id") {
+            this.sessionId = ev.sessionId || "";
+            this.state.set({ sessionId: this.sessionId });
+            this.reconnectRetry = 0;
+            if (this.projectId && ev.sessionId) {
+              try { localStorage.setItem(`cascade-mgr-session-${this.projectId}`, ev.sessionId); } catch {}
+            }
+            return;
+          }
+
+          if (KNOWN_MGR_EVENT_TYPES.has(evType)) {
+            const source = MGR_SOURCE_MAP[evType] || "manager";
+            const monitorContent = ev.token || ev.label || evType;
+            useLLMMonitorStore.getState().addEvent(
+              source,
+              evType as LLMEventType,
+              typeof monitorContent === "string" ? monitorContent : String(monitorContent),
+            );
+          }
+
+          const isCurrentProject = this.actions.getProjectId() === this.projectId;
+
+          if (evType === "thinking_token") {
+            managerThinkingAccumulated += (ev.token || "");
+            flushSnapshot();
+            if (isCurrentProject) {
+              this.state.set({ thinkingText: managerThinkingAccumulated });
+            }
+          } else if (evType === "raw_token" || evType === "manager_token") {
+            managerAccumulated += ev.token;
+            flushSnapshot();
+            if (isCurrentProject) {
+              this.state.set({ narrationText: stripProjectNameMarker(managerAccumulated) });
+            }
+          } else if (evType === "communicator_narration_starting") {
+            commAccumulated = "";
+          } else if (evType === "communicator_token") {
+            commAccumulated += ev.token || "";
+            if (isCurrentProject) {
+              this.state.set({ narrationText: commAccumulated });
+            }
+          } else if (evType === "action_log") {
+            const actionEntry: ActionLogEntry = {
+              type: ev.actionType || "tool_call",
+              label: ev.label || "",
+              detail: ev.detail || "",
+              timestamp: Date.now(),
+              filePath: ev.filePath || undefined,
+            };
+            if (isCurrentProject) {
+              this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
+            }
+          } else if (evType === "plan_preparing") {
+            if (isCurrentProject) this.state.set({ preparingPlan: true });
+          } else if (evType === "plan_ready") {
+            planEmitted = true;
+            if (isCurrentProject) {
+              const plan = ev.plan;
+              if (plan) {
+                this.actions.setManagerPlan(plan);
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: "",
+                  plan,
+                  thinking: managerThinkingAccumulated || undefined,
+                });
+              }
+            }
+          } else if (evType === "manager_done") {
+            mgrDoneSeen = true;
+            this.actions.setStreamingSnapshot(null);
+            this.sessionId = null;
+            this.state.set({ sessionId: null });
+            this.reconnectRetry = 0;
+            if (this.projectId) {
+              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+            }
+
+            if (isCurrentProject) {
+              this.state.set({ preparingPlan: false });
+              this.clearLive();
+              if (!this.actions.getManagerPlan() || !planEmitted) {
+                this.actions.setManagerResponding(false);
+              }
+            }
+
+            if (!planEmitted && isCurrentProject) {
+              // Try to parse plan from accumulated text
+              let plan = ev.plan;
+              if (!plan && managerAccumulated) {
+                try {
+                  const jsonMatch = managerAccumulated.match(/```json\s*([\s\S]*?)```/);
+                  if (jsonMatch) {
+                    const parsed = JSON.parse(jsonMatch[1]);
+                    const stepsArr = Array.isArray(parsed?.steps)
+                      ? parsed.steps
+                      : Array.isArray(parsed?.sub_tasks) ? parsed.sub_tasks : null;
+                    if (parsed && stepsArr && stepsArr.length > 0) plan = parsed;
+                  }
+                } catch {}
+              }
+              if (plan) {
+                this.actions.setManagerPlan(plan);
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: "",
+                  plan,
+                  thinking: managerThinkingAccumulated || undefined,
+                });
+              }
+            }
+          } else if (evType === "manager_error") {
+            this.actions.setStreamingSnapshot(null);
+            this.sessionId = null;
+            this.state.set({ sessionId: null });
+            this.reconnectRetry = 0;
+            if (this.projectId) {
+              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+            }
+            if (isCurrentProject) {
+              this.actions.setManagerResponding(false);
+              this.state.set({ preparingPlan: false });
+              this.clearLive(0);
+              if (!this.connectionErrorAdded) {
+                this.connectionErrorAdded = true;
+                const reason = (ev as { reason?: string }).reason;
+                const i18nKey = reason === "empty_plan" ? "chat.errorPlanEmpty" : "chat.errorConnect";
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: tr(useLanguageStore.getState().lang, i18nKey),
+                  source: "communicator",
+                });
+              }
+            }
+          }
+        },
+      });
+
+      // Post-stream: write leftover comm content
+      if (!planEmitted && this.actions.getProjectId() === this.projectId && commAccumulated) {
+        const friendlyComm = commAccumulated.trim();
+        if (friendlyComm) {
+          this.actions.addManagerMessage({
+            role: "assistant",
+            content: friendlyComm,
+            source: "communicator",
+            thinking: managerThinkingAccumulated || undefined,
+          });
+        }
+      }
+
+      // Extract project name from marker
+      if (this.actions.getProjectId() === this.projectId && managerAccumulated) {
+        const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
+        if (nameFromMarker && this.projectId) {
+          this.actions.renameProject(this.projectId, nameFromMarker);
+        }
+      }
+
+      if (!mgrDoneSeen && myGen === this.generation && this.sessionId) {
+        throw new Error("mgr_stream_closed_before_done");
+      }
+      return true;
+    } catch (error: unknown) {
+      const isAbort = error instanceof DOMException && error.name === "AbortError";
+      const stillCurrent = myGen === this.generation;
+
+      if (!isAbort && stillCurrent && this.sessionId) {
+        this.scheduleReconnect();
+      }
+
+      if (!isAbort && !this.connectionErrorAdded && stillCurrent) {
+        this.handleStreamError("connect");
+      }
+      return false;
+    } finally {
+      if (myGen === this.generation && !this.reconnectTimer) {
+        this.actions.setStreamingSnapshot(null);
+        this.sessionId = null;
+        this.state.set({ sessionId: null });
+        if (this.projectId) {
+          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+        }
+        this.clearLive();
+        this.actions.setManagerResponding(false);
+      }
+    }
+  }
+
+  /**
+   * Reconnect to an existing manager session (e.g. after page refresh).
+   */
+  async connect(sessionId: string, lastEventId: number): Promise<void> {
+    if (this.disposed) return;
+    this.sessionId = sessionId;
+    this.state.set({ sessionId });
+    const myGen = ++this.generation;
+
+    if (this.reconnectAbortController) {
+      try { this.reconnectAbortController.abort(); } catch {}
+    }
+    const controller = new AbortController();
+    this.reconnectAbortController = controller;
+
+    try {
+      const response = await fetch(
+        `/api/manager-chat/${sessionId}/stream?lastEventId=${lastEventId}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" }, signal: controller.signal },
+      );
+      if (!response.ok || !response.body) {
+        this.actions.setStreamingSnapshot(null);
+        this.sessionId = null;
+        this.state.set({ sessionId: null });
+        if (this.projectId) {
+          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+        }
+        this.actions.setManagerResponding(false);
+        return;
+      }
+
+      this.reconnectRetry = 0;
+      const reader = response.body.getReader();
+      this.reader = reader;
+      this.lastActivityTs = Date.now();
+
+      const existingSnapshot = this.actions.getStreamingSnapshot();
+      let managerAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.narrationText : "") || "";
+      let managerThinkingAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.thinkingText : "") || "";
+
+      let lastReconnectSnapshotFlush = 0;
+      const flushReconnectSnapshot = () => {
+        const now = Date.now();
+        if (now - lastReconnectSnapshotFlush < 500) return;
+        lastReconnectSnapshotFlush = now;
+        this.actions.setStreamingSnapshot({
+          type: "manager",
+          thinkingText: managerThinkingAccumulated,
+          narrationText: managerAccumulated,
+          projectId: this.projectId,
+          updatedAt: now,
+          sessionId,
+          lastEventId: this.lastEventId,
+        });
+      };
+
+      await parseSseStream<ManagerSseEvent>(reader, {
+        signal: controller.signal,
+        validate: validateManagerEvent,
+        onHeartbeat: () => { this.lastActivityTs = Date.now(); },
+        onEvent: async (ev) => {
+          this.lastActivityTs = Date.now();
+          if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
+          const evType = ev.type;
+          const isCurrentProject = this.actions.getProjectId() === this.projectId;
+
+          if (evType === "thinking_token") {
+            managerThinkingAccumulated += (ev.token || "");
+            flushReconnectSnapshot();
+            if (isCurrentProject) this.state.set({ thinkingText: managerThinkingAccumulated });
+          } else if (evType === "raw_token" || evType === "manager_token") {
+            managerAccumulated += ev.token;
+            flushReconnectSnapshot();
+            if (isCurrentProject) this.state.set({ narrationText: stripProjectNameMarker(managerAccumulated) });
+          } else if (evType === "communicator_token") {
+            managerAccumulated += ev.token || "";
+            if (isCurrentProject) this.state.set({ narrationText: managerAccumulated });
+          } else if (evType === "plan_ready") {
+            if (isCurrentProject) {
+              const plan = ev.plan;
+              if (plan) {
+                this.actions.setManagerPlan(plan);
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: "",
+                  plan,
+                  thinking: managerThinkingAccumulated || undefined,
+                });
+              }
+            }
+          } else if (evType === "manager_done") {
+            if (isCurrentProject && managerAccumulated.trim()) {
+              const stripped = stripProjectNameMarker(managerAccumulated).trim();
+              if (stripped) {
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: stripped,
+                  thinking: managerThinkingAccumulated || undefined,
+                });
+              }
+            }
+            return;
+          } else if (evType === "manager_error") {
+            this.actions.setStreamingSnapshot(null);
+            this.sessionId = null;
+            this.state.set({ sessionId: null });
+            if (this.projectId) {
+              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+            }
+            if (isCurrentProject) {
+              this.actions.setManagerResponding(false);
+              this.state.set({ preparingPlan: false });
+              this.clearLive(0);
+            }
+            return;
+          }
+        },
+      });
+    } catch (error: unknown) {
+      const isAbort = error instanceof DOMException && error.name === "AbortError";
+      if (!isAbort && myGen === this.generation && this.sessionId) {
+        this.scheduleReconnect();
+      }
+    } finally {
+      if (myGen === this.generation && !this.reconnectTimer) {
+        this.actions.setStreamingSnapshot(null);
+        this.sessionId = null;
+        this.state.set({ sessionId: null });
+        if (this.projectId) {
+          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+        }
+        this.clearLive();
+        this.actions.setManagerResponding(false);
+      }
+    }
+  }
+
+  /**
+   * Abort the current stream.
+   */
+  abort(): void {
+    if (this.abortController) {
+      try { this.abortController.abort(); } catch {}
+      this.abortController = null;
+    }
+    if (this.reconnectAbortController) {
+      try { this.reconnectAbortController.abort(); } catch {}
+      this.reconnectAbortController = null;
+    }
+    if (this.reader) {
+      this.reader.cancel().catch(() => {});
+      this.reader = null;
+    }
+  }
+
+  /**
+   * Reset all live state.
+   */
+  resetLive(): void {
+    this.clearTimers();
+    this.abort();
+    this.sessionId = null;
+    this.lastEventId = -1;
+    this.reconnectRetry = 0;
+    this.autoExecutePlan = false;
+    this.state.reset({ ...INITIAL_MANAGER_STREAM_STATE });
+  }
+
+  /**
+   * Attempt to reconnect to an active session for this project.
+   * Called on project load / visibility change.
+   */
+  async attemptReconnect(): Promise<void> {
+    if (this.disposed) return;
+
+    const savedSessionId = (() => {
+      try { return localStorage.getItem(`cascade-mgr-session-${this.projectId}`); }
+      catch { return null; }
+    })();
+
+    const snapshot = this.actions.getStreamingSnapshot();
+    const sessionIdToReconnect =
+      (snapshot?.type === "manager" && snapshot.projectId === this.projectId
+        ? snapshot.sessionId
+        : null) || savedSessionId;
+
+    if (!sessionIdToReconnect) {
+      // Try the /active endpoint
+      try {
+        const resp = await fetch(`/api/manager-chat/active/${this.projectId}`, {
+          cache: "no-store", headers: { "Cache-Control": "no-cache" },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.sessionId) {
+            this.state.set({ isReconnecting: true });
+            await this.connect(data.sessionId, -1);
+            this.state.set({ isReconnecting: false });
+          }
+        }
+      } catch {}
+      return;
+    }
+
+    // Check session status
+    this.state.set({ isReconnecting: true });
+    try {
+      const resp = await fetch(`/api/manager-chat/${sessionIdToReconnect}/status`, {
+        cache: "no-store", headers: { "Cache-Control": "no-cache" },
+      });
+      const data = resp.ok ? await resp.json() : null;
+      if (data?.active || data?.done) {
+        const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
+          && typeof snapshot.lastEventId === "number")
+          ? snapshot.lastEventId
+          : this.lastEventId;
+        if (data.active) this.actions.setManagerResponding(true);
+        await this.connect(sessionIdToReconnect, resumeEventId);
+      } else {
+        try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+      }
+    } catch {
+      try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+    } finally {
+      this.state.set({ isReconnecting: false });
+    }
+  }
+
+  /**
+   * Clean up all resources. Called when removing from registry.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.abort();
+    this.clearTimers();
+    this.state.reset({ ...INITIAL_MANAGER_STREAM_STATE });
+  }
+
+  // ─── Private helpers ──────────────────────────────────────────────────
+
+  private handleStreamError(errorCode: "connect" | "build_interrupted" | "build_generic"): void {
+    if (this.connectionErrorAdded) return;
+    this.connectionErrorAdded = true;
+    this.actions.setManagerResponding(false);
+    this.state.set({ preparingPlan: false });
+    this.clearLive(0);
+    this.actions.addManagerMessage({
+      role: "assistant",
+      content: tr(useLanguageStore.getState().lang, "chat.errorConnect"),
+      source: "communicator",
+      errorCode,
+    });
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectRetry), 15000);
+    this.reconnectRetry++;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.sessionId && !this.disposed) {
+        this.connect(this.sessionId, this.lastEventId).catch(() => {});
+      }
+    }, delay);
+  }
+
+  private resetInactivityTimer(): void {
+    if (this.inactivityTimer) clearTimeout(this.inactivityTimer);
+    this.inactivityTimer = setTimeout(() => {
+      this.inactivityTimer = null;
+      this.actions.setManagerResponding(false);
+      this.state.set({ preparingPlan: false });
+      this.clearLive(0);
+    }, 60_000);
+  }
+
+  private clearLive(delay?: number): void {
+    if (typeof delay === "number" && delay > 0) {
+      this.liveClearTimer = setTimeout(() => {
+        this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
+        this.liveClearTimer = null;
+      }, delay);
+    } else {
+      this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
+    }
+  }
+
+  private clearLiveTimer(): void {
+    if (this.liveClearTimer) {
+      clearTimeout(this.liveClearTimer);
+      this.liveClearTimer = null;
+    }
+  }
+
+  private clearTimers(): void {
+    this.clearLiveTimer();
+    if (this.inactivityTimer) { clearTimeout(this.inactivityTimer); this.inactivityTimer = null; }
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+  }
+}

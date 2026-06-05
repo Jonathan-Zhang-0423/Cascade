@@ -13,7 +13,6 @@ import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
 import { lazy, Suspense, useEffect, useState } from "react";
-import { AgentStreamProvider } from "@/components/ide/AgentStreamProvider";
 import { useIDEStore } from "@/stores/ide-store";
 
 const ABTestPage = lazy(() => import("@/pages/ab-test"));
@@ -94,9 +93,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <AppErrorBoundary>
-            <AgentStreamProvider>
               <Router />
-            </AgentStreamProvider>
           </AppErrorBoundary>
         </TooltipProvider>
       </QueryClientProvider>
