@@ -3481,7 +3481,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           Thanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.
         </p>
         <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
-          Our engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)
+          Our engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :
         </p>
         <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:4px">Jonathan</p>
         <p style="color:#6b7280;font-size:14px;line-height:1.6;margin-bottom:32px">Founder, Cascade AI</p>
@@ -3493,7 +3493,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       to: email,
       subject: "Thanks for signing up!",
       html,
-      text: `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}`,
+      text: `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}`,
     });
   }
 
