@@ -3487,6 +3487,34 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // POST /api/admin/sheet-update — write-back from Google Sheet to DB
+  app.post("/api/admin/sheet-update", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { applySheetUpdate } = await import("../infra/sheets-sync.js");
+      const updates = req.body.updates;
+      if (!Array.isArray(updates)) return res.status(400).json({ error: "updates must be an array" });
+      const changed = await applySheetUpdate(updates);
+      res.json({ ok: true, changed });
+    } catch (err) {
+      console.error("[admin/sheet-update]", err);
+      res.status(500).json({ error: "Failed to apply updates" });
+    }
+  });
+
+  // POST /api/admin/sync-sheets-now — manually trigger immediate sync
+  app.post("/api/admin/sync-sheets-now", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { syncToSheets } = await import("../infra/sheets-sync.js");
+      await syncToSheets();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/sync-sheets-now]", err);
+      res.status(500).json({ error: "Sync failed" });
+    }
+  });
+
   // ── Helpers (waitlist) — confirmation email ─────────────────────────────
   async function sendWaitlistConfirmationEmail(email: string, markSent = true): Promise<void> {
     const logoSvg = `data:image/svg+xml;base64,${Buffer.from('<svg viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="175" y="155" width="56" height="260" fill="#111111"/><rect x="355" y="275" width="56" height="245" fill="#111111"/><rect x="540" y="380" width="65" height="255" fill="#111111"/></svg>').toString("base64")}`;
