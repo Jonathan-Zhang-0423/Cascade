@@ -3,7 +3,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
-import { startSheetsSync } from "./sheets-sync.js";
 import { startFeishuSync } from "./feishu-sync.js";
 import { createServer } from "http";
 
