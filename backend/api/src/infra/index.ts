@@ -3,8 +3,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
-import { startSheetsSync } from "./sheets-sync.js";
 import { startFeishuSync } from "./feishu-sync.js";
+import { startSheetsSync } from "./sheets-sync.js";
 import { createServer } from "http";
 
 const app = express();
@@ -113,4 +113,39 @@ app.use((req, res, next) => {
       startFeishuSync();
     },
   );
+
+  // ── 优雅关闭 ────────────────────────────────────────────────────
+  // pm2 reload / restart / 部署时会发 SIGTERM。先停止接收新连接，给在途的
+  // AI 构建会话和 SSE 长连接留出收尾时间，再退出；超时则强制退出兜底。
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`收到 ${signal}，开始优雅关闭…`);
+    const forceExit = setTimeout(() => {
+      console.error("[process] 优雅关闭超时，强制退出");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    httpServer.close(() => {
+      log("HTTP server 已关闭，进程退出");
+      clearTimeout(forceExit);
+      process.exit(0);
+    });
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+
+  // ── 进程级错误兜底 ──────────────────────────────────────────────
+  // 长跑期间最大的杀手是没人 catch 的异常。两类区别对待：
+  // unhandledRejection（多为漏 catch 的 async）只记日志、不退出——杀进程
+  //   会牵连所有在途的 AI 会话与 SSE 长连接，得不偿失。
+  // uncaughtException 后进程状态已不可信，记日志后走优雅关闭，交给 pm2 拉起。
+  process.on("unhandledRejection", (reason) => {
+    console.error("[process] 未处理的 Promise rejection（已忽略，进程继续）:", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[process] 未捕获异常，进程状态不可信，优雅关闭后由 pm2 重启:", err);
+    shutdown("uncaughtException");
+  });
 })();
