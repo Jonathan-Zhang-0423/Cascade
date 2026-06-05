@@ -3448,17 +3448,36 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (!checkAdmin(req, res)) return;
     try {
       const subs = await db.select().from(waitlistSubscribers).orderBy(waitlistSubscribers.createdAt);
-      const header = "id,email,status,isEdu,batchId,ipAddress,createdAt\n";
-      const rows = subs.map((s) => [
-        s.id,
-        `"${s.email.replace(/"/g, '""')}"`,
-        s.status,
-        s.isEdu ? "true" : "false",
-        s.batchId ?? "",
-        s.ipAddress ? `"${s.ipAddress.replace(/"/g, '""')}"` : "",
-        s.createdAt.toISOString(),
-      ].join(",")).join("\n");
-      const csv = header + rows;
+      const codes = await db.select().from(inviteCodes);
+      const codeBySubId = new Map(codes.filter((c) => c.waitlistSubscriberId != null).map((c) => [c.waitlistSubscriberId!, c]));
+
+      function emailType(email: string, isEdu: boolean): string {
+        if (email.endsWith("@westlake.edu.cn") || email.endsWith("@qizhi.com") || email.includes("qizhi")) return "奇绩创坛";
+        if (isEdu || email.match(/\.edu(\.|$)/i)) return "教育";
+        return "其他";
+      }
+
+      function csvField(v: string | null | undefined): string {
+        if (v == null || v === "") return "";
+        return `"${v.replace(/"/g, '""')}"`;
+      }
+
+      const header = "id,email,邮箱类型,是否发送确认邮件,是否发送邀请码,邀请码,IP地址,注册时间\n";
+      const rows = subs.map((s) => {
+        const code = codeBySubId.get(s.id);
+        return [
+          s.id,
+          csvField(s.email),
+          emailType(s.email, s.isEdu),
+          s.confirmationEmailSentAt ? "是" : "否",
+          s.status === "invited" ? "是" : "否",
+          csvField(code?.code ?? null),
+          csvField(s.ipAddress ?? null),
+          s.createdAt.toISOString(),
+        ].join(",");
+      }).join("\n");
+
+      const csv = "﻿" + header + rows; // BOM for Excel UTF-8
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="waitlist.csv"');
       res.send(csv);
@@ -3468,8 +3487,36 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // POST /api/admin/sheet-update — write-back from Google Sheet to DB
+  app.post("/api/admin/sheet-update", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { applySheetUpdate } = await import("../infra/sheets-sync.js");
+      const updates = req.body.updates;
+      if (!Array.isArray(updates)) return res.status(400).json({ error: "updates must be an array" });
+      const changed = await applySheetUpdate(updates);
+      res.json({ ok: true, changed });
+    } catch (err) {
+      console.error("[admin/sheet-update]", err);
+      res.status(500).json({ error: "Failed to apply updates" });
+    }
+  });
+
+  // POST /api/admin/sync-sheets-now — manually trigger immediate sync
+  app.post("/api/admin/sync-sheets-now", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { syncToSheets } = await import("../infra/sheets-sync.js");
+      await syncToSheets();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/sync-sheets-now]", err);
+      res.status(500).json({ error: "Sync failed" });
+    }
+  });
+
   // ── Helpers (waitlist) — confirmation email ─────────────────────────────
-  async function sendWaitlistConfirmationEmail(email: string): Promise<void> {
+  async function sendWaitlistConfirmationEmail(email: string, markSent = true): Promise<void> {
     const logoSvg = `data:image/svg+xml;base64,${Buffer.from('<svg viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="175" y="155" width="56" height="260" fill="#111111"/><rect x="355" y="275" width="56" height="245" fill="#111111"/><rect x="540" y="380" width="65" height="255" fill="#111111"/></svg>').toString("base64")}`;
     const html = `
       <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
@@ -3497,6 +3544,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       html,
       text: `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}`,
     });
+    if (markSent) {
+      await db.update(waitlistSubscribers)
+        .set({ confirmationEmailSentAt: new Date() })
+        .where(eq(waitlistSubscribers.email, email));
+    }
   }
 
   setupPreviewServer(httpServer, app);

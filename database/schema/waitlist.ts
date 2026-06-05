@@ -10,6 +10,7 @@ export const waitlistSubscribers = pgTable("waitlist_subscribers", {
   isEdu: boolean("is_edu").notNull().default(false),
   status: text("status").notNull().default("pending"),
   batchId: integer("batch_id"),
+  confirmationEmailSentAt: timestamp("confirmation_email_sent_at"),
 });
 
 export const insertWaitlistSubscriberSchema = createInsertSchema(waitlistSubscribers).pick({
