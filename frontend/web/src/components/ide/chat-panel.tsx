@@ -377,31 +377,33 @@ export function ChatPanel() {
           />
         )}
       </div>
-      {polishResult && (
-        <PolishPreview
-          original={polishResult.original}
-          polished={polishResult.polished}
-          onAccept={(text) => { setInput(text); setPolishResult(null); }}
-          onReject={() => setPolishResult(null)}
+      <div className="relative shrink-0">
+        {polishResult && (
+          <PolishPreview
+            original={polishResult.original}
+            polished={polishResult.polished}
+            onAccept={(text) => { setInput(text); setPolishResult(null); }}
+            onReject={() => setPolishResult(null)}
+          />
+        )}
+        <ChatInputArea
+          input={input}
+          setInput={setInput}
+          isBusy={isBusy}
+          isExecuting={isExecuting}
+          agentStatus={agentStatus}
+          elapsed={planningElapsed > 0 ? planningElapsed : undefined}
+          providers={providers}
+          smartResponseLoading={smartResponseLoading}
+          polishLoading={polishLoading}
+          onSend={handleCurrentSend}
+          onStop={handleStop}
+          onSmartResponse={handleSmartResponse}
+          onPolish={handlePolish}
+          onToggleMode={handleToggleMode}
+          onToggleReview={handleToggleReview}
         />
-      )}
-      <ChatInputArea
-        input={input}
-        setInput={setInput}
-        isBusy={isBusy}
-        isExecuting={isExecuting}
-        agentStatus={agentStatus}
-        elapsed={planningElapsed > 0 ? planningElapsed : undefined}
-        providers={providers}
-        smartResponseLoading={smartResponseLoading}
-        polishLoading={polishLoading}
-        onSend={handleCurrentSend}
-        onStop={handleStop}
-        onSmartResponse={handleSmartResponse}
-        onPolish={handlePolish}
-        onToggleMode={handleToggleMode}
-        onToggleReview={handleToggleReview}
-      />
+      </div>
     </div>
   );
 }
