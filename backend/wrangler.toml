@@ -1,3 +1,1 @@
-name = "cascade"
-main = "./api/src/worker-entry.ts"
-compatibility_date = "2026-06-04"
+
