@@ -15,3 +15,8 @@ backend/api/artifacts/
 backend/artifacts/
 backend/api/assets/rn-vendor.js
 backend/api/assets/wx-vendor.js
+# Editor swap files
+*.swp
+*.swo
+# Exported user data (PII)
+*.csv

@@ -3491,7 +3491,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/admin/sheet-update", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     try {
-      const { applySheetUpdate } = await import("../infra/sheets-sync.js");
+      const { applySheetUpdate } = await import("../../infra/sheets-sync.js");
       const updates = req.body.updates;
       if (!Array.isArray(updates)) return res.status(400).json({ error: "updates must be an array" });
       const changed = await applySheetUpdate(updates);
@@ -3506,7 +3506,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/admin/sync-sheets-now", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     try {
-      const { syncToSheets } = await import("../infra/sheets-sync.js");
+      const { syncToSheets } = await import("../../infra/sheets-sync.js");
       await syncToSheets();
       res.json({ ok: true });
     } catch (err) {

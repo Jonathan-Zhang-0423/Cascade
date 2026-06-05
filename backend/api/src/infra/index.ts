@@ -4,10 +4,23 @@ import session from "express-session";
 import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
 import { startFeishuSync } from "./feishu-sync.js";
+import { startSheetsSync } from "./sheets-sync.js";
 import { createServer } from "http";
 
 const app = express();
 const httpServer = createServer(app);
+
+// ── 进程级错误兜底 ──────────────────────────────────────────────
+// 这个服务有大量 fire-and-forget 异步（同步任务、SSE 流、AI 流式）。
+// 任何一处没被接住的 rejection / 异常默认会让整个进程崩，pm2 重启次数
+// 又有上限，崩够就彻底下线。这里全部记录但不退出，保证长时间连续运行。
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] UNHANDLED REJECTION (已捕获，进程继续运行):", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[process] UNCAUGHT EXCEPTION (已捕获，进程继续运行):", err);
+});
 
 declare module "http" {
   interface IncomingMessage {
@@ -112,4 +125,26 @@ app.use((req, res, next) => {
       startFeishuSync();
     },
   );
+
+  // ── 优雅关闭 ────────────────────────────────────────────────────
+  // pm2 reload / restart / 部署时会发 SIGTERM。先停止接收新连接，给在途的
+  // AI 构建会话和 SSE 长连接留出收尾时间，再退出；超时则强制退出兜底。
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`收到 ${signal}，开始优雅关闭…`);
+    const forceExit = setTimeout(() => {
+      console.error("[process] 优雅关闭超时，强制退出");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    httpServer.close(() => {
+      log("HTTP server 已关闭，进程退出");
+      clearTimeout(forceExit);
+      process.exit(0);
+    });
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })();
