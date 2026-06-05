@@ -102,30 +102,22 @@ export default function AdminPage() {
     }
   }
 
-  function handleExportCSV() {
-    if (!data) return;
-    const rows = [
-      ["ID", "Email", "类型", "状态", "邀请码", "申请时间", "发送时间", "有效期至", "批次"],
-      ...filtered.map((s) => [
-        s.id,
-        s.email,
-        s.isEdu ? "EDU" : "普通",
-        s.status === "invited" ? "已邀请" : "待邀请",
-        s.inviteCode ?? "",
-        formatDate(s.createdAt),
-        s.invitedAt ? formatDate(s.invitedAt) : "",
-        s.expiresAt ? formatDate(s.expiresAt) : "",
-        s.batchId ?? "",
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `waitlist_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function handleExportCSV() {
+    try {
+      const res = await fetch("/api/admin/export-csv", {
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `waitlist_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export CSV");
+    }
   }
 
   function formatDate(iso: string) {
