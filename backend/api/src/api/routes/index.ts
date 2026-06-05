@@ -3233,6 +3233,9 @@ Generate the cascade.md content for this project based on both the plan and the 
 
       await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu });
 
+      // Fire-and-forget: send confirmation email to the subscriber.
+      sendWaitlistConfirmationEmail(email).catch((err) => console.error("[waitlist/confirm-email]", err));
+
       // Send batch alert when pending count crosses a multiple of BATCH_SIZE.
       const [{ pending }] = await db
         .select({ pending: count() })
@@ -3438,6 +3441,60 @@ Generate the cascade.md content for this project based on both the plan and the 
       sent++;
     }
     return sent;
+  }
+
+  // GET /api/admin/export-csv — download waitlist as CSV
+  app.get("/api/admin/export-csv", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const subs = await db.select().from(waitlistSubscribers).orderBy(waitlistSubscribers.createdAt);
+      const header = "id,email,status,isEdu,batchId,ipAddress,createdAt\n";
+      const rows = subs.map((s) => [
+        s.id,
+        `"${s.email.replace(/"/g, '""')}"`,
+        s.status,
+        s.isEdu ? "true" : "false",
+        s.batchId ?? "",
+        s.ipAddress ? `"${s.ipAddress.replace(/"/g, '""')}"` : "",
+        s.createdAt.toISOString(),
+      ].join(",")).join("\n");
+      const csv = header + rows;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="waitlist.csv"');
+      res.send(csv);
+    } catch (err) {
+      console.error("[admin/export-csv]", err);
+      res.status(500).json({ error: "Failed to export CSV" });
+    }
+  });
+
+  // ── Helpers (waitlist) — confirmation email ─────────────────────────────
+  async function sendWaitlistConfirmationEmail(email: string): Promise<void> {
+    const html = `
+      <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+        <div style="margin-bottom:32px">
+          <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111827">Cascade AI</span>
+        </div>
+        <h2 style="font-size:22px;font-weight:700;margin-bottom:16px;color:#111827">Thanks for signing up!</h2>
+        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">Hi there,</p>
+        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
+          Thanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.
+        </p>
+        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
+          Our engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)
+        </p>
+        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:4px">Jonathan</p>
+        <p style="color:#6b7280;font-size:14px;line-height:1.6;margin-bottom:32px">Founder, Cascade AI</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+        <p style="color:#9ca3af;font-size:12px">Cascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+      </div>
+    `;
+    await sendEmail({
+      to: email,
+      subject: "Thanks for signing up!",
+      html,
+      text: `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}`,
+    });
   }
 
   setupPreviewServer(httpServer, app);
