@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import cascadeLogo from "../assets/cascade-logo.png";
 
 interface Subscriber {
   id: number;
@@ -20,6 +21,8 @@ interface WaitlistData {
 
 type FilterStatus = "all" | "pending" | "invited";
 type FilterType = "all" | "edu" | "normal";
+
+const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
 export default function AdminPage() {
   const [secret, setSecret] = useState("");
@@ -92,7 +95,7 @@ export default function AdminPage() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Failed to send invites");
-      setSendResult(`✅ 成功发送 ${body.sent} 封邀请码邮件`);
+      setSendResult(`Sent ${body.sent} invite${body.sent !== 1 ? "s" : ""} successfully.`);
       setSelected(new Set());
       await handleRefresh();
     } catch (err) {
@@ -102,35 +105,27 @@ export default function AdminPage() {
     }
   }
 
-  function handleExportCSV() {
-    if (!data) return;
-    const rows = [
-      ["ID", "Email", "类型", "状态", "邀请码", "申请时间", "发送时间", "有效期至", "批次"],
-      ...filtered.map((s) => [
-        s.id,
-        s.email,
-        s.isEdu ? "EDU" : "普通",
-        s.status === "invited" ? "已邀请" : "待邀请",
-        s.inviteCode ?? "",
-        formatDate(s.createdAt),
-        s.invitedAt ? formatDate(s.invitedAt) : "",
-        s.expiresAt ? formatDate(s.expiresAt) : "",
-        s.batchId ?? "",
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `waitlist_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function handleExportCSV() {
+    try {
+      const res = await fetch("/api/admin/export-csv", {
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `waitlist_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export CSV");
+    }
   }
 
   function formatDate(iso: string) {
-    return new Date(iso).toLocaleString("zh-CN", {
-      year: "numeric", month: "2-digit", day: "2-digit",
+    return new Date(iso).toLocaleString("en-US", {
+      year: "numeric", month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
   }
@@ -162,152 +157,224 @@ export default function AdminPage() {
     }
   }
 
-  const cardStyle = {
-    background: "rgba(255,255,255,0.85)",
-    border: "1px solid rgba(0,0,0,0.08)",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-  };
-
   return (
     <div
-      className="min-h-screen w-full"
+      className="min-h-screen w-full overflow-x-hidden"
       style={{
-        fontFamily: "'Inter', sans-serif",
-        background: "radial-gradient(ellipse 120% 80% at 50% -10%, #c8d0d8 0%, #dde1e6 25%, #edeff2 50%, #f6f7f9 75%, #ffffff 100%)",
+        fontFamily: FONT,
+        background: "white",
       }}
     >
-      <div className="max-w-6xl mx-auto w-full px-6 py-12">
+      {/* subtle radial glow top-center, matching landing hero */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,0,0,0.04) 0%, transparent 70%)",
+        }}
+      />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Waitlist 管理后台</h1>
-            <p className="text-sm text-gray-500 mt-1">CascadeAI · cascadeai.co</p>
-          </div>
-          {authed && data && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">共 <strong className="text-gray-900">{data.total}</strong> 位用户</span>
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 transition-all hover:bg-white/60 disabled:opacity-50"
-                style={cardStyle}
-              >
-                {loading ? "刷新中…" : "刷新"}
-              </button>
-              <button
-                onClick={handleExportCSV}
-                className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 transition-all hover:bg-white/60"
-                style={cardStyle}
-              >
-                导出 CSV
-              </button>
-            </div>
+      {/* Navbar */}
+      <header
+        className="fixed top-0 left-0 right-0 z-50"
+        style={{
+          backdropFilter: "blur(14px)",
+          backgroundColor: "rgba(255,255,255,0.85)",
+          borderBottom: "1px solid rgba(0,0,0,0.07)",
+        }}
+      >
+        <div className="max-w-6xl mx-auto px-8 h-20 flex items-center justify-between">
+          <img src={cascadeLogo} alt="Cascade AI" className="h-8 w-auto object-contain" />
+          {authed && (
+            <span className="text-xs text-gray-400 font-medium tracking-wide uppercase">Admin</span>
           )}
         </div>
+      </header>
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-36 pb-20">
 
         {/* Login */}
         {!authed && (
-          <div className="max-w-sm">
-            <form onSubmit={handleLogin} className="flex flex-col gap-3">
+          <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
+            <h1
+              className="font-bold text-black mb-3 leading-tight"
+              style={{ fontSize: "clamp(36px, 5vw, 52px)", fontFamily: FONT }}
+            >
+              Waitlist Admin
+            </h1>
+            <p className="text-gray-500 text-[16px] mb-10">
+              Enter your admin password to continue.
+            </p>
+            <form onSubmit={handleLogin} className="flex flex-col gap-3 w-full max-w-sm">
               <input
                 type="password"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
-                placeholder="Admin 密码"
+                placeholder="Admin password"
                 required
-                className="px-4 py-2.5 rounded-md text-sm outline-none"
-                style={{ ...cardStyle, color: "#1a1f2e" }}
-                onFocus={(e) => { e.currentTarget.style.border = "1px solid rgba(17,24,39,0.55)"; }}
+                className="w-full px-4 py-3 rounded-xl text-[14px] outline-none text-gray-900 placeholder:text-gray-400"
+                style={{
+                  background: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+                }}
+                onFocus={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.4)"; }}
                 onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.12)"; }}
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="px-5 py-2.5 rounded-md text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.20)" }}
+                className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
+                style={{ background: "#111827", boxShadow: "0 4px 16px rgba(0,0,0,0.18)" }}
               >
-                {loading ? "登录中…" : "登录"}
+                {loading ? "Signing in…" : "Sign in"}
               </button>
             </form>
+            {error && (
+              <p className="mt-4 text-[13px] text-red-500">{error}</p>
+            )}
           </div>
         )}
 
-        {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-        {sendResult && <p className="mt-4 text-sm text-green-600 font-medium">{sendResult}</p>}
-
-        {/* Stats */}
+        {/* Dashboard */}
         {authed && data && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            {/* Page title row */}
+            <div className="flex items-end justify-between mb-10">
+              <div>
+                <h1
+                  className="font-bold text-black leading-tight"
+                  style={{ fontSize: "clamp(28px, 4vw, 40px)", fontFamily: FONT }}
+                >
+                  Waitlist
+                </h1>
+                <p className="text-gray-500 text-[14px] mt-1">cascadeai.co · {data.total} subscribers</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                  style={{
+                    background: "rgba(255,255,255,0.9)",
+                    border: "1px solid rgba(0,0,0,0.1)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                  }}
+                >
+                  {loading ? "Refreshing…" : "Refresh"}
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97]"
+                  style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                >
+                  Export CSV
+                </button>
+              </div>
+            </div>
+
+            {error && <p className="mb-4 text-[13px] text-red-500">{error}</p>}
+            {sendResult && <p className="mb-4 text-[13px] text-green-600 font-medium">{sendResult}</p>}
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
               {[
-                { label: "总用户", value: data.total },
-                { label: "待邀请", value: data.subscribers.filter((s) => s.status === "pending").length },
-                { label: "已邀请", value: data.subscribers.filter((s) => s.status === "invited").length },
-                { label: "EDU 用户", value: data.subscribers.filter((s) => s.isEdu).length },
+                { label: "Total", value: data.total },
+                { label: "Pending", value: data.subscribers.filter((s) => s.status === "pending").length },
+                { label: "Invited", value: data.subscribers.filter((s) => s.status === "invited").length },
+                { label: "EDU", value: data.subscribers.filter((s) => s.isEdu).length },
               ].map((stat) => (
-                <div key={stat.label} className="rounded-xl px-5 py-4" style={cardStyle}>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                  <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+                <div
+                  key={stat.label}
+                  className="rounded-2xl px-6 py-5"
+                  style={{
+                    background: "rgba(255,255,255,0.9)",
+                    border: "1px solid rgba(0,0,0,0.07)",
+                    boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+                  }}
+                >
+                  <p className="text-3xl font-bold text-black tracking-tight">{stat.value}</p>
+                  <p className="text-[12px] text-gray-400 mt-1 font-medium uppercase tracking-wide">{stat.label}</p>
                 </div>
               ))}
             </div>
 
             {/* Filters + Send */}
-            <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-3 mb-5">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索邮箱…"
-                className="px-3 py-2 rounded-md text-sm outline-none w-52"
-                style={{ ...cardStyle, color: "#1a1f2e" }}
+                placeholder="Search email…"
+                className="px-3 py-2.5 rounded-xl text-[13px] outline-none w-52"
+                style={{
+                  background: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+                  color: "#111827",
+                }}
               />
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
-                className="px-3 py-2 rounded-md text-sm outline-none"
-                style={cardStyle}
+                className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+                }}
               >
-                <option value="all">全部状态</option>
-                <option value="pending">待邀请</option>
-                <option value="invited">已邀请</option>
+                <option value="all">All status</option>
+                <option value="pending">Pending</option>
+                <option value="invited">Invited</option>
               </select>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as FilterType)}
-                className="px-3 py-2 rounded-md text-sm outline-none"
-                style={cardStyle}
+                className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+                }}
               >
-                <option value="all">全部类型</option>
-                <option value="normal">普通用户</option>
-                <option value="edu">EDU 用户</option>
+                <option value="all">All types</option>
+                <option value="normal">Normal</option>
+                <option value="edu">EDU</option>
               </select>
 
               <div className="ml-auto flex items-center gap-3">
                 {selected.size > 0 && (
-                  <span className="text-sm text-gray-500">已选 <strong>{selected.size}</strong> 人</span>
+                  <span className="text-[13px] text-gray-500">
+                    <strong className="text-black">{selected.size}</strong> selected
+                  </span>
                 )}
                 <button
                   onClick={handleSendInvites}
                   disabled={selected.size === 0 || sending}
-                  className="px-5 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.20)" }}
+                  className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
                 >
-                  {sending ? "发送中…" : `发送邀请码${selected.size > 0 ? ` (${selected.size})` : ""}`}
+                  {sending ? "Sending…" : `Send Invite${selected.size > 1 ? "s" : ""}${selected.size > 0 ? ` (${selected.size})` : ""}`}
                 </button>
               </div>
             </div>
 
             {/* Table */}
             {filtered.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">暂无数据</p>
+              <div className="text-center py-20 text-gray-400 text-[14px]">No subscribers found.</div>
             ) : (
-              <div className="rounded-xl overflow-hidden" style={cardStyle}>
-                <table className="w-full text-sm">
+              <div
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.07)",
+                  boxShadow: "0 2px 20px rgba(0,0,0,0.05)",
+                }}
+              >
+                <table className="w-full text-[13px]">
                   <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.07)", background: "rgba(0,0,0,0.02)" }}>
-                      <th className="px-4 py-3 text-left">
+                    <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "rgba(0,0,0,0.015)" }}>
+                      <th className="px-5 py-3.5 text-left w-10">
                         <input
                           type="checkbox"
                           checked={allPendingSelected}
@@ -315,23 +382,23 @@ export default function AdminPage() {
                           className="rounded"
                         />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">类型</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">状态</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">邀请码</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">申请时间</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">有效期至</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">批次</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Email</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Type</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invite Code</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Joined</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Expires</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Batch</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((s, i) => (
                       <tr
                         key={s.id}
-                        style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}
-                        className={selected.has(s.id) ? "bg-blue-50/60" : ""}
+                        style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}
+                        className={selected.has(s.id) ? "bg-gray-50/80" : "hover:bg-gray-50/40 transition-colors"}
                       >
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-3.5">
                           {s.status === "pending" && (
                             <input
                               type="checkbox"
@@ -347,31 +414,31 @@ export default function AdminPage() {
                             />
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-900 font-medium">{s.email}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-3.5 font-medium text-gray-900">{s.email}</td>
+                        <td className="px-5 py-3.5">
                           <span
-                            className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
                             style={s.isEdu
-                              ? { background: "rgba(99,102,241,0.1)", color: "#4f46e5" }
-                              : { background: "rgba(0,0,0,0.06)", color: "#374151" }}
+                              ? { background: "rgba(99,102,241,0.08)", color: "#4f46e5" }
+                              : { background: "rgba(0,0,0,0.05)", color: "#374151" }}
                           >
-                            {s.isEdu ? "EDU" : "普通"}
+                            {s.isEdu ? "EDU" : "Normal"}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-3.5">
                           <span
-                            className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
                             style={s.status === "invited"
-                              ? { background: "rgba(34,197,94,0.1)", color: "#16a34a" }
-                              : { background: "rgba(234,179,8,0.1)", color: "#a16207" }}
+                              ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" }
+                              : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}
                           >
-                            {s.status === "invited" ? "已邀请" : "待邀请"}
+                            {s.status === "invited" ? "Invited" : "Pending"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-mono text-gray-700 text-xs">{s.inviteCode ?? "—"}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(s.createdAt)}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{s.expiresAt ? formatDate(s.expiresAt) : "—"}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{s.batchId ? `#${s.batchId}` : "—"}</td>
+                        <td className="px-5 py-3.5 font-mono text-gray-500 text-[12px]">{s.inviteCode ?? "—"}</td>
+                        <td className="px-5 py-3.5 text-gray-400 text-[12px]">{formatDate(s.createdAt)}</td>
+                        <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.expiresAt ? formatDate(s.expiresAt) : "—"}</td>
+                        <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.batchId ? `#${s.batchId}` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
