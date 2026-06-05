@@ -1,8 +1,10 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
+import { pool } from "./db.js";
 import { startFeishuSync } from "./feishu-sync.js";
 import { startSheetsSync } from "./sheets-sync.js";
 import { createServer } from "http";
@@ -27,7 +29,15 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+const PgSession = connectPgSimple(session);
+
 app.use(session({
+  store: new PgSession({
+    pool,
+    // 复用现有 pg 连接池，session 落库而非进程内存——避免 MemoryStore 内存泄漏，
+    // 进程重启也不丢登录态。表不存在时自动创建（单表 "session"）。
+    createTableIfMissing: true,
+  }),
   secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   resave: false,
   saveUninitialized: false,
