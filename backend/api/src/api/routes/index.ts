@@ -1521,6 +1521,71 @@ ${mode === "manager" ? "- This is a planning conversation: confirm direction, ad
     }
   });
 
+  app.post("/api/polish-prompt", async (req, res) => {
+    try {
+      if (!process.env.DOUBAO_API_KEY) {
+        res.status(500).json({ error: "AI service not configured" });
+        return;
+      }
+
+      const { prompt, messages, mode, framework, language = "English" } = req.body;
+
+      if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+        res.status(400).json({ error: "prompt is required" });
+        return;
+      }
+
+      const contextBlock = Array.isArray(messages) && messages.length > 0
+        ? `\n\nRecent conversation context:\n${messages.map((m: { role: string; content: string }) => `[${m.role}]: ${m.content}`).join("\n")}`
+        : "";
+
+      const frameworkHint = framework ? `\nThe project uses the "${framework}" framework.` : "";
+
+      const systemPrompt = `You MUST respond only in ${language}.
+
+You are a prompt structuring assistant for a coding AI agent (mode: ${mode || "manager"}).${frameworkHint}
+
+Given a user's raw requirement description, rewrite it into a clear, structured format:
+
+## Goal
+[1-2 sentences: what the user wants to achieve]
+
+## Requirements
+- [bullet list of specific functional requirements extracted/inferred]
+
+## Constraints
+- [any technical constraints, framework preferences, or limitations mentioned or implied]
+
+## Acceptance Criteria
+- [how to verify the feature works correctly]
+
+Rules:
+- Preserve the user's original intent completely
+- Add structure and clarity, don't invent new features the user didn't ask for
+- If the input mentions a framework/language, include it in constraints
+- If context messages reveal project details (framework, existing patterns), reference them
+- Keep it concise — no filler
+- You MUST write in ${language} only
+- Output ONLY the structured prompt — no meta-commentary, no wrapping quotes${contextBlock}`;
+
+      const completion = await doubaoClient.chat.completions.create({
+        model: DOUBAO_LITE_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        stream: false,
+        max_tokens: 800,
+      });
+
+      const polished = completion.choices[0]?.message?.content?.trim() || "";
+      res.json({ polished });
+    } catch (error: any) {
+      console.error("Polish prompt API error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to polish prompt" });
+    }
+  });
+
   app.post("/api/ab-test", async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
