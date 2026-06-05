@@ -57,6 +57,7 @@ export function ChatPanel() {
     completionData,
     clearManagerPlan,
     addManagerMessage,
+    messagesReady,
   } = useIDEStore();
 
   const tGlobal = useT();
@@ -223,7 +224,7 @@ export function ChatPanel() {
   }, [projectId, resetManagerLiveState, resetBuildLiveState]);
 
   useEffect(() => {
-    if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding) {
+    if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
       const mode = pendingPromptMode;
@@ -234,7 +235,7 @@ export function ChatPanel() {
         handleManagerSend(prompt);
       }
     }
-  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
 
   useEffect(() => {
     if (!isManagerResponding && autoExecutePlanRef.current) {
