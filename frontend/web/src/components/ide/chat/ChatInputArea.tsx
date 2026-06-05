@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowUp, Square, Check, Sparkles } from "lucide-react";
+import { ArrowUp, Square, Check, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type AgentStatus } from "./AgentStatusLine";
 
@@ -31,9 +31,11 @@ interface ChatInputAreaProps {
   elapsed?: number;
   providers: ProviderFlags;
   smartResponseLoading: boolean;
+  polishLoading: boolean;
   onSend: () => void;
   onStop: () => void;
   onSmartResponse: () => void;
+  onPolish: () => void;
   onToggleMode: () => void;
   onToggleReview: () => void;
 }
@@ -67,9 +69,11 @@ export function ChatInputArea({
   elapsed,
   providers,
   smartResponseLoading,
+  polishLoading,
   onSend,
   onStop,
   onSmartResponse,
+  onPolish,
   onToggleMode,
   onToggleReview,
 }: ChatInputAreaProps) {
@@ -279,6 +283,21 @@ export function ChatInputArea({
               )}
             </SelectContent>
           </Select>
+
+          {/* Polish button */}
+          <button
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors disabled:opacity-30 disabled:cursor-default"
+            onClick={onPolish}
+            disabled={polishLoading || !input.trim() || isBusy}
+            title="Polish — restructure your prompt for clarity"
+          >
+            {polishLoading ? (
+              <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
+            ) : (
+              <Wand2 className="w-3 h-3 text-[rgba(238,238,246,0.4)]" />
+            )}
+            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">polish</span>
+          </button>
 
           {/* Smart Response button */}
           <button

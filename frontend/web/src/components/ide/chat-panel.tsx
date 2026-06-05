@@ -11,7 +11,9 @@ import { ChatMessageList } from "./chat/ChatMessageList";
 import { ChatInputArea } from "./chat/ChatInputArea";
 import { type AgentStatus } from "./chat/AgentStatusLine";
 import { useSmartResponse } from "./chat/hooks/useSmartResponse";
+import { usePolishPrompt } from "./chat/hooks/usePolishPrompt";
 import { useActiveStream } from "./chat/hooks/useActiveStream";
+import { PolishPreview } from "./chat/PolishPreview";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -86,6 +88,8 @@ export function ChatPanel() {
   } = build;
 
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
+  const [polishLoading, setPolishLoading] = useState(false);
+  const [polishResult, setPolishResult] = useState<{ original: string; polished: string } | null>(null);
   const [providers, setProviders] = useState<{
     doubao: boolean;
     kimi: boolean;
@@ -101,6 +105,15 @@ export function ChatPanel() {
     managerMessages,
     setInput,
     setSmartResponseLoading,
+  );
+
+  const handlePolish = usePolishPrompt(
+    chatMode,
+    chatMessages,
+    managerMessages,
+    input,
+    setPolishLoading,
+    setPolishResult,
   );
 
   useEffect(() => {
@@ -365,21 +378,33 @@ export function ChatPanel() {
           />
         )}
       </div>
-      <ChatInputArea
-        input={input}
-        setInput={setInput}
-        isBusy={isBusy}
-        isExecuting={isExecuting}
-        agentStatus={agentStatus}
-        elapsed={planningElapsed > 0 ? planningElapsed : undefined}
-        providers={providers}
-        smartResponseLoading={smartResponseLoading}
-        onSend={handleCurrentSend}
-        onStop={handleStop}
-        onSmartResponse={handleSmartResponse}
-        onToggleMode={handleToggleMode}
-        onToggleReview={handleToggleReview}
-      />
+      <div className="relative shrink-0">
+        {polishResult && (
+          <PolishPreview
+            original={polishResult.original}
+            polished={polishResult.polished}
+            onAccept={(text) => { setInput(text); setPolishResult(null); }}
+            onReject={() => setPolishResult(null)}
+          />
+        )}
+        <ChatInputArea
+          input={input}
+          setInput={setInput}
+          isBusy={isBusy}
+          isExecuting={isExecuting}
+          agentStatus={agentStatus}
+          elapsed={planningElapsed > 0 ? planningElapsed : undefined}
+          providers={providers}
+          smartResponseLoading={smartResponseLoading}
+          polishLoading={polishLoading}
+          onSend={handleCurrentSend}
+          onStop={handleStop}
+          onSmartResponse={handleSmartResponse}
+          onPolish={handlePolish}
+          onToggleMode={handleToggleMode}
+          onToggleReview={handleToggleReview}
+        />
+      </div>
     </div>
   );
 }
