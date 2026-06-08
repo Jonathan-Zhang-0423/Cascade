@@ -21,8 +21,9 @@ export interface SendEmailInput {
 export async function sendEmail(input: SendEmailInput): Promise<void> {
   const client = getClient();
   if (!client) {
-    // Dev fallback — no API key configured. Log and return so the calling code
-    // can still complete its DB writes during local testing.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("RESEND_API_KEY is not set — cannot send email in production");
+    }
     console.log("[email] RESEND_API_KEY not set; skipping send", {
       to: input.to,
       subject: input.subject,

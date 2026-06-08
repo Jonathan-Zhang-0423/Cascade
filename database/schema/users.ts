@@ -16,7 +16,7 @@ export const users = pgTable("users", {
   experienceLevel: text("experience_level").notNull().default("intermediate"),
   hasSetExperienceLevel: boolean("has_set_experience_level").notNull().default(false),
   inviteCode: text("invite_code"),
-  trialExpiresAt: timestamp("trial_expires_at"),
+  trialExpiresAt: timestamp("trial_expires_at", { mode: "date", withTimezone: true }),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

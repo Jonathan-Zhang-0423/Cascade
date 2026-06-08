@@ -8,10 +8,10 @@ export const otpCodes = pgTable(
     target: text("target").notNull(),
     codeHash: text("code_hash").notNull(),
     purpose: text("purpose").notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }).notNull(),
     attempts: integer("attempts").notNull().default(0),
-    consumedAt: timestamp("consumed_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    consumedAt: timestamp("consumed_at", { mode: "date", withTimezone: true }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     targetPurposeCreatedIdx: index("otp_codes_target_purpose_created_idx").on(

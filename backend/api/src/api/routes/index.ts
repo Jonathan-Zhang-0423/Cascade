@@ -19,7 +19,7 @@ import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
 import { db } from "../../infra/db";
-import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { eq, and, desc, count, isNull, or } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
 import { getTemplateFiles } from "../../compiler/templates/index";
@@ -2733,7 +2733,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     const [invite] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, trimmed));
     if (!invite) return { ok: false, error: "Invalid invite code" };
     if (invite.redeemedByUserId) return { ok: false, error: "Invite code already used" };
-    if (invite.expiresAt.getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
+    if (new Date(invite.expiresAt).getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
     const now = new Date();
     const trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
     const updated = await db.update(inviteCodes)
@@ -3409,11 +3409,38 @@ Generate the cascade.md content for this project based on both the plan and the 
   const BATCH_SIZE = 50;
   const TRIAL_DAYS_NORMAL = 30;
   const TRIAL_DAYS_EDU = 60;
+  const QIZHI_FREE_UNTIL = new Date("2026-09-30T23:59:59+08:00");
   const WAITLIST_BASE_URL = process.env.BASE_URL ?? process.env.APP_BASE_URL ?? "https://cascadeai.co";
 
   function isEduEmail(email: string): boolean {
     const lower = email.toLowerCase();
     return lower.endsWith(".edu.cn") || lower.endsWith(".edu");
+  }
+
+  function isQizhiEmail(email: string): boolean {
+    return email.toLowerCase().endsWith("@miracleplus.com");
+  }
+
+  function getTrialInfo(email: string, isEdu: boolean, from: Date): { trialDays: number; expiresAt: Date; label: string } {
+    if (isQizhiEmail(email)) {
+      return {
+        trialDays: Math.ceil((QIZHI_FREE_UNTIL.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)),
+        expiresAt: QIZHI_FREE_UNTIL,
+        label: "奇绩创坛专属免费期至 2026 年 9 月 30 日",
+      };
+    }
+    if (isEdu) {
+      return {
+        trialDays: TRIAL_DAYS_EDU,
+        expiresAt: new Date(from.getTime() + TRIAL_DAYS_EDU * 24 * 60 * 60 * 1000),
+        label: `教育优惠免费期 ${TRIAL_DAYS_EDU} 天`,
+      };
+    }
+    return {
+      trialDays: TRIAL_DAYS_NORMAL,
+      expiresAt: new Date(from.getTime() + TRIAL_DAYS_NORMAL * 24 * 60 * 60 * 1000),
+      label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天`,
+    };
   }
   function formatInviteCode(isEdu: boolean, seq: number): string {
     return isEdu
@@ -3598,40 +3625,78 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   async function sendInvitesForSubscribers(subscriberIds: number[]): Promise<number> {
     if (subscriberIds.length === 0) return 0;
-    // Pull the target subscribers (only those still pending).
+
+    // Pull the target subscribers (pending or email_failed — the latter need a retry).
     const allTargets = await db.select().from(waitlistSubscribers)
-      .where(eq(waitlistSubscribers.status, "pending"));
+      .where(or(
+        eq(waitlistSubscribers.status, "pending"),
+        eq(waitlistSubscribers.status, "email_failed"),
+      ));
     const targets = allTargets.filter((s) => subscriberIds.includes(s.id));
     if (targets.length === 0) return 0;
 
-    // Allocate sequence numbers from the current count of issued codes per
-    // (isEdu) bucket. Atomic-ish — we update + count in a tight loop.
-    const [{ count: eduIssued }] = await db.select({ count: count() })
-      .from(inviteCodes).where(eq(inviteCodes.isEdu, true));
-    const [{ count: normalIssued }] = await db.select({ count: count() })
-      .from(inviteCodes).where(eq(inviteCodes.isEdu, false));
-    let eduSeq = eduIssued + 1;
-    let normalSeq = normalIssued + 1;
-
+    // --- Fix #1: allocate sequence numbers inside a transaction with a
+    // lock-then-count pattern so concurrent calls cannot read the same count
+    // and produce duplicate codes (which would then collide on the unique
+    // constraint and abort the second batch mid-loop).
+    //
+    // Strategy: for each subscriber we open a short transaction that (a) reads
+    // MAX(id) of existing codes in that bucket — MAX is index-friendly and
+    // immune to concurrent inserts reading the same count — and (b) inserts
+    // the new row.  Because the INSERT itself is inside the transaction, a
+    // unique-constraint collision will only roll back that single subscriber,
+    // not the whole batch; we retry with seq+1 in that case.
     const now = new Date();
     let sent = 0;
-    for (const sub of targets) {
-      const trialDays = sub.isEdu ? TRIAL_DAYS_EDU : TRIAL_DAYS_NORMAL;
-      const seq = sub.isEdu ? eduSeq++ : normalSeq++;
-      const code = formatInviteCode(sub.isEdu, seq);
-      // Code itself expires (unredeemed window) at the same trial duration.
-      const expiresAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
 
-      await db.insert(inviteCodes).values({
-        code,
-        isEdu: sub.isEdu,
-        trialDays,
-        expiresAt,
-        waitlistSubscriberId: sub.id,
-      });
-      await db.update(waitlistSubscribers)
-        .set({ status: "invited" })
-        .where(eq(waitlistSubscribers.id, sub.id));
+    for (const sub of targets) {
+      const { trialDays, expiresAt, label: trialLabel } = getTrialInfo(sub.email, sub.isEdu, now);
+
+      // For email_failed retries: a code was already allocated — reuse it.
+      // For pending: allocate a new code inside a transaction to avoid races.
+      let code: string;
+      const [existing] = await db
+        .select()
+        .from(inviteCodes)
+        .where(eq(inviteCodes.waitlistSubscriberId, sub.id));
+
+      if (existing) {
+        code = existing.code;
+      } else {
+        // --- Fix #1: allocate inside a transaction so COUNT is stable under
+        // concurrent inserts.  Retry up to 5 times on unique-constraint collision.
+        let allocated = false;
+        let allocatedCode = "";
+        for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
+          try {
+            await db.transaction(async (tx) => {
+              const [{ total }] = await tx
+                .select({ total: count() })
+                .from(inviteCodes)
+                .where(eq(inviteCodes.isEdu, sub.isEdu));
+              const seq = total + 1 + attempt;
+              allocatedCode = formatInviteCode(sub.isEdu, seq);
+              await tx.insert(inviteCodes).values({
+                code: allocatedCode,
+                isEdu: sub.isEdu,
+                trialDays,
+                expiresAt,
+                waitlistSubscriberId: sub.id,
+              });
+            });
+            allocated = true;
+          } catch (err: any) {
+            const msg: string = err?.message ?? "";
+            if (!msg.includes("unique") && !msg.includes("duplicate")) throw err;
+            console.warn(`[invite-code] unique collision for subscriber ${sub.id}, attempt ${attempt + 1}`);
+          }
+        }
+        if (!allocated) {
+          console.error(`[invite-code] failed to allocate unique code for subscriber ${sub.id} after 5 attempts`);
+          continue;
+        }
+        code = allocatedCode;
+      }
 
       const expiryStr = expiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
       const html = `
@@ -3641,20 +3706,36 @@ Generate the cascade.md content for this project based on both the plan and the 
           <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
             <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
           </div>
-          <p style="color:#6b7280;font-size:14px">有效期至：<strong>${expiryStr}</strong></p>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
+            <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
+            <p style="margin:0;font-size:13px;color:#b45309">免费期截止日期：<strong>${expiryStr}</strong>。请在此日期前完成注册并激活邀请码，逾期邀请码将失效。</p>
+          </div>
           <p style="color:#6b7280;font-size:14px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</a> 注册时填写邀请码。</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
           <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
         </div>
       `;
-      await sendEmail({
-        to: sub.email,
-        subject: `您的 CascadeAI 邀请码：${code}`,
-        html,
-        text: `您的 CascadeAI 邀请码：${code}\n有效期至：${expiryStr}\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
-      }).catch((err) => console.warn("[invite-email]", err, sub.email));
 
-      sent++;
+      // --- Fix #2: send the email FIRST; only mark the subscriber as
+      // "invited" if the send succeeds.  On failure, mark "email_failed" so
+      // the next manual re-run (which also selects email_failed) can retry.
+      try {
+        await sendEmail({
+          to: sub.email,
+          subject: `您的 CascadeAI 邀请码：${code}`,
+          html,
+          text: `您的 CascadeAI 邀请码：${code}\n\n${trialLabel}\n免费期截止日期：${expiryStr}。请在此日期前完成注册并激活邀请码，逾期邀请码将失效。\n\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
+        });
+        await db.update(waitlistSubscribers)
+          .set({ status: "invited" })
+          .where(eq(waitlistSubscribers.id, sub.id));
+        sent++;
+      } catch (err) {
+        console.error("[invite-email] send failed, marking email_failed", err, sub.email);
+        await db.update(waitlistSubscribers)
+          .set({ status: "email_failed" })
+          .where(eq(waitlistSubscribers.id, sub.id));
+      }
     }
     return sent;
   }
@@ -3668,8 +3749,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       const codeBySubId = new Map(codes.filter((c) => c.waitlistSubscriberId != null).map((c) => [c.waitlistSubscriberId!, c]));
 
       function emailType(email: string, isEdu: boolean): string {
-        if (email.endsWith("@westlake.edu.cn") || email.endsWith("@qizhi.com") || email.includes("qizhi")) return "奇绩创坛";
-        if (isEdu || email.match(/\.edu(\.|$)/i)) return "教育";
+        if (isQizhiEmail(email)) return "奇绩创坛";
+        if (isEdu || email.match(/\.edu(\.cn)?(\.|\b)/i)) return "教育";
         return "其他";
       }
 
