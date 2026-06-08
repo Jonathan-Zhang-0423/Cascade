@@ -2735,7 +2735,17 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (invite.redeemedByUserId) return { ok: false, error: "Invite code already used" };
     if (new Date(invite.expiresAt).getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
     const now = new Date();
-    const trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
+    // Trial starts from registration time (now).
+    // For 奇绩创坛 codes: look up the subscriber's email to apply the fixed deadline.
+    let trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
+    if (invite.waitlistSubscriberId) {
+      const [sub] = await db.select({ email: waitlistSubscribers.email })
+        .from(waitlistSubscribers)
+        .where(eq(waitlistSubscribers.id, invite.waitlistSubscriberId));
+      if (sub && isQizhiEmail(sub.email)) {
+        trialExpiresAt = QIZHI_FREE_UNTIL < trialExpiresAt ? QIZHI_FREE_UNTIL : trialExpiresAt;
+      }
+    }
     const updated = await db.update(inviteCodes)
       .set({ redeemedByUserId: userId, redeemedAt: now })
       .where(and(eq(inviteCodes.id, invite.id), isNull(inviteCodes.redeemedByUserId)))
@@ -3421,25 +3431,33 @@ Generate the cascade.md content for this project based on both the plan and the 
     return email.toLowerCase().endsWith("@miracleplus.com");
   }
 
-  function getTrialInfo(email: string, isEdu: boolean, from: Date): { trialDays: number; expiresAt: Date; label: string } {
+  // CODE_EXPIRY_DAYS: how long the invite code itself remains claimable after
+  // being issued. Once the user registers, trial starts from registration time.
+  const CODE_EXPIRY_DAYS = 90;
+
+  function getTrialInfo(email: string, isEdu: boolean): { trialDays: number; codeExpiresAt: Date; label: string } {
+    const codeExpiresAt = new Date(Date.now() + CODE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     if (isQizhiEmail(email)) {
+      // trialDays calculated at redemption time relative to QIZHI_FREE_UNTIL,
+      // so we store a sentinel value here; redeemInviteCode will recompute.
+      const daysUntilDeadline = Math.ceil((QIZHI_FREE_UNTIL.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
       return {
-        trialDays: Math.ceil((QIZHI_FREE_UNTIL.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)),
-        expiresAt: QIZHI_FREE_UNTIL,
-        label: "奇绩创坛专属免费期至 2026 年 9 月 30 日",
+        trialDays: daysUntilDeadline,
+        codeExpiresAt,
+        label: "奇绩创坛专属免费期至 2026 年 9 月 30 日（自注册之日起计算）",
       };
     }
     if (isEdu) {
       return {
         trialDays: TRIAL_DAYS_EDU,
-        expiresAt: new Date(from.getTime() + TRIAL_DAYS_EDU * 24 * 60 * 60 * 1000),
-        label: `教育优惠免费期 ${TRIAL_DAYS_EDU} 天`,
+        codeExpiresAt,
+        label: `教育优惠免费期 ${TRIAL_DAYS_EDU} 天（自注册之日起计算）`,
       };
     }
     return {
       trialDays: TRIAL_DAYS_NORMAL,
-      expiresAt: new Date(from.getTime() + TRIAL_DAYS_NORMAL * 24 * 60 * 60 * 1000),
-      label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天`,
+      codeExpiresAt,
+      label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天（自注册之日起计算）`,
     };
   }
   function formatInviteCode(isEdu: boolean, seq: number): string {
@@ -3650,7 +3668,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     let sent = 0;
 
     for (const sub of targets) {
-      const { trialDays, expiresAt, label: trialLabel } = getTrialInfo(sub.email, sub.isEdu, now);
+      const { trialDays, codeExpiresAt, label: trialLabel } = getTrialInfo(sub.email, sub.isEdu);
 
       // For email_failed retries: a code was already allocated — reuse it.
       // For pending: allocate a new code inside a transaction to avoid races.
@@ -3680,7 +3698,7 @@ Generate the cascade.md content for this project based on both the plan and the 
                 code: allocatedCode,
                 isEdu: sub.isEdu,
                 trialDays,
-                expiresAt,
+                expiresAt: codeExpiresAt,
                 waitlistSubscriberId: sub.id,
               });
             });
@@ -3698,7 +3716,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         code = allocatedCode;
       }
 
-      const expiryStr = expiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+      const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
       const html = `
         <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
           <h2 style="font-size:22px;font-weight:700;margin-bottom:8px">您的 CascadeAI 邀请码</h2>
@@ -3708,7 +3726,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           </div>
           <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
             <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
-            <p style="margin:0;font-size:13px;color:#b45309">免费期截止日期：<strong>${expiryStr}</strong>。请在此日期前完成注册并激活邀请码，逾期邀请码将失效。</p>
+            <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
           </div>
           <p style="color:#6b7280;font-size:14px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</a> 注册时填写邀请码。</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
@@ -3724,7 +3742,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           to: sub.email,
           subject: `您的 CascadeAI 邀请码：${code}`,
           html,
-          text: `您的 CascadeAI 邀请码：${code}\n\n${trialLabel}\n免费期截止日期：${expiryStr}。请在此日期前完成注册并激活邀请码，逾期邀请码将失效。\n\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
+          text: `您的 CascadeAI 邀请码：${code}\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。\n邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。\n\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
         });
         await db.update(waitlistSubscribers)
           .set({ status: "invited" })
