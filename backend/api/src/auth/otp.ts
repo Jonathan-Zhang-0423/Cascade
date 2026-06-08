@@ -41,37 +41,51 @@ export async function sendOtp(args: {
   purpose: OtpPurpose;
 }): Promise<SendOtpResult> {
   const { channel, target, purpose } = args;
-  const now = new Date();
 
-  // 60-second resend cooldown for this exact (target, purpose)
-  const [latest] = await db
-    .select({ createdAt: otpCodes.createdAt })
+  // NOTE: all time comparisons below are done with the DB clock (now() /
+  // interval) rather than a JS `new Date()`. The otp_codes timestamp columns
+  // are physically `timestamp without time zone` in the live DB, so the pg
+  // driver parses them in the Node process's local timezone — comparing such a
+  // value against a JS UTC Date drifts by the process's UTC offset and silently
+  // disables the cooldown / hourly cap. Letting Postgres do the arithmetic
+  // avoids that entirely.
+
+  // 60-second resend cooldown for this exact (target, purpose).
+  const [cooldownRow] = await db
+    .select({
+      elapsedSec: sql<number>`extract(epoch from (now() - ${otpCodes.createdAt}))`,
+    })
     .from(otpCodes)
     .where(and(eq(otpCodes.target, target), eq(otpCodes.purpose, purpose)))
     .orderBy(desc(otpCodes.createdAt))
     .limit(1);
-  if (latest) {
-    const elapsed = (now.getTime() - latest.createdAt.getTime()) / 1000;
-    if (elapsed < RESEND_COOLDOWN_SEC) {
+  if (cooldownRow) {
+    const elapsed = Number(cooldownRow.elapsedSec);
+    if (Number.isFinite(elapsed) && elapsed < RESEND_COOLDOWN_SEC) {
       return { ok: false, error: "rate_limited", retryAfterSec: Math.ceil(RESEND_COOLDOWN_SEC - elapsed) };
     }
   }
 
-  // Hourly cap per target (across purposes)
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  // Hourly cap per target (across purposes), counted against the DB clock.
   const [{ value: hourCount }] = await db
     .select({ value: sql<number>`count(*)::int` })
     .from(otpCodes)
-    .where(and(eq(otpCodes.target, target), gt(otpCodes.createdAt, oneHourAgo)));
+    .where(and(eq(otpCodes.target, target), gt(otpCodes.createdAt, sql`now() - interval '1 hour'`)));
   if (hourCount >= HOURLY_SEND_LIMIT) {
     return { ok: false, error: "rate_limited", retryAfterSec: 60 * 60 };
   }
 
   const code = generateCode();
   const codeHash = await bcrypt.hash(code, 10);
-  const expiresAt = new Date(now.getTime() + CODE_TTL_MINUTES * 60 * 1000);
 
-  await db.insert(otpCodes).values({ channel, target, codeHash, purpose, expiresAt });
+  await db.insert(otpCodes).values({
+    channel,
+    target,
+    codeHash,
+    purpose,
+    // Compute expiry on the DB clock for the same tz-safety reason.
+    expiresAt: sql`now() + interval '${sql.raw(String(CODE_TTL_MINUTES))} minutes'`,
+  });
 
   if (channel === "email") {
     await sendEmail({
@@ -98,7 +112,6 @@ export async function verifyOtp(args: {
   purpose: OtpPurpose;
 }): Promise<VerifyOtpResult> {
   const { target, code, purpose } = args;
-  const now = new Date();
 
   const [row]: OtpCode[] = await db
     .select()
@@ -108,7 +121,8 @@ export async function verifyOtp(args: {
         eq(otpCodes.target, target),
         eq(otpCodes.purpose, purpose),
         isNull(otpCodes.consumedAt),
-        gt(otpCodes.expiresAt, now),
+        // Compare expiry on the DB clock — see the tz note in sendOtp().
+        gt(otpCodes.expiresAt, sql`now()`),
       ),
     )
     .orderBy(desc(otpCodes.createdAt))
@@ -127,6 +141,6 @@ export async function verifyOtp(args: {
     return { ok: false, error: "invalid_or_expired" };
   }
 
-  await db.update(otpCodes).set({ consumedAt: now }).where(eq(otpCodes.id, row.id));
+  await db.update(otpCodes).set({ consumedAt: sql`now()` }).where(eq(otpCodes.id, row.id));
   return { ok: true };
 }

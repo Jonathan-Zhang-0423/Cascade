@@ -83,6 +83,30 @@ describeIntegration("OTP send + verify", () => {
       expect(second.status).toBe(429);
       expect(second.body.retryAfterSec).toBeGreaterThan(0);
     });
+
+    it("enforces the hourly send cap (429 after HOURLY_SEND_LIMIT rows)", async () => {
+      // Seed HOURLY_SEND_LIMIT (5) recent rows directly so the cap is reached
+      // without tripping the 60s cooldown via the HTTP path.
+      const target = email();
+      const { db } = await import("../../src/infra/db");
+      const { otpCodes } = await import("@cascade/database");
+      const { sql } = await import("drizzle-orm");
+      for (let i = 0; i < 5; i++) {
+        await db.insert(otpCodes).values({
+          channel: "email",
+          target,
+          codeHash: "x",
+          purpose: "login",
+          // Spread within the last hour, newest > 60s ago so cooldown is clear.
+          expiresAt: sql`now() + interval '10 minutes'`,
+          createdAt: sql`now() - interval '${sql.raw(String((i + 2) * 120))} seconds'`,
+        } as any);
+      }
+      const http = new HttpClient(appCtx.baseUrl);
+      const res = await http.post("/api/auth/otp/send", { channel: "email", target });
+      expect(res.status).toBe(429);
+      expect(res.body.retryAfterSec).toBeGreaterThan(0);
+    });
   });
 
   describe("verify-login", () => {

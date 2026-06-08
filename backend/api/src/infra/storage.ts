@@ -152,47 +152,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertProjectFile(projectId: string, path: string, content: string): Promise<void> {
-    const [existing] = await db.select().from(projectFiles)
-      .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
-
-    if (existing) {
-      await db.update(projectFiles).set({ content })
-        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
-    } else {
-      await db.insert(projectFiles).values({ projectId, path, content });
-    }
+    // Atomic upsert: a single INSERT ... ON CONFLICT avoids the read-then-write
+    // race that (without a unique constraint) produced duplicate rows and
+    // cross-statement lock-ordering deadlocks under concurrent writes.
+    await db.insert(projectFiles)
+      .values({ projectId, path, content })
+      .onConflictDoUpdate({
+        target: [projectFiles.projectId, projectFiles.path],
+        set: { content },
+      });
   }
 
   async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
     const existing = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
-    const existingMap = new Map(existing.map((f) => [f.path, f]));
+    const existingPaths = new Set(existing.map((f) => f.path));
     const incomingPaths = new Set(files.map((f) => f.path));
 
-    const toInsert: { projectId: string; path: string; content: string }[] = [];
-    const toUpdate: { path: string; content: string }[] = [];
     const toDelete: string[] = [];
-
-    for (const file of files) {
-      if (existingMap.has(file.path)) {
-        toUpdate.push(file);
-      } else {
-        toInsert.push({ projectId, path: file.path, content: file.content });
-      }
-    }
-
-    for (const existingPath of existingMap.keys()) {
+    for (const existingPath of existingPaths) {
       if (!incomingPaths.has(existingPath)) {
         toDelete.push(existingPath);
       }
     }
 
-    if (toInsert.length > 0) {
-      await db.insert(projectFiles).values(toInsert);
-    }
-
-    for (const file of toUpdate) {
-      await db.update(projectFiles).set({ content: file.content })
-        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, file.path)));
+    // Atomic per-row upsert keyed on the unique (project_id, path). Idempotent
+    // under concurrency — no duplicate rows, no read-then-write window.
+    if (files.length > 0) {
+      await db.insert(projectFiles)
+        .values(files.map((f) => ({ projectId, path: f.path, content: f.content })))
+        .onConflictDoUpdate({
+          target: [projectFiles.projectId, projectFiles.path],
+          set: { content: sql`excluded.content` },
+        });
     }
 
     for (const path of toDelete) {
