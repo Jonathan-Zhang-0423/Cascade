@@ -308,20 +308,20 @@ const SegmentView = memo(function SegmentView({
               onClick={() => setExpanded(true)}
               data-testid="segment-collapsed"
             >
-              {isLive ? (
-                <BrailleSpinner />
-              ) : (
-                <span className="w-3 shrink-0" />
-              )}
               <span className="flex items-center gap-0.5">
                 {visibleActions.slice(0, 6).map((a, i) => {
+                  const isLastShown = i === Math.min(visibleActions.length, 6) - 1;
                   const meta = ACTION_META[toDisplayType(a.type)];
                   const Icon = meta.icon;
                   return (
-                    <Icon
-                      key={i}
-                      className={cn("w-3 h-3", meta.color)}
-                    />
+                    <span key={i} className="inline-flex items-center gap-0.5">
+                      <Icon className={cn("w-3 h-3", meta.color)} />
+                      {isLive && isLastShown && (
+                        <span className="ml-0.5">
+                          <BrailleSpinner />
+                        </span>
+                      )}
+                    </span>
                   );
                 })}
               </span>
