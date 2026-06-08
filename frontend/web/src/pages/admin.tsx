@@ -6,7 +6,7 @@ interface Subscriber {
   email: string;
   createdAt: string;
   isEdu: boolean;
-  status: "pending" | "invited";
+  status: "pending" | "invited" | "email_failed";
   inviteCode: string | null;
   invitedAt: string | null;
   expiresAt: string | null;
@@ -19,7 +19,7 @@ interface WaitlistData {
   subscribers: Subscriber[];
 }
 
-type FilterStatus = "all" | "pending" | "invited";
+type FilterStatus = "all" | "pending" | "invited" | "email_failed";
 type FilterType = "all" | "edu" | "normal";
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
@@ -138,7 +138,7 @@ export default function AdminPage() {
     return true;
   });
 
-  const pendingFiltered = filtered.filter((s) => s.status === "pending");
+  const pendingFiltered = filtered.filter((s) => s.status === "pending" || s.status === "email_failed");
   const allPendingSelected = pendingFiltered.length > 0 && pendingFiltered.every((s) => selected.has(s.id));
 
   function toggleSelectAll() {
@@ -326,6 +326,7 @@ export default function AdminPage() {
                 <option value="all">All status</option>
                 <option value="pending">Pending</option>
                 <option value="invited">Invited</option>
+                <option value="email_failed">Email Failed</option>
               </select>
               <select
                 value={filterType}
@@ -399,7 +400,7 @@ export default function AdminPage() {
                         className={selected.has(s.id) ? "bg-gray-50/80" : "hover:bg-gray-50/40 transition-colors"}
                       >
                         <td className="px-5 py-3.5">
-                          {s.status === "pending" && (
+                          {(s.status === "pending" || s.status === "email_failed") && (
                             <input
                               type="checkbox"
                               checked={selected.has(s.id)}
@@ -428,11 +429,15 @@ export default function AdminPage() {
                         <td className="px-5 py-3.5">
                           <span
                             className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-                            style={s.status === "invited"
-                              ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" }
-                              : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}
+                            style={
+                              s.status === "invited"
+                                ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" }
+                                : s.status === "email_failed"
+                                ? { background: "rgba(239,68,68,0.08)", color: "#dc2626" }
+                                : { background: "rgba(234,179,8,0.08)", color: "#a16207" }
+                            }
                           >
-                            {s.status === "invited" ? "Invited" : "Pending"}
+                            {s.status === "invited" ? "Invited" : s.status === "email_failed" ? "Email Failed" : "Pending"}
                           </span>
                         </td>
                         <td className="px-5 py-3.5 font-mono text-gray-500 text-[12px]">{s.inviteCode ?? "—"}</td>
