@@ -580,14 +580,16 @@ export class ManagerStreamInstance {
         cache: "no-store", headers: { "Cache-Control": "no-cache" },
       });
       const data = resp.ok ? await resp.json() : null;
-      if (data?.active || data?.done) {
+      if (data?.active) {
         const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
           && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId
           : this.lastEventId;
-        if (data.active) this.actions.setManagerResponding(true);
+        this.actions.setManagerResponding(true);
         await this.connect(sessionIdToReconnect, resumeEventId);
       } else {
+        // Session is done or not found — no need to reconnect.
+        // Messages are already persisted in DB and loaded by fetchMessagesFromServer.
         try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
       }
     } catch {
