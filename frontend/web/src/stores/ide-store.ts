@@ -644,6 +644,8 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     preparingPlan: metadata?.preparingPlan,
     buildResult: metadata?.buildResult,
     errorCode: metadata?.errorCode,
+    frozenTaskStatuses: metadata?.frozenTaskStatuses,
+    frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
   };
 }
 
@@ -673,6 +675,8 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingC
   if (m.preparingPlan) metadata.preparingPlan = m.preparingPlan;
   if (m.buildResult) metadata.buildResult = m.buildResult;
   if (m.errorCode) metadata.errorCode = m.errorCode;
+  if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
+  if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;
   return {
     clientId: m.id,
     kind: "manager",
@@ -1109,11 +1113,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...mgr.map((m) => m.seq + 1),
       );
       const lastPlan = mgr.slice().reverse().find((m) => m.plan)?.plan ?? cur.managerPlan;
+      // Restore taskStatuses from the latest plan message's frozen snapshot
+      const lastPlanMsg = mgr.slice().reverse().find((m) => m.plan);
+      const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? cur.taskStatuses;
+      const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? cur.taskFailureReasons;
       set({
         chatMessages: chat.length > 0 ? chat : cur.chatMessages,
         managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
         _nextSeq: maxSeq,
         managerPlan: lastPlan,
+        taskStatuses: restoredTaskStatuses,
+        taskFailureReasons: restoredTaskFailureReasons,
         messagesReady: true,
       });
     }).catch(() => {
