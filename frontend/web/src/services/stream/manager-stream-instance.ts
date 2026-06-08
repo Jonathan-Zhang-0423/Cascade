@@ -233,6 +233,31 @@ export class ManagerStreamInstance {
             }
 
             if (isCurrentProject) {
+              // Persist accumulated text as a permanent message BEFORE clearing
+              // live state. Without this, clearLive() wipes the narration from
+              // the UI and nothing takes its place — the message "flashes" away.
+              if (!planEmitted) {
+                // Write comm narration (Stage 1 friendly text) if present
+                if (commAccumulated.trim()) {
+                  this.actions.addManagerMessage({
+                    role: "assistant",
+                    content: commAccumulated.trim(),
+                    source: "communicator",
+                    thinking: managerThinkingAccumulated || undefined,
+                  });
+                  commAccumulated = ""; // consumed
+                }
+                // Write raw manager narration if no comm was written and there's content
+                const stripped = stripProjectNameMarker(managerAccumulated).trim();
+                if (stripped && !commAccumulated) {
+                  this.actions.addManagerMessage({
+                    role: "assistant",
+                    content: stripped,
+                    thinking: managerThinkingAccumulated || undefined,
+                  });
+                }
+              }
+
               this.state.set({ preparingPlan: false });
               this.clearLive();
               if (!this.actions.getManagerPlan() || !planEmitted) {
@@ -292,8 +317,9 @@ export class ManagerStreamInstance {
         },
       });
 
-      // Post-stream: write leftover comm content
-      if (!planEmitted && this.actions.getProjectId() === this.projectId && commAccumulated) {
+      // Post-stream: comm content was already persisted in manager_done handler.
+      // Only write here if the stream ended without a manager_done event (abnormal).
+      if (!mgrDoneSeen && !planEmitted && this.actions.getProjectId() === this.projectId && commAccumulated) {
         const friendlyComm = commAccumulated.trim();
         if (friendlyComm) {
           this.actions.addManagerMessage({

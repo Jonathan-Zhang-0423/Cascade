@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildShellTools } from "../src/agent/tools/shell-tools";
 import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
@@ -34,7 +34,17 @@ function makeSession(): BuildSessionState {
 const noopEmit = () => {};
 
 describe("shell_run", () => {
-  beforeEach(() => vi.clearAllMocks());
+  // shell_run early-returns when ENABLE_SHELL is unset (never calling shellManager).
+  // Tests that exercise the command path enable it; the "disabled" test unsets it.
+  const prevEnableShell = process.env.ENABLE_SHELL;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.ENABLE_SHELL = "true";
+  });
+  afterEach(() => {
+    if (prevEnableShell === undefined) delete process.env.ENABLE_SHELL;
+    else process.env.ENABLE_SHELL = prevEnableShell;
+  });
 
   it("returns stdout, stderr, and exit code on success", async () => {
     vi.mocked(shellManager.runCommand).mockResolvedValue({
@@ -67,17 +77,14 @@ describe("shell_run", () => {
   });
 
   it("returns ENABLE_SHELL disabled message when shell is not enabled", async () => {
-    vi.mocked(shellManager.runCommand).mockResolvedValue({
-      stdout: "",
-      stderr: "Shell execution is not enabled (set ENABLE_SHELL=true).",
-      exitCode: 1,
-    });
+    delete process.env.ENABLE_SHELL;
 
     const { handlers } = buildShellTools(makeSession());
     const result = await handlers.shell_run({ command: "npm test" }, noopEmit);
 
-    expect(result).toContain("Shell execution is not enabled");
-    expect(result).toContain("exit code: 1");
+    expect(result).toContain("ENABLE_SHELL is not set");
+    expect(result).toContain("Skipping shell execution");
+    expect(shellManager.runCommand).not.toHaveBeenCalled();
   });
 
   it("returns error when command is empty string", async () => {
