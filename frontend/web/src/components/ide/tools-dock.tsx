@@ -1,6 +1,6 @@
 import { useIDEStore } from "@/stores/ide-store";
 import { useLLMMonitorStore } from "@/stores/llm-monitor-store";
-import { FolderClosed, Sparkles, Radio, History, Code2, Blocks } from "lucide-react";
+import { Sparkles, Radio, SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -37,11 +37,16 @@ function DockButton({
 }
 
 export function ToolsDock() {
-  const { activeTool, setActiveTool, codeVisible, toggleCodeVisible } = useIDEStore();
+  const { activeTool, setActiveTool, clearConversation } = useIDEStore();
   const isMonitorOpen = useIDEStore((s) => s.isLLMMonitorOpen);
   const toggleMonitor = useIDEStore((s) => s.toggleLLMMonitor);
   const monitorEventCount = useLLMMonitorStore((s) => s.eventCount);
   const t = useT();
+
+  const handleNewSession = () => {
+    clearConversation();
+    setActiveTool("chat");
+  };
 
   return (
     <div
@@ -49,13 +54,7 @@ export function ToolsDock() {
       data-testid="tools-dock"
     >
       <div className="flex flex-col items-center gap-1">
-        <DockButton
-          icon={<FolderClosed className="w-[18px] h-[18px]" />}
-          label={t("dock.files")}
-          isActive={activeTool === "files"}
-          onClick={() => setActiveTool("files")}
-          testId="dock-files"
-        />
+        {/* Chat / New session */}
         <DockButton
           icon={<Sparkles className="w-[18px] h-[18px]" />}
           label={t("dock.chat")}
@@ -63,26 +62,12 @@ export function ToolsDock() {
           onClick={() => setActiveTool("chat")}
           testId="dock-chat"
         />
+        {/* New session */}
         <DockButton
-          icon={<History className="w-[18px] h-[18px]" />}
-          label={t("dock.history")}
-          isActive={activeTool === "history"}
-          onClick={() => setActiveTool(activeTool === "history" ? null : "history")}
-          testId="dock-history"
-        />
-        <DockButton
-          icon={<Blocks className="w-[18px] h-[18px]" />}
-          label={t("dock.skills")}
-          isActive={activeTool === "skills"}
-          onClick={() => setActiveTool(activeTool === "skills" ? null : "skills")}
-          testId="dock-skills"
-        />
-        <DockButton
-          icon={<Code2 className="w-[18px] h-[18px]" />}
-          label={t("dock.toggleCode")}
-          isActive={codeVisible}
-          onClick={toggleCodeVisible}
-          testId="dock-code-visible"
+          icon={<SquarePen className="w-[18px] h-[18px]" />}
+          label="New session"
+          onClick={handleNewSession}
+          testId="dock-new-session"
         />
       </div>
 

@@ -370,6 +370,7 @@ interface IDEState {
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
+  clearConversation: () => void;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setUserConfirmationInput: (input: string) => void;
@@ -1586,6 +1587,32 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       fixCycle: 0,
       completionData: null,
     }),
+
+  clearConversation: () => {
+    const welcome = {
+      id: "welcome-" + Date.now(),
+      role: "assistant" as const,
+      content: "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+      timestamp: Date.now(),
+      seq: 0,
+    };
+    set({
+      chatMessages: [welcome],
+      managerMessages: [],
+      _nextSeq: 1,
+      managerPlan: null,
+      executingTaskIndex: null,
+      taskStatuses: {},
+      taskFailureReasons: {},
+      verificationResults: {},
+      pendingConfirmation: null,
+      userConfirmationInput: "",
+      reviewPhase: "idle",
+      holisticReview: null,
+      fixCycle: 0,
+      completionData: null,
+    });
+  },
 
   updateVerificationResult: (subTaskId, result) =>
     set((state) => ({

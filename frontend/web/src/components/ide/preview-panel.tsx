@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink, Terminal } from "lucide-react";
+import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink, Terminal, FileText, FolderOpen, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
@@ -27,6 +27,8 @@ import { WasmPreview } from "./wasm-preview";
 import { RnWebPreview } from "./rn-web-preview";
 import { FlutterWebPreview } from "./flutter-web-preview";
 import { WeChatPreview } from "./wechat-preview";
+import { ConsolePanel } from "./console-panel";
+import { FileTree } from "./file-tree";
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -118,6 +120,10 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const t = useT();
+
+  // Right-panel tab state: "preview" | "terminal" | "files"
+  type RightTab = "preview" | "terminal" | "files";
+  const [activeTab, setActiveTab] = useState<RightTab>("preview");
 
   const currentProject = useMemo(
     () => projects.find((p) => p.id === projectId),
@@ -347,6 +353,48 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
 
   return (
     <div className="h-full flex flex-col" data-testid="preview-panel">
+      {/* Tab bar */}
+      <div className="flex items-center gap-0 px-2 h-[34px] border-b border-black/[0.07] dark:border-white/[0.07] bg-slate-50 dark:bg-[#0c0c14] shrink-0">
+        {(
+          [
+            { id: "preview", icon: <LayoutDashboard className="w-3 h-3" />, label: "Preview" },
+            { id: "terminal", icon: <Terminal className="w-3 h-3" />, label: "Terminal" },
+            { id: "files", icon: <FolderOpen className="w-3 h-3" />, label: "Files" },
+          ] as { id: RightTab; icon: React.ReactNode; label: string }[]
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-full text-[11px] font-mono border-b-2 transition-colors shrink-0",
+              activeTab === tab.id
+                ? "border-[#4f82ff] text-[#4f82ff] bg-[rgba(79,130,255,0.04)]"
+                : "border-transparent text-slate-400 dark:text-[#484860] hover:text-slate-600 dark:hover:text-[#8888a8]"
+            )}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Terminal tab */}
+      {activeTab === "terminal" && (
+        <div className="flex-1 min-h-0">
+          <ConsolePanel />
+        </div>
+      )}
+
+      {/* Files tab */}
+      {activeTab === "files" && (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <FileTree />
+        </div>
+      )}
+
+      {/* Preview tab */}
+      {activeTab === "preview" && (
+        <>
       <div className="preview-toolbar flex items-center gap-1.5 px-2 h-[38px] border-b border-black/[0.07] dark:border-white/[0.07] bg-slate-50 dark:bg-[#101018] shrink-0 flex-wrap">
         <span
           className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
@@ -634,6 +682,8 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
           )}
         </DeviceSimulator>
       </div>
+        </>
+      )}
     </div>
   );
 }

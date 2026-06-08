@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   type ManagerPlan,
   type ManagerSubTask,
@@ -28,6 +28,11 @@ import {
   PenLine,
   Search,
   Loader2,
+  ExternalLink,
+  X,
+  ChevronDown as DropdownChevron,
+  LayoutGrid,
+  Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
@@ -256,9 +261,22 @@ export function TaskPlanCard({
   const isFullyComplete = phase === "review_passed" && allDone;
   const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
 
-  const [modalOpen, setModalOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [bgDropdownOpen, setBgDropdownOpen] = useState(false);
+  const bgDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!bgDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bgDropdownRef.current && !bgDropdownRef.current.contains(e.target as Node)) {
+        setBgDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [bgDropdownOpen]);
 
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
@@ -272,66 +290,204 @@ export function TaskPlanCard({
           <ThinkingToggle thinking={thinking} />
         </div>
       )}
+
+      {/* Right-side preview panel */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div
+            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] flex flex-col bg-[#0c0c14] border-l border-[rgba(255,255,255,0.08)] shadow-2xl"
+            style={{ animation: "slideInRight 180ms ease" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <style>{`
+              @keyframes slideInRight {
+                from { transform: translateX(24px); opacity: 0; }
+                to   { transform: translateX(0);    opacity: 1; }
+              }
+            `}</style>
+            {/* Panel header */}
+            <div className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)] shrink-0 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 text-[rgba(238,238,246,0.4)] animate-spin shrink-0" />
+              <span className="font-mono text-[12px] font-semibold text-[#e0e0f0] flex-1 min-w-0 truncate">
+                {plan.summary}
+              </span>
+              <button
+                className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
+                onClick={() => setPreviewOpen(false)}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {/* Panel content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {overview && (
+                <div>
+                  <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-1.5">
+                    {t(lang, "overview")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {overview}
+                  </p>
+                </div>
+              )}
+              {whatAndWhy && (
+                <div>
+                  <p className="font-mono text-[9px] text-[#4f82ff]/60 uppercase tracking-wider mb-1.5">
+                    {t(lang, "whatAndWhy")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {whatAndWhy}
+                  </p>
+                </div>
+              )}
+              {doneLooksLike && (
+                <div>
+                  <p className="font-mono text-[9px] text-[#34d68a]/60 uppercase tracking-wider mb-1.5">
+                    {t(lang, "doneLooksLike")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {doneLooksLike}
+                  </p>
+                </div>
+              )}
+              {outOfScope && (
+                <div>
+                  <p className="font-mono text-[9px] text-[rgba(238,238,246,0.25)] uppercase tracking-wider mb-1.5">
+                    {t(lang, "outOfScope")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.5)] leading-relaxed">
+                    {outOfScope}
+                  </p>
+                </div>
+              )}
+              <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-[rgba(255,255,255,0.04)] pt-4")}>
+                <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-2">
+                  {t(lang, "tasks")}
+                </p>
+                <div className="space-y-2.5">
+                  {steps.map((step) => (
+                    <div key={step.step} className="flex items-start gap-2.5">
+                      <span className="font-mono text-[10px] text-[rgba(238,238,246,0.3)] w-4 text-right shrink-0 pt-0.5">
+                        {step.step}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-medium text-[#e0e0f0]">{step.title}</p>
+                        {step.description && (
+                          <p className="text-[11px] text-[rgba(238,238,246,0.5)] mt-0.5 leading-relaxed">
+                            {step.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Panel footer */}
+            <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.04)] shrink-0 flex gap-2">
+              <button
+                className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
+                onClick={() => { setPreviewOpen(false); setRegenerateOpen(true); }}
+                data-testid="button-revise-plan-preview"
+              >
+                <PenLine className="w-2.5 h-2.5" />
+                {t(lang, "revisePlan")}
+              </button>
+              <div className="flex-1" />
+              <button
+                className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
+                onClick={() => { setPreviewOpen(false); onExecute?.(); }}
+                data-testid="button-build-now-preview"
+              >
+                <Hammer className="w-2.5 h-2.5" />
+                {t(lang, "buildNow")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main task plan confirm card */}
       <div
         className={cn(
-          "mx-2.5 my-1 rounded-md border overflow-hidden",
+          "mx-2.5 my-1 rounded-[14px] border overflow-visible",
           isFullyComplete
             ? "border-[rgba(52,214,138,0.15)] bg-[rgba(255,255,255,0.015)]"
-            : "border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]",
+            : "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.025)]",
         )}
+        style={{ boxShadow: "0 2px 16px rgba(0,0,0,0.18)" }}
         data-testid="task-plan-card"
       >
-        {/* Header */}
-        <div className="px-3 pt-2.5 pb-1.5">
-          <div className="flex items-center gap-1.5">
-            <button
-              className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.6)] transition-colors"
-              onClick={() => setExpanded((e) => !e)}
-            >
-              {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            </button>
-            <span className="font-mono text-[12px] font-medium text-[#e0e0f0] flex-1 min-w-0 truncate">
-              {plan.summary}
-            </span>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="text-[rgba(238,238,246,0.25)] hover:text-[rgba(238,238,246,0.6)] transition-colors shrink-0"
-              title={t(lang, "viewPlanDoc")}
-              data-testid="button-view-plan-doc"
-            >
-              <FileText className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="font-mono text-[10px] text-[rgba(238,238,246,0.25)] mt-0.5 pl-[18px]">
+        {/* ── Section 1: Header ── */}
+        <div className="px-4 pt-3.5 pb-2.5 flex items-center gap-2 border-b border-[rgba(255,255,255,0.04)]">
+          <Loader2 className="w-3.5 h-3.5 text-[rgba(238,238,246,0.4)] animate-spin shrink-0" />
+          <span className="font-mono text-[12.5px] font-semibold text-[#e0e0f0] flex-1 min-w-0 truncate">
+            Task plan created
+          </span>
+          <button
+            onClick={() => setPreviewOpen(true)}
+            className="flex items-center gap-1 text-[10px] font-mono text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
+            data-testid="button-view-plan-doc"
+          >
+            <ExternalLink className="w-3 h-3" />
+            <span>View</span>
+          </button>
+          <button
+            className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.6)] transition-colors shrink-0 ml-0.5"
+            onClick={() => setExpanded((e) => !e)}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* ── Section 2: Content ── */}
+        <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.04)]">
+          <p className="text-[12.5px] font-semibold text-[#e0e0f0] leading-snug mb-1.5">
+            {plan.summary}
+          </p>
+          {overview && (
+            <p className="text-[11.5px] text-[rgba(238,238,246,0.6)] leading-relaxed mb-2">
+              {overview}
+            </p>
+          )}
+          <span className="inline-block text-[10px] font-mono text-[rgba(238,238,246,0.5)] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] rounded-full px-2.5 py-0.5">
+            Web app
+          </span>
+
+          {/* Steps list (collapsible) */}
+          {expanded && (
+            <div className="mt-2.5 space-y-0.5">
+              {steps.map((task: ManagerSubTask, idx: number) => {
+                const isActive = taskStatuses[String(task.step)] === "running";
+                return (
+                  <StepItem
+                    key={task.step}
+                    task={task}
+                    status={taskStatuses[String(task.step)]}
+                    failureReason={taskFailureReasons?.[String(task.step)]}
+                    isCompleted={isFullyComplete}
+                    showNumber
+                    isLast={idx === steps.length - 1}
+                    liveNarration={isActive ? liveNarration : undefined}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Progress line */}
+          <div className="font-mono text-[10px] text-[rgba(238,238,246,0.25)] mt-2">
             {t(lang, "stepsDone", { done: doneCount, total })}
             {isFullyComplete && ` · ${tCard("chat.allDone")}`}
           </div>
         </div>
 
-        {/* Steps */}
-        {expanded && (
-          <div className="px-3 pb-2">
-            {steps.map((task: ManagerSubTask, idx: number) => {
-              const isActive = taskStatuses[String(task.step)] === "running";
-              return (
-                <StepItem
-                  key={task.step}
-                  task={task}
-                  status={taskStatuses[String(task.step)]}
-                  failureReason={taskFailureReasons?.[String(task.step)]}
-                  isCompleted={isFullyComplete}
-                  showNumber
-                  isLast={idx === steps.length - 1}
-                  liveNarration={isActive ? liveNarration : undefined}
-                />
-              );
-            })}
-          </div>
-        )}
-
         {/* Review status */}
         {phase !== "idle" && phase !== "building" && (
-          <div className="px-3 pb-2">
+          <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
             <ReviewStatusBadge
               phase={phase}
               fixCycle={fixCycle || 0}
@@ -355,7 +511,7 @@ export function TaskPlanCard({
 
         {/* Completion line */}
         {isFullyComplete && (
-          <div className="px-3 pb-2">
+          <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
             <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5">
               <span>{tCard("chat.doneCheck")}</span>
               {changedFiles && changedFiles.length > 0 && (
@@ -367,7 +523,7 @@ export function TaskPlanCard({
               )}
             </div>
             {completionSummary && (
-              <p className="font-mono text-[10px] text-[rgba(238,238,246,0.4)] mt-1 pl-0 leading-relaxed">
+              <p className="font-mono text-[10px] text-[rgba(238,238,246,0.4)] mt-1 leading-relaxed">
                 {completionSummary}
               </p>
             )}
@@ -376,7 +532,7 @@ export function TaskPlanCard({
 
         {/* Confirmation input */}
         {showConfirmation && pendingConfirmation && onContinueWithInput && (
-          <div className="px-3 pb-2 space-y-1.5">
+          <div className="px-4 py-2.5 space-y-1.5 border-b border-[rgba(255,255,255,0.04)]">
             <Textarea
               placeholder={
                 pendingConfirmation.stepKey === "review"
@@ -414,12 +570,12 @@ export function TaskPlanCard({
           </div>
         )}
 
-        {/* Footer: needs-input notice */}
+        {/* Needs-input notice */}
         {(() => {
           const inputs: string[] =
             plan.needs_input || (plan as unknown as Record<string, string[]>).user_confirmation_needed || [];
           return inputs.length > 0 && inputs[0] !== "" ? (
-            <div className="px-3 pb-2">
+            <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
               <div className="flex items-center gap-1 font-mono text-[10px] text-[#f59e0b]">
                 <AlertTriangle className="w-2.5 h-2.5" />
                 <span>{t(lang, "needsInput")}</span>
@@ -433,152 +589,116 @@ export function TaskPlanCard({
           ) : null;
         })()}
 
-        {/* Footer: action buttons */}
-        {!showConfirmation && (
-          <div className="px-3 pb-2.5 pt-1 border-t border-[rgba(255,255,255,0.04)]">
-            {isFullyComplete ? null : isExecuting ? (
+        {/* ── Section 3: Primary actions ── */}
+        {!showConfirmation && !isFullyComplete && (
+          <div className="px-4 py-2.5 border-b border-[rgba(255,255,255,0.04)] flex items-center gap-2">
+            {isExecuting ? (
               <button
-                className="font-mono text-[10px] text-[#ef4444]/70 hover:text-[#ef4444] border border-[rgba(239,68,68,0.2)] rounded px-2.5 py-1 transition-colors"
+                className="font-mono text-[10px] text-[#ef4444]/70 hover:text-[#ef4444] border border-[rgba(239,68,68,0.2)] rounded-lg px-3 py-1.5 transition-colors"
                 onClick={onStop}
                 data-testid="button-stop-execution"
               >
                 {t(lang, "stop")}
               </button>
             ) : isPreExecution ? (
-              <div className="flex items-center gap-2">
-                <button
-                  className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-2.5 py-1 transition-colors"
-                  onClick={() => setRegenerateOpen(true)}
-                  data-testid="button-revise-plan"
-                >
-                  <span className="flex items-center gap-1">
-                    <PenLine className="w-2.5 h-2.5" />
-                    {t(lang, "revisePlan")}
-                  </span>
-                </button>
+              <>
+                {/* Split button: Build in background */}
+                <div className="flex items-center border border-[rgba(255,255,255,0.1)] rounded-lg overflow-visible relative" ref={bgDropdownRef}>
+                  <button
+                    className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:text-[rgba(238,238,246,0.9)] hover:bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 transition-colors"
+                    onClick={() => onExecute?.()}
+                  >
+                    <Hammer className="w-3 h-3" />
+                    <span>Build in background</span>
+                  </button>
+                  <div className="w-px h-4 bg-[rgba(255,255,255,0.08)] shrink-0" />
+                  <button
+                    className="flex items-center justify-center px-1.5 py-1.5 text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.8)] hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+                    onClick={() => setBgDropdownOpen((o) => !o)}
+                  >
+                    <DropdownChevron className="w-3 h-3" />
+                  </button>
+                  {bgDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-44 bg-[#0f0f1a] border border-[rgba(255,255,255,0.1)] rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                      <button
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
+                      >
+                        Build in background
+                      </button>
+                      <button
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
+                      >
+                        Build quietly
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex-1" />
+
+                {/* Primary: Build here */}
                 <button
-                  className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1 transition-colors"
+                  className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded-lg px-4 py-1.5 transition-colors font-semibold"
                   onClick={onExecute}
                   data-testid="button-execute-plan"
                 >
-                  <span className="flex items-center gap-1">
-                    <Hammer className="w-2.5 h-2.5" />
-                    {t(lang, "buildNow")}
-                  </span>
+                  Build here
                 </button>
-              </div>
+              </>
             ) : (
               <button
-                className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1 transition-colors"
+                className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded-lg px-4 py-1.5 transition-colors font-semibold flex items-center gap-1"
                 onClick={onExecute}
                 data-testid="button-execute-plan"
               >
+                <Hammer className="w-2.5 h-2.5" />
                 {t(lang, "buildNow")}
               </button>
             )}
           </div>
         )}
+
+        {/* ── Section 4: Bottom toolbar ── */}
+        <div className="px-4 py-2 flex items-center gap-1">
+          {/* Left: Revise + Cancel */}
+          <button
+            className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            onClick={() => setRegenerateOpen(true)}
+            data-testid="button-revise-plan"
+          >
+            <PenLine className="w-3 h-3" />
+            <span>Revise</span>
+          </button>
+          <button
+            className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            onClick={onStop}
+            data-testid="button-cancel-plan"
+          >
+            <Ban className="w-3 h-3" />
+            <span>Cancel</span>
+          </button>
+
+          <div className="flex-1" />
+
+          {/* Right: Power dropdown */}
+          <div className="flex items-center gap-0.5">
+            <button
+              className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Power</span>
+            </button>
+            <button
+              className="flex items-center justify-center font-mono text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-0.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            >
+              <DropdownChevron className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Full plan modal */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent
-          className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none flex flex-col p-0 overflow-hidden"
-          data-testid="dialog-full-plan"
-        >
-          <DialogHeader className="px-6 pt-5 pb-4 border-b border-[rgba(255,255,255,0.06)] shrink-0">
-            <DialogTitle className="text-sm font-mono font-medium leading-snug pr-8">
-              {plan.summary}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-            {overview && (
-              <div>
-                <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-1">
-                  {t(lang, "overview")}
-                </p>
-                <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                  {overview}
-                </p>
-              </div>
-            )}
-            {whatAndWhy && (
-              <div>
-                <p className="font-mono text-[9px] text-[#4f82ff]/60 uppercase tracking-wider mb-1">
-                  {t(lang, "whatAndWhy")}
-                </p>
-                <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                  {whatAndWhy}
-                </p>
-              </div>
-            )}
-            {doneLooksLike && (
-              <div>
-                <p className="font-mono text-[9px] text-[#34d68a]/60 uppercase tracking-wider mb-1">
-                  {t(lang, "doneLooksLike")}
-                </p>
-                <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                  {doneLooksLike}
-                </p>
-              </div>
-            )}
-            {outOfScope && (
-              <div>
-                <p className="font-mono text-[9px] text-[rgba(238,238,246,0.25)] uppercase tracking-wider mb-1">
-                  {t(lang, "outOfScope")}
-                </p>
-                <p className="text-[12px] text-[rgba(238,238,246,0.5)] leading-relaxed">
-                  {outOfScope}
-                </p>
-              </div>
-            )}
-            <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-[rgba(255,255,255,0.04)] pt-4")}>
-              <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-2">
-                {t(lang, "tasks")}
-              </p>
-              <div className="space-y-2">
-                {steps.map((step) => (
-                  <div key={step.step} className="flex items-start gap-2">
-                    <span className="font-mono text-[10px] text-[rgba(238,238,246,0.3)] w-4 text-right shrink-0 pt-0.5">
-                      {step.step}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-medium text-[#e0e0f0]">
-                        {step.title}
-                      </p>
-                      {step.description && (
-                        <p className="text-[11px] text-[rgba(238,238,246,0.5)] mt-0.5 leading-relaxed">
-                          {step.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="px-6 py-3 border-t border-[rgba(255,255,255,0.04)] shrink-0 flex gap-2">
-            <button
-              className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
-              onClick={() => { setModalOpen(false); setRegenerateOpen(true); }}
-              data-testid="button-revise-plan-modal"
-            >
-              <PenLine className="w-2.5 h-2.5" />
-              {t(lang, "revisePlan")}
-            </button>
-            <div className="flex-1" />
-            <button
-              className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
-              onClick={() => { setModalOpen(false); onExecute?.(); }}
-              data-testid="button-build-now-modal"
-            >
-              <Hammer className="w-2.5 h-2.5" />
-              {t(lang, "buildNow")}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
       <RegeneratePlanDialog
         open={regenerateOpen}
         onOpenChange={setRegenerateOpen}
