@@ -2836,8 +2836,12 @@ Generate the cascade.md content for this project based on both the plan and the 
       const { username, password, inviteCode } = req.body as {
         username: string; password: string; inviteCode?: string;
       };
-      if (!username?.trim() || !password) return res.status(400).json({ error: "username and password required" });
-      if (!inviteCode?.trim()) return res.status(400).json({ error: "Invite code required" });
+      if (typeof username !== "string" || typeof password !== "string" || !username.trim() || !password) {
+        return res.status(400).json({ error: "username and password required" });
+      }
+      if (typeof inviteCode !== "string" || !inviteCode.trim()) {
+        return res.status(400).json({ error: "Invite code required" });
+      }
       const existing = await storage.getUserByUsername(username.trim());
       if (existing) return res.status(409).json({ error: "Username already taken" });
 
@@ -2901,7 +2905,9 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body as { username: string; password: string };
-      if (!username || !password) return res.status(400).json({ error: "username and password required" });
+      if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
+        return res.status(400).json({ error: "username and password required" });
+      }
       const user = await storage.getUserByUsername(username.trim());
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
       // GitHub-only users (created via OAuth) have no password — reject the
