@@ -41,6 +41,7 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
+          setupFiles: ["./backend/api/__tests__/_helpers/setup-env.ts"],
           include: [
             "backend/api/__tests__/integration/**/*.test.ts",
             "backend/api/__tests__/stress/**/*.test.ts",

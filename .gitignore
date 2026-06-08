@@ -10,6 +10,10 @@ telemetry/
 .env
 .env.local
 .env.*.local
+.env.test
+test-results/
+playwright-report/
+.playwright/
 # Runtime build artifacts
 backend/api/artifacts/
 backend/artifacts/

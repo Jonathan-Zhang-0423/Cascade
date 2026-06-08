@@ -26,9 +26,12 @@ export class Semaphore {
       return;
     }
     return new Promise<void>((resolve, reject) => {
+      // On hand-off the freed slot transfers directly to this waiter, so the
+      // occupant count is unchanged — do NOT increment here. (Incrementing on
+      // both acquire-via-handoff AND leaving the releaser's slot uncounted made
+      // `current` ratchet up permanently, eventually deadlocking the semaphore.)
       const entry = {
         resolve: () => {
-          this.current++;
           resolve();
         },
         timer: null as ReturnType<typeof setTimeout> | null,
@@ -44,6 +47,8 @@ export class Semaphore {
 
   release(): void {
     if (this.queue.length > 0) {
+      // Transfer the just-freed slot to the next waiter: the releaser's
+      // occupancy is handed over, so `current` stays the same (one out, one in).
       const next = this.queue.shift()!;
       if (next.timer) clearTimeout(next.timer);
       next.resolve();

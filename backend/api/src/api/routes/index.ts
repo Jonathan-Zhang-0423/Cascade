@@ -399,6 +399,8 @@ setInterval(() => {
       managerChatSessions.delete(id);
     }
   });
+  // Also clean old sessions from DB
+  storage.deleteOldManagerSessions(maxAge).catch(() => {});
 }, 60_000);
 
 function createSessionEmit(session: BuildSessionState): SseEmit {
@@ -773,8 +775,9 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/manager-chat/active/:projectId", (req, res) => {
+  app.get("/api/manager-chat/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    // Check in-memory first (fast path)
     const entries = Array.from(managerChatSessions.entries());
     const active = entries.find(([, s]) => s.projectId === projectId && !s.done);
     if (active) {
@@ -786,11 +789,52 @@ export async function registerRoutes(
       res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
       return;
     }
+    // Fallback: check DB for sessions that survived a restart
+    try {
+      const dbSession = await storage.getActiveManagerSessionForProject(projectId);
+      if (dbSession) {
+        // Rehydrate into memory so /stream endpoint can serve it
+        const events = JSON.parse(dbSession.events || "[]");
+        const rehydrated: ManagerChatSession = {
+          id: dbSession.id,
+          projectId: dbSession.projectId ?? undefined,
+          events,
+          nextEventId: dbSession.nextEventId,
+          done: dbSession.done,
+          doneAt: dbSession.doneAt ?? undefined,
+          startedAt: dbSession.startedAt,
+          sseWriters: new Set(),
+        };
+        managerChatSessions.set(dbSession.id, rehydrated);
+        res.json({ sessionId: dbSession.id, active: !dbSession.done, eventCount: events.length, done: dbSession.done });
+        return;
+      }
+    } catch {}
     res.status(404).json({ error: "No active manager session for this project" });
   });
 
-  app.get("/api/manager-chat/:sessionId/stream", (req, res) => {
-    const session = managerChatSessions.get(req.params.sessionId);
+  app.get("/api/manager-chat/:sessionId/stream", async (req, res) => {
+    let session = managerChatSessions.get(req.params.sessionId);
+    // If not in memory, try rehydrating from DB (post-restart scenario)
+    if (!session) {
+      try {
+        const dbRow = await storage.getManagerSession(req.params.sessionId);
+        if (dbRow) {
+          const events = JSON.parse(dbRow.events || "[]");
+          session = {
+            id: dbRow.id,
+            projectId: dbRow.projectId ?? undefined,
+            events,
+            nextEventId: dbRow.nextEventId,
+            done: dbRow.done,
+            doneAt: dbRow.doneAt ?? undefined,
+            startedAt: dbRow.startedAt,
+            sseWriters: new Set(),
+          };
+          managerChatSessions.set(dbRow.id, session);
+        }
+      } catch {}
+    }
     if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
@@ -877,6 +921,16 @@ export async function registerRoutes(
         sseWriters: new Set(),
       };
       managerChatSessions.set(mgrSessionId, mgrSession);
+
+      // Persist session to DB so it survives server restarts
+      storage.upsertManagerSession({
+        id: mgrSession.id,
+        projectId: mgrSession.projectId,
+        done: false,
+        startedAt: mgrSession.startedAt,
+        nextEventId: 0,
+        events: [],
+      }).catch((err) => console.warn("[manager-chat] failed to persist session start:", err));
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -1123,6 +1177,16 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Persist final state to DB (events + done flag)
+        storage.upsertManagerSession({
+          id: mgrSession.id,
+          projectId: mgrSession.projectId,
+          done: true,
+          startedAt: mgrSession.startedAt,
+          doneAt: mgrSession.doneAt,
+          nextEventId: mgrSession.nextEventId,
+          events: mgrSession.events,
+        }).catch((err) => console.warn("[manager-chat] failed to persist session done:", err));
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1136,6 +1200,16 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Persist error state to DB
+        storage.upsertManagerSession({
+          id: mgrSession.id,
+          projectId: mgrSession.projectId,
+          done: true,
+          startedAt: mgrSession.startedAt,
+          doneAt: mgrSession.doneAt,
+          nextEventId: mgrSession.nextEventId,
+          events: mgrSession.events,
+        }).catch((err2) => console.warn("[manager-chat] failed to persist session error:", err2));
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }

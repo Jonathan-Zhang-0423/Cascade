@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, users, projects, projectFiles, chatMessages } from "@cascade/database";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 
@@ -253,6 +253,61 @@ export class DatabaseStorage implements IStorage {
   async deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void> {
     await db.delete(chatMessages)
       .where(and(eq(chatMessages.projectId, projectId), gt(chatMessages.seq, afterSeq)));
+  }
+
+  // ─── Manager Sessions ─────────────────────────────────────────────────
+
+  async upsertManagerSession(session: {
+    id: string;
+    projectId?: string;
+    done: boolean;
+    startedAt: number;
+    doneAt?: number;
+    nextEventId: number;
+    events: Array<{ eventId: number; data: Record<string, unknown> }>;
+  }): Promise<void> {
+    await db.insert(managerSessions).values({
+      id: session.id,
+      projectId: session.projectId ?? null,
+      done: session.done,
+      startedAt: session.startedAt,
+      doneAt: session.doneAt ?? null,
+      nextEventId: session.nextEventId,
+      events: JSON.stringify(session.events),
+    }).onConflictDoUpdate({
+      target: [managerSessions.id],
+      set: {
+        done: sql`excluded.done`,
+        doneAt: sql`excluded.done_at`,
+        nextEventId: sql`excluded.next_event_id`,
+        events: sql`excluded.events`,
+      },
+    });
+  }
+
+  async getManagerSession(id: string): Promise<ManagerSessionRow | undefined> {
+    const [row] = await db.select().from(managerSessions).where(eq(managerSessions.id, id));
+    return row;
+  }
+
+  async getActiveManagerSessionForProject(projectId: string): Promise<ManagerSessionRow | undefined> {
+    const [row] = await db.select().from(managerSessions)
+      .where(and(eq(managerSessions.projectId, projectId), eq(managerSessions.done, false)))
+      .orderBy(desc(managerSessions.startedAt))
+      .limit(1);
+    return row;
+  }
+
+  async markManagerSessionDone(id: string): Promise<void> {
+    await db.update(managerSessions)
+      .set({ done: true, doneAt: Date.now() })
+      .where(eq(managerSessions.id, id));
+  }
+
+  async deleteOldManagerSessions(maxAgeMs: number): Promise<void> {
+    const cutoff = Date.now() - maxAgeMs;
+    await db.delete(managerSessions)
+      .where(lt(managerSessions.startedAt, cutoff));
   }
 }
 
