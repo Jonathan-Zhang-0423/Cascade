@@ -19,7 +19,9 @@ function generateCode(): string {
 }
 
 export function normalizeTarget(channel: OtpChannel, raw: string): string | null {
-  const trimmed = (raw ?? "").trim();
+  // Guard against type-confused input (object/array/number) — only strings can
+  // be a valid target; anything else normalizes to "no target".
+  const trimmed = (typeof raw === "string" ? raw : "").trim();
   if (!trimmed) return null;
   if (channel === "email") {
     const lower = trimmed.toLowerCase();
