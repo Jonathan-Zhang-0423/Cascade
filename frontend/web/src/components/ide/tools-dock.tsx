@@ -29,14 +29,14 @@ export function ToolsDock() {
 
   return (
     <aside
-      className="flex flex-col h-full bg-white border-r border-[#E5E7EB] shrink-0 overflow-hidden"
+      className="flex flex-col h-full bg-white border-r border-[#EBEBEB] shrink-0 overflow-hidden"
       style={{ width: "var(--sidebar-width, 220px)" }}
       data-testid="tools-dock"
     >
       {/* 折叠按钮行 */}
       <div className="flex items-center justify-end px-2 pt-2 pb-1 shrink-0">
         <button
-          className="flex items-center justify-center w-6 h-6 rounded-md text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B7280] transition-colors"
+          className="flex items-center justify-center w-6 h-6 rounded-md text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors"
           onClick={() => setActiveTool(activeTool === "chat" ? null : "chat")}
           aria-label="Toggle sidebar"
         >
@@ -50,8 +50,8 @@ export function ToolsDock() {
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg cursor-pointer transition-colors",
             activeTool === "chat"
-              ? "bg-[#F3F4F6]"
-              : "hover:bg-[#F9FAFB]"
+              ? "bg-[#F5F5F5]"
+              : "hover:bg-[#FAFAFA]"
           )}
           onClick={() => setActiveTool("chat")}
           data-testid="sidebar-main-version"
@@ -60,21 +60,21 @@ export function ToolsDock() {
           <div className={cn(
             "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
             activeTool === "chat"
-              ? "border-[#111827]"
-              : "border-[#D1D5DB]"
+              ? "border-[#1A1A1A]"
+              : "border-[#CCCCCC]"
           )}>
             {activeTool === "chat" && (
-              <div className="w-2 h-2 rounded-full bg-[#111827]" />
+              <div className="w-2 h-2 rounded-full bg-[#1A1A1A]" />
             )}
           </div>
 
           {/* 文字 */}
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-[#111827] leading-tight">
+            <div className="text-[13px] font-semibold text-[#1A1A1A] leading-tight">
               Main version
             </div>
             {currentProject && (
-              <div className="text-[11px] text-[#9CA3AF] mt-0.5 truncate leading-tight">
+              <div className="text-[11px] text-[#999999] mt-0.5 truncate leading-tight">
                 {getProjectEmoji(currentProject.name)} {currentProject.name}
               </div>
             )}
@@ -83,7 +83,7 @@ export function ToolsDock() {
       </div>
 
       {/* 分割线 */}
-      <div className="mx-3 border-t border-[#F3F4F6] mb-1" />
+      <div className="mx-3 border-t border-[#F5F5F5] mb-1" />
 
       {/* 其他工具按钮 */}
       <div className="px-2 flex flex-col gap-0.5 flex-1 min-h-0 overflow-y-auto">
@@ -104,10 +104,10 @@ export function ToolsDock() {
       </div>
 
       {/* 底部：+ New task + Core */}
-      <div className="px-2 pb-3 pt-2 border-t border-[#F3F4F6] shrink-0">
+      <div className="px-2 pb-3 pt-2 border-t border-[#F5F5F5] shrink-0">
         <div className="flex items-center gap-2">
           <button
-            className="flex items-center gap-1.5 flex-1 px-2.5 py-2 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] transition-colors text-[12px] text-[#6B7280] font-medium"
+            className="flex items-center gap-1.5 flex-1 px-2.5 py-2 rounded-lg border border-[#EBEBEB] bg-white hover:bg-[#FAFAFA] transition-colors text-[12px] text-[#666666] font-medium"
             data-testid="button-new-task"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -147,8 +147,8 @@ function SidebarItem({
       className={cn(
         "flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-[13px] transition-colors text-left",
         isActive
-          ? "bg-[#EEF2FF] text-[#0066FF]"
-          : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
+          ? "bg-[#F0F7FF] text-[#0A66C2]"
+          : "text-[#666666] hover:bg-[#F5F5F5] hover:text-[#1A1A1A]"
       )}
       onClick={onClick}
       data-testid={testId}
@@ -156,7 +156,7 @@ function SidebarItem({
       <span className="shrink-0">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
       {badge && (
-        <span className="text-[10px] font-semibold bg-[#0066FF] text-white rounded-full px-1.5 py-0.5 shrink-0">
+        <span className="text-[10px] font-semibold bg-[#0A66C2] text-white rounded-full px-1.5 py-0.5 shrink-0">
           {badge}
         </span>
       )}

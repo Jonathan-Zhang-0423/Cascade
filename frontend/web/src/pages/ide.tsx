@@ -147,14 +147,14 @@ export default function IDEPage() {
 
         {/* 拖拽手柄 */}
         <div
-          className="w-[4px] h-full cursor-col-resize flex-shrink-0 bg-transparent hover:bg-[#0066FF]/20 transition-colors group relative"
+          className="w-[4px] h-full cursor-col-resize flex-shrink-0 bg-transparent hover:bg-[#0A66C2]/20 transition-colors group relative"
           onMouseDown={onDragStart}
         >
-          <div className="absolute inset-y-0 left-[1px] w-[2px] bg-[#E5E7EB] group-hover:bg-[#0066FF]/40 transition-colors" />
+          <div className="absolute inset-y-0 left-[1px] w-[2px] bg-[#EBEBEB] group-hover:bg-[#0A66C2]/40 transition-colors" />
         </div>
 
         {/* 主区域 */}
-        <div className="flex-1 min-w-0 p-1.5 bg-sidebar">
+        <div className="flex-1 min-w-0 p-1.5 bg-[#F5F5F5]">
           <ResizablePanelGroup direction="horizontal" className="h-full gap-1.5">
             {activeTool && (
               <>

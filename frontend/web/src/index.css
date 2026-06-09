@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -90,64 +91,79 @@
   }
 }
 
-/* ─── Light defaults (neutral palette from UIBranch) ───────────────────────*/
+/* ─── Light theme — Replit white minimal palette ────────────────────────────*/
 :root {
-  --button-outline: rgba(0,0,0,.10);
+  --button-outline: rgba(0,0,0,.08);
   --badge-outline: rgba(0,0,0,.05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0,.03);
-  --elevate-2: rgba(0,0,0,.08);
+  --opaque-button-border-intensity: -6;
+  --elevate-1: rgba(0,0,0,.02);
+  --elevate-2: rgba(0,0,0,.04);
 
-  --background: 210 20% 98%;
-  --foreground: 220 25% 10%;
-  --border: 220 13% 88%;
+  /* Page background: pure white */
+  --background: 0 0% 100%;
+  /* Primary text: #1A1A1A warm black */
+  --foreground: 0 0% 10%;
+  /* Divider: #EBEBEB warm grey */
+  --border: 0 0% 92%;
+  /* Card/panel: #FFFFFF */
   --card: 0 0% 100%;
-  --card-foreground: 220 25% 10%;
-  --card-border: 220 13% 90%;
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 220 25% 10%;
-  --sidebar-border: 220 13% 88%;
-  --sidebar-primary: 221 83% 53%;
+  --card-foreground: 0 0% 10%;
+  --card-border: 0 0% 92%;
+  /* Sidebar: #FAFAFA extremely light warm grey */
+  --sidebar: 0 0% 98%;
+  --sidebar-foreground: 0 0% 10%;
+  --sidebar-border: 0 0% 92%;
+  --sidebar-primary: 210 85% 40%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 221 83% 53%;
+  --sidebar-accent: 210 85% 40%;
   --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 221 83% 53%;
+  --sidebar-ring: 210 85% 40%;
+  /* Dialog/popover: #FFFFFF */
   --popover: 0 0% 100%;
-  --popover-foreground: 220 25% 10%;
-  --popover-border: 220 13% 88%;
-  --primary: 221 83% 53%;
+  --popover-foreground: 0 0% 10%;
+  --popover-border: 0 0% 92%;
+  /* Primary blue: #0A66C2 warm blue */
+  --primary: 210 85% 40%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 14% 93%;
-  --secondary-foreground: 220 25% 10%;
-  --muted: 210 14% 93%;
-  --muted-foreground: 220 9% 46%;
-  --accent: 221 83% 95%;
-  --accent-foreground: 221 83% 35%;
-  --destructive: 0 84% 60%;
+  /* Secondary/muted fill: #F5F5F5 warm hover */
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 10%;
+  /* Muted: #FAFAFA */
+  --muted: 0 0% 98%;
+  /* Muted text: #666666 warm grey */
+  --muted-foreground: 0 0% 40%;
+  /* Accent tint: #F0F7FF warm blue tint */
+  --accent: 210 100% 96%;
+  --accent-foreground: 210 85% 35%;
+  /* Destructive: #F85149 */
+  --destructive: 3 82% 62%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 13% 82%;
-  --ring: 221 83% 53%;
-  --chart-1: 221 83% 53%;
-  --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  /* Input border: #DCDCDC */
+  --input: 0 0% 86%;
+  --ring: 210 85% 40%;
+  --chart-1: 210 85% 40%;
+  --chart-2: 160 60% 40%;
+  --chart-3: 30 80% 52%;
+  --chart-4: 280 65% 57%;
+  --chart-5: 340 75% 52%;
 
-  --app-font-sans: 'Inter', system-ui, sans-serif;
+  /* Inter is Replit's primary font */
+  --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: 'Geist Mono', Menlo, monospace;
-  --radius: .5rem;
+  --app-font-mono: 'IBM Plex Mono', 'Geist Mono', Menlo, monospace;
+  /* Replit uses 6px as default radius */
+  --radius: .375rem;
 
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.04);
-  --shadow-xs:  0px 1px 3px 0px rgba(0,0,0,0.06);
-  --shadow-sm:  0px 1px 3px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.05);
-  --shadow:     0px 2px 6px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.05);
-  --shadow-md:  0px 4px 12px 0px rgba(0,0,0,0.08), 0px 2px 4px -1px rgba(0,0,0,0.05);
-  --shadow-lg:  0px 8px 24px 0px rgba(0,0,0,0.10), 0px 4px 6px -1px rgba(0,0,0,0.05);
-  --shadow-xl:  0px 16px 40px 0px rgba(0,0,0,0.12), 0px 8px 10px -1px rgba(0,0,0,0.05);
-  --shadow-2xl: 0px 24px 60px 0px rgba(0,0,0,0.14);
+  /* Light theme shadows — transparent but perceptible */
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.05);
+  --shadow-xs:  0px 1px 3px 0px rgba(0,0,0,0.07);
+  --shadow-sm:  0px 1px 3px 0px rgba(0,0,0,0.08);
+  --shadow:     0px 2px 6px 0px rgba(0,0,0,0.08), 0px 1px 3px 0px rgba(0,0,0,0.05);
+  --shadow-md:  0px 4px 12px 0px rgba(0,0,0,0.10), 0px 1px 3px 0px rgba(0,0,0,0.06);
+  --shadow-lg:  0px 8px 24px 0px rgba(0,0,0,0.12), 0px 2px 6px 0px rgba(0,0,0,0.08);
+  --shadow-xl:  0px 16px 48px 0px rgba(0,0,0,0.14), 0px 4px 12px 0px rgba(0,0,0,0.10);
+  --shadow-2xl: 0px 24px 60px 0px rgba(0,0,0,0.16);
 
-  /* Computed border tints — slightly darker/lighter than the parent fill. */
   --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);

@@ -223,7 +223,7 @@ export function Navbar({ projectName }: NavbarProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[#E5E7EB] bg-white shrink-0"
+      className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[#EBEBEB] bg-white shrink-0"
       data-testid="navbar"
     >
       {/* Left — Logo + 分割线 + 项目名 */}
@@ -231,23 +231,23 @@ export function Navbar({ projectName }: NavbarProps) {
         {/* 公司 Logo：竖线组合 + "Cascade AI"，全部纯黑 */}
         <div className="flex items-center gap-2 shrink-0 cursor-pointer" onClick={handleBack}>
           <div className="flex items-end gap-[2px] h-[18px]">
-            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 9 }} />
-            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 14 }} />
-            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 18 }} />
-            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 12 }} />
-            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 7 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#1A1A1A]" style={{ height: 9 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#1A1A1A]" style={{ height: 14 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#1A1A1A]" style={{ height: 18 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#1A1A1A]" style={{ height: 12 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#1A1A1A]" style={{ height: 7 }} />
           </div>
-          <span className="text-[14px] font-bold text-[#111827] tracking-[-0.2px] leading-none">
+          <span className="text-[14px] font-bold text-[#1A1A1A] tracking-[-0.2px] leading-none">
             Cascade AI
           </span>
         </div>
 
         {/* 分割线 */}
-        <div className="w-px h-[18px] bg-[#E5E7EB] shrink-0" />
+        <div className="w-px h-[18px] bg-[#EBEBEB] shrink-0" />
 
         {/* 项目名 */}
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#F3F4F6] border border-[#E5E7EB]" data-testid="emoji-project">
+          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#F5F5F5] border border-[#EBEBEB]" data-testid="emoji-project">
             {getProjectEmoji(projectName)}
           </div>
           <span className="text-[14px] font-medium text-[#1A1A1A] truncate" data-testid="text-project-name">
@@ -255,8 +255,8 @@ export function Navbar({ projectName }: NavbarProps) {
           </span>
           {frameworkLabel && (
             <>
-              <span className="text-[#D1D5DB] shrink-0">·</span>
-              <span className="text-[11px] text-[#9CA3AF] shrink-0">{frameworkLabel}</span>
+              <span className="text-[#CCCCCC] shrink-0">·</span>
+              <span className="text-[11px] text-[#999999] shrink-0">{frameworkLabel}</span>
             </>
           )}
         </div>
@@ -265,7 +265,7 @@ export function Navbar({ projectName }: NavbarProps) {
       {/* Right */}
       <div className="flex items-center gap-2 flex-1 justify-end">
         <Select value={themeId} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-white border-[#E5E7EB] text-[#6B6B6B] rounded-md" data-testid="select-theme">
+          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-white border-[#EBEBEB] text-[#666666] rounded-md" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
