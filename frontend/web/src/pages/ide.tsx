@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
@@ -39,11 +39,47 @@ export default function IDEPage() {
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
 
+  // 左侧边栏可拖拽宽度 — 纯 CSS/DOM 实现，不依赖 ResizablePanelGroup
+  const [sidebarWidth, setSidebarWidth] = useState(220);
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWRef = useRef(0);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    draggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWRef.current = sidebarWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const delta = e.clientX - startXRef.current;
+      const next = Math.max(160, Math.min(360, startWRef.current + delta));
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   const project = projects.find((p) => p.id === id);
 
   useEffect(() => {
+    if (!id) return;
     if (!project) {
-      navigate("/", { replace: true });
+      navigate("/app");
       return;
     }
     if (projectId !== id) {
@@ -99,9 +135,25 @@ export default function IDEPage() {
       <Navbar projectName={project.name} />
       <CommandPalette />
 
-      <div className="flex-1 min-h-0 flex">
-        <ToolsDock />
+      <div className="flex-1 min-h-0 flex overflow-hidden">
 
+        {/* 左侧边栏 — 固定宽度由 state 控制，右侧有拖拽手柄 */}
+        <div
+          className="flex-shrink-0 h-full overflow-hidden"
+          style={{ width: sidebarWidth }}
+        >
+          <ToolsDock />
+        </div>
+
+        {/* 拖拽手柄 */}
+        <div
+          className="w-[4px] h-full cursor-col-resize flex-shrink-0 bg-transparent hover:bg-[#0066FF]/20 transition-colors group relative"
+          onMouseDown={onDragStart}
+        >
+          <div className="absolute inset-y-0 left-[1px] w-[2px] bg-[#E5E7EB] group-hover:bg-[#0066FF]/40 transition-colors" />
+        </div>
+
+        {/* 主区域 */}
         <div className="flex-1 min-w-0 p-1.5 bg-sidebar">
           <ResizablePanelGroup direction="horizontal" className="h-full gap-1.5">
             {activeTool && (
@@ -129,55 +181,37 @@ export default function IDEPage() {
             )}
 
             <ResizablePanel defaultSize={activeTool ? 80 : 100} minSize={30} id="workspace" order={2}>
-                <ResizablePanelGroup direction="vertical" className="gap-1.5">
-                  <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
-                    <ResizablePanelGroup direction="horizontal" className="gap-1.5">
-                      {codeVisible && (
-                        <>
-                          <ResizablePanel
-                            defaultSize={layoutMode === "preview" ? 35 : 50}
-                            minSize={20}
-                            id="editor-pane"
-                            order={1}
-                            className="bg-background rounded-lg border border-border/60 overflow-hidden [transition:var(--transition-slow)]"
-                          >
-                            <CodeEditor />
-                          </ResizablePanel>
-                          <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
-                        </>
-                      )}
-                      <ResizablePanel
-                        defaultSize={codeVisible ? (layoutMode === "preview" ? 65 : 50) : 100}
-                        minSize={20}
-                        id="preview-pane"
-                        order={2}
-                        className="bg-background rounded-lg border border-border/60 overflow-hidden"
-                      >
-                        <PreviewPanel />
-                      </ResizablePanel>
-                    </ResizablePanelGroup>
-                  </ResizablePanel>
+              <ResizablePanelGroup direction="vertical" className="gap-1.5">
+                <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
+                  {/* 代码编辑器面板已移除，只保留预览区 */}
+                  <div className="h-full bg-background rounded-lg border border-border/60 overflow-hidden">
+                    <PreviewPanel />
+                  </div>
+                </ResizablePanel>
 
-                  {isConsoleOpen && (
-                    <>
-                      <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
-                      <ResizablePanel
-                        defaultSize={25}
-                        minSize={10}
-                        maxSize={60}
-                        id="console-pane"
-                        order={2}
-                        className="bg-background rounded-lg border border-border/60 overflow-hidden"
-                      >
-                        <ConsolePanel />
-                      </ResizablePanel>
-                    </>
-                  )}
-                </ResizablePanelGroup>
+                {isConsoleOpen && (
+                  <>
+                    <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
+                    <ResizablePanel
+                      defaultSize={25}
+                      minSize={10}
+                      maxSize={60}
+                      id="console-pane"
+                      order={2}
+                      className="bg-background rounded-lg border border-border/60 overflow-hidden"
+                    >
+                      <ConsolePanel />
+                    </ResizablePanel>
+                  </>
+                )}
+              </ResizablePanelGroup>
             </ResizablePanel>
+
           </ResizablePanelGroup>
         </div>
+
       </div>
+
       <LLMMonitor />
       {skillsModal && (
         <SkillsModal

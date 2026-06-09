@@ -2,23 +2,8 @@ import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Rotate3D, Moon, Sun, QrCode, Copy, Check, ExternalLink, Terminal, FileText, FolderOpen, LayoutDashboard } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { RefreshCw, ExternalLink, Terminal, Monitor, Plus, X, Search, ChevronRight, Globe, Database, Lock, Shield, Key, Zap, BarChart2, Settings, Users, CheckSquare, GitBranch, Code, Cpu, Workflow, FileText, FilePlus } from "lucide-react";
 import { useT } from "@/lib/i18n";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { QRCodeSVG } from "qrcode.react";
 import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
 import { getPreviewMode, getFrameworkLabel, getFrameworkColor, getMainEntryFile } from "@/lib/preview-adapters";
@@ -351,339 +336,332 @@ export function PreviewPanel({ fullscreen = false }: { fullscreen?: boolean }) {
     } catch {}
   }, [previewUrl]);
 
+  // Tools & files 展开面板状态
+  const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
+  const [toolsSearch, setToolsSearch] = useState("");
+  const toolsSearchRef = useRef<HTMLInputElement>(null);
+
+  // 预览 tab 列表
+  type PreviewTab = { id: string; label: string; closable: boolean };
+  const [previewTabs, setPreviewTabs] = useState<PreviewTab[]>([
+    { id: "preview", label: "Preview", closable: false },
+  ]);
+  const [activePreviewTab, setActivePreviewTab] = useState("preview");
+
+  const addPreviewTab = () => {
+    const id = `tab-${Date.now()}`;
+    setPreviewTabs((prev) => [...prev, { id, label: "New tab", closable: true }]);
+    setActivePreviewTab(id);
+    setToolsPanelOpen(true);
+  };
+
+  const closePreviewTab = (id: string) => {
+    setPreviewTabs((prev) => prev.filter((t) => t.id !== id));
+    if (activePreviewTab === id) setActivePreviewTab("preview");
+  };
+
+  useEffect(() => {
+    if (toolsPanelOpen) setTimeout(() => toolsSearchRef.current?.focus(), 50);
+    else setToolsSearch("");
+  }, [toolsPanelOpen]);
+
+  type ToolItem = { icon: React.ReactNode; label: string; desc?: string; action?: () => void; badge?: string };
+  type ToolSection = { title: string; items: ToolItem[] };
+
+  const TOOLS_SECTIONS: ToolSection[] = [
+    {
+      title: "Jump to existing tab",
+      items: [
+        { icon: <Monitor className="w-4 h-4" />, label: "Preview", desc: "Open the live preview", action: () => { setActivePreviewTab("preview"); setToolsPanelOpen(false); } },
+      ],
+    },
+    {
+      title: "Suggested",
+      items: [
+        { icon: <Globe className="w-4 h-4" />,       label: "Publishing",      desc: "Deploy your app to the web" },
+        { icon: <Plus className="w-4 h-4" />,         label: "Integrations",    desc: "Connect third-party services" },
+        { icon: <Database className="w-4 h-4" />,     label: "Database",        desc: "Manage your PostgreSQL database" },
+        { icon: <Database className="w-4 h-4" />,     label: "App Storage",     desc: "File storage for your app" },
+        { icon: <Users className="w-4 h-4" />,        label: "Auth",            desc: "User authentication & sessions" },
+        { icon: <Shield className="w-4 h-4" />,       label: "Security Center", desc: "Secrets, CORS, and access rules" },
+        { icon: <Key className="w-4 h-4" />,          label: "Secrets",         desc: "Environment variables & secrets" },
+        { icon: <Zap className="w-4 h-4" />,          label: "Agent Skills",    desc: "Extend the AI with custom skills" },
+        { icon: <Cpu className="w-4 h-4" />,          label: "Automations",     desc: "Scheduled tasks and triggers" },
+        { icon: <Monitor className="w-4 h-4" />,      label: "Canvas",          desc: "Visual app canvas" },
+        { icon: <BarChart2 className="w-4 h-4" />,    label: "Growth",          desc: "Analytics and growth tools" },
+        { icon: <BarChart2 className="w-4 h-4" />,    label: "Monitoring",      desc: "Uptime and performance monitoring" },
+        { icon: <Settings className="w-4 h-4" />,     label: "User Settings",   desc: "Profile and preferences" },
+        { icon: <CheckSquare className="w-4 h-4" />,  label: "Validation",      desc: "Form and data validation rules" },
+        { icon: <Monitor className="w-4 h-4" />,      label: "Preview",         desc: "Live preview of your app", action: () => { setActivePreviewTab("preview"); setToolsPanelOpen(false); } },
+      ],
+    },
+    {
+      title: "Advanced",
+      items: [
+        { icon: <Search className="w-4 h-4" />,       label: "Code Search",     desc: "Search across all files" },
+        { icon: <Terminal className="w-4 h-4" />,     label: "Console",         desc: "Browser console output" },
+        { icon: <Code className="w-4 h-4" />,         label: "Developer",       desc: "Dev tools and diagnostics" },
+        { icon: <GitBranch className="w-4 h-4" />,    label: "Git",             desc: "Version control" },
+        { icon: <Terminal className="w-4 h-4" />,     label: "Shell",           desc: "Run shell commands" },
+        { icon: <Monitor className="w-4 h-4" />,      label: "VNC",             desc: "Remote desktop view" },
+        { icon: <Workflow className="w-4 h-4" />,     label: "Workflows",       desc: "Automate your build pipeline" },
+      ],
+    },
+    {
+      title: "Files",
+      items: [
+        { icon: <FileText className="w-4 h-4" />,  label: "Files",    desc: "Browse and edit project files" },
+        { icon: <FilePlus className="w-4 h-4" />,  label: "New file", desc: "Create a new file" },
+      ],
+    },
+  ];
+
+  const filteredSections = toolsSearch.trim()
+    ? TOOLS_SECTIONS.map((s) => ({
+        ...s,
+        items: s.items.filter((item) =>
+          item.label.toLowerCase().includes(toolsSearch.toLowerCase()) ||
+          (item.desc?.toLowerCase() ?? "").includes(toolsSearch.toLowerCase())
+        ),
+      })).filter((s) => s.items.length > 0)
+    : TOOLS_SECTIONS;
+
   return (
-    <div className="h-full flex flex-col" data-testid="preview-panel">
-      {/* Tab bar */}
-      <div className="flex items-center gap-0 px-2 h-[34px] border-b border-black/[0.07] dark:border-white/[0.07] bg-slate-50 dark:bg-[#0c0c14] shrink-0">
-        {(
-          [
-            { id: "preview", icon: <LayoutDashboard className="w-3 h-3" />, label: "Preview" },
-            { id: "terminal", icon: <Terminal className="w-3 h-3" />, label: "Terminal" },
-            { id: "files", icon: <FolderOpen className="w-3 h-3" />, label: "Files" },
-          ] as { id: RightTab; icon: React.ReactNode; label: string }[]
-        ).map((tab) => (
-          <button
+    <div className="h-full flex flex-col relative" data-testid="preview-panel">
+
+      {/* ── 顶部 Tab 栏 ── */}
+      <div className="flex items-center h-[38px] border-b border-[#E5E7EB] bg-white shrink-0 px-1 gap-0">
+        {previewTabs.map((tab) => (
+          <div
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex items-center gap-1.5 px-3 h-full text-[11px] font-mono border-b-2 transition-colors shrink-0",
-              activeTab === tab.id
-                ? "border-[#4f82ff] text-[#4f82ff] bg-[rgba(79,130,255,0.04)]"
-                : "border-transparent text-slate-400 dark:text-[#484860] hover:text-slate-600 dark:hover:text-[#8888a8]"
+              "flex items-center gap-1.5 px-2.5 h-full text-[12px] cursor-pointer transition-colors shrink-0 border-b-2 select-none",
+              activePreviewTab === tab.id
+                ? "border-[#0066FF] text-[#0066FF]"
+                : "border-transparent text-[#9CA3AF] hover:text-[#6B6B6B]"
             )}
+            onClick={() => { setActivePreviewTab(tab.id); setToolsPanelOpen(false); }}
           >
-            {tab.icon}
+            {tab.id === "preview" && <Monitor className="w-3 h-3 shrink-0" />}
             <span>{tab.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Terminal tab */}
-      {activeTab === "terminal" && (
-        <div className="flex-1 min-h-0">
-          <ConsolePanel />
-        </div>
-      )}
-
-      {/* Files tab */}
-      {activeTab === "files" && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <FileTree />
-        </div>
-      )}
-
-      {/* Preview tab */}
-      {activeTab === "preview" && (
-        <>
-      <div className="preview-toolbar flex items-center gap-1.5 px-2 h-[38px] border-b border-black/[0.07] dark:border-white/[0.07] bg-slate-50 dark:bg-[#101018] shrink-0 flex-wrap">
-        <span
-          className={`text-[11px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${getFrameworkColor(framework)}`}
-          data-testid="badge-framework"
-        >
-          {getFrameworkLabel(framework)}
-        </span>
-
-        <div className="flex items-center bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] rounded-lg p-[3px] gap-[1px]">
-          <button
-            className={cn(
-              "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
-              devicePlatform === "ios"
-                ? "bg-black/[0.06] dark:bg-white/[0.08] text-slate-900 dark:text-[#eeeef6]"
-                : "text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
+            {tab.closable && (
+              <button
+                className="flex items-center justify-center w-3.5 h-3.5 rounded hover:bg-[#F3F4F6] text-[#9CA3AF] hover:text-[#6B6B6B] transition-colors ml-0.5"
+                onClick={(e) => { e.stopPropagation(); closePreviewTab(tab.id); }}
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
             )}
-            onClick={() => handlePlatformChange("ios")}
-            data-testid="button-platform-ios"
-          >
-            iOS
-          </button>
-          <button
-            className={cn(
-              "flex items-center justify-center px-2 h-[20px] text-xs rounded-md transition-colors",
-              devicePlatform === "android"
-                ? "bg-black/[0.06] dark:bg-white/[0.08] text-slate-900 dark:text-[#eeeef6]"
-                : "text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
-            )}
-            onClick={() => handlePlatformChange("android")}
-            data-testid="button-platform-android"
-          >
-            Android
-          </button>
-        </div>
-
-        <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-          <SelectTrigger className="w-[140px] h-6 text-xs rounded-md" data-testid="select-device">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start">
-            {filteredDevices.map((device) => (
-              <SelectItem key={device.id} value={device.id} className="text-xs">
-                {device.name}
-              </SelectItem>
-            ))}
-            <SelectItem value="custom" className="text-xs">
-              Custom
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        {isCustom && (
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              min={100}
-              max={2000}
-              value={customDeviceWidth || 390}
-              onChange={(e) =>
-                setCustomDeviceDimensions(
-                  parseInt(e.target.value) || 390,
-                  customDeviceHeight || 844
-                )
-              }
-              className="w-14 h-6 text-xs px-1 text-center"
-              data-testid="input-custom-width"
-            />
-            <span className="text-xs text-slate-500 dark:text-[#8888a8]">x</span>
-            <Input
-              type="number"
-              min={100}
-              max={2000}
-              value={customDeviceHeight || 844}
-              onChange={(e) =>
-                setCustomDeviceDimensions(
-                  customDeviceWidth || 390,
-                  parseInt(e.target.value) || 844
-                )
-              }
-              className="w-14 h-6 text-xs px-1 text-center"
-              data-testid="input-custom-height"
-            />
           </div>
-        )}
+        ))}
 
         <button
-          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
-          onClick={() =>
-            setDeviceOrientation(
-              deviceOrientation === "portrait" ? "landscape" : "portrait"
-            )
-          }
-          aria-label="Toggle orientation"
-          data-testid="button-toggle-orientation"
+          className="flex items-center justify-center w-7 h-full text-[#9CA3AF] hover:text-[#6B6B6B] transition-colors shrink-0"
+          onClick={addPreviewTab}
+          aria-label="New tab"
         >
-          <Rotate3D className="w-3 h-3" />
-        </button>
-
-        <button
-          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
-          onClick={() =>
-            setDeviceFrameStyle(deviceFrameStyle === "dark" ? "light" : "dark")
-          }
-          aria-label="Toggle frame style"
-          data-testid="button-toggle-frame-style"
-        >
-          {deviceFrameStyle === "dark" ? (
-            <Moon className="w-3 h-3" />
-          ) : (
-            <Sun className="w-3 h-3" />
-          )}
+          <Plus className="w-3.5 h-3.5" />
         </button>
 
         <div className="flex-1" />
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
-              onClick={handleQrOpen}
-              aria-label="QR Preview"
-              data-testid="button-qr-preview"
-            >
-              <QrCode className="w-3 h-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-64 p-4"
-            align="end"
-            data-testid="popover-qr-preview"
-          >
-            <div className="flex flex-col items-center gap-3">
-              <p className="text-xs font-medium text-foreground">{t("preview.scanPhone")}</p>
-              {qrLoading ? (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-black/[0.03] dark:bg-white/[0.04] rounded-md">
-                  <RefreshCw className="w-5 h-5 animate-spin text-slate-500 dark:text-[#8888a8]" />
-                </div>
-              ) : previewUrl ? (
-                <div className="bg-white p-3 rounded-lg" data-testid="qr-code-container">
-                  <QRCodeSVG
-                    value={previewUrl}
-                    size={156}
-                    level="M"
-                    includeMargin={false}
-                  />
-                </div>
-              ) : (
-                <div className="w-[180px] h-[180px] flex items-center justify-center bg-black/[0.03] dark:bg-white/[0.04] rounded-md">
-                  <p className="text-xs text-slate-500 dark:text-[#8888a8] text-center px-4">
-                    Click to generate preview URL
-                  </p>
-                </div>
-              )}
-              {previewUrl && (
-                <div className="w-full flex flex-col gap-2">
-                  <div className="flex items-center gap-1 w-full">
-                    <div className="flex-1 text-[10px] font-mono text-slate-500 dark:text-[#8888a8] truncate bg-black/[0.03] dark:bg-white/[0.04] rounded px-2 py-1" data-testid="text-preview-url">
-                      {previewUrl}
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 shrink-0"
-                      onClick={handleCopyUrl}
-                      data-testid="button-copy-preview-url"
-                    >
-                      {copied ? (
-                        <Check className="w-3 h-3 text-green-500" />
-                      ) : (
-                        <Copy className="w-3 h-3" />
-                      )}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => window.open(previewUrl, "_blank")}
-                      data-testid="button-open-preview-url"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-[#8888a8] text-center">
-                    Live reload enabled — changes sync automatically
-                  </p>
-                </div>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        <button
-          className="h-[26px] w-7 rounded-md bg-slate-100 dark:bg-[#14141e] border border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] hover:text-slate-500 dark:hover:text-[#8888a8] transition-colors shrink-0 flex items-center justify-center text-slate-400 dark:text-[#484860]"
-          onClick={handleRefresh}
-          aria-label={t("preview.refresh")}
-          data-testid="button-refresh-preview"
-        >
-          <RefreshCw className="w-3 h-3" />
-        </button>
-
+        {/* Tools & files 按钮 */}
         <button
           className={cn(
-            "h-[26px] w-7 rounded-md border transition-colors shrink-0 flex items-center justify-center",
-            isConsoleOpen
-              ? "bg-[rgba(79,130,255,0.10)] border-[rgba(79,130,255,0.20)] text-[#4f82ff]"
-              : "bg-slate-100 dark:bg-[#14141e] border-black/[0.07] dark:border-white/[0.07] hover:bg-slate-100 dark:hover:bg-[#1a1a26] text-slate-400 dark:text-[#484860] hover:text-slate-500 dark:hover:text-[#8888a8]"
+            "flex items-center gap-1.5 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors shrink-0 mx-1 border",
+            toolsPanelOpen
+              ? "bg-[#EEF2FF] text-[#0066FF] border-[#BFDBFE]"
+              : "bg-white border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]"
           )}
-          onClick={toggleConsole}
-          title={isConsoleOpen ? t("preview.hideTerminal") : t("preview.showTerminal")}
-          data-testid="button-toggle-console"
+          onClick={() => setToolsPanelOpen((v) => !v)}
         >
-          <Terminal className="w-3.5 h-3.5" />
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Tools &amp; files
+        </button>
+
+        <button className="flex items-center h-[26px] px-2.5 bg-white border border-[#E5E7EB] rounded-[5px] text-[11px] text-[#374151] hover:bg-[#F3F4F6] transition-colors shrink-0">
+          Invite
+        </button>
+        <button className="flex items-center gap-1.5 h-[26px] px-2.5 bg-[#0066FF] rounded-[5px] text-[11px] text-white font-medium hover:bg-[#0052CC] transition-colors shrink-0 ml-1">
+          <span className="w-[5px] h-[5px] rounded-full bg-white/70 shrink-0" />
+          Publish
+        </button>
+        <button className="flex items-center justify-center w-7 h-7 rounded text-[#9CA3AF] hover:bg-[#F3F4F6] transition-colors shrink-0 ml-0.5">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
         </button>
       </div>
 
-      <div className="flex-1 min-h-0">
-        <DeviceSimulator
-          deviceSpec={deviceSpec}
-          orientation={deviceOrientation}
-          frameStyle={deviceFrameStyle}
-          platformOverride={devicePlatform}
-          bypass={fullscreen}
-        >
-          {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (
-            <WasmPreview
-              files={files}
-              framework={framework}
-              projectId={projectId}
-              refreshKey={effectiveRefresh}
-            />
-          ) : previewMode === "code-preview" ? (
-            <CodePreview
-              files={files}
-              framework={framework}
-              projectId={projectId}
-              mainEntryFile={getMainEntryFile(framework)}
-            />
-          ) : previewMode === "rn-web" ? (
-            <RnWebPreview
-              files={files}
-              framework={framework}
-              projectId={projectId}
-              refreshKey={effectiveRefresh}
-              projectName={currentProject?.name}
-            />
-          ) : previewMode === "flutter-web" ? (
-            <FlutterWebPreview
-              files={files}
-              framework={framework}
-              projectId={projectId}
-              refreshKey={effectiveRefresh}
-            />
-          ) : previewMode === "wechat-preview" ? (
-            <WeChatPreview
-              files={files}
-              refreshKey={effectiveRefresh}
-              projectId={projectId}
-            />
-          ) : (
-            <>
-              {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
-                <div
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white dark:bg-[#080810]"
-                  style={{ animation: "fade-up 150ms ease" }}
-                >
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400 dark:text-[#484860]">
-                    <rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M11 10l7 4-7 4V10z" fill="currentColor" />
-                  </svg>
-                  <p className="text-[12px] text-slate-400 dark:text-[#484860]">{t("preview.runFirst")}</p>
-                </div>
-              ) : (
-                <iframe
-                  ref={iframeRef}
-                  key={effectiveRefresh}
-                  srcDoc={previewOverrideHtml ?? injectedHtml}
-                  className="w-full h-full border-0"
-                  style={{ cursor: "pointer" }}
-                  title={t("preview.title")}
-                  sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups"
-                  data-testid="preview-iframe"
-                />
+      {/* ── Tools & files 展开面板（完整复刻图2/3/4） ── */}
+      {toolsPanelOpen && (
+        <div className="absolute top-[38px] left-0 right-0 bottom-0 z-40 bg-white flex flex-col overflow-hidden">
+          {/* 搜索框 */}
+          <div className="px-4 pt-4 pb-3 border-b border-[#F3F4F6] shrink-0">
+            <div className="flex items-center gap-2 h-9 px-3 bg-[#F3F4F6] rounded-lg border border-transparent focus-within:border-[#BFDBFE] focus-within:bg-white transition-colors">
+              <Search className="w-3.5 h-3.5 text-[#9CA3AF] shrink-0" />
+              <input
+                ref={toolsSearchRef}
+                className="flex-1 bg-transparent text-[13px] text-[#111827] placeholder-[#9CA3AF] outline-none"
+                placeholder="Search for tools & files..."
+                value={toolsSearch}
+                onChange={(e) => setToolsSearch(e.target.value)}
+              />
+              {toolsSearch && (
+                <button onClick={() => setToolsSearch("")} className="text-[#9CA3AF] hover:text-[#6B6B6B]">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
-            </>
-          )}
-        </DeviceSimulator>
-      </div>
+            </div>
+          </div>
+
+          {/* 工具列表 */}
+          <div className="flex-1 overflow-y-auto pb-2">
+            {filteredSections.map((section) => (
+              <div key={section.title}>
+                <div className="px-4 pt-4 pb-1.5 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
+                  {section.title}
+                </div>
+                {section.items.map((item) => (
+                  <button
+                    key={`${item.label}-${item.desc}`}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-[#F9FAFB] transition-colors group text-left"
+                    onClick={() => { item.action?.(); }}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#F3F4F6] group-hover:bg-[#ECEEF0] flex items-center justify-center shrink-0 transition-colors text-[#6B7280]">
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-medium text-[#111827] leading-tight">{item.label}</div>
+                      {item.desc && (
+                        <div className="text-[11px] text-[#9CA3AF] mt-0.5 truncate">{item.desc}</div>
+                      )}
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-[#D1D5DB] group-hover:text-[#9CA3AF] shrink-0 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            ))}
+            {filteredSections.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 gap-2">
+                <Search className="w-6 h-6 text-[#D1D5DB]" />
+                <p className="text-[13px] text-[#9CA3AF]">No results for "{toolsSearch}"</p>
+              </div>
+            )}
+          </div>
+
+          {/* 底部关闭 */}
+          <div className="border-t border-[#F3F4F6] px-4 py-2.5 shrink-0 flex items-center justify-between">
+            <span className="text-[11px] text-[#9CA3AF]">{TOOLS_SECTIONS.reduce((n, s) => n + s.items.length, 0)} tools available</span>
+            <button
+              className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF] hover:text-[#6B6B6B] transition-colors"
+              onClick={() => setToolsPanelOpen(false)}
+            >
+              <X className="w-3.5 h-3.5" />
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Canvas 预览内容 ── */}
+      {activePreviewTab === "preview" && (
+        <>
+          {/* Preview toolbar */}
+          <div className="preview-toolbar flex items-center gap-1.5 px-2.5 h-[38px] border-b border-[#E5E7EB] bg-[#F9FAFB] shrink-0">
+            <button className="flex items-center gap-1.5 h-[26px] px-2 bg-white border border-[#E5E7EB] rounded-[6px] text-[12px] text-[#1A1A1A] hover:bg-[#F3F4F6] transition-colors shrink-0" data-testid="button-app-select">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+              </svg>
+              <span className="max-w-[80px] truncate">{currentProject?.name || "App"}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B6B6B] transition-colors" aria-label="Back">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B6B6B] transition-colors" aria-label="Forward">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B6B6B] transition-colors" onClick={handleRefresh} aria-label={t("preview.refresh")} data-testid="button-refresh-preview">
+              <RefreshCw className="w-[13px] h-[13px]" />
+            </button>
+            <div className="flex-1 flex items-center gap-1.5 h-[26px] px-2.5 bg-[#F3F4F6] border border-[#E5E7EB] rounded-[6px] min-w-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+              <span className="text-[12px] text-[#6B6B6B] truncate">{previewUrl ? previewUrl.replace(/^https?:\/\//, "") : "localhost"}</span>
+            </div>
+            <div className="flex items-center bg-white border border-[#E5E7EB] rounded-[6px] p-[2px] gap-[1px] shrink-0">
+              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "android" ? "bg-[#F3F4F6] text-[#1A1A1A]" : "text-[#9CA3AF] hover:text-[#6B6B6B]")} onClick={() => handlePlatformChange("android")} data-testid="button-platform-android">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              </button>
+              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "ios" ? "bg-[#F3F4F6] text-[#1A1A1A]" : "text-[#9CA3AF] hover:text-[#6B6B6B]")} onClick={() => handlePlatformChange("ios")} data-testid="button-platform-ios">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="2"/></svg>
+              </button>
+            </div>
+            <button className="flex items-center justify-center w-[28px] h-[26px] bg-white border border-[#E5E7EB] rounded-[6px] text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B6B6B] transition-colors shrink-0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <button className="flex items-center justify-center w-[28px] h-[26px] bg-white border border-[#E5E7EB] rounded-[6px] text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B6B6B] transition-colors shrink-0" onClick={() => previewUrl && window.open(previewUrl, "_blank")} data-testid="button-open-preview-url">
+              <ExternalLink className="w-[13px] h-[13px]" />
+            </button>
+            <button
+              className={cn("flex items-center justify-center w-[28px] h-[26px] border rounded-[6px] transition-colors shrink-0", isConsoleOpen ? "bg-[#EEF2FF] border-[#BFDBFE] text-[#0066FF]" : "bg-white border-[#E5E7EB] text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B6B6B]")}
+              onClick={toggleConsole}
+              data-testid="button-toggle-console"
+            >
+              <Terminal className="w-[13px] h-[13px]" />
+            </button>
+          </div>
+
+          {/* 预览内容区 — PC全屏 / Mobile固定比例 */}
+          <div className={cn("flex-1 min-h-0 overflow-hidden", devicePlatform === "ios" ? "bg-[#F0F0F0] flex items-center justify-center" : "bg-white flex items-stretch")}>
+            {devicePlatform === "ios" ? (
+              <div className="relative bg-white shadow-xl overflow-hidden flex-shrink-0" style={{ width: 375, maxWidth: "100%", aspectRatio: "375 / 812", maxHeight: "100%", borderRadius: 12, boxShadow: "0 0 0 1px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.12)" }}>
+                {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
+                previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
+                previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
+                  <>
+                    {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
+                        <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
+                      </div>
+                    ) : (
+                      <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="w-full h-full relative">
+                {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
+                previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
+                previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
+                  <>
+                    {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
+                        <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
+                      </div>
+                    ) : (
+                      <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
   );
-}
+}

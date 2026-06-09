@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cascade IDE — Design Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── Replit 浅色系统 ── */
+  --white:     #FFFFFF;
+  --bg-subtle: #F9FAFB;   /* sidebar / toolbar 背景 */
+  --bg-hover:  #F3F4F6;   /* hover 状态 */
+  --border:    #E5E7EB;   /* 所有分隔线 */
+  --border-lt: #F3F4F6;   /* 卡片内轻分隔 */
+
+  /* 三档文字 */
+  --t1: #1A1A1A;
+  --t2: #6B6B6B;
+  --t3: #9CA3AF;
+  --t4: #D1D5DB;
+
+  /* 唯一强调色 */
+  --blue:      #0066FF;
+  --blue-bg:   #EEF2FF;
+  --blue-bdr:  #BFDBFE;
+  --blue-msg:  #F0F4FF;
+  --blue-msgb: #DBEAFE;
+
+  /* 语义色 */
+  --green:     #22C55E;
+  --green-dk:  #16A34A;
+  --red:       #EF4444;
+  --orange:    #F97316;
+  --amber:     #F59E0B;
+  --amber-bg:  #FFFBEB;
+  --amber-bdr: #FDE68A;
+
+  /* ── Dock 浅色 ── */
+  --dock-bg:   #F9FAFB;
+  --dock-bdr:  #E5E7EB;
+  --dock-icon: #9CA3AF;
+  --dock-hi:   #0066FF;
+  --dock-hov:  #F3F4F6;
+
+  --r:    8px;
+  --r-sm: 6px;
+  --r-lg: 12px;
+  --font: 'Inter', -apple-system, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+html, body {
+  height: 100%; font-family: var(--font);
+  background: var(--bg-subtle); color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+button { font-family: var(--font); cursor: pointer; border: none; background: none; }
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ══════════════════════════════════════
+   ROOT LAYOUT
+══════════════════════════════════════ */
+.ide {
+  display: flex; flex-direction: column;
+  height: 100vh; width: 100vw; overflow: hidden;
+}
+
+/* ══════════════════════════════════════
+   NAVBAR
+   - 背景与页面同色 (#F9FAFB)，底部 1px 分隔线
+   - 左: App图标 + 项目名
+   - 右: 刷新 / Logs / 屏幕切换 / Run
+══════════════════════════════════════ */
+.navbar {
+  display: flex; align-items: center;
+  height: 48px; padding: 0 14px;
+  background: var(--bg-subtle);      /* 与页面同色 */
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; gap: 0;
+}
+
+.nav-left  { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.nav-right { display: flex; align-items: center; gap: 6px; }
+
+/* App icon — 点击弹出菜单 */
+.app-icon-wrap { position: relative; }
+.app-icon-btn {
+  width: 30px; height: 30px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; flex-shrink: 0;
+  transition: background 0.12s;
+}
+.app-icon-btn:hover { background: var(--bg-hover); }
+.app-menu {
+  display: none; position: absolute;
+  top: calc(100% + 6px); left: 0;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.09);
+  min-width: 160px; padding: 4px; z-index: 100;
+}
+.app-icon-wrap:hover .app-menu { display: block; }
+.app-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; font-size: 13px; color: var(--t1);
+  border-radius: 5px; white-space: nowrap;
+  transition: background 0.1s;
+}
+.app-menu-item:hover { background: var(--bg-hover); }
+.app-menu-item svg { width: 14px; height: 14px; color: var(--t3); flex-shrink: 0; }
+
+.nav-divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+.project-name { font-size: 15px; font-weight: 500; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Navbar 右侧按钮 — 白底描边风格 */
+.nav-btn {
+  display: flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px; color: var(--t2);
+  transition: background 0.12s, color 0.12s;
+}
+.nav-btn:hover { background: var(--bg-hover); color: var(--t1); }
+.nav-btn svg { width: 12px; height: 12px; }
+
+/* 屏幕尺寸切换 pill */
+.screen-toggle {
+  display: flex; align-items: center;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 2px; gap: 1px;
+}
+.screen-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 22px;
+  border-radius: 4px; font-size: 11px;
+  transition: background 0.12s, color 0.12s;
+}
+.screen-btn.active { background: var(--bg-hover); color: var(--t1); }
+.screen-btn:not(.active) { color: var(--t3); }
+.screen-btn:not(.active):hover { color: var(--t2); }
+.screen-btn svg { width: 13px; height: 13px; }
+
+/* Run 按钮 — 绿色纯色，无渐变 */
+.btn-run {
+  display: flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 12px;
+  background: var(--green); border-radius: var(--r-sm);
+  color: white; font-size: 12px; font-weight: 500;
+  transition: background 0.12s;
+}
+.btn-run:hover { background: var(--green-dk); }
+.btn-run svg { width: 11px; height: 11px; }
+
+/* ══════════════════════════════════════
+   BODY ROW
+══════════════════════════════════════ */
+.body-row {
+  display: flex; flex: 1; min-height: 0;
+  padding: 6px; gap: 6px;
+}
+
+/* ══════════════════════════════════════
+   DOCK — 深色背景，图标白/灰
+══════════════════════════════════════ */
+.dock {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between;
+  width: 46px;
+  background: var(--dock-bg);
+  border: 1px solid var(--dock-bdr);
+  border-radius: var(--r);
+  padding: 8px 0; flex-shrink: 0;
+}
+.dock-top, .dock-bot { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.dock-btn {
+  width: 36px; height: 36px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dock-icon); transition: background 0.12s, color 0.12s;
+}
+.dock-btn:hover { background: var(--dock-hov); color: var(--t2); }
+.dock-btn.active { background: var(--blue-bg); color: var(--dock-hi); box-shadow: 0 0 0 1px rgba(0,102,255,0.15); }
+.dock-btn svg { width: 17px; height: 17px; }
+
+/* ══════════════════════════════════════
+   CHAT PANEL — 白色背景，浅色分隔
+══════════════════════════════════════ */
+.chat {
+  display: flex; flex-direction: column;
+  width: 336px; flex-shrink: 0;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+/* Chat header */
+.chat-hdr {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px; height: 48px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.chat-hdr-title {
+  flex: 1; min-width: 0;
+  font-size: 14px; font-weight: 400; color: var(--t1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hdr-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 4px;
+  color: var(--t3); transition: background 0.12s, color 0.12s;
+}
+.hdr-icon:hover { background: var(--bg-hover); color: var(--t2); }
+.hdr-icon svg { width: 14px; height: 14px; }
+
+/* Agent status — spinner + text */
+.agent-status {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 16px 3px; flex-shrink: 0;
+}
+.spinner {
+  width: 14px; height: 14px; flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--t3);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.agent-status-text { font-size: 13px; color: var(--t2); }
+
+/* Messages */
+.chat-msgs {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 16px 16px 8px;
+  display: flex; flex-direction: column;
+}
+
+/* AI message — 无气泡，文档风格 */
+.msg-ai {
+  font-size: 14px; color: var(--t1); line-height: 1.6;
+  margin-bottom: 18px;
+}
+.msg-ai p { margin-bottom: 8px; }
+.msg-ai p:last-child { margin-bottom: 0; }
+.msg-ai ul { margin: 6px 0 8px; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.msg-ai li { display: flex; gap: 8px; padding-left: 2px; }
+.msg-ai li::before { content: "•"; color: var(--t3); flex-shrink: 0; }
+.msg-ai b { font-weight: 600; color: var(--t1); }
+
+/* Checkpoint — 时间线样式 (来自 replit-design-analysis) */
+.checkpoint {
+  display: flex; align-items: center; gap: 8px;
+  margin: 2px 0 14px;
+}
+.cp-icon { font-size: 13px; color: var(--green); flex-shrink: 0; line-height: 1; }
+.cp-text { font-size: 12px; color: var(--t3); white-space: nowrap; }
+
+/* User bubble */
+.msg-user { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.msg-user-bub {
+  background: var(--blue-msg);
+  border: 1px solid var(--blue-msgb);
+  border-radius: 10px 10px 2px 10px;
+  padding: 7px 12px;
+  font-size: 13px; color: #374151; max-width: 82%; line-height: 1.5;
+}
+
+/* Credits card — inline, 嵌在对话流中 */
+.credits {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-bdr);
+  border-radius: var(--r);
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.credits-star { font-size: 16px; color: var(--amber); flex-shrink: 0; line-height: 1.4; }
+.credits-main { font-size: 14px; color: var(--t1); margin-bottom: 3px; }
+.credits-link { font-size: 13px; color: var(--blue); text-decoration: none; }
+.credits-link:hover { text-decoration: underline; }
+
+/* ── Plan Card ── */
+.plan-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--white);
+  /* 零阴影原则 — replit-design-analysis §6.5 */
+  margin-bottom: 12px; overflow: hidden;
+}
+
+.pc-hdr {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-lt);
+}
+.pc-hdr svg { width: 13px; height: 13px; color: var(--t2); flex-shrink: 0; }
+.pc-hdr-ttl { flex: 1; font-size: 13px; font-weight: 600; color: var(--t1); }
+.pc-view { font-size: 11px; color: var(--t2); }
+.pc-view:hover { color: var(--blue); }
+.pc-x { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--t3); }
+.pc-x:hover { color: var(--t2); }
+.pc-x svg { width: 12px; height: 12px; }
+
+.pc-body { padding: 12px 14px; border-bottom: 1px solid var(--border-lt); }
+.pc-ttl { font-size: 14px; font-weight: 600; color: var(--t1); margin-bottom: 4px; line-height: 1.3; }
+.pc-desc { font-size: 12px; color: var(--t2); line-height: 1.5; margin-bottom: 8px; }
+.pc-pill {
+  display: inline-block; font-size: 11px; color: var(--t2);
+  background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 10px;
+}
+
+/* Steps */
+.pc-steps { margin-top: 10px; display: flex; flex-direction: column; }
+.step {
+  display: flex; align-items: flex-start; gap: 5px;
+  padding: 3px 0; font-size: 12px;
+}
+.step-n { width: 16px; text-align: right; font-family: var(--mono); font-size: 10px; color: var(--t3); flex-shrink: 0; padding-top: 1px; }
+.step-ico { width: 14px; flex-shrink: 0; text-align: center; font-size: 11px; padding-top: 1px; line-height: 1.4; }
+.ico-done { color: var(--green); }
+.ico-run {
+  display: inline-block; width: 7px; height: 7px;
+  background: var(--blue); border-radius: 50%;
+  animation: pulse 1.2s ease-in-out infinite;
+  vertical-align: middle; margin-top: 3px;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+.ico-pend { color: var(--t4); }
+.step-body { flex: 1; min-width: 0; }
+.step-lbl { line-height: 1.45; }
+.step-done   { color: var(--t3); }
+.step-running{ color: var(--t1); font-weight: 600; }
+.step-pending{ color: var(--t2); }
+.step-sub { font-size: 10px; color: var(--t3); margin-top: 1px; }
+
+.pc-prog { font-size: 11px; color: var(--t3); margin-top: 8px; }
+
+/* Plan actions */
+.pc-actions {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border-lt);
+}
+.split {
+  display: flex; align-items: center;
+  border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden;
+}
+.split-main {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px; font-size: 12px; color: #374151;
+  transition: background 0.12s;
+}
+.split-main:hover { background: var(--bg-subtle); }
+.split-main svg { width: 11px; height: 11px; }
+.split-div { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+.split-arr { display: flex; align-items: center; justify-content: center; padding: 5px 5px; color: var(--t3); transition: background 0.12s; }
+.split-arr:hover { background: var(--bg-subtle); }
+.split-arr svg { width: 11px; height: 11px; }
+.sp { flex: 1; }
+.btn-build {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 14px; background: var(--blue); border-radius: var(--r);
+  color: white; font-size: 12px; font-weight: 600; transition: background 0.12s;
+}
+.btn-build:hover { background: #0052CC; }
+
+/* Plan toolbar */
+.pc-bar {
+  display: flex; align-items: center; gap: 2px; padding: 5px 14px;
+}
+.tb {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px; border-radius: 4px;
+  font-size: 11px; color: var(--t3);
+  transition: background 0.12s, color 0.12s;
+}
+.tb:hover { background: var(--bg-hover); color: var(--t2); }
+.tb svg { width: 11px; height: 11px; }
+
+/* ── Input Composer ── */
+.composer {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-lt);
+  flex-shrink: 0;
+}
+
+/* 输入框：白底，圆角 12px，无左色条（idle状态） */
+.input-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);   /* 12px — replit-design-analysis */
+  overflow: hidden;
+}
+.input-ta {
+  width: 100%; min-height: 72px;   /* replit约80px */
+  padding: 12px 14px 4px;
+  background: transparent; border: none; outline: none;
+  resize: none; font-family: var(--font);
+  font-size: 13px; color: var(--t1); line-height: 1.5; display: block;
+}
+.input-ta::placeholder { color: var(--t3); }
+
+/* 工具栏 — 嵌入输入框内底部 */
+.input-bar {
+  display: flex; align-items: center; gap: 2px;
+  padding: 4px 10px 10px;
+}
+
+/* + 附件按钮 */
+.inp-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 4px;
+  color: var(--t3); transition: background 0.12s, color 0.12s;
+}
+.inp-btn:hover { background: var(--bg-hover); color: var(--t2); }
+.inp-btn svg { width: 15px; height: 15px; }
+
+/* 六点拖拽图标 */
+.grip { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; color: var(--t3); }
+.grip svg { width: 13px; height: 13px; }
+
+/* Economy/model 选择 — pill 形 */
+.model-pill {
+  display: flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 8px;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 999px; font-size: 11px; color: var(--t2);
+  transition: background 0.12s; cursor: pointer;
+}
+.model-pill:hover { background: var(--bg-hover); }
+.model-pill svg { width: 10px; height: 10px; }
+
+/* Plan toggle */
+.plan-toggle {
+  display: flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 8px;
+  border-radius: 999px; font-size: 11px; color: var(--t2);
+  transition: background 0.12s; cursor: pointer;
+}
+.plan-toggle:hover { background: var(--bg-hover); }
+.plan-toggle svg { width: 11px; height: 11px; }
+
+/* 麦克风 */
+.mic-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 4px;
+  color: var(--t3); transition: background 0.12s, color 0.12s;
+}
+.mic-btn:hover { background: var(--bg-hover); color: var(--t2); }
+.mic-btn svg { width: 15px; height: 15px; }
+
+/* 发送按钮 — 蓝圆，32px */
+.send-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--blue); color: white;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background 0.12s;
+}
+.send-btn:hover { background: #0052CC; }
+.send-btn svg { width: 14px; height: 14px; }
+
+/* ══════════════════════════════════════
+   PREVIEW PANEL
+   - Tabs: Canvas / app名称下拉
+   - Toolbar: 浏览器风格
+   - 内容区：#F5F5F5 浅灰背景，矩形界面框（无手机模型）
+══════════════════════════════════════ */
+.preview {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+/* Tab bar — Replit 原版样式 */
+.preview-tabs {
+  display: flex; align-items: center;
+  height: 36px; padding: 0 8px;
+  background: var(--white);         /* Replit: 白色tab栏 */
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; gap: 0;
+}
+.ptab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 10px; height: 100%;
+  border-bottom: 2px solid transparent;
+  font-size: 12px; color: var(--t3);
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+.ptab:hover { color: var(--t2); }
+.ptab.active { border-bottom-color: var(--blue); color: var(--blue); background: rgba(0,102,255,0.03); }
+.ptab svg { width: 12px; height: 12px; }
+.ptab-x { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 3px; color: var(--t3); margin-left: 2px; }
+.ptab-x:hover { background: var(--bg-hover); color: var(--t2); }
+.ptab-x svg { width: 10px; height: 10px; }
+
+.tabs-gap { flex: 1; }
+
+/* + Tools & files */
+.tools-btn { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--t3); padding: 0 6px; }
+.tools-btn:hover { color: var(--t2); }
+.tools-btn svg { width: 12px; height: 12px; }
+
+/* Search / Invite / Publish */
+.nav-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 4px; color: var(--t3); transition: background 0.12s, color 0.12s; }
+.nav-icon:hover { background: var(--bg-hover); color: var(--t2); }
+.nav-icon svg { width: 14px; height: 14px; }
+
+.invite-btn {
+  display: flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 10px;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-sm); font-size: 12px; color: #374151;
+  transition: background 0.12s;
+}
+.invite-btn:hover { background: var(--bg-hover); }
+
+.publish-btn {
+  display: flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 12px;
+  background: var(--blue); border-radius: var(--r-sm);
+  color: white; font-size: 12px; font-weight: 500;
+  transition: background 0.12s;
+}
+.publish-btn:hover { background: #0052CC; }
+.pub-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.7); flex-shrink: 0; }
+
+/* Preview toolbar — 浏览器地址栏风格 */
+.preview-bar {
+  display: flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 10px;
+  background: var(--bg-subtle);     /* #F9FAFB */
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* 左侧下拉: app 名称 */
+.app-select-btn {
+  display: flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 8px;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-sm); font-size: 12px; color: var(--t1);
+  transition: background 0.12s;
+}
+.app-select-btn:hover { background: var(--bg-hover); }
+.app-select-btn svg { width: 12px; height: 12px; color: var(--t3); }
+
+/* ←→↺ 导航按钮 */
+.nav-arr {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 4px; color: var(--t4);
+  transition: background 0.12s, color 0.12s;
+}
+.nav-arr:hover { background: var(--bg-hover); color: var(--t2); }
+.nav-arr svg { width: 13px; height: 13px; }
+
+/* URL bar */
+.url-bar {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px;
+  background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px; color: var(--t2); min-width: 0;
+}
+.url-bar svg { width: 12px; height: 12px; color: var(--t3); flex-shrink: 0; }
+.url-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 右侧工具图标 */
+.bar-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 26px;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--t3);
+  transition: background 0.12s, color 0.12s; flex-shrink: 0;
+}
+.bar-icon:hover { background: var(--bg-hover); color: var(--t2); }
+.bar-icon svg { width: 13px; height: 13px; }
+
+/* 屏幕切换 (PC / Mobile) */
+.size-toggle-bar {
+  display: flex; align-items: center;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 2px; gap: 1px;
+}
+.stb {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 22px; border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.stb.active { background: var(--bg-hover); color: var(--t1); }
+.stb:not(.active) { color: var(--t3); }
+.stb svg { width: 13px; height: 13px; }
+
+/* ══════════════════════════════════════
+   PREVIEW CONTENT
+   - 浅灰背景 #F5F5F5 (Replit原版)
+   - 矩形设备框，无手机外壳 (用户修改意见)
+══════════════════════════════════════ */
+.preview-content {
+  flex: 1; min-height: 0;
+  background: #F5F5F5;             /* Replit原版: 浅灰 */
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+
+/* 矩形界面框 — 无手机装饰 */
+.app-frame {
+  width: 340px; height: 580px;
+  background: var(--white);
+  border-radius: 12px;
+  overflow: hidden;
+  /* 零阴影原则的例外: 预览区用轻描边区分 */
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+  display: flex; flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* App 内容 */
+.app-hdr {
+  background: #0F172A; padding: 18px 16px 14px;
+  color: white; font-size: 17px; font-weight: 700; letter-spacing: -0.3px;
+  flex-shrink: 0;
+}
+.app-hdr-sub { font-size: 11px; color: rgba(255,255,255,0.45); font-weight: 400; margin-top: 2px; }
+
+.app-stats {
+  display: flex; gap: 8px; padding: 10px 10px 6px;
+  background: #F8FAFC; flex-shrink: 0;
+}
+.stat {
+  flex: 1; background: white;
+  border: 1px solid #E2E8F0; border-radius: 10px;
+  padding: 9px 6px; text-align: center;
+}
+.sv { font-size: 16px; font-weight: 700; color: #0F172A; }
+.sl { font-size: 9px; color: #94A3B8; margin-top: 1px; }
+
+.chart-box {
+  margin: 8px 10px;
+  background: white; border: 1px solid #E2E8F0;
+  border-radius: 10px; padding: 10px 12px; flex-shrink: 0;
+}
+.chart-title { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+.bars { display: flex; align-items: flex-end; gap: 5px; height: 44px; }
+.bar { flex: 1; border-radius: 3px 3px 0 0; transition: background 0.15s; }
+.bar:hover { filter: brightness(0.9); }
+
+.app-list { padding: 6px 12px 0; flex: 1; overflow: hidden; }
+.list-ttl { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.w-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid #F3F4F6;
+}
+.w-row:last-child { border-bottom: none; }
+.w-ico {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.w-info { flex: 1; min-width: 0; }
+.w-name { font-size: 12px; font-weight: 600; color: #1E293B; }
+.w-meta { font-size: 10px; color: #94A3B8; margin-top: 1px; }
+.w-dur { font-size: 11px; font-weight: 500; color: #0066FF; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="ide">
+
+  <!-- ══ NAVBAR ══ -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <!-- App icon -->
+      <div class="app-icon-wrap">
+        <button class="app-icon-btn">⚡</button>
+        <div class="app-menu">
+          <div class="app-menu-item">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Home
+          </div>
+          <div class="app-menu-item">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            Light theme
+          </div>
+          <div class="app-menu-item">
+            <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            中 / EN
+          </div>
+        </div>
+      </div>
+      <div class="nav-divider"></div>
+      <span class="project-name">Fitness Hub</span>
+    </div>
+
+    <div class="nav-right">
+      <!-- Refresh -->
+      <button class="nav-btn">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+        Refresh
+      </button>
+      <!-- Logs -->
+      <button class="nav-btn">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Logs
+      </button>
+      <!-- Screen size toggle -->
+      <div class="screen-toggle">
+        <button class="screen-btn">
+          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </button>
+        <button class="screen-btn active">
+          <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18" stroke-width="2"/></svg>
+        </button>
+      </div>
+      <!-- Run -->
+      <button class="btn-run">
+        <svg viewBox="0 0 24 24" stroke="none" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Run
+      </button>
+    </div>
+  </nav>
+
+  <!-- ══ BODY ══ -->
+  <div class="body-row">
+
+    <!-- ══ DOCK — 深色 ══ -->
+    <div class="dock">
+      <div class="dock-top">
+        <button class="dock-btn active" title="AI Chat">
+          <svg viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M5 3l.75 2.25L8 6l-2.25.75L5 9l-.75-2.25L2 6l2.25-.75z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>
+        </button>
+        <button class="dock-btn" title="New session">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
+      <div class="dock-bot">
+        <button class="dock-btn" title="Monitor">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ CHAT PANEL — 白色浅色 ══ -->
+    <div class="chat">
+
+      <div class="chat-hdr">
+        <span class="chat-hdr-title">Add workout tracking and statistics to the fitness application</span>
+        <button class="hdr-icon"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
+        <button class="hdr-icon"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      </div>
+
+      <!-- Agent status — spinner 样式 -->
+      <div class="agent-status">
+        <div class="spinner"></div>
+        <span class="agent-status-text">Planning final release deployment</span>
+      </div>
+
+      <div class="chat-msgs">
+
+        <!-- AI 消息 — 文档风格，无气泡 -->
+        <div class="msg-ai">
+          <p>FitTrack is live! Here's what's built and working:</p>
+          <ul>
+            <li><b>Dashboard</b> — stat cards for workouts, calories, active days</li>
+            <li><b>Workouts</b> — list all sessions with date, type, duration</li>
+            <li><b>New Workout</b> — form to log exercise with validation</li>
+          </ul>
+          <p>Everything is backed by a real PostgreSQL database with proper schema.</p>
+          <p><b>Would you like me to add a workout timer or progress charts next?</b></p>
+        </div>
+
+        <!-- Checkpoint — 时间线样式 -->
+        <div class="checkpoint">
+          <span class="cp-icon">✓</span>
+          <span class="cp-text">Checkpoint made · 3 hours ago</span>
+        </div>
+
+        <!-- User message -->
+        <div class="msg-user">
+          <div class="msg-user-bub">Add progress charts to the dashboard</div>
+        </div>
+
+        <!-- Credits card — 内联嵌入对话流 -->
+        <div class="credits">
+          <span class="credits-star">✦</span>
+          <div>
+            <div class="credits-main">You're out of credits.</div>
+            <a href="#" class="credits-link">Upgrade to Core</a>
+          </div>
+        </div>
+
+        <!-- Plan card -->
+        <div class="plan-card">
+
+          <div class="pc-hdr">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            <span class="pc-hdr-ttl">Task plan created</span>
+            <button class="pc-view">View</button>
+            <button class="pc-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+
+          <div class="pc-body">
+            <div class="pc-ttl">Add Progress Charts &amp; Statistics</div>
+            <div class="pc-desc">Create chart components using Chart.js to visualize workout history and calorie trends over time.</div>
+            <span class="pc-pill">Web app</span>
+
+            <div class="pc-steps">
+              <div class="step">
+                <span class="step-n">1</span>
+                <span class="step-ico"><span class="ico-done">✓</span></span>
+                <div class="step-body"><div class="step-lbl step-done">Install Chart.js dependency</div></div>
+              </div>
+              <div class="step">
+                <span class="step-n">2</span>
+                <span class="step-ico"><span class="ico-run"></span></span>
+                <div class="step-body">
+                  <div class="step-lbl step-running">Create ChartComponent.tsx</div>
+                  <div class="step-sub">Building line chart for workout history…</div>
+                </div>
+              </div>
+              <div class="step">
+                <span class="step-n">3</span>
+                <span class="step-ico"><span class="ico-pend">○</span></span>
+                <div class="step-body"><div class="step-lbl step-pending">Update Dashboard layout</div></div>
+              </div>
+              <div class="step">
+                <span class="step-n">4</span>
+                <span class="step-ico"><span class="ico-pend">○</span></span>
+                <div class="step-body"><div class="step-lbl step-pending">Add date range filter</div></div>
+              </div>
+              <div class="step">
+                <span class="step-n">5</span>
+                <span class="step-ico"><span class="ico-pend">○</span></span>
+                <div class="step-body"><div class="step-lbl step-pending">Connect to PostgreSQL data</div></div>
+              </div>
+            </div>
+            <div class="pc-prog">2 / 5 steps done</div>
+          </div>
+
+          <div class="pc-actions">
+            <div class="split">
+              <button class="split-main">
+                <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Build in background
+              </button>
+              <div class="split-div"></div>
+              <button class="split-arr"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+            </div>
+            <div class="sp"></div>
+            <button class="btn-build">Build here</button>
+          </div>
+
+          <div class="pc-bar">
+            <button class="tb">
+              <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+              Revise
+            </button>
+            <button class="tb">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              Cancel
+            </button>
+            <div class="sp"></div>
+            <button class="tb">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Power
+              <svg viewBox="0 0 24 24" style="width:9px;height:9px"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+
+        </div><!-- /plan-card -->
+      </div><!-- /chat-msgs -->
+
+      <!-- Composer — 白底，圆角 12px，内嵌工具栏 -->
+      <div class="composer">
+        <div class="input-wrap">
+          <textarea class="input-ta" placeholder="Make, test, iterate..."></textarea>
+          <div class="input-bar">
+            <!-- + 附件 -->
+            <button class="inp-btn" title="Attach">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <!-- 六点拖拽 -->
+            <button class="grip">
+              <svg viewBox="0 0 24 24" stroke="none" fill="currentColor">
+                <circle cx="9" cy="7" r="1.2"/><circle cx="15" cy="7" r="1.2"/>
+                <circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/>
+                <circle cx="9" cy="17" r="1.2"/><circle cx="15" cy="17" r="1.2"/>
+              </svg>
+            </button>
+            <!-- Model pill -->
+            <button class="model-pill">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="4" height="4"/><rect x="10" y="3" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/><rect x="3" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/><rect x="17" y="10" width="4" height="4"/><rect x="3" y="17" width="4" height="4"/><rect x="10" y="17" width="4" height="4"/><rect x="17" y="17" width="4" height="4"/></svg>
+              Economy
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <!-- Plan toggle -->
+            <button class="plan-toggle">
+              <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Plan
+            </button>
+            <!-- Mic -->
+            <button class="mic-btn">
+              <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+            <div class="sp"></div>
+            <!-- Send -->
+            <button class="send-btn">
+              <svg viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /chat -->
+
+    <!-- ══ PREVIEW PANEL ══ -->
+    <div class="preview">
+
+      <!-- Tab bar — Replit 原版风格 (Canvas / App名称) -->
+      <div class="preview-tabs">
+        <button class="ptab active">
+          Canvas
+          <button class="ptab-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </button>
+        <button class="ptab">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          Fitness Tracker
+          <svg viewBox="0 0 24 24" style="width:10px;height:10px"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="tabs-gap"></div>
+        <button class="tools-btn">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Tools &amp; files
+        </button>
+        <button class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+        <button class="invite-btn">Invite</button>
+        <button class="publish-btn">
+          <span class="pub-dot"></span>
+          Publish
+        </button>
+        <button class="nav-icon"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      </div>
+
+      <!-- Preview toolbar — 浏览器地址栏风格 -->
+      <div class="preview-bar">
+        <!-- App 名称下拉 -->
+        <button class="app-select-btn">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          Fitness Tracker
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <!-- 导航 ←→↺ -->
+        <button class="nav-arr"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <button class="nav-arr"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+        <button class="nav-arr"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
+        <!-- URL bar -->
+        <div class="url-bar">
+          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span class="url-text">.replit.dev/</span>
+        </div>
+        <!-- 右侧工具 -->
+        <!-- 屏幕切换 -->
+        <div class="size-toggle-bar">
+          <button class="stb">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </button>
+          <button class="stb active">
+            <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18" stroke-width="2"/></svg>
+          </button>
+        </div>
+        <button class="bar-icon" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="bar-icon" title="Split view"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+        <button class="bar-icon" title="Open in new tab"><svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+      </div>
+
+      <!-- 预览内容 — 浅灰背景 #F5F5F5，矩形框，无手机装饰 -->
+      <div class="preview-content">
+        <div class="app-frame">
+
+          <div class="app-hdr">
+            FitTrack
+            <div class="app-hdr-sub">Good morning, Alex 👋</div>
+          </div>
+
+          <div class="app-stats">
+            <div class="stat"><div class="sv">127</div><div class="sl">Workouts</div></div>
+            <div class="stat"><div class="sv">8,420</div><div class="sl">Calories</div></div>
+            <div class="stat"><div class="sv">14</div><div class="sl">Active Days</div></div>
+          </div>
+
+          <div class="chart-box">
+            <div class="chart-title">Weekly Activity</div>
+            <div class="bars">
+              <div class="bar" style="height:55%;background:#EEF2FF"></div>
+              <div class="bar" style="height:70%;background:#EEF2FF"></div>
+              <div class="bar" style="height:40%;background:#EEF2FF"></div>
+              <div class="bar" style="height:90%;background:#0066FF"></div>
+              <div class="bar" style="height:65%;background:#EEF2FF"></div>
+              <div class="bar" style="height:80%;background:#EEF2FF"></div>
+              <div class="bar" style="height:50%;background:#EEF2FF"></div>
+            </div>
+          </div>
+
+          <div class="app-list">
+            <div class="list-ttl">Recent Workouts</div>
+            <div class="w-row">
+              <div class="w-ico" style="background:#EEF2FF">🏃</div>
+              <div class="w-info"><div class="w-name">Morning Run</div><div class="w-meta">Today · 5.2 km</div></div>
+              <div class="w-dur">32 min</div>
+            </div>
+            <div class="w-row">
+              <div class="w-ico" style="background:#FFF7ED">🏋️</div>
+              <div class="w-info"><div class="w-name">Strength Training</div><div class="w-meta">Yesterday · Upper body</div></div>
+              <div class="w-dur">48 min</div>
+            </div>
+            <div class="w-row">
+              <div class="w-ico" style="background:#F0FDF4">🚴</div>
+              <div class="w-info"><div class="w-name">Cycling</div><div class="w-meta">Mon · 18 km</div></div>
+              <div class="w-dur">55 min</div>
+            </div>
+          </div>
+
+        </div><!-- /app-frame -->
+      </div><!-- /preview-content -->
+
+    </div><!-- /preview -->
+
+  </div><!-- /body-row -->
+</div><!-- /ide -->
+</body>
+</html>
