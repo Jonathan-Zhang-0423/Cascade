@@ -4,6 +4,7 @@ import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "../prompts/verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
+import { detectCapabilitiesFromText, loadCapabilities } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
 import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
 import { storage } from "../../infra/storage";
@@ -423,6 +424,19 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       const skillContent = await loadSkills(finalSkills);
       if (skillContent) {
         session.skillContent = skillContent;
+      }
+    }
+
+    // Capability skills (game design, frontend design, completeness checks, ...)
+    // are an additive track — keyword-detected (no LLM) and appended after the
+    // tech-stack skill so they never compete for the 2 tech-stack slots above.
+    const detectedCaps = await detectCapabilitiesFromText(planText);
+    if (detectedCaps.length > 0) {
+      const capContent = await loadCapabilities(detectedCaps);
+      if (capContent) {
+        session.skillContent = session.skillContent
+          ? `${session.skillContent}\n\n---\n\n${capContent}`
+          : capContent;
       }
     }
   }
