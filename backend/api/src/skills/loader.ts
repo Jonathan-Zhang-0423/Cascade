@@ -24,7 +24,7 @@ const BUILTIN_KEYWORDS: Record<string, string[]> = {
   "wechat-miniprogram": ["wechat mini program", "weixin", "wxml", "wxss", "miniprogram", "wx.", "小程序", "wechat", "mini program", "wechat app"],
 };
 
-function wordBoundaryMatch(text: string, keyword: string): boolean {
+export function wordBoundaryMatch(text: string, keyword: string): boolean {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i");
   return pattern.test(text);

@@ -155,6 +155,11 @@ export interface StreamingSnapshot {
   lastEventId?: number;
 }
 
+// A persisted streaming snapshot older than this is treated as dead on reload —
+// the server session has almost certainly ended, so its live "thinking" text
+// must not be revived (it would show as frozen ghost content).
+const STREAMING_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+
 function flattenToFlatFiles(files: FileNode[]): FlatFile[] {
   const result: FlatFile[] = [];
   for (const file of files) {
@@ -691,13 +696,39 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingC
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+// Latest state handed to debouncedPersist but not yet written. Lets a lifecycle
+// flush (tab hide/close) write the most recent snapshot synchronously instead of
+// losing it inside the 500ms debounce window.
+let pendingPersistState: IDEState | null = null;
 
 function debouncedPersist(state: IDEState) {
+  pendingPersistState = state;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     persistState(state);
     persistTimer = null;
+    pendingPersistState = null;
   }, 500);
+}
+
+// Write any pending debounced state immediately. Called on tab hide/close so a
+// just-added message's _nextSeq / managerPlan isn't lost if the tab closes
+// within the debounce window.
+function flushPersist() {
+  if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+  if (pendingPersistState) {
+    persistState(pendingPersistState);
+    pendingPersistState = null;
+  }
+}
+
+if (typeof window !== "undefined") {
+  // pagehide fires reliably on tab close and bfcache navigation; visibilitychange
+  // covers mobile/background where pagehide may not. Both just flush.
+  window.addEventListener("pagehide", flushPersist);
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPersist();
+  });
 }
 
 let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -996,7 +1027,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       reviewEnabled: !!saved.reviewEnabled,
       managerMessages: mgrMsgsWithSeq,
       _nextSeq: finalNextSeq,
-      streamingSnapshot: saved.streamingSnapshot || null,
+      streamingSnapshot: (() => {
+        // Expire stale snapshots: if the persisted stream is older than the
+        // threshold, the server-side session is almost certainly gone, so
+        // reviving its "thinking" text on reload would show frozen ghost
+        // content. Drop it and let the DB-backed message history stand.
+        const snap = saved.streamingSnapshot;
+        if (!snap) return null;
+        const age = Date.now() - (typeof snap.updatedAt === "number" ? snap.updatedAt : 0);
+        return age <= STREAMING_SNAPSHOT_MAX_AGE_MS ? snap : null;
+      })(),
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
       taskStatuses: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
@@ -1524,7 +1564,27 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       return next;
     }),
 
-  setManagerPlan: (plan) => set({ managerPlan: plan }),
+  // Replacing the active plan must also reset the live per-step status map.
+  // taskStatuses is keyed by global step number ("1".."N"), so without this a
+  // new plan's steps 1..N inherit the previous plan's "done" marks and render
+  // pre-checked. Historical PlanCards are unaffected — their statuses were
+  // already snapshotted onto the message via freezeLatestPlanStatuses() on
+  // all_complete, and ChatMessageList reads frozenTaskStatuses for non-latest
+  // plans.
+  setManagerPlan: (plan) =>
+    set({
+      managerPlan: plan,
+      taskStatuses: {},
+      taskFailureReasons: {},
+      verificationResults: {},
+      executingTaskIndex: null,
+      reviewPhase: "idle",
+      holisticReview: null,
+      fixCycle: 0,
+      completionData: null,
+      pendingConfirmation: null,
+      userConfirmationInput: "",
+    }),
 
   addManagerMessage: (message) =>
     set((state) => {
@@ -1622,6 +1682,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       fixCycle: 0,
       completionData: null,
     });
+    // Persist the _nextSeq reset immediately. A pending debounced write would
+    // otherwise still hold the old (high) _nextSeq, and if the tab closed before
+    // the next unrelated mutation flushed, reload would restore a stale counter
+    // and risk seq collisions. Cancel the debounce, then write synchronously.
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+    pendingPersistState = null;
+    persistState(get());
   },
 
   updateVerificationResult: (subTaskId, result) =>
