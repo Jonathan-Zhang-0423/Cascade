@@ -223,30 +223,40 @@ export function Navbar({ projectName }: NavbarProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-2 px-3 h-11 border-b border-black/[0.07] dark:border-white/[0.07] bg-white dark:bg-[#08080e] shrink-0"
+      className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[#E5E7EB] bg-white shrink-0"
       data-testid="navbar"
     >
-      {/* Left */}
+      {/* Left — Logo + 分割线 + 项目名 */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <button
-          className="flex items-center justify-center w-7 h-7 rounded-md bg-slate-50 dark:bg-[#0c0c14] border border-black/[0.07] dark:border-white/[0.07] text-slate-500 dark:text-[#8888a8] hover:text-slate-900 dark:hover:text-[#eeeef6] hover:bg-slate-100 dark:hover:bg-[#14141e] [transition:var(--transition-fast)] shrink-0"
-          onClick={handleBack}
-          data-testid="button-back"
-          aria-label={t("navbar.backLabel")}
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
+        {/* 公司 Logo：竖线组合 + "Cascade AI"，全部纯黑 */}
+        <div className="flex items-center gap-2 shrink-0 cursor-pointer" onClick={handleBack}>
+          <div className="flex items-end gap-[2px] h-[18px]">
+            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 9 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 14 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 18 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 12 }} />
+            <span className="block w-[3px] rounded-[2px] bg-[#111827]" style={{ height: 7 }} />
+          </div>
+          <span className="text-[14px] font-bold text-[#111827] tracking-[-0.2px] leading-none">
+            Cascade AI
+          </span>
+        </div>
+
+        {/* 分割线 */}
+        <div className="w-px h-[18px] bg-[#E5E7EB] shrink-0" />
+
+        {/* 项目名 */}
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-slate-50 dark:bg-[#0c0c14] border border-black/[0.07] dark:border-white/[0.07]" data-testid="emoji-project">
+          <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center shrink-0 text-sm leading-none select-none bg-[#F3F4F6] border border-[#E5E7EB]" data-testid="emoji-project">
             {getProjectEmoji(projectName)}
           </div>
-          <span className="text-[13px] font-semibold tracking-[-0.02em] truncate" data-testid="text-project-name">
+          <span className="text-[14px] font-medium text-[#1A1A1A] truncate" data-testid="text-project-name">
             {projectName}
           </span>
           {frameworkLabel && (
             <>
-              <span className="text-slate-300 dark:text-[#2e2e42] shrink-0">·</span>
-              <span className="text-[11px] text-slate-500 dark:text-[#8888a8] shrink-0">{frameworkLabel}</span>
+              <span className="text-[#D1D5DB] shrink-0">·</span>
+              <span className="text-[11px] text-[#9CA3AF] shrink-0">{frameworkLabel}</span>
             </>
           )}
         </div>
@@ -255,7 +265,7 @@ export function Navbar({ projectName }: NavbarProps) {
       {/* Right */}
       <div className="flex items-center gap-2 flex-1 justify-end">
         <Select value={themeId} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-slate-50 dark:bg-[#0c0c14] border-black/[0.07] dark:border-white/[0.07] text-slate-500 dark:text-[#8888a8]" data-testid="select-theme">
+          <SelectTrigger className="w-auto h-[26px] text-[11px] px-2 min-w-[80px] bg-white border-[#E5E7EB] text-[#6B6B6B] rounded-md" data-testid="select-theme">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -269,7 +279,7 @@ export function Navbar({ projectName }: NavbarProps) {
         <LangToggle />
         <Button
           size="sm"
-          className="gap-1.5 h-[27px] bg-gradient-to-br from-[#5585ff] to-[#2a5ce0] hover:from-[#6693ff] hover:to-[#3b6de8] text-white disabled:opacity-60 shadow-[0_1px_10px_rgba(79,130,255,0.42),inset_0_1px_0_rgba(255,255,255,0.13)] tracking-[0.01em]"
+          className="gap-1.5 h-[27px] bg-[#22C55E] hover:bg-[#16A34A] text-white disabled:opacity-60 transition-colors font-medium"
           data-testid="button-run"
           disabled={isRunning}
           onClick={handleRun}
