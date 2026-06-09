@@ -260,9 +260,14 @@ export class ManagerStreamInstance {
 
               this.state.set({ preparingPlan: false });
               this.clearLive();
-              if (!this.actions.getManagerPlan() || !planEmitted) {
-                this.actions.setManagerResponding(false);
-              }
+              // Always release the responding flag once the manager stream is
+              // done — even when a plan was emitted. Previously this was skipped
+              // for the plan-emitted case and deferred to the finally block,
+              // which is itself guarded by !this.reconnectTimer; a pending
+              // reconnect left isManagerResponding stuck true, which froze the
+              // live "thinking" panel and caused the next user prompt to be
+              // swallowed by the busy guard in chat-panel.
+              this.actions.setManagerResponding(false);
             }
 
             if (!planEmitted && isCurrentProject) {
@@ -469,6 +474,15 @@ export class ManagerStreamInstance {
                   thinking: managerThinkingAccumulated || undefined,
                 });
               }
+            }
+            // Reconnect path: clear live state + responding flag here rather than
+            // relying solely on the finally block (which is gated by
+            // !this.reconnectTimer). Mirrors the primary send() path so a stuck
+            // "thinking" panel / swallowed-prompt state can't survive a reconnect.
+            if (isCurrentProject) {
+              this.state.set({ preparingPlan: false });
+              this.clearLive();
+              this.actions.setManagerResponding(false);
             }
             return;
           } else if (evType === "manager_error") {

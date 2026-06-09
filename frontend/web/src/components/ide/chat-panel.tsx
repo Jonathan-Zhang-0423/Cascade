@@ -361,7 +361,7 @@ export function ChatPanel() {
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || mgrPreparingPlan || !isExecuting) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+        {(isManagerResponding || mgrPreparingPlan) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
           <BuildLivePanel
             entries={mgrLiveActionLog}
             thinkingText={mgrLiveThinkingText || undefined}

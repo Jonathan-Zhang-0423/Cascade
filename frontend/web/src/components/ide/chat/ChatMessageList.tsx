@@ -87,6 +87,7 @@ export function ChatMessageList({
   const seenCheckpointIds = new Set<string>();
 
   const loadOlderMessages = useIDEStore((s) => s.loadOlderMessages);
+  const messagesReady = useIDEStore((s) => s.messagesReady);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const [hasMoreChat, setHasMoreChat] = useState(true);
@@ -119,10 +120,22 @@ export function ChatMessageList({
 
   return (
     <>
-      {(hasMoreChat || hasMoreMgr) && totalMsgs > 0 && (
+      {/* While the DB message fetch is in flight on (re)load, the store holds
+          only a synchronous placeholder ([welcome] / []). Rendering it would
+          flash an empty chat before real history arrives. Show a skeleton until
+          messagesReady, unless the user already has real history on screen
+          (e.g. mid-session) — in that case keep showing it. */}
+      {!messagesReady && merged.length <= 1 && (
+        <div className="px-4 py-6 space-y-3" aria-hidden data-testid="chat-loading-skeleton">
+          <div className="h-3 w-2/3 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
+          <div className="h-3 w-1/2 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
+          <div className="h-3 w-3/4 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
+        </div>
+      )}
+      {(messagesReady || merged.length > 1) && (hasMoreChat || hasMoreMgr) && totalMsgs > 0 && (
         <div ref={sentinelRef} aria-hidden className="h-1" data-testid="chat-load-more-sentinel" />
       )}
-      {merged.map((item) => {
+      {(messagesReady || merged.length > 1) && merged.map((item) => {
         if (item.kind === "chat") {
           const { msg, idx } = item;
           if (msg.hidden) return null;
