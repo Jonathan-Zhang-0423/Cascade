@@ -7,7 +7,6 @@ import { MobileIDE } from "@/components/mobile/MobileIDE";
 import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
-import { CodeEditor } from "@/components/ide/code-editor";
 import { ChatPanel } from "@/components/ide/chat-panel";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { PreviewPanel } from "@/components/ide/preview-panel";
@@ -39,30 +38,63 @@ export default function IDEPage() {
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
 
-  // 左侧边栏可拖拽宽度 — 纯 CSS/DOM 实现，不依赖 ResizablePanelGroup
-  const [sidebarWidth, setSidebarWidth] = useState(220);
-  const draggingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startWRef = useRef(0);
+  // ── 预览 Tab 状态提升到 ide.tsx，传给 Navbar(③) 和 PreviewPanel(⑥) ──
+  type PreviewTab = { id: string; label: string; closable: boolean };
+  const [previewTabs, setPreviewTabs] = useState<PreviewTab[]>([
+    { id: "preview", label: "Preview", closable: false },
+  ]);
+  const [activePreviewTab, setActivePreviewTab] = useState("preview");
+  const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
 
-  const onDragStart = useCallback((e: React.MouseEvent) => {
-    draggingRef.current = true;
-    startXRef.current = e.clientX;
-    startWRef.current = sidebarWidth;
+  const addPreviewTab = () => {
+    const id = `tab-${Date.now()}`;
+    setPreviewTabs((prev) => [...prev, { id, label: "New tab", closable: true }]);
+    setActivePreviewTab(id);
+    setToolsPanelOpen(true);
+  };
+  const closePreviewTab = (id: string) => {
+    setPreviewTabs((prev) => prev.filter((t) => t.id !== id));
+    if (activePreviewTab === id) setActivePreviewTab("preview");
+  };
+
+  // ── 两竖线拖拽：贯穿全高（含 Navbar） ──
+  const [leftWidth, setLeftWidth] = useState(220);
+  const [midWidth, setMidWidth] = useState(400);
+  const leftDragging = useRef(false);
+  const rightDragging = useRef(false);
+  const dragStart = useRef({ x: 0, leftW: 0, midW: 0 });
+  const [leftActive, setLeftActive] = useState(false);
+  const [rightActive, setRightActive] = useState(false);
+
+  const onLeftDragStart = useCallback((e: React.MouseEvent) => {
+    leftDragging.current = true;
+    dragStart.current = { x: e.clientX, leftW: leftWidth, midW: midWidth };
+    setLeftActive(true);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-  }, [sidebarWidth]);
+  }, [leftWidth, midWidth]);
+
+  const onRightDragStart = useCallback((e: React.MouseEvent) => {
+    rightDragging.current = true;
+    dragStart.current = { x: e.clientX, leftW: leftWidth, midW: midWidth };
+    setRightActive(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [leftWidth, midWidth]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current) return;
-      const delta = e.clientX - startXRef.current;
-      const next = Math.max(160, Math.min(360, startWRef.current + delta));
-      setSidebarWidth(next);
+      const dx = e.clientX - dragStart.current.x;
+      if (leftDragging.current) {
+        setLeftWidth(Math.max(140, Math.min(360, dragStart.current.leftW + dx)));
+      }
+      if (rightDragging.current) {
+        setMidWidth(Math.max(280, Math.min(700, dragStart.current.midW + dx)));
+      }
     };
     const onUp = () => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
+      if (leftDragging.current) { leftDragging.current = false; setLeftActive(false); }
+      if (rightDragging.current) { rightDragging.current = false; setRightActive(false); }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -131,82 +163,101 @@ export default function IDEPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background" data-testid="ide-page">
-      <Navbar projectName={project.name} />
+    <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="ide-page">
+
+      {/* ── 一横：顶部导航栏 ── */}
+      <Navbar
+        projectName={project.name}
+        leftWidth={leftWidth}
+        midWidth={midWidth}
+        previewTabs={previewTabs}
+        activePreviewTab={activePreviewTab}
+        toolsPanelOpen={toolsPanelOpen}
+        onTabClick={(id) => { setActivePreviewTab(id); setToolsPanelOpen(false); }}
+        onTabClose={closePreviewTab}
+        onAddTab={addPreviewTab}
+        onToggleTools={() => setToolsPanelOpen((v) => !v)}
+      />
       <CommandPalette />
 
+      {/* ── 两竖线：绝对定位，贯穿 Navbar + 内容区全高，一体化 ── */}
+      {/* 第一竖线 */}
+      <div
+        className="absolute top-0 bottom-0 cursor-col-resize select-none z-20"
+        style={{
+          left: leftWidth,
+          width: 4,
+          background: leftActive ? "hsl(var(--primary))" : "var(--panel-divider)",
+          transition: leftActive ? "none" : "background 0.15s",
+        }}
+        onMouseDown={onLeftDragStart}
+        onMouseEnter={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
+        onMouseLeave={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
+      />
+      {/* 第二竖线 */}
+      <div
+        className="absolute top-0 bottom-0 cursor-col-resize select-none z-20"
+        style={{
+          left: leftWidth + 4 + midWidth,
+          width: 4,
+          background: rightActive ? "hsl(var(--primary))" : "var(--panel-divider)",
+          transition: rightActive ? "none" : "background 0.15s",
+        }}
+        onMouseDown={onRightDragStart}
+        onMouseEnter={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
+        onMouseLeave={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
+      />
+
+      {/* ── 下方三列（竖线已用绝对定位，这里不再放竖线元素） ── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
 
-        {/* 左侧边栏 — 固定宽度由 state 控制，右侧有拖拽手柄 */}
-        <div
-          className="flex-shrink-0 h-full overflow-hidden"
-          style={{ width: sidebarWidth }}
-        >
+        {/* ④ 左内容区 */}
+        <div className="flex-shrink-0 h-full overflow-hidden" style={{ width: leftWidth, background: "var(--panel-left-bg)" }}>
           <ToolsDock />
         </div>
 
-        {/* 拖拽手柄 */}
-        <div
-          className="w-[4px] h-full cursor-col-resize flex-shrink-0 bg-transparent hover:bg-[#0A66C2]/20 transition-colors group relative"
-          onMouseDown={onDragStart}
-        >
-          <div className="absolute inset-y-0 left-[1px] w-[2px] bg-[#EBEBEB] group-hover:bg-[#0A66C2]/40 transition-colors" />
+        {/* 竖线占位（4px，透明，让布局宽度对齐） */}
+        <div className="flex-shrink-0" style={{ width: 4 }} />
+
+        {/* ⑤ 中内容区 */}
+        <div className="flex-shrink-0 h-full overflow-hidden" style={{ width: midWidth, background: "var(--panel-mid-bg)" }}>
+          {activeTool && (
+            <div className="h-full overflow-hidden">
+              {activeTool === "files" && <FileTree />}
+              {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
+              {activeTool === "history" && <CheckpointPanel />}
+              {activeTool === "skills" && (
+                <SkillsPanel onEdit={(skill, scope) => setSkillsModal({ skill, scope })} refreshKey={skillsRefreshKey} />
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 主区域 */}
-        <div className="flex-1 min-w-0 p-1.5 bg-[#F5F5F5]">
-          <ResizablePanelGroup direction="horizontal" className="h-full gap-1.5">
-            {activeTool && (
-              <>
-                <ResizablePanel
-                  defaultSize={20}
-                  minSize={15}
-                  maxSize={40}
-                  id="tool-panel"
-                  order={1}
-                  className="bg-background rounded-lg border border-border/60 overflow-hidden"
-                >
-                  {activeTool === "files" && <FileTree />}
-                  {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
-                  {activeTool === "history" && <CheckpointPanel />}
-                  {activeTool === "skills" && (
-                    <SkillsPanel
-                      onEdit={(skill, scope) => setSkillsModal({ skill, scope })}
-                      refreshKey={skillsRefreshKey}
-                    />
-                  )}
-                </ResizablePanel>
-                <ResizableHandle className="w-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
-              </>
-            )}
+        {/* 竖线占位 */}
+        <div className="flex-shrink-0" style={{ width: 4 }} />
 
-            <ResizablePanel defaultSize={activeTool ? 80 : 100} minSize={30} id="workspace" order={2}>
-              <ResizablePanelGroup direction="vertical" className="gap-1.5">
-                <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="editor-preview-area" order={1}>
-                  {/* 代码编辑器面板已移除，只保留预览区 */}
-                  <div className="h-full bg-background rounded-lg border border-border/60 overflow-hidden">
-                    <PreviewPanel />
+        {/* ⑥ 右内容区 */}
+        <div className="flex-1 min-w-0 h-full overflow-hidden flex flex-col" style={{ background: "var(--panel-right-bg)" }}>
+          <ResizablePanelGroup direction="vertical" style={{ gap: 0 }}>
+            <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="preview-area" order={1}>
+              <div className="h-full overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
+                <PreviewPanel
+                  activePreviewTab={activePreviewTab}
+                  toolsPanelOpen={toolsPanelOpen}
+                  setToolsPanelOpen={setToolsPanelOpen}
+                />
+              </div>
+            </ResizablePanel>
+            {isConsoleOpen && (
+              <>
+                <ResizableHandle className="h-[4px] flex-shrink-0 cursor-row-resize" style={{ background: "var(--panel-divider)" }} />
+                <ResizablePanel defaultSize={25} minSize={10} maxSize={60} id="console-pane" order={2}>
+                  <div className="h-full overflow-hidden" style={{ background: "var(--panel-mid-bg)" }}>
+                    <ConsolePanel />
                   </div>
                 </ResizablePanel>
-
-                {isConsoleOpen && (
-                  <>
-                    <ResizableHandle className="h-[3px] bg-transparent hover:bg-primary/10 [transition:var(--transition-fast)]" />
-                    <ResizablePanel
-                      defaultSize={25}
-                      minSize={10}
-                      maxSize={60}
-                      id="console-pane"
-                      order={2}
-                      className="bg-background rounded-lg border border-border/60 overflow-hidden"
-                    >
-                      <ConsolePanel />
-                    </ResizablePanel>
-                  </>
-                )}
-              </ResizablePanelGroup>
-            </ResizablePanel>
-
+              </>
+            )}
           </ResizablePanelGroup>
         </div>
 
@@ -224,4 +275,4 @@ export default function IDEPage() {
       )}
     </div>
   );
-}
+}

@@ -176,6 +176,13 @@
   --transition-base:   150ms ease;
   --transition-slow:   250ms ease;
   --transition-spring: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── 六模块语义变量（浅色） ── */
+  --panel-left-bg:   #F5F4F2;
+  --panel-mid-bg:    #FFFFFF;
+  --panel-right-bg:  #F0EFED;
+  --panel-divider:   #E5E5E5;
+  --panel-nav-bg:    #FFFFFF;
 }
 
 /* ─── Dark theme (applied when .dark on <html>) ────────────────────────────
@@ -231,6 +238,13 @@
   --shadow-lg:  0px 8px 24px 0px rgba(0,0,0,0.40), 0px 4px 6px -1px rgba(0,0,0,0.20);
   --shadow-xl:  0px 16px 40px 0px rgba(0,0,0,0.45), 0px 8px 10px -1px rgba(0,0,0,0.20);
   --shadow-2xl: 0px 24px 60px 0px rgba(0,0,0,0.50);
+
+  /* ── 六模块语义变量（深色） ── */
+  --panel-left-bg:   hsl(222, 22%, 12%);
+  --panel-mid-bg:    hsl(222, 22%, 9%);
+  --panel-right-bg:  hsl(222, 22%, 11%);
+  --panel-divider:   hsl(220, 15%, 20%);
+  --panel-nav-bg:    hsl(222, 22%, 11%);
 }
 
 @layer base {
