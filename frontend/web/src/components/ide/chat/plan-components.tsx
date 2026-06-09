@@ -66,7 +66,7 @@ function StepItem({
       case "failed": return <span className="text-[#ef4444]">✗</span>;
       case "needs-input": return <span className="text-[#f59e0b]">?</span>;
       case "bug": return <span className="text-[#f97316]">!</span>;
-      default: return <span className="text-[rgba(238,238,246,0.2)]">○</span>;
+      default: return <span className="text-muted-foreground/40">○</span>;
     }
   })();
 
@@ -87,7 +87,7 @@ function StepItem({
       )}
       data-testid={`step-${task.step}`}
     >
-      <span className="w-[14px] text-right text-[10px] text-[rgba(238,238,246,0.2)] shrink-0 pt-px">
+      <span className="w-[14px] text-right text-[10px] text-muted-foreground/40 shrink-0 pt-px">
         {task.step}
       </span>
       <span className="w-[14px] text-center shrink-0">{statusSymbol}</span>
@@ -95,12 +95,12 @@ function StepItem({
         <span
           className={cn(
             isCompleted ? "text-[rgba(238,238,246,0.3)]"
-              : s === "done" ? "text-[rgba(238,238,246,0.35)]"
+              : s === "done" ? "text-muted-foreground/60"
               : s === "failed" ? "text-[#ef4444]"
-              : isRunning ? "text-[#e0e0f0] font-medium"
+              : isRunning ? "text-foreground font-medium"
               : s === "needs-input" ? "text-[#f59e0b]"
               : s === "bug" ? "text-[#f97316]"
-              : "text-[rgba(238,238,246,0.4)]",
+              : "text-muted-foreground/70",
           )}
         >
           {task.title}
@@ -111,7 +111,7 @@ function StepItem({
           </span>
         )}
         {isRunning && liveNarration && (
-          <div className="text-[10px] text-[rgba(238,238,246,0.35)] mt-0.5 truncate">
+          <div className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
             {liveNarration}
           </div>
         )}
@@ -158,7 +158,7 @@ export function ReviewStatusBadge({
     review_skipped: {
       icon: <ShieldCheck className="w-2.5 h-2.5" />,
       text: t(lang, "reviewSkipped"),
-      color: "text-[rgba(238,238,246,0.4)]",
+      color: "text-muted-foreground/70",
     },
     review_failed: {
       icon: <AlertTriangle className="w-2.5 h-2.5" />,
@@ -201,7 +201,7 @@ export function ThinkingToggle({ thinking }: { thinking: string }) {
         <span className="italic">thinking</span>
       </button>
       {open && (
-        <p className="mt-1 font-mono text-[10px] text-[rgba(238,238,246,0.25)] italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">
+        <p className="mt-1 font-mono text-[10px] text-muted-foreground/50 italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">
           {thinking}
         </p>
       )}
@@ -298,7 +298,7 @@ export function TaskPlanCard({
           onClick={() => setPreviewOpen(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] flex flex-col bg-[#0c0c14] border-l border-[rgba(255,255,255,0.08)] shadow-2xl"
+            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] flex flex-col bg-[var(--panel-mid-bg)] border-l border-border shadow-2xl"
             style={{ animation: "slideInRight 180ms ease" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -310,8 +310,8 @@ export function TaskPlanCard({
             `}</style>
             {/* Panel header */}
             <div className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)] shrink-0 flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 text-[rgba(238,238,246,0.4)] animate-spin shrink-0" />
-              <span className="font-mono text-[12px] font-semibold text-[#e0e0f0] flex-1 min-w-0 truncate">
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
+              <span className="font-mono text-[12px] font-semibold text-foreground flex-1 min-w-0 truncate">
                 {plan.summary}
               </span>
               <button
@@ -325,7 +325,7 @@ export function TaskPlanCard({
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               {overview && (
                 <div>
-                  <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-1.5">
+                  <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">
                     {t(lang, "overview")}
                   </p>
                   <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
@@ -355,7 +355,7 @@ export function TaskPlanCard({
               )}
               {outOfScope && (
                 <div>
-                  <p className="font-mono text-[9px] text-[rgba(238,238,246,0.25)] uppercase tracking-wider mb-1.5">
+                  <p className="font-mono text-[9px] text-muted-foreground/50 uppercase tracking-wider mb-1.5">
                     {t(lang, "outOfScope")}
                   </p>
                   <p className="text-[12px] text-[rgba(238,238,246,0.5)] leading-relaxed">
@@ -363,8 +363,8 @@ export function TaskPlanCard({
                   </p>
                 </div>
               )}
-              <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-[rgba(255,255,255,0.04)] pt-4")}>
-                <p className="font-mono text-[9px] text-[rgba(238,238,246,0.35)] uppercase tracking-wider mb-2">
+              <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-border/60 pt-4")}>
+                <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-2">
                   {t(lang, "tasks")}
                 </p>
                 <div className="space-y-2.5">
@@ -374,7 +374,7 @@ export function TaskPlanCard({
                         {step.step}
                       </span>
                       <div className="min-w-0">
-                        <p className="text-[12px] font-medium text-[#e0e0f0]">{step.title}</p>
+                        <p className="text-[12px] font-medium text-foreground">{step.title}</p>
                         {step.description && (
                           <p className="text-[11px] text-[rgba(238,238,246,0.5)] mt-0.5 leading-relaxed">
                             {step.description}
@@ -387,9 +387,9 @@ export function TaskPlanCard({
               </div>
             </div>
             {/* Panel footer */}
-            <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.04)] shrink-0 flex gap-2">
+            <div className="px-5 py-3 border-t border-border/60 shrink-0 flex gap-2">
               <button
-                className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
+                className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-border rounded px-3 py-1.5 transition-colors flex items-center gap-1"
                 onClick={() => { setPreviewOpen(false); setRegenerateOpen(true); }}
                 data-testid="button-revise-plan-preview"
               >
@@ -415,21 +415,21 @@ export function TaskPlanCard({
         className={cn(
           "mx-2.5 my-1 rounded-[14px] border overflow-visible",
           isFullyComplete
-            ? "border-[rgba(52,214,138,0.15)] bg-[rgba(255,255,255,0.015)]"
-            : "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.025)]",
+            ? "border-[rgba(52,214,138,0.15)] bg-[var(--panel-mid-bg)]"
+            : "border-border bg-[var(--panel-mid-bg)]",
         )}
         style={{ boxShadow: "0 2px 16px rgba(0,0,0,0.18)" }}
         data-testid="task-plan-card"
       >
         {/* ── Section 1: Header ── */}
-        <div className="px-4 pt-3.5 pb-2.5 flex items-center gap-2 border-b border-[rgba(255,255,255,0.04)]">
-          <Loader2 className="w-3.5 h-3.5 text-[rgba(238,238,246,0.4)] animate-spin shrink-0" />
-          <span className="font-mono text-[12.5px] font-semibold text-[#e0e0f0] flex-1 min-w-0 truncate">
+        <div className="px-4 pt-3.5 pb-2.5 flex items-center gap-2 border-b border-border/60">
+          <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
+          <span className="font-mono text-[12.5px] font-semibold text-foreground flex-1 min-w-0 truncate">
             Task plan created
           </span>
           <button
             onClick={() => setPreviewOpen(true)}
-            className="flex items-center gap-1 text-[10px] font-mono text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
+            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
             data-testid="button-view-plan-doc"
           >
             <ExternalLink className="w-3 h-3" />
@@ -444,8 +444,8 @@ export function TaskPlanCard({
         </div>
 
         {/* ── Section 2: Content ── */}
-        <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.04)]">
-          <p className="text-[12.5px] font-semibold text-[#e0e0f0] leading-snug mb-1.5">
+        <div className="px-4 py-3 border-b border-border/60">
+          <p className="text-[12.5px] font-semibold text-foreground leading-snug mb-1.5">
             {plan.summary}
           </p>
           {overview && (
@@ -453,7 +453,7 @@ export function TaskPlanCard({
               {overview}
             </p>
           )}
-          <span className="inline-block text-[10px] font-mono text-[rgba(238,238,246,0.5)] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] rounded-full px-2.5 py-0.5">
+          <span className="inline-block text-[10px] font-mono text-[rgba(238,238,246,0.5)] bg-[rgba(255,255,255,0.05)] border border-border rounded-full px-2.5 py-0.5">
             Web app
           </span>
 
@@ -479,7 +479,7 @@ export function TaskPlanCard({
           )}
 
           {/* Progress line */}
-          <div className="font-mono text-[10px] text-[rgba(238,238,246,0.25)] mt-2">
+          <div className="font-mono text-[10px] text-muted-foreground/50 mt-2">
             {t(lang, "stepsDone", { done: doneCount, total })}
             {isFullyComplete && ` · ${tCard("chat.allDone")}`}
           </div>
@@ -487,7 +487,7 @@ export function TaskPlanCard({
 
         {/* Review status */}
         {phase !== "idle" && phase !== "building" && (
-          <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
+          <div className="px-4 py-2 border-b border-border/60">
             <ReviewStatusBadge
               phase={phase}
               fixCycle={fixCycle || 0}
@@ -511,11 +511,11 @@ export function TaskPlanCard({
 
         {/* Completion line */}
         {isFullyComplete && (
-          <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
+          <div className="px-4 py-2 border-b border-border/60">
             <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5">
               <span>{tCard("chat.doneCheck")}</span>
               {changedFiles && changedFiles.length > 0 && (
-                <span className="text-[rgba(238,238,246,0.35)] text-[10px]">
+                <span className="text-muted-foreground/60 text-[10px]">
                   · {changedFiles.length === 1
                       ? tCard("chat.fileChanged")
                       : tCard("chat.filesChanged", { n: String(changedFiles.length) })}
@@ -523,7 +523,7 @@ export function TaskPlanCard({
               )}
             </div>
             {completionSummary && (
-              <p className="font-mono text-[10px] text-[rgba(238,238,246,0.4)] mt-1 leading-relaxed">
+              <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
                 {completionSummary}
               </p>
             )}
@@ -532,7 +532,7 @@ export function TaskPlanCard({
 
         {/* Confirmation input */}
         {showConfirmation && pendingConfirmation && onContinueWithInput && (
-          <div className="px-4 py-2.5 space-y-1.5 border-b border-[rgba(255,255,255,0.04)]">
+          <div className="px-4 py-2.5 space-y-1.5 border-b border-border/60">
             <Textarea
               placeholder={
                 pendingConfirmation.stepKey === "review"
@@ -541,7 +541,7 @@ export function TaskPlanCard({
               }
               value={confirmationInput || ""}
               onChange={(e) => onConfirmationInputChange?.(e.target.value)}
-              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)]"
+              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[var(--panel-mid-bg)] border-[rgba(255,255,255,0.06)]"
               rows={1}
               data-testid="input-confirmation"
             />
@@ -549,7 +549,7 @@ export function TaskPlanCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 h-5 text-[9px] font-mono border-[rgba(255,255,255,0.08)]"
+                className="flex-1 h-5 text-[9px] font-mono border-border"
                 onClick={() => onContinueWithInput(tCard("chat.looksGood"))}
                 data-testid="button-approve-all"
               >
@@ -575,7 +575,7 @@ export function TaskPlanCard({
           const inputs: string[] =
             plan.needs_input || (plan as unknown as Record<string, string[]>).user_confirmation_needed || [];
           return inputs.length > 0 && inputs[0] !== "" ? (
-            <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.04)]">
+            <div className="px-4 py-2 border-b border-border/60">
               <div className="flex items-center gap-1 font-mono text-[10px] text-[#f59e0b]">
                 <AlertTriangle className="w-2.5 h-2.5" />
                 <span>{t(lang, "needsInput")}</span>
@@ -591,7 +591,7 @@ export function TaskPlanCard({
 
         {/* ── Section 3: Primary actions ── */}
         {!showConfirmation && !isFullyComplete && (
-          <div className="px-4 py-2.5 border-b border-[rgba(255,255,255,0.04)] flex items-center gap-2">
+          <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2">
             {isExecuting ? (
               <button
                 className="font-mono text-[10px] text-[#ef4444]/70 hover:text-[#ef4444] border border-[rgba(239,68,68,0.2)] rounded-lg px-3 py-1.5 transition-colors"
@@ -603,9 +603,9 @@ export function TaskPlanCard({
             ) : isPreExecution ? (
               <>
                 {/* Split button: Build in background */}
-                <div className="flex items-center border border-[rgba(255,255,255,0.1)] rounded-lg overflow-visible relative" ref={bgDropdownRef}>
+                <div className="flex items-center border border-border/80 rounded-lg overflow-visible relative" ref={bgDropdownRef}>
                   <button
-                    className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:text-[rgba(238,238,246,0.9)] hover:bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5 transition-colors"
+                    className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-[rgba(238,238,246,0.9)] hover:bg-accent/10 px-2.5 py-1.5 transition-colors"
                     onClick={() => onExecute?.()}
                   >
                     <Hammer className="w-3 h-3" />
@@ -613,21 +613,21 @@ export function TaskPlanCard({
                   </button>
                   <div className="w-px h-4 bg-[rgba(255,255,255,0.08)] shrink-0" />
                   <button
-                    className="flex items-center justify-center px-1.5 py-1.5 text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.8)] hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+                    className="flex items-center justify-center px-1.5 py-1.5 text-muted-foreground/70 hover:text-[rgba(238,238,246,0.8)] hover:bg-accent/10 transition-colors"
                     onClick={() => setBgDropdownOpen((o) => !o)}
                   >
                     <DropdownChevron className="w-3 h-3" />
                   </button>
                   {bgDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-44 bg-[#0f0f1a] border border-[rgba(255,255,255,0.1)] rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                    <div className="absolute top-full left-0 mt-1 w-44 bg-[var(--panel-mid-bg)] border border-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
                       <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
                         onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
                       >
                         Build in background
                       </button>
                       <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.65)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
                         onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
                       >
                         Build quietly
@@ -664,7 +664,7 @@ export function TaskPlanCard({
         <div className="px-4 py-2 flex items-center gap-1">
           {/* Left: Revise + Cancel */}
           <button
-            className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
             onClick={() => setRegenerateOpen(true)}
             data-testid="button-revise-plan"
           >
@@ -672,7 +672,7 @@ export function TaskPlanCard({
             <span>Revise</span>
           </button>
           <button
-            className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
             onClick={onStop}
             data-testid="button-cancel-plan"
           >
@@ -685,13 +685,13 @@ export function TaskPlanCard({
           {/* Right: Power dropdown */}
           <div className="flex items-center gap-0.5">
             <button
-              className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-1.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+              className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
             >
               <LayoutGrid className="w-3 h-3" />
               <span>Power</span>
             </button>
             <button
-              className="flex items-center justify-center font-mono text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.75)] transition-colors px-0.5 py-1 rounded hover:bg-[rgba(255,255,255,0.04)]"
+              className="flex items-center justify-center font-mono text-muted-foreground/70 hover:text-foreground/80 transition-colors px-0.5 py-1 rounded hover:bg-accent/10"
             >
               <DropdownChevron className="w-3 h-3" />
             </button>
@@ -737,7 +737,7 @@ export function RegeneratePlanDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 bg-[#0c0c14] border-[rgba(255,255,255,0.08)]">
+      <DialogContent className="max-w-md p-0 bg-[var(--panel-mid-bg)] border-border">
         <DialogHeader className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)]">
           <DialogTitle className="text-sm font-mono font-medium">
             {t(lang, "regenerateTitle")}
@@ -751,7 +751,7 @@ export function RegeneratePlanDialog({
               checked={mode === "simple"}
               onChange={() => setMode("simple")}
             />
-            <span className="text-[12px] font-mono text-[rgba(238,238,246,0.85)] leading-snug">
+            <span className="text-[12px] font-mono text-foreground/90 leading-snug">
               {t(lang, "regenerateModeSimple")}
             </span>
           </label>
@@ -762,7 +762,7 @@ export function RegeneratePlanDialog({
               checked={mode === "with-note"}
               onChange={() => setMode("with-note")}
             />
-            <span className="text-[12px] font-mono text-[rgba(238,238,246,0.85)] leading-snug">
+            <span className="text-[12px] font-mono text-foreground/90 leading-snug">
               {t(lang, "regenerateModeWithNote")}
             </span>
           </label>
@@ -771,14 +771,14 @@ export function RegeneratePlanDialog({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t(lang, "regenerateNotePlaceholder")}
-              className="min-h-[80px] text-[12px] font-mono bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.08)]"
+              className="min-h-[80px] text-[12px] font-mono bg-[var(--panel-mid-bg)] border-border"
               autoFocus
             />
           )}
         </div>
         <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.06)] flex justify-end gap-2">
           <button
-            className="font-mono text-[11px] text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.9)] border border-[rgba(255,255,255,0.08)] rounded px-3 py-1.5 transition-colors"
+            className="font-mono text-[11px] text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.9)] border border-border rounded px-3 py-1.5 transition-colors"
             onClick={() => onOpenChange(false)}
             data-testid="button-regenerate-cancel"
           >
@@ -942,7 +942,7 @@ export function ManagerMessageBubble({
           <ThinkingToggle thinking={message.thinking} />
         </div>
       )}
-      <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.65)] space-y-1">
+      <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-muted-foreground space-y-1">
         {contentLines.map((line, i) => (
           <p key={i}>{line}</p>
         ))}

@@ -3,13 +3,18 @@ import { useProjectStore } from "@/stores/project-store";
 import { MobileChatPanel } from "./MobileChatPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
 import { useT } from "@/lib/i18n";
-import { ChevronLeft } from "lucide-react";
 
 type Tab = "chat" | "preview";
 
 interface MobileIDEProps {
   projectId: string;
 }
+
+export const INPUT_AREA_H = 84;
+export const CAPSULE_H = 38; // 胶囊尺寸加大
+
+// 顶部 bar 高度，MobileChatPanel 通过 padding-top 留出同等空间
+export const TOP_BAR_H = 44;
 
 export function MobileIDE({ projectId }: MobileIDEProps) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
@@ -36,62 +41,109 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     touchStartX.current = null;
     touchStartY.current = null;
-
     if (Math.abs(dy) > Math.abs(dx)) return;
     if (Math.abs(dx) < 40) return;
-
     if (dx < 0) setActiveTab("preview");
     else setActiveTab("chat");
   }, []);
 
+  const capsuleBottom = activeTab === "chat" ? INPUT_AREA_H + 24 : 16;
+
   return (
-      <div
-        className="h-screen w-screen flex flex-col bg-background overflow-hidden"
-        style={{ paddingTop: "env(safe-area-inset-top)" }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        {/* Header */}
-        <div className="shrink-0 bg-[#0c0c14] border-b border-border/40">
-          <div className="flex items-center gap-2 px-3 h-11">
-            <a href="/" className="text-primary shrink-0" aria-label="Back">
-              <ChevronLeft className="w-5 h-5" />
-            </a>
-            <span className="font-lora text-sm font-semibold text-foreground truncate flex-1">
-              {project?.name ?? "Project"}
+    <div
+      className="h-screen w-screen overflow-hidden bg-background relative"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* 内容区 */}
+      <div className="h-full">
+        {activeTab === "chat" ? <MobileChatPanel /> : <MobilePreviewPanel />}
+      </div>
+
+      {/* ── 顶部 bar（仅对话页）：返回 + 项目名居中 + 不透明背景 ── */}
+      {activeTab === "chat" && (
+        <div
+          className="fixed left-0 right-0 z-40 flex items-center px-3"
+          style={{
+            top: "env(safe-area-inset-top)",
+            height: TOP_BAR_H,
+            background: "var(--background)",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          {/* 返回按钮（左侧绝对定位，不占据 flex 空间） */}
+          <a
+            href="/app"
+            className="absolute left-3 flex items-center justify-center"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              background: "rgba(128,128,128,0.12)",
+              color: "var(--foreground)",
+              fontSize: 20,
+              fontWeight: 300,
+              textDecoration: "none",
+              lineHeight: 1,
+              opacity: 0.7,
+            }}
+            aria-label="Back to home"
+          >
+            ‹
+          </a>
+
+          {/* 项目名居中，无 icon */}
+          <div className="flex items-center justify-center w-full min-w-0">
+            <span
+              className="text-sm font-medium truncate max-w-[60vw]"
+              style={{ color: "var(--foreground)" }}
+            >
+              {project?.name ?? ""}
             </span>
-            {project?.framework && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary/80 shrink-0">
-                {project.framework}
-              </span>
-            )}
-          </div>
-          <div className="flex px-3 gap-1 pb-2">
-            {(["chat", "preview"] as Tab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={[
-                  "text-xs px-3 py-1.5 rounded-full font-semibold capitalize transition-colors",
-                  activeTab === tab
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                ].join(" ")}
-              >
-                {TAB_LABELS[tab]}
-              </button>
-            ))}
           </div>
         </div>
+      )}
 
-        {/* Panel area */}
-        <div className="flex-1 min-h-0">
-          {activeTab === "chat" ? (
-            <MobileChatPanel onShowPreview={() => setActiveTab("preview")} />
-          ) : (
-            <MobilePreviewPanel onBack={() => setActiveTab("chat")} />
-          )}
+      {/* ── 悬浮胶囊 tab ── */}
+      <div
+        className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none"
+        style={{ bottom: capsuleBottom }}
+      >
+        <div
+          className="flex items-center gap-0.5 px-1.5 py-1.5 pointer-events-auto"
+          style={{
+            height: CAPSULE_H,
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.55)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            border: "1px solid rgba(0,0,0,0.10)",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
+          }}
+        >
+          {(["chat", "preview"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                fontSize: 12,
+                fontWeight: activeTab === tab ? 600 : 400,
+                color: activeTab === tab ? "#FFFFFF" : "#555555",
+                background: activeTab === tab ? "#1A1A1A" : "transparent",
+                border: "none",
+                borderRadius: 999,
+                padding: "4px 20px",
+                lineHeight: "22px",
+                transition: "all 0.15s",
+                cursor: "pointer",
+              }}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          ))}
         </div>
       </div>
+    </div>
   );
 }

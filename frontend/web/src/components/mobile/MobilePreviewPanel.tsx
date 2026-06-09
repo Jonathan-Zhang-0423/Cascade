@@ -1,28 +1,28 @@
 import { PreviewPanel } from "@/components/ide/preview-panel";
-import { useT } from "@/lib/i18n";
 
-interface MobilePreviewPanelProps {
-  onBack: () => void;
-}
-
-export function MobilePreviewPanel({ onBack }: MobilePreviewPanelProps) {
-  const t = useT();
+export function MobilePreviewPanel() {
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex-1 min-h-0 overflow-hidden [&_.preview-toolbar]:hidden">
-        <PreviewPanel fullscreen />
-      </div>
-      <div
-        className="h-11 flex items-center justify-center border-t border-border/40 bg-[#0c0c14] shrink-0"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <button
-          onClick={onBack}
-          className="text-sm text-muted-foreground flex items-center gap-1.5 px-4 py-2"
-        >
-          {t("mobile.backToChat")}
-        </button>
-      </div>
+    <div className="mobile-preview-wrap h-full w-full overflow-hidden relative">
+      <style>{`
+        /* 隐藏顶部 Tab 栏（Preview + Tools & files + Invite + Publish 那一行）
+           PreviewPanel 根节点是 data-testid="preview-panel"，
+           第一个直接子 div 就是 h-[38px] 的 tab 栏 */
+        .mobile-preview-wrap [data-testid="preview-panel"] > div:first-child {
+          display: none !important;
+        }
+
+        /* 隐藏第二行工具栏（地址栏 / 设备切换 / 刷新按钮那行）
+           它是 preview-panel 内第二个直接子 div */
+        .mobile-preview-wrap [data-testid="preview-panel"] > div:nth-child(2):not(.flex-1) {
+          display: none !important;
+        }
+
+        /* 让内容区占满全屏 */
+        .mobile-preview-wrap [data-testid="preview-panel"] {
+          height: 100% !important;
+        }
+      `}</style>
+      <PreviewPanel fullscreen />
     </div>
   );
 }

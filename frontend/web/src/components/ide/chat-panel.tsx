@@ -327,9 +327,9 @@ export function ChatPanel() {
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
-    <div className="h-full flex flex-col bg-[#08080e] relative group/panel" data-testid="chat-panel">
+    <div className="h-full flex flex-col relative group/panel" style={{ background: "var(--panel-mid-bg)" }} data-testid="chat-panel">
       <button
-        className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-[#484860] hover:text-[#8888a8] hover:bg-[rgba(255,255,255,0.04)] opacity-0 group-hover/panel:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent/10 opacity-0 group-hover/panel:opacity-100 transition-opacity"
         onClick={() => setActiveTool(null)}
         aria-label={tGlobal("chat.close")}
         data-testid="button-close-chat"

@@ -72,7 +72,7 @@ const NarrationLine = memo(function NarrationLine({ line }: { line: string }) {
   if (line.startsWith("• ")) {
     return (
       <div className="flex items-start gap-1.5">
-        <span className="text-[rgba(238,238,246,0.35)] shrink-0">•</span>
+        <span className="text-muted-foreground/60 shrink-0">•</span>
         <span>{line.slice(2)}</span>
       </div>
     );
@@ -88,7 +88,7 @@ function NarrationBlock({ text, isLive }: { text: string; isLive?: boolean }) {
   if (lines.length === 0 && !isLive) return null;
   return (
     <div
-      className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.65)] space-y-0.5"
+      className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-muted-foreground space-y-0.5"
       data-testid="narration-block"
     >
       {lines.map((line, i) => (
@@ -218,7 +218,7 @@ const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
   edit: { icon: PencilLine, color: "text-[#34d68a]" },
   tool: { icon: Wrench, color: "text-[#4f82ff]" },
   terminal: { icon: Terminal, color: "text-[#f59e0b]" },
-  other: { icon: Circle, color: "text-[rgba(238,238,246,0.35)]" },
+  other: { icon: Circle, color: "text-muted-foreground/60" },
 };
 
 // ── G. ActionDetailRow ────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ const ActionDetailRow = memo(function ActionDetailRow({
   return (
     <div className="font-mono text-[11px]" data-testid="action-detail-row">
       <button
-        className="flex items-center gap-1.5 w-full text-left py-px text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.85)] transition-colors"
+        className="flex items-center gap-1.5 w-full text-left py-px text-[rgba(238,238,246,0.6)] hover:text-foreground/90 transition-colors"
         onClick={() => setOpen((o) => !o)}
       >
         <span className="text-[9px] text-[rgba(238,238,246,0.3)] w-2 shrink-0">
@@ -270,7 +270,7 @@ const ActionDetailRow = memo(function ActionDetailRow({
                 </div>
               ))}
               {detail.content && (
-                <pre className="text-[9.5px] text-[rgba(238,238,246,0.4)] whitespace-pre-wrap break-words leading-snug max-h-[180px] overflow-y-auto bg-[rgba(255,255,255,0.02)] rounded px-1.5 py-1">
+                <pre className="text-[9.5px] text-muted-foreground/70 whitespace-pre-wrap break-words leading-snug max-h-[180px] overflow-y-auto bg-[var(--panel-mid-bg)] rounded px-1.5 py-1">
                   {detail.content}
                 </pre>
               )}
@@ -331,7 +331,7 @@ const SegmentView = memo(function SegmentView({
           ) : (
             <div>
               <button
-                className="flex items-center gap-1 py-0.5 text-[rgba(238,238,246,0.4)] hover:text-[rgba(238,238,246,0.7)] transition-colors font-mono text-[11px]"
+                className="flex items-center gap-1 py-0.5 text-muted-foreground/70 hover:text-[rgba(238,238,246,0.7)] transition-colors font-mono text-[11px]"
                 onClick={() => setExpanded(false)}
                 data-testid="segment-expanded"
               >
@@ -395,7 +395,7 @@ function CostSummary({
   return (
     <div className="px-3.5 pt-1" data-testid="cost-summary">
       <button
-        className="flex items-center gap-1.5 font-mono text-[10px] text-[rgba(238,238,246,0.35)] hover:text-[rgba(238,238,246,0.6)] transition-colors"
+        className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/60 hover:text-[rgba(238,238,246,0.6)] transition-colors"
         onClick={() => setOpen((o) => !o)}
       >
         <Clock className="w-2.5 h-2.5" />
@@ -405,7 +405,7 @@ function CostSummary({
         />
       </button>
       {open && (
-        <div className="mt-1 pl-4 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[10px] text-[rgba(238,238,246,0.4)]">
+        <div className="mt-1 pl-4 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[10px] text-muted-foreground/70">
           <span>用时：{formatDuration(stats.durSec)}</span>
           <span>操作数：{stats.ops}</span>
           <span>读取文件：{stats.readFiles}</span>

@@ -115,9 +115,9 @@ export function CodeBlockView({
             {tGlobalRef("chat.applied")}
           </span>
         )}
-        <span className="flex-1 border-b border-[rgba(255,255,255,0.04)]" />
+        <span className="flex-1 border-b border-border/60" />
         <button
-          className="opacity-0 group-hover/code-header:opacity-100 text-[rgba(238,238,246,0.4)] hover:text-[#4f82ff] transition-all"
+          className="opacity-0 group-hover/code-header:opacity-100 text-muted-foreground/70 hover:text-[#4f82ff] transition-all"
           onClick={(e) => { e.stopPropagation(); openFile(block.filePath); }}
           data-testid={`button-open-${block.filePath}`}
         >
@@ -191,7 +191,7 @@ function TextWithSummary({ text }: { text: string }) {
           <Check className="w-3 h-3" />
           {headerText}
         </div>
-        <div className="text-[12px] leading-relaxed text-[rgba(238,238,246,0.65)]">
+        <div className="text-[12px] leading-relaxed text-muted-foreground">
           {renderBoldMarkdown(body)}
         </div>
       </div>
@@ -355,7 +355,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
     >
       <div className="flex-1 h-px bg-[rgba(255,255,255,0.04)]" />
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-[9px] text-[rgba(238,238,246,0.2)]">
+        <span className="text-[9px] text-muted-foreground/40">
           {message.content} · {formatRelativeTime(message.timestamp)}
         </span>
         {isAvailable && (
@@ -366,7 +366,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
               "inline-flex items-center gap-0.5 text-[9px] transition-colors",
               restored
                 ? "text-[#34d68a]/60"
-                : "text-[rgba(238,238,246,0.2)] hover:text-[#4f82ff]/60",
+                : "text-muted-foreground/40 hover:text-[#4f82ff]/60",
             )}
             data-testid={`button-restore-${message.checkpointId}`}
           >
@@ -388,7 +388,7 @@ export function TypingIndicator({ text }: { text?: string }) {
   const lang = usePlanCardLang();
   return (
     <div
-      className="px-3.5 flex items-center gap-1.5 font-mono text-[11px] text-[rgba(238,238,246,0.35)]"
+      className="px-3.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/60"
       data-testid="typing-indicator"
     >
       <span className="animate-pulse">⠋</span>

@@ -141,8 +141,8 @@ export function ChatInputArea({
         }}
         className="rounded-md overflow-hidden transition-colors"
         style={{
-          background: "#0a0a12",
-          border: "1px solid rgba(255,255,255,0.05)",
+          background: "var(--panel-mid-bg)",
+          border: "1px solid var(--panel-divider)",
           borderLeft: `3px solid ${borderColor}`,
         }}
       >
@@ -173,7 +173,7 @@ export function ChatInputArea({
         <div className="flex items-center gap-1.5 px-2 pb-1.5">
           {/* Plan mode toggle */}
           <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors"
             onClick={onToggleMode}
             data-testid="toggle-plan-mode"
             title={
@@ -194,14 +194,14 @@ export function ChatInputArea({
                 <Check className="w-2 h-2 text-white" />
               )}
             </div>
-            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">
+            <span className="font-mono text-[10px] text-muted-foreground/70">
               plan
             </span>
           </button>
 
           {/* Review toggle */}
           <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors"
             onClick={onToggleReview}
             data-testid="toggle-review"
             title={
@@ -222,71 +222,16 @@ export function ChatInputArea({
                 <Check className="w-2 h-2 text-white" />
               )}
             </div>
-            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">
+            <span className="font-mono text-[10px] text-muted-foreground/70">
               review
             </span>
           </button>
 
-          {/* Provider selector */}
-          <Select
-            value={selectedProvider}
-            onValueChange={(v) => setSelectedProvider(v as AIProvider)}
-          >
-            <SelectTrigger
-              className="h-5 w-auto gap-0.5 border-0 bg-transparent px-1 py-0 text-[9px] font-mono shadow-none focus:ring-0 focus:ring-offset-0 text-[rgba(238,238,246,0.35)] hover:text-[rgba(238,238,246,0.6)] transition-colors [&>svg]:w-2 [&>svg]:h-2"
-              data-testid="select-model-provider"
-            >
-              <SelectValue>
-                <span className="font-mono text-[9px]">
-                  {selectedProvider === "kimi"
-                    ? "kimi"
-                    : selectedProvider === "minimax"
-                      ? "minimax"
-                      : selectedProvider === "glm"
-                        ? "glm"
-                        : selectedProvider === "deepseek-pro"
-                          ? "deepseek-pro"
-                          : selectedProvider === "deepseek-flash"
-                            ? "deepseek-flash"
-                            : "doubao"}
-                </span>
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent align="end" className="min-w-[100px]">
-              <SelectItem value="doubao" className="text-xs font-mono">
-                doubao
-              </SelectItem>
-              {providers.kimi && (
-                <SelectItem value="kimi" className="text-xs font-mono">
-                  kimi
-                </SelectItem>
-              )}
-              {providers.minimax && (
-                <SelectItem value="minimax" className="text-xs font-mono">
-                  minimax
-                </SelectItem>
-              )}
-              {providers.glm && (
-                <SelectItem value="glm" className="text-xs font-mono">
-                  glm
-                </SelectItem>
-              )}
-              {providers["deepseek-pro"] && (
-                <SelectItem value="deepseek-pro" className="text-xs font-mono">
-                  deepseek-pro
-                </SelectItem>
-              )}
-              {providers["deepseek-flash"] && (
-                <SelectItem value="deepseek-flash" className="text-xs font-mono">
-                  deepseek-flash
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
+          
 
           {/* Polish button */}
           <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors disabled:opacity-30 disabled:cursor-default"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors disabled:opacity-30 disabled:cursor-default"
             onClick={onPolish}
             disabled={polishLoading || !input.trim() || isBusy}
             title="Polish — restructure your prompt for clarity"
@@ -294,14 +239,14 @@ export function ChatInputArea({
             {polishLoading ? (
               <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
             ) : (
-              <Wand2 className="w-3 h-3 text-[rgba(238,238,246,0.4)]" />
+              <Wand2 className="w-3 h-3 text-muted-foreground/70" />
             )}
-            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">polish</span>
+            <span className="font-mono text-[10px] text-muted-foreground/70">polish</span>
           </button>
 
           {/* Smart Response button */}
           <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[rgba(255,255,255,0.04)] transition-colors disabled:opacity-30 disabled:cursor-default"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors disabled:opacity-30 disabled:cursor-default"
             onClick={onSmartResponse}
             disabled={smartResponseLoading || isBusy}
             title="Smart Response — let AI suggest a reply"
@@ -309,9 +254,9 @@ export function ChatInputArea({
             {smartResponseLoading ? (
               <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
             ) : (
-              <Sparkles className="w-3 h-3 text-[rgba(238,238,246,0.4)]" />
+              <Sparkles className="w-3 h-3 text-muted-foreground/70" />
             )}
-            <span className="font-mono text-[10px] text-[rgba(238,238,246,0.4)]">suggest</span>
+            <span className="font-mono text-[10px] text-muted-foreground/70">suggest</span>
           </button>
 
           <div className="flex-1" />
@@ -331,7 +276,7 @@ export function ChatInputArea({
                 "w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors",
                 input.trim() || (chatMode === "build" && managerPlan && !isExecuting)
                   ? "bg-[#4f82ff] hover:bg-[#3a6ee8] text-white"
-                  : "bg-[rgba(255,255,255,0.06)] text-[rgba(238,238,246,0.25)] cursor-default",
+                  : "bg-[rgba(255,255,255,0.06)] text-muted-foreground/50 cursor-default",
               )}
               onClick={onSend}
               disabled={

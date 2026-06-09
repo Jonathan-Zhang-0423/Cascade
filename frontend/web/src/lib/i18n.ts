@@ -371,6 +371,16 @@ const zh: Dict = {
   "wechat.dismissWarnings": "关闭提示",
   "wechat.export": "导出",
   "wechat.exportTooltip": "下载 ZIP，在微信开发者工具中打开以获得完整保真度预览",
+
+  "navbar.home": "主页",
+  "navbar.recentProjects": "最近项目",
+  "navbar.settings": "设置",
+  "navbar.notifications": "通知",
+  "navbar.clui": "命令行",
+  "navbar.lightMode": "浅色模式",
+  "navbar.darkMode": "深色模式",
+  "navbar.help": "帮助",
+  "navbar.logout": "退出登录",
 };
 
 const en: Dict = {
@@ -742,6 +752,16 @@ const en: Dict = {
   "wechat.dismissWarnings": "Dismiss warnings",
   "wechat.export": "Export",
   "wechat.exportTooltip": "Download ZIP to open in WeChat Developer Tools for full-fidelity preview",
+
+  "navbar.home": "Home",
+  "navbar.recentProjects": "Recent Projects",
+  "navbar.settings": "Settings",
+  "navbar.notifications": "Notifications",
+  "navbar.clui": "Command Line",
+  "navbar.lightMode": "Light Mode",
+  "navbar.darkMode": "Dark Mode",
+  "navbar.help": "Help",
+  "navbar.logout": "Log out",
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
