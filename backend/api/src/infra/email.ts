@@ -11,11 +11,19 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string;  // base64
+  type: string;
+  disposition: "attachment" | "inline";
+}
+
 export interface SendEmailInput {
   to: string | string[];
   subject: string;
   html: string;
   text: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
@@ -36,6 +44,10 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     subject: input.subject,
     html: input.html,
     text: input.text,
+    attachments: input.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+    })),
   });
   if (error) {
     throw new Error(`Resend error: ${error.message ?? JSON.stringify(error)}`);
