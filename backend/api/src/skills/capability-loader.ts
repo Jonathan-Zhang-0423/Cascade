@@ -1,6 +1,7 @@
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import { wordBoundaryMatch } from "./loader";
+import { srcDir } from "../infra/paths";
 
 /**
  * Capability skills are an ADDITIVE track, orthogonal to the tech-stack skills
@@ -18,7 +19,7 @@ export interface CapabilityMeta {
   keywords: string[];
 }
 
-const CAPABILITIES_BASE_DIR = join(import.meta.dirname, "capabilities");
+const CAPABILITIES_BASE_DIR = srcDir("skills", "capabilities");
 
 // Cap at 2 to bound prompt size — same rationale as MAX_SKILLS in loader.ts.
 const MAX_CAPABILITIES = 2;

@@ -6,6 +6,7 @@ import { join } from "path";
 import type { ToolSchema, ToolHandler, ToolHandlers } from "../agent/loop/agent-loop";
 import type { BuildSessionState, SseEmit } from "../agent/orchestrator/build-orchestrator";
 import { shellManager } from "../agent/tools/shell-manager";
+import { srcDir } from "../infra/paths";
 
 export interface LoadedSkills {
   knowledgePacks: string[];
@@ -172,7 +173,7 @@ export async function loadUserSkills(
   }
 
   // 4. Built-in skills from server/skills/ (lowest priority)
-  const skillsDir = join(import.meta.dirname, "builtin");
+  const skillsDir = srcDir("skills", "builtin");
   try {
     const dirents = await readdir(skillsDir, { withFileTypes: true });
     for (const d of dirents) {

@@ -16,12 +16,17 @@ import { createHash, randomBytes } from "crypto";
 import { existsSync } from "fs";
 import { build as esbuild } from "esbuild";
 import { transformSync } from "@babel/core";
+import { srcDir } from "../../infra/paths";
+
+// This module's own source directory, resolved from the source root so the
+// existing relative segments below work in both dev and the bundled prod build.
+const HERE = srcDir("compiler", "rn-web");
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const VENDOR_PATH = join(import.meta.dirname, "../../../assets", "rn-vendor.js");
+const VENDOR_PATH = join(HERE, "../../../assets", "rn-vendor.js");
 const BUILD_CACHE_MAX_AGE = 30 * 60 * 1000; // 30 min
 const MAX_CACHE_ENTRIES = 50;
 const MAX_CONCURRENT_COMPILES = 4;
@@ -68,11 +73,11 @@ export async function ensureVendorBundle(): Promise<void> {
   if (vendorBuildPromise) return vendorBuildPromise;
 
   vendorBuildPromise = (async () => {
-    await mkdir(join(import.meta.dirname, "../../../assets"), { recursive: true });
+    await mkdir(join(HERE, "../../../assets"), { recursive: true });
     console.log("[rn-web] Building vendor bundle (React + ReactDOM + react-native-web)...");
     try {
       await esbuild({
-        entryPoints: [join(import.meta.dirname, "rn-vendor-entry.js")],
+        entryPoints: [join(HERE, "rn-vendor-entry.js")],
         bundle: true,
         format: "iife",
         globalName: "__RNW__",
@@ -90,7 +95,7 @@ export async function ensureVendorBundle(): Promise<void> {
           "react-native-worklets": "react-native-web",
           // Stub out codegenNativeComponent — imported by react-native-safe-area-context
           // at init time. Without this it crashes in the browser IIFE with a dynamic require error.
-          "react-native/Libraries/Utilities/codegenNativeComponent": join(import.meta.dirname, "../../../stubs/codegenNativeComponent.js"),
+          "react-native/Libraries/Utilities/codegenNativeComponent": join(HERE, "../../../stubs/codegenNativeComponent.js"),
         },
         // Mark packages that call native codegen at init time as external.
         // react-native-screens, react-native-gesture-handler, and react-native-reanimated

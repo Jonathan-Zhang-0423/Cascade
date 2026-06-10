@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "fs/promises";
 import path from "path";
+import { srcDir } from "./paths";
 
 export type TelemetryCounter =
   | "writeFileCount"
@@ -55,7 +56,8 @@ export interface BuildTelemetryInit {
 }
 
 export function getTelemetryDir(): string {
-  return process.env.TELEMETRY_DIR || path.join(import.meta.dirname, "../../../../telemetry");
+  // Repo-root /telemetry (srcDir is backend/api/src, so three levels up).
+  return process.env.TELEMETRY_DIR || srcDir("..", "..", "..", "telemetry");
 }
 
 function isDisabled(): boolean {

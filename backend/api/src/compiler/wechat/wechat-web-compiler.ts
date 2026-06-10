@@ -20,6 +20,11 @@ import { hashSources } from "../compiler-utils.js";
 import { wxmlToJsx } from "./runtime/wxml-to-jsx.js";
 import { transformWxss } from "./runtime/wxss-to-css.js";
 import { generateAppBootstrap } from "./runtime/app-bootstrap.js";
+import { srcDir } from "../../infra/paths";
+
+// This module's own source directory, resolved from the source root so the
+// existing relative segments below work in both dev and the bundled prod build.
+const HERE = srcDir("compiler", "wechat");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -30,7 +35,7 @@ import { generateAppBootstrap } from "./runtime/app-bootstrap.js";
 // URLs naturally point to fresh content instead of stale browser-cached bundles.
 const COMPILER_VERSION = "2";
 
-const VENDOR_PATH = join(import.meta.dirname, "../../../assets", "wx-vendor.js");
+const VENDOR_PATH = join(HERE, "../../../assets", "wx-vendor.js");
 const BUILD_CACHE_MAX_AGE = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 const MAX_CONCURRENT_COMPILES = 2;
@@ -97,9 +102,9 @@ export async function ensureWxVendorBundle(): Promise<void> {
   if (vendorBuildPromise) return vendorBuildPromise;
 
   vendorBuildPromise = (async () => {
-    await mkdir(join(import.meta.dirname, "../../../assets"), { recursive: true });
+    await mkdir(join(HERE, "../../../assets"), { recursive: true });
     console.log("[wx-web] Building vendor bundle (React + wx-runtime + wx-polyfill)...");
-    const entryPath = join(import.meta.dirname, "runtime", "wx-runtime.tsx");
+    const entryPath = join(HERE, "runtime", "wx-runtime.tsx");
     await writeFile(entryPath, `
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -279,7 +284,7 @@ async function _doCompile(
 ): Promise<WxCompilationResult> {
   activeCompiles++;
   const buildId = hash;
-  const buildDir = join(import.meta.dirname, "../../../../artifacts", "wx-" + buildId);
+  const buildDir = join(HERE, "../../../../artifacts", "wx-" + buildId);
 
   try {
     await ensureWxVendorBundle();
@@ -387,7 +392,7 @@ export { ${safeComp} };
     await writeFile(join(buildDir, "index.tsx"), bootstrap);
 
     // Copy runtime files into build dir so esbuild can resolve them
-    const runtimeSrc = join(import.meta.dirname, "runtime");
+    const runtimeSrc = join(HERE, "runtime");
     await writeFile(join(buildDir, "wx-runtime.tsx"), await readFile(join(runtimeSrc, "wx-runtime.tsx"), "utf8"));
     await writeFile(join(buildDir, "wx-polyfill.ts"), await readFile(join(runtimeSrc, "wx-polyfill.ts"), "utf8"));
 

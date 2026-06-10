@@ -4,6 +4,7 @@ import { join, resolve, relative } from "path";
 import { tmpdir } from "os";
 import { createHash, randomBytes } from "crypto";
 import { existsSync } from "fs";
+import { srcDir } from "../../infra/paths";
 
 const GRADLE_PATH = join(
   process.env.HOME || "/home/runner",
@@ -12,7 +13,7 @@ const GRADLE_PATH = join(
   "bin",
   "gradle"
 );
-const TEMPLATE_DIR = resolve(import.meta.dirname, "../compile-templates/kotlin-wasm");
+const TEMPLATE_DIR = srcDir("compiler", "compile-templates", "kotlin-wasm");
 const COMPILE_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 

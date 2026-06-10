@@ -15,6 +15,7 @@ import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/provi
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
+import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
@@ -2975,7 +2976,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         .where(eq(users.id, userId));
 
       // Seed starter skill
-      const starterPath = join(import.meta.dirname, "../../skills/builtin/starters", `${safeLevel}.md`);
+      const starterPath = join(srcDir("skills", "builtin", "starters"), `${safeLevel}.md`);
       if (existsSync(starterPath)) {
         const content = readFileSync(starterPath, "utf-8");
         await db.insert(userSkills).values({
@@ -3470,7 +3471,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.get("/api/skills/builtin", (_req, res) => {
     try {
-      const skillsDir = join(import.meta.dirname, "../../skills/builtin");
+      const skillsDir = srcDir("skills", "builtin");
       const entries: Array<{ name: string; description: string; type: "knowledge" }> = [];
 
       const scanDir = (dir: string) => {

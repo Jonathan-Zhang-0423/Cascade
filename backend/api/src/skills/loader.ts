@@ -1,6 +1,7 @@
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import { withFallback, type AIProvider } from "../agent/providers/kimi-client";
+import { srcDir } from "../infra/paths";
 
 export interface SkillMeta {
   name: string;
@@ -8,7 +9,7 @@ export interface SkillMeta {
   keywords: string[];
 }
 
-const SKILLS_BASE_DIR = join(import.meta.dirname, "builtin");
+const SKILLS_BASE_DIR = srcDir("skills", "builtin");
 
 const BUILTIN_KEYWORDS: Record<string, string[]> = {
   react: ["react", "jsx", "tsx", "react component", "react hook", "react app", "spa", "next.js", "nextjs", "vite react"],
