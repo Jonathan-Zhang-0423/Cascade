@@ -456,16 +456,22 @@ export class ManagerStreamInstance {
               const plan = ev.plan;
               if (plan) {
                 this.actions.setManagerPlan(plan);
-                this.actions.addManagerMessage({
-                  role: "assistant",
-                  content: "",
-                  plan,
-                  thinking: managerThinkingAccumulated || undefined,
-                });
+                // Skip re-adding the plan message when this is a replayed event
+                // (server resends history on reconnect). It was already
+                // persisted on the original stream; re-adding mints a new UUID
+                // and duplicates the plan card.
+                if (!ev.replay) {
+                  this.actions.addManagerMessage({
+                    role: "assistant",
+                    content: "",
+                    plan,
+                    thinking: managerThinkingAccumulated || undefined,
+                  });
+                }
               }
             }
           } else if (evType === "manager_done") {
-            if (isCurrentProject && managerAccumulated.trim()) {
+            if (isCurrentProject && !ev.replay && managerAccumulated.trim()) {
               const stripped = stripProjectNameMarker(managerAccumulated).trim();
               if (stripped) {
                 this.actions.addManagerMessage({
@@ -577,7 +583,12 @@ export class ManagerStreamInstance {
         });
         if (resp.ok) {
           const data = await resp.json();
-          if (data?.sessionId) {
+          // Only reconnect to a still-active session. A done session would
+          // replay plan_ready/manager_done, and the reconnect handlers would
+          // re-add those assistant messages under fresh UUIDs — duplicating
+          // history on every refresh. Finished sessions are already persisted
+          // and loaded by fetchMessagesFromServer.
+          if (data?.sessionId && data?.active === true) {
             this.state.set({ isReconnecting: true });
             await this.connect(data.sessionId, -1);
             this.state.set({ isReconnecting: false });

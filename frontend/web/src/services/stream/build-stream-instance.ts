@@ -277,6 +277,14 @@ export class BuildStreamInstance {
             this.state.set({ buildPhase: "verifying", narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) this.actions.setReviewPhase("reviewing");
+          } else if (type === "review_passed") {
+            // Verifier approved. Drive the PlanCard to its completed state —
+            // isFullyComplete requires reviewPhase === "review_passed".
+            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
+          } else if (type === "review_skipped") {
+            // Review disabled for this build. Treat as passed so the card can
+            // complete (it gates on review_passed, not on a separate state).
+            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
           } else if (type === "bugs_found" || type === "fixing") {
             this.state.set({ buildPhase: "fixing" });
             if (isCurrentProject) this.actions.setReviewPhase("fixing");
@@ -309,17 +317,12 @@ export class BuildStreamInstance {
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
 
-            // Refresh files
+            // Refresh preview immediately (files were applied live via
+            // code_applied), then reconcile against the server's authoritative
+            // copy to catch any files the live stream missed.
             if (isCurrentProject) {
               this.actions.refreshPreview();
-              fetch(`/api/projects/${this.projectId}/files`)
-                .then((r) => (r.ok ? r.json() : null))
-                .then((data) => {
-                  if (!data?.files?.length) return;
-                  if (this.actions.getProjectId() !== this.projectId) return;
-                  // Lightweight file tree update (no loadProject)
-                })
-                .catch(() => {});
+              this.refreshFilesAfterBuild();
             }
           } else if (type === "done") {
             // Final cleanup handled in finally
@@ -466,6 +469,23 @@ export class BuildStreamInstance {
               const key = String(ev.stepNumber ?? 0);
               this.actions.updateTaskStatus(key, "done");
             }
+          } else if (type === "reviewing") {
+            this.state.set({ buildPhase: "verifying", narrationText: "" });
+            commAccumulated = "";
+            if (isCurrentProject) this.actions.setReviewPhase("reviewing");
+          } else if (type === "review_passed" || type === "review_skipped") {
+            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
+          } else if (type === "bugs_found" || type === "fixing") {
+            this.state.set({ buildPhase: "fixing" });
+            if (isCurrentProject) this.actions.setReviewPhase("fixing");
+          } else if (type === "needs_input") {
+            if (isCurrentProject) {
+              this.actions.setPendingConfirmation({
+                stepKey: String(ev.stepNumber ?? "0"),
+                items: Array.isArray(ev.items) ? ev.items as string[] : [],
+              });
+              this.actions.updateTaskStatus(String(ev.stepNumber ?? "0"), "needs-input");
+            }
           } else if (type === "all_complete") {
             if (isCurrentProject) {
               nSteps.forEach((step) => {
@@ -478,6 +498,12 @@ export class BuildStreamInstance {
                 changedFiles: ev.changedFiles || [],
                 summary: ev.summaryText || "",
               });
+              // Background build finished while we were away: pull the latest
+              // files and refresh the preview so the user sees the result
+              // without a manual page refresh. The primary path does this via
+              // code_applied events, but on reconnect those were already
+              // consumed server-side, so refetch here.
+              this.refreshFilesAfterBuild();
             }
             this.actions.setStreamingSnapshot(null);
             try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
@@ -619,6 +645,36 @@ export class BuildStreamInstance {
   private appendActionLog(entry: ActionLogEntry): void {
     this.actionLog.push(entry);
     this.state.set({ actionLog: [...this.actionLog] });
+  }
+
+  /**
+   * Pull the latest files from the server and apply any that changed, then
+   * refresh the preview. Used after a build completes on the reconnect path,
+   * where the per-file code_applied events were already consumed server-side
+   * and the local file tree is stale. Without this the user must refresh the
+   * page to see the build result.
+   */
+  private async refreshFilesAfterBuild(): Promise<void> {
+    if (this.actions.getProjectId() !== this.projectId) return;
+    try {
+      const resp = await fetch(`/api/projects/${this.projectId}/files`, {
+        cache: "no-store", headers: { "Cache-Control": "no-cache" },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const files: Array<{ path: string; content: string }> = data?.files ?? [];
+      if (!files.length) return;
+      if (this.actions.getProjectId() !== this.projectId) return;
+      const current = new Map(this.actions.getFiles().map((f) => [f.path, f.content ?? ""]));
+      for (const f of files) {
+        if (current.get(f.path) !== f.content) {
+          await this.actions.applyCodeBlock({ filePath: f.path, code: f.content, language: "" });
+        }
+      }
+      this.actions.refreshPreview();
+    } catch {
+      // Network failure — leave existing files; user can refresh manually.
+    }
   }
 
   private clearLive(): void {
