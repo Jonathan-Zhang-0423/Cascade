@@ -215,6 +215,31 @@ html.lang-zh * {
   background: rgba(255, 255, 255, 0.30);
 }
 
+/* ── 中内容区滚动条：默认隐藏，滑动时才显示 ── */
+[data-testid="chat-panel"] ::-webkit-scrollbar-thumb,
+[data-testid="file-tree"] ::-webkit-scrollbar-thumb,
+[data-testid="chat-panel"] *::-webkit-scrollbar-thumb,
+[data-testid="file-tree"] *::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background 0.2s;
+}
+[data-testid="chat-panel"] *:hover::-webkit-scrollbar-thumb,
+[data-testid="file-tree"] *:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+[data-testid="chat-panel"] *::-webkit-scrollbar-thumb:hover,
+[data-testid="file-tree"] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.30);
+}
+.dark [data-testid="chat-panel"] *:hover::-webkit-scrollbar-thumb,
+.dark [data-testid="file-tree"] *:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+.dark [data-testid="chat-panel"] *::-webkit-scrollbar-thumb:hover,
+.dark [data-testid="file-tree"] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.30);
+}
+
 /* ─── Dark theme (applied when .dark on <html>) ────────────────────────────
  * theme-provider.tsx adds .dark whenever the active theme's mode === "dark".
  * --------------------------------------------------------------------------*/
