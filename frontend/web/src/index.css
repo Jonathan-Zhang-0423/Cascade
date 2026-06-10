@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -177,12 +178,41 @@
   --transition-slow:   250ms ease;
   --transition-spring: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* ── 六模块语义变量（浅色） ── */
+  /* ── 六模块语义变量（浅色）—— 统一使用左内容区暖灰色 ── */
   --panel-left-bg:   #F5F4F2;
-  --panel-mid-bg:    #FFFFFF;
-  --panel-right-bg:  #F0EFED;
-  --panel-divider:   #E5E5E5;
-  --panel-nav-bg:    #FFFFFF;
+  --panel-mid-bg:    #F5F4F2;
+  --panel-right-bg:  #F5F4F2;
+  --panel-divider:   #C8C6C2;
+  --panel-nav-bg:    #F5F4F2;
+}
+
+/* ── 中文模式全局字体 ── */
+html.lang-zh,
+html.lang-zh body,
+html.lang-zh * {
+  font-family: "Lora", Georgia, serif !important;
+}
+
+/* ── 全局滚动条：去掉轨道背景，只显示滑块 ── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.30);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.30);
 }
 
 /* ─── Dark theme (applied when .dark on <html>) ────────────────────────────

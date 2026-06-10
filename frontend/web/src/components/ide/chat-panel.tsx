@@ -327,15 +327,7 @@ export function ChatPanel() {
   const isBusy = isAiResponding || isManagerResponding || isExecuting;
 
   return (
-    <div className="h-full flex flex-col relative group/panel" style={{ background: "var(--panel-mid-bg)" }} data-testid="chat-panel">
-      <button
-        className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent/10 opacity-0 group-hover/panel:opacity-100 transition-opacity"
-        onClick={() => setActiveTool(null)}
-        aria-label={tGlobal("chat.close")}
-        data-testid="button-close-chat"
-      >
-        <X className="w-3 h-3" />
-      </button>
+    <div className="h-full flex flex-col relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="chat-panel">
       <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-1" ref={scrollRef}>
         <ChatMessageList
           chatMessages={chatMessages}
@@ -402,7 +394,6 @@ export function ChatPanel() {
           onSmartResponse={handleSmartResponse}
           onPolish={handlePolish}
           onToggleMode={handleToggleMode}
-          onToggleReview={handleToggleReview}
         />
       </div>
     </div>

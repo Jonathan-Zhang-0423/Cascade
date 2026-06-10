@@ -3,16 +3,18 @@ import { useProjectStore } from "@/stores/project-store";
 import { SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectEmoji } from "@/lib/project-emoji";
+import { useT } from "@/lib/i18n";
 
 export function ToolsDock() {
   const { activeTool, setActiveTool, clearConversation, projectId } = useIDEStore();
   const { projects } = useProjectStore();
   const currentProject = projects.find((p) => p.id === projectId);
+  const t = useT();
 
   return (
     <aside className="flex flex-col h-full overflow-hidden" style={{ background: "var(--panel-left-bg)" }} data-testid="tools-dock">
 
-      {/* Main session 条目 */}
+      {/* Main session */}
       <div className="px-2 pt-3 pb-1 shrink-0">
         <div
           className={cn(
@@ -31,17 +33,15 @@ export function ToolsDock() {
             {activeTool === "chat" && <div className="w-2 h-2 rounded-full bg-foreground" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-foreground leading-tight">Main session</div>
+            <div className="text-[13px] font-semibold text-foreground leading-tight">{t("dock.mainSession")}</div>
             {currentProject && (
               <div className="text-[11px] text-muted-foreground mt-0.5 truncate leading-tight">
-                {getProjectEmoji(currentProject.name)} {currentProject.name}
+                {currentProject.name}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      <div className="mx-3 border-t my-1" style={{ borderColor: "var(--panel-divider)" }} />
 
       {/* New Session */}
       <div className="px-2">
@@ -51,7 +51,7 @@ export function ToolsDock() {
           data-testid="button-new-session"
         >
           <SquarePen className="w-[15px] h-[15px] shrink-0" />
-          <span className="truncate">New Session</span>
+          <span className="truncate">{t("dock.newSession")}</span>
         </button>
       </div>
     </aside>

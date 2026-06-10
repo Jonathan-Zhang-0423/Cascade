@@ -1,33 +1,28 @@
 import { ChatPanel } from "@/components/ide/chat-panel";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { TOP_BAR_H } from "./MobileIDE";
+import { useTheme } from "@/components/theme-provider";
 
 export function MobileChatPanel() {
+  const { mode } = useTheme();
+
+  const isDark = mode === "dark";
+  const inputBg = isDark ? "hsl(222,22%,14%)" : "#ffffff";
+  const inputBorder = isDark ? "rgba(255,255,255,0.15)" : "#1A1A1A";
+  const inputBorderFocus = isDark ? "rgba(255,255,255,0.35)" : "#000000";
+  const textColor = isDark ? "#e8e8e8" : "#1a1a1a";
+  const toolbarBg = inputBg;
+  const btnTextColor = isDark ? "#aaaaaa" : "#555555";
+  const checkboxBorder = isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.25)";
+  const iconColor = isDark ? "#777777" : "#888888";
+
   return (
     <div className="mobile-chat-wrap relative flex flex-col h-full w-full overflow-hidden">
       <style>{`
-        /* ── 完全隐藏 model selector / polish / suggest ── */
+        /* ── 完全隐藏 model selector / polish ── */
         .mobile-chat-wrap [data-testid="select-model-provider"],
-        .mobile-chat-wrap [title="Polish — restructure your prompt for clarity"],
-        .mobile-chat-wrap [title="Smart Response — let AI suggest a reply"] {
+        .mobile-chat-wrap [title="Polish — restructure your prompt for clarity"] {
           display: none !important;
-        }
-
-        /* ── plan / review：保留按钮功能，只隐藏文字标签 ── */
-        .mobile-chat-wrap [data-testid="toggle-plan-mode"] span,
-        .mobile-chat-wrap [data-testid="toggle-review"] span {
-          display: none !important;
-        }
-        /* 按钮本身稍微放大点击区域 */
-        .mobile-chat-wrap [data-testid="toggle-plan-mode"],
-        .mobile-chat-wrap [data-testid="toggle-review"] {
-          padding: 4px 6px !important;
-        }
-        /* checkbox 图标稍微放大 */
-        .mobile-chat-wrap [data-testid="toggle-plan-mode"] > div,
-        .mobile-chat-wrap [data-testid="toggle-review"] > div {
-          width: 14px !important;
-          height: 14px !important;
         }
 
         /* ── 消息列表顶部留出 bar 高度，内容不被遮罩盖住 ── */
@@ -35,25 +30,59 @@ export function MobileChatPanel() {
           padding-top: ${TOP_BAR_H + 4}px !important;
         }
 
-        /* ── 输入框：白底、深色边框 ── */
+        /* ── 消息列表上滑虚化：顶部渐隐遮罩 ── */
+        .mobile-chat-wrap [data-testid="chat-panel"] > .flex-1 {
+          -webkit-mask-image: linear-gradient(
+            to bottom,
+            transparent 0px,
+            transparent ${TOP_BAR_H}px,
+            black ${TOP_BAR_H + 24}px,
+            black 100%
+          ) !important;
+          mask-image: linear-gradient(
+            to bottom,
+            transparent 0px,
+            transparent ${TOP_BAR_H}px,
+            black ${TOP_BAR_H + 24}px,
+            black 100%
+          ) !important;
+        }
+
+        /* ── 输入框：主题自适应背景和字色 ── */
         .mobile-chat-wrap [data-testid="input-chat"] {
-          background: #ffffff !important;
-          color: #1a1a1a !important;
+          background: ${inputBg} !important;
+          color: ${textColor} !important;
         }
         .mobile-chat-wrap div:has(> textarea[data-testid="input-chat"]) {
-          border: 1.5px solid #1A1A1A !important;
-          border-left: 1.5px solid #1A1A1A !important;
+          border: 1.5px solid ${inputBorder} !important;
+          border-left: 1.5px solid ${inputBorder} !important;
           border-radius: 12px !important;
-          background: #ffffff !important;
+          background: ${inputBg} !important;
         }
         .mobile-chat-wrap div:has(> textarea[data-testid="input-chat"]):focus-within {
-          border-color: #000000 !important;
-          border-left-color: #000000 !important;
+          border-color: ${inputBorderFocus} !important;
+          border-left-color: ${inputBorderFocus} !important;
         }
 
         /* ── 工具栏背景跟随输入框 ── */
         .mobile-chat-wrap .flex.items-center.gap-1\\.5.px-2.pb-1\\.5 {
-          background: #ffffff !important;
+          background: ${toolbarBg} !important;
+        }
+
+        /* plan / polish 按钮文字 */
+        .mobile-chat-wrap [data-testid="toggle-plan-mode"] span,
+        .mobile-chat-wrap [data-testid="button-polish"] span {
+          color: ${btnTextColor} !important;
+        }
+
+        /* checkbox 边框 */
+        .mobile-chat-wrap [data-testid="toggle-plan-mode"] > div {
+          border-color: ${checkboxBorder} !important;
+        }
+
+        /* polish 图标颜色 */
+        .mobile-chat-wrap [data-testid="button-polish"] svg {
+          color: ${iconColor} !important;
         }
       `}</style>
       <ChatErrorBoundary>
