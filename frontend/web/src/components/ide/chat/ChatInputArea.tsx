@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowUp, Square, Check, Sparkles, Wand2 } from "lucide-react";
+import { ArrowUp, Square, Check, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type AgentStatus } from "./AgentStatusLine";
 
@@ -37,7 +37,6 @@ interface ChatInputAreaProps {
   onSmartResponse: () => void;
   onPolish: () => void;
   onToggleMode: () => void;
-  onToggleReview: () => void;
 }
 
 const STATUS_COLORS: Record<Exclude<AgentStatus, null>, string> = {
@@ -75,9 +74,7 @@ export function ChatInputArea({
   onSmartResponse,
   onPolish,
   onToggleMode,
-  onToggleReview,
 }: ChatInputAreaProps) {
-  const [inputFocused, setInputFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
 
@@ -102,9 +99,7 @@ export function ChatInputArea({
 
   const borderColor = agentStatus
     ? STATUS_COLORS[agentStatus]
-    : inputFocused
-      ? "rgba(79,130,255,0.4)"
-      : "rgba(255,255,255,0.08)";
+    : "var(--panel-divider)";
 
   return (
     <div className="px-2.5 pb-2.5 pt-1 shrink-0">
@@ -131,19 +126,10 @@ export function ChatInputArea({
       {/* Input box */}
       <div
         ref={inputBoxRef}
-        onFocus={() => setInputFocused(true)}
-        onBlur={() => {
-          setTimeout(() => {
-            if (!inputBoxRef.current?.contains(document.activeElement)) {
-              setInputFocused(false);
-            }
-          }, 0);
-        }}
-        className="rounded-md overflow-hidden transition-colors"
+        className="rounded-md overflow-hidden"
         style={{
           background: "var(--panel-mid-bg)",
           border: "1px solid var(--panel-divider)",
-          borderLeft: `3px solid ${borderColor}`,
         }}
       >
         <Textarea
@@ -165,7 +151,7 @@ export function ChatInputArea({
                   ? tGlobal("chat.placeholderStartBuild")
                   : tGlobal("chat.placeholderDefault")
           }
-          className="resize-none !text-[13px] min-h-[38px] max-h-[160px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-2.5 pb-1"
+          className="resize-none !text-[13px] min-h-[38px] max-h-[160px] overflow-y-auto rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-3 pt-2.5 pb-1 placeholder:text-muted-foreground/50 placeholder:text-[13px]"
           data-testid="input-chat"
         />
 
@@ -195,68 +181,24 @@ export function ChatInputArea({
               )}
             </div>
             <span className="font-mono text-[10px] text-muted-foreground/70">
-              plan
+              {tGlobal("chat.planLabel")}
             </span>
           </button>
-
-          {/* Review toggle */}
-          <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors"
-            onClick={onToggleReview}
-            data-testid="toggle-review"
-            title={
-              reviewEnabled
-                ? tGlobal("chat.toggleReviewOff")
-                : tGlobal("chat.toggleReviewOn")
-            }
-          >
-            <div
-              className={cn(
-                "w-3 h-3 rounded-sm border flex items-center justify-center shrink-0",
-                reviewEnabled
-                  ? "bg-[#4f82ff] border-[#4f82ff]"
-                  : "border-[rgba(255,255,255,0.15)]",
-              )}
-            >
-              {reviewEnabled && (
-                <Check className="w-2 h-2 text-white" />
-              )}
-            </div>
-            <span className="font-mono text-[10px] text-muted-foreground/70">
-              review
-            </span>
-          </button>
-
-          
 
           {/* Polish button */}
           <button
             className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors disabled:opacity-30 disabled:cursor-default"
             onClick={onPolish}
-            disabled={polishLoading || !input.trim() || isBusy}
-            title="Polish — restructure your prompt for clarity"
+            disabled={polishLoading || isBusy}
+            title={tGlobal("chat.polish")}
+            data-testid="button-polish"
           >
             {polishLoading ? (
               <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
             ) : (
               <Wand2 className="w-3 h-3 text-muted-foreground/70" />
             )}
-            <span className="font-mono text-[10px] text-muted-foreground/70">polish</span>
-          </button>
-
-          {/* Smart Response button */}
-          <button
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent/10 transition-colors disabled:opacity-30 disabled:cursor-default"
-            onClick={onSmartResponse}
-            disabled={smartResponseLoading || isBusy}
-            title="Smart Response — let AI suggest a reply"
-          >
-            {smartResponseLoading ? (
-              <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
-            ) : (
-              <Sparkles className="w-3 h-3 text-muted-foreground/70" />
-            )}
-            <span className="font-mono text-[10px] text-muted-foreground/70">suggest</span>
+            <span className="font-mono text-[10px] text-muted-foreground/70">{tGlobal("chat.suggest")}</span>
           </button>
 
           <div className="flex-1" />

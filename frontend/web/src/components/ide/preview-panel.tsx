@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, ExternalLink, Terminal, Monitor, Plus, X, Search, ChevronRight, Globe, Database, Lock, Shield, Key, Zap, BarChart2, Settings, Users, CheckSquare, GitBranch, Code, Cpu, Workflow, FileText, FilePlus } from "lucide-react";
+import { RefreshCw, ExternalLink, Terminal, Monitor, Plus, X, Search, ChevronRight, Globe, Database, Lock, Shield, Key, Zap, BarChart2, Settings, Users, CheckSquare, GitBranch, Code, Cpu, Workflow, FileText, FilePlus, ChevronDown } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { DeviceSimulator } from "./device-simulator";
 import { DEVICE_LIST, getDeviceSpec, getFirstDeviceForPlatform, makeCustomSpec } from "@/lib/device-specs";
@@ -14,6 +14,143 @@ import { FlutterWebPreview } from "./flutter-web-preview";
 import { WeChatPreview } from "./wechat-preview";
 import { ConsolePanel } from "./console-panel";
 import { FileTree } from "./file-tree";
+
+// 常用文件类型列表
+const FILE_TYPES = [
+  { ext: "tsx",  label: "TypeScript React (.tsx)" },
+  { ext: "ts",   label: "TypeScript (.ts)" },
+  { ext: "jsx",  label: "JavaScript React (.jsx)" },
+  { ext: "js",   label: "JavaScript (.js)" },
+  { ext: "html", label: "HTML (.html)" },
+  { ext: "css",  label: "CSS (.css)" },
+  { ext: "json", label: "JSON (.json)" },
+  { ext: "md",   label: "Markdown (.md)" },
+  { ext: "txt",  label: "Text (.txt)" },
+  { ext: "py",   label: "Python (.py)" },
+  { ext: "sh",   label: "Shell (.sh)" },
+];
+
+function NewFilePanel({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { addFile } = useIDEStore();
+  const t = useT();
+  const [fileName, setFileName] = useState("");
+  const [selectedExt, setSelectedExt] = useState("tsx");
+  const [dropOpen, setDropOpen] = useState(false);
+  const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleCreate = () => {
+    const raw = fileName.trim();
+    if (!raw) { setError("请输入文件名"); return; }
+    // 如果用户已经带了扩展名就不重复加
+    const hasExt = raw.includes(".");
+    const finalName = hasExt ? raw : `${raw}.${selectedExt}`;
+    addFile("", finalName, "file");
+    onCreated();
+  };
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between px-3 h-[38px] shrink-0 border-b" style={{ borderColor: "var(--panel-divider)" }}>
+        <span className="text-[12px] font-medium text-foreground">{t("tools.newFile")}</span>
+        <button
+          className="flex items-center justify-center w-6 h-6 rounded hover:bg-accent/20 text-muted-foreground transition-colors"
+          onClick={onCancel}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* 表单 */}
+      <div className="px-4 pt-5 flex flex-col gap-4">
+        {/* 文件名 */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            文件名
+          </label>
+          <input
+            ref={inputRef}
+            className="h-9 px-3 rounded-lg text-[13px] outline-none border"
+            style={{
+              background: "var(--panel-nav-bg)",
+              borderColor: error ? "#ef4444" : "var(--panel-divider)",
+              color: "var(--foreground)",
+            }}
+            placeholder="例如：MyComponent"
+            value={fileName}
+            onChange={(e) => { setFileName(e.target.value); setError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") onCancel(); }}
+          />
+          {error && <span className="text-[11px] text-red-500">{error}</span>}
+        </div>
+
+        {/* 文件类型下拉 */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            文件类型
+          </label>
+          <div className="relative">
+            <button
+              className="flex items-center justify-between w-full h-9 px-3 rounded-lg text-[13px] border"
+              style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)", color: "var(--foreground)" }}
+              onClick={() => setDropOpen((v) => !v)}
+            >
+              <span>{FILE_TYPES.find((f) => f.ext === selectedExt)?.label ?? selectedExt}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </button>
+            {dropOpen && (
+              <div
+                className="absolute top-full left-0 right-0 mt-1 rounded-lg z-50 py-1 max-h-48 overflow-y-auto"
+                style={{ background: "var(--panel-nav-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}
+              >
+                {FILE_TYPES.map((ft) => (
+                  <button
+                    key={ft.ext}
+                    className="flex items-center w-full px-3 py-2 text-[12px] text-left hover:bg-accent/20 transition-colors"
+                    style={{ color: ft.ext === selectedExt ? "hsl(var(--primary))" : "var(--foreground)" }}
+                    onClick={() => { setSelectedExt(ft.ext); setDropOpen(false); }}
+                  >
+                    {ft.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 预览文件名 */}
+        {fileName.trim() && (
+          <div className="text-[11px] text-muted-foreground">
+            将创建：<span className="font-medium text-foreground">
+              {fileName.trim().includes(".") ? fileName.trim() : `${fileName.trim()}.${selectedExt}`}
+            </span>
+          </div>
+        )}
+
+        {/* 操作按钮 */}
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            className="flex-1 h-8 rounded-lg text-[12px] font-medium transition-colors text-white"
+            style={{ background: "hsl(var(--primary))" }}
+            onClick={handleCreate}
+          >
+            创建文件
+          </button>
+          <button
+            className="flex-1 h-8 rounded-lg text-[12px] font-medium transition-colors border"
+            style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)", color: "var(--foreground)" }}
+            onClick={onCancel}
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function resolveFilePath(src: string, basePath: string): string {
   if (src.startsWith("/project/")) return src;
@@ -116,8 +253,8 @@ export function PreviewPanel({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const t = useT();
 
-  // Right-panel tab state: "preview" | "terminal" | "files"
-  type RightTab = "preview" | "terminal" | "files";
+  // Right-panel tab state: "preview" | "terminal" | "files" | "newfile"
+  type RightTab = "preview" | "terminal" | "files" | "newfile";
   const [activeTab, setActiveTab] = useState<RightTab>("preview");
 
   const currentProject = useMemo(
@@ -355,6 +492,13 @@ export function PreviewPanel({
   // activePreviewTabState 由 props 传入
   const activePreviewTabState = activePreviewTab ?? "preview";
 
+  // 切回 Preview tab 时重置 activeTab
+  useEffect(() => {
+    if (activePreviewTabState === "preview") {
+      setActiveTab("preview");
+    }
+  }, [activePreviewTabState]);
+
   useEffect(() => {
     if (toolsPanelOpenState) setTimeout(() => toolsSearchRef.current?.focus(), 50);
     else setToolsSearch("");
@@ -368,36 +512,25 @@ export function PreviewPanel({
   // Tools & files 面板：只保留 Preview / Files / New file，接入真实功能
   const TOOLS_SECTIONS: ToolSection[] = [
     {
-      title: "Views",
+      title: t("tools.sectionViews"),
       items: [
         {
           icon: <Monitor className="w-4 h-4" />,
-          label: "Preview",
-          desc: "Open the live preview",
-          action: () => {
-            // 切换到 preview tab，关闭面板
-            setToolsPanelOpenState(false);
-          },
+          label: t("tools.preview"),
+          desc: t("tools.previewDesc"),
+          action: () => { setActiveTab("preview"); setToolsPanelOpenState(false); },
         },
         {
           icon: <FileText className="w-4 h-4" />,
-          label: "Files",
-          desc: "Browse and edit project files",
-          action: () => {
-            // 调用 ide-store 切换到 files 面板
-            setActiveTool("files");
-            setToolsPanelOpenState(false);
-          },
+          label: t("tools.files"),
+          desc: t("tools.filesDesc"),
+          action: () => { setActiveTab("files"); setToolsPanelOpenState(false); },
         },
         {
           icon: <FilePlus className="w-4 h-4" />,
-          label: "New file",
-          desc: "Create a new file in the project",
-          action: () => {
-            // 打开 files 面板，并在根目录创建新文件
-            setActiveTool("files");
-            setToolsPanelOpenState(false);
-          },
+          label: t("tools.newFile"),
+          desc: t("tools.newFileDesc"),
+          action: () => { setActiveTab("newfile"); setToolsPanelOpenState(false); },
         },
       ],
     },
@@ -426,7 +559,7 @@ export function PreviewPanel({
               <input
                 ref={toolsSearchRef}
                 className="flex-1 bg-transparent text-[13px] text-[#1A1A1A] placeholder-[#999999] outline-none"
-                placeholder="Search for tools & files..."
+                placeholder={t("tools.searchPlaceholder")}
                 value={toolsSearch}
                 onChange={(e) => setToolsSearch(e.target.value)}
               />
@@ -487,51 +620,62 @@ export function PreviewPanel({
         </div>
       )}
 
+      {/* ── Files 视图（右内容区文件树） ── */}
+      {activeTab === "files" && (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
+          <div className="flex items-center justify-between px-3 h-[38px] shrink-0 border-b" style={{ borderColor: "var(--panel-divider)" }}>
+            <span className="text-[12px] font-medium text-foreground">{t("tools.files")}</span>
+            <button
+              className="flex items-center justify-center w-6 h-6 rounded hover:bg-accent/20 text-muted-foreground transition-colors"
+              onClick={() => setActiveTab("preview")}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <FileTree />
+          </div>
+        </div>
+      )}
+
+      {/* ── New File 视图（右内容区新建文件） ── */}
+      {activeTab === "newfile" && (
+        <NewFilePanel
+          onCreated={() => setActiveTab("files")}
+          onCancel={() => setActiveTab("preview")}
+        />
+      )}
+
       {/* ── Canvas 预览内容 ── */}
-      {activePreviewTabState === "preview" && (
+      {activeTab !== "files" && activeTab !== "newfile" && activePreviewTabState === "preview" && (
         <>
-          {/* Preview toolbar */}
-          <div className="preview-toolbar flex items-center gap-1.5 px-2.5 h-[38px] border-b border-[#EBEBEB] bg-[#FAFAFA] shrink-0">
-            <button className="flex items-center gap-1.5 h-[26px] px-2 bg-white border border-[#EBEBEB] rounded-[6px] text-[12px] text-[#1A1A1A] hover:bg-[#F5F5F5] transition-colors shrink-0" data-testid="button-app-select">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#999999" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-              </svg>
-              <span className="max-w-[80px] truncate">{currentProject?.name || "App"}</span>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#999999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors" aria-label="Back">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors" aria-label="Forward">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-            <button className="flex items-center justify-center w-[26px] h-[26px] rounded-[4px] text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors" onClick={handleRefresh} aria-label={t("preview.refresh")} data-testid="button-refresh-preview">
-              <RefreshCw className="w-[13px] h-[13px]" />
-            </button>
-            <div className="flex-1 flex items-center gap-1.5 h-[26px] px-2.5 bg-[#F5F5F5] border border-[#EBEBEB] rounded-[6px] min-w-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#999999" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
-              <span className="text-[12px] text-[#666666] truncate">{previewUrl ? previewUrl.replace(/^https?:\/\//, "") : "localhost"}</span>
-            </div>
-            <div className="flex items-center bg-white border border-[#EBEBEB] rounded-[6px] p-[2px] gap-[1px] shrink-0">
-              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "android" ? "bg-[#F5F5F5] text-[#1A1A1A]" : "text-[#999999] hover:text-[#666666]")} onClick={() => handlePlatformChange("android")} data-testid="button-platform-android">
+          {/* Preview toolbar — app名称 + 平台切换 + Terminal */}
+          <div className="preview-toolbar flex items-center gap-1.5 px-2.5 h-[38px] shrink-0" style={{ background: "var(--panel-right-bg)", borderBottom: "1px solid var(--panel-divider)" }}>
+            {/* App 名称：完整显示，无折叠符号 */}
+            <span
+              className="text-[12px] font-medium shrink-0"
+              style={{ color: "var(--foreground)" }}
+              data-testid="button-app-select"
+            >
+              {currentProject?.name || "App"}
+            </span>
+
+            <div className="flex-1" />
+
+            {/* 平台切换 */}
+            <div className="flex items-center rounded-[6px] p-[2px] gap-[1px] shrink-0 border" style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" }}>
+              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "android" ? "text-foreground" : "text-muted-foreground hover:text-foreground")} style={devicePlatform === "android" ? { background: "var(--panel-left-bg)" } : {}} onClick={() => handlePlatformChange("android")} data-testid="button-platform-android">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               </button>
-              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "ios" ? "bg-[#F5F5F5] text-[#1A1A1A]" : "text-[#999999] hover:text-[#666666]")} onClick={() => handlePlatformChange("ios")} data-testid="button-platform-ios">
+              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "ios" ? "text-foreground" : "text-muted-foreground hover:text-foreground")} style={devicePlatform === "ios" ? { background: "var(--panel-left-bg)" } : {}} onClick={() => handlePlatformChange("ios")} data-testid="button-platform-ios">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="2"/></svg>
               </button>
             </div>
-            <button className="flex items-center justify-center w-[28px] h-[26px] bg-white border border-[#EBEBEB] rounded-[6px] text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
-            <button className="flex items-center justify-center w-[28px] h-[26px] bg-white border border-[#EBEBEB] rounded-[6px] text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666] transition-colors shrink-0" onClick={() => previewUrl && window.open(previewUrl, "_blank")} data-testid="button-open-preview-url">
-              <ExternalLink className="w-[13px] h-[13px]" />
-            </button>
+
+            {/* Terminal */}
             <button
-              className={cn("flex items-center justify-center w-[28px] h-[26px] border rounded-[6px] transition-colors shrink-0", isConsoleOpen ? "bg-[#F0F7FF] border-[#BFD9F2] text-[#0A66C2]" : "bg-white border-[#EBEBEB] text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666]")}
+              className={cn("flex items-center justify-center w-[28px] h-[26px] border rounded-[6px] transition-colors shrink-0", isConsoleOpen ? "bg-[#F0F7FF] border-[#BFD9F2] text-[#0A66C2]" : "text-muted-foreground hover:text-foreground")}
+              style={!isConsoleOpen ? { background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" } : {}}
               onClick={toggleConsole}
               data-testid="button-toggle-console"
             >
@@ -540,9 +684,9 @@ export function PreviewPanel({
           </div>
 
           {/* 预览内容区 — PC全屏 / Mobile固定比例 */}
-          <div className={cn("flex-1 min-h-0 overflow-hidden", devicePlatform === "ios" ? "bg-[#F0F0F0] flex items-center justify-center" : "bg-white flex items-stretch")}>
+          <div className={cn("flex-1 min-h-0 overflow-hidden", devicePlatform === "ios" ? "flex items-center justify-center" : "flex items-stretch")} style={{ background: "var(--panel-right-bg)" }}>
             {devicePlatform === "ios" ? (
-              <div className="relative bg-white shadow-xl overflow-hidden flex-shrink-0" style={{ width: 375, maxWidth: "100%", aspectRatio: "375 / 812", maxHeight: "100%", borderRadius: 12, boxShadow: "0 0 0 1px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.12)" }}>
+              <div className="relative overflow-hidden flex-shrink-0" style={{ width: 375, maxWidth: "100%", aspectRatio: "375 / 812", maxHeight: "100%", borderRadius: 12, background: "var(--panel-nav-bg)", boxShadow: "0 0 0 1px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.12)" }}>
                 {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
                 previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
                 previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :

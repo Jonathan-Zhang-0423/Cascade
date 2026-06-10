@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useProjectStore, migrateOldState } from "@/stores/project-store";
 import { Button } from "@/components/ui/button";
@@ -28,13 +28,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
 import { LangToggle } from "@/components/lang-toggle";
 import { useT } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
 import { useIDEStore } from "@/stores/ide-store";
 import {
   DropdownMenu,
@@ -63,8 +64,13 @@ function relativeDate(ms: number): string {
 export default function DashboardPage() {
   const { projects, createProject, deleteProject, renameProject, syncFromServer } = useProjectStore();
   const [, navigate] = useLocation();
-  const { themeId, setThemeId } = useTheme();
+  const { themeId, setThemeId, mode } = useTheme();
+  const { lang, setLang } = useLanguageStore();
   const [showNewDialog, setShowNewDialog] = useState(false);
+
+  // logo menu
+  const [logoMenuOpen, setLogoMenuOpen] = useState(false);
+  const logoMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     syncFromServer();
@@ -94,6 +100,55 @@ export default function DashboardPage() {
     setUsername(null);
     window.location.href = "/login";
   };
+
+  // close logo menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (logoMenuRef.current && !logoMenuRef.current.contains(e.target as Node)) {
+        setLogoMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const lightThemeId: ThemeId = "vs-light";
+  const darkThemeId: ThemeId = "vs-dark";
+
+  const logoMenuItems = [
+    {
+      icon: <Home className="w-3.5 h-3.5" />,
+      label: t("navbar.home"),
+      action: () => { navigate("/app"); setLogoMenuOpen(false); },
+    },
+    {
+      icon: <Clock className="w-3.5 h-3.5" />,
+      label: t("navbar.recentProjects"),
+      action: () => { navigate("/app"); setLogoMenuOpen(false); },
+    },
+    null,
+    {
+      icon: mode === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />,
+      label: mode === "light" ? t("navbar.darkMode") : t("navbar.lightMode"),
+      action: () => { setThemeId(mode === "light" ? darkThemeId : lightThemeId); setLogoMenuOpen(false); },
+    },
+    {
+      icon: <Languages className="w-3.5 h-3.5" />,
+      label: lang === "zh" ? t("navbar.langEn") : t("navbar.langZh"),
+      action: () => { setLang(lang === "zh" ? "en" : "zh"); setLogoMenuOpen(false); },
+    },
+    null,
+    {
+      icon: <HelpCircle className="w-3.5 h-3.5" />,
+      label: t("navbar.help"),
+      action: () => setLogoMenuOpen(false),
+    },
+    {
+      icon: <LogOut className="w-3.5 h-3.5" />,
+      label: t("navbar.logout"),
+      action: () => { handleSignOut(); setLogoMenuOpen(false); },
+    },
+  ];
 
   const handleCreate = async () => {
     const idea = ideaText.trim();
@@ -189,7 +244,44 @@ export default function DashboardPage() {
       <header className="border-b border-border/50 bg-sidebar">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
           <div className="flex items-center">
-            <CascadeLogo width={28} height={28} />
+            <div className="relative" ref={logoMenuRef}>
+              <button
+                className="flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-accent/20 transition-colors"
+                onClick={() => setLogoMenuOpen((v) => !v)}
+                aria-label="Open menu"
+              >
+                <CascadeLogo width={28} height={28} />
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </button>
+
+              {logoMenuOpen && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-48 rounded-lg py-1 z-50"
+                  style={{
+                    background: "#ffffff",
+                    opacity: 1,
+                    border: "1px solid rgba(0,0,0,0.10)",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  {logoMenuItems.map((item, i) =>
+                    item === null ? (
+                      <div key={`d${i}`} className="h-px my-1 bg-border/50" />
+                    ) : (
+                      <button
+                        key={item.label}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] transition-colors text-left hover:bg-black/5"
+                        style={{ color: "#1a1a1a" }}
+                        onClick={item.action}
+                      >
+                        <span className="shrink-0" style={{ color: "#555555" }}>{item.icon}</span>
+                        {item.label}
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Theme selector — hidden on mobile, shown in user menu there */}
@@ -213,25 +305,6 @@ export default function DashboardPage() {
                   {username ?? "…"}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {/* Theme selector — only shown here on mobile */}
-                <div className="sm:hidden px-2 py-1.5">
-                  <p className="text-[10px] text-muted-foreground mb-1">{t("dashboard.account")}</p>
-                  <div className="flex items-center gap-2">
-                    <LangToggle />
-                    <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
-                      <SelectTrigger className="h-7 text-xs flex-1" data-testid="select-theme-mobile">
-                        <Palette className="w-3 h-3 mr-1 shrink-0" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {THEME_LIST.map((th) => (
-                          <SelectItem key={th.id} value={th.id}>{th.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="sm:hidden"><DropdownMenuSeparator /></div>
                 <DropdownMenuItem
                   className="text-xs cursor-pointer gap-2"
                   data-testid="menu-item-sign-out"
@@ -242,20 +315,7 @@ export default function DashboardPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {/* Theme selector — desktop only */}
-            <Select value={themeId} onValueChange={(v) => setThemeId(v as ThemeId)}>
-              <SelectTrigger className="hidden sm:flex w-[150px] h-8 text-xs" data-testid="select-theme">
-                <Palette className="w-3.5 h-3.5 mr-1 shrink-0" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {THEME_LIST.map((th) => (
-                  <SelectItem key={th.id} value={th.id}>
-                    {th.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Theme selector — desktop only, removed */}
             <Button
               onClick={() => setShowNewDialog(true)}
               className="gap-2"
@@ -373,9 +433,9 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Actions — show on hover in normal mode */}
+                  {/* Actions — always visible on mobile, hover on desktop */}
                   {!selectMode && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
                       <Button
                         size="icon"
                         variant="ghost"
@@ -478,7 +538,32 @@ export default function DashboardPage() {
             className="min-h-[80px] resize-none"
             data-testid="input-project-idea"
           />
-          
+
+          {/* 启动方式 — 勾选框形式，在框架上方 */}
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => setUsePlanFirst((v) => !v)}
+              className="flex items-start gap-2.5 w-full text-left"
+              data-testid="button-mode-plan"
+            >
+              <div
+                className={[
+                  "mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors",
+                  usePlanFirst
+                    ? "bg-[#4f82ff] border-[#4f82ff]"
+                    : "border-border",
+                ].join(" ")}
+              >
+                {usePlanFirst && <Check className="w-2.5 h-2.5 text-white" />}
+              </div>
+              <div>
+                <div className="text-sm font-medium text-foreground">{t("dashboard.modePlanLabel")}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modePlanDesc")}</div>
+              </div>
+            </button>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">{t("dashboard.framework")}</label>
             <Select value={selectedFramework} onValueChange={(v: any) => setSelectedFramework(v)}>
@@ -503,40 +588,6 @@ export default function DashboardPage() {
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">{t("dashboard.startMode")}</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setUsePlanFirst(true)}
-                className={[
-                  "flex-1 px-3 py-2 rounded-md border text-left transition-colors",
-                  usePlanFirst
-                    ? "border-primary/60 bg-primary/5"
-                    : "border-border/60 hover:border-border",
-                ].join(" ")}
-                data-testid="button-mode-plan"
-              >
-                <div className="text-sm font-medium text-foreground">{t("dashboard.modePlanLabel")}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modePlanDesc")}</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setUsePlanFirst(false)}
-                className={[
-                  "flex-1 px-3 py-2 rounded-md border text-left transition-colors",
-                  !usePlanFirst
-                    ? "border-primary/60 bg-primary/5"
-                    : "border-border/60 hover:border-border",
-                ].join(" ")}
-                data-testid="button-mode-build"
-              >
-                <div className="text-sm font-medium text-foreground">{t("dashboard.modeBuildLabel")}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modeBuildDesc")}</div>
-              </button>
-            </div>
           </div>
 
           <DialogFooter>

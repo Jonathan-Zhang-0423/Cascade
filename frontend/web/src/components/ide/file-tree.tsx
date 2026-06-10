@@ -414,16 +414,6 @@ export function FileTree() {
           >
             <FolderPlus className="w-3.5 h-3.5" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={() => setActiveTool(null)}
-            aria-label={t("files.ariaClose")}
-            data-testid="button-close-files"
-          >
-            <X className="w-3.5 h-3.5" />
-          </Button>
         </div>
       </div>
       <ScrollArea className="flex-1">

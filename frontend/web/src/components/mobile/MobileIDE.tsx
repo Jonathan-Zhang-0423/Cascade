@@ -3,6 +3,8 @@ import { useProjectStore } from "@/stores/project-store";
 import { MobileChatPanel } from "./MobileChatPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
 import { useT } from "@/lib/i18n";
+import { useTheme } from "@/components/theme-provider";
+import { CascadeLogo } from "@/assets/CascadeLogo";
 
 type Tab = "chat" | "preview";
 
@@ -21,6 +23,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   const { projects } = useProjectStore();
   const project = projects.find((p) => p.id === projectId);
   const t = useT();
+  const { mode } = useTheme();
 
   const TAB_LABELS: Record<Tab, string> = {
     chat: t("mobile.chatTab"),
@@ -68,8 +71,9 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
           style={{
             top: "env(safe-area-inset-top)",
             height: TOP_BAR_H,
-            background: "var(--background)",
-            borderBottom: "1px solid var(--border)",
+            background: mode === "dark" ? "hsl(222,22%,11%)" : "#ffffff",
+            opacity: 1,
+            borderBottom: mode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.10)",
           }}
         >
           {/* 返回按钮（左侧绝对定位，不占据 flex 空间） */}
@@ -77,20 +81,13 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
             href="/app"
             className="absolute left-3 flex items-center justify-center"
             style={{
-              width: 30,
               height: 30,
-              borderRadius: 999,
-              background: "rgba(128,128,128,0.12)",
-              color: "var(--foreground)",
-              fontSize: 20,
-              fontWeight: 300,
               textDecoration: "none",
-              lineHeight: 1,
-              opacity: 0.7,
+              color: "var(--foreground)",
             }}
             aria-label="Back to home"
           >
-            ‹
+            <CascadeLogo width={22} height={22} />
           </a>
 
           {/* 项目名居中，无 icon */}
@@ -115,11 +112,12 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
           style={{
             height: CAPSULE_H,
             borderRadius: 999,
-            background: "rgba(255,255,255,0.55)",
+            background: activeTab === "preview" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.55)",
             backdropFilter: "blur(14px)",
             WebkitBackdropFilter: "blur(14px)",
-            border: "1px solid rgba(0,0,0,0.10)",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
+            border: activeTab === "preview" ? "1px solid rgba(255,255,255,0.20)" : "1px solid rgba(0,0,0,0.10)",
+            boxShadow: activeTab === "preview" ? "0 2px 12px rgba(0,0,0,0.30)" : "0 2px 12px rgba(0,0,0,0.12)",
+            transition: "background 0.2s, border-color 0.2s, box-shadow 0.2s",
           }}
         >
           {(["chat", "preview"] as Tab[]).map((tab) => (
@@ -129,7 +127,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
               style={{
                 fontSize: 12,
                 fontWeight: activeTab === tab ? 600 : 400,
-                color: activeTab === tab ? "#FFFFFF" : "#555555",
+                color: activeTab === tab ? "#FFFFFF" : "#1A1A1A",
                 background: activeTab === tab ? "#1A1A1A" : "transparent",
                 border: "none",
                 borderRadius: 999,

@@ -324,7 +324,7 @@ export function MessageBubble({
       className="flex justify-end px-3"
       data-testid={`chat-message-${message.id}`}
     >
-      <div className="rounded-md px-3 py-1.5 text-[13px] leading-relaxed bg-[rgba(79,130,255,0.08)] text-[#c8d8f0] max-w-[80%]">
+      <div className="rounded-md px-3 py-1.5 text-[13px] leading-relaxed max-w-[80%] bg-[#E8E8E6] text-[#1A1A1A] dark:bg-[hsl(220,15%,22%)] dark:text-[hsl(210,20%,88%)]">
         <MessageContent content={message.content} />
       </div>
     </div>

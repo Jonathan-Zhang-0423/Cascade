@@ -9,6 +9,16 @@ interface LanguageState {
   setLang: (lang: Lang) => void;
 }
 
+function applyLangClass(lang: Lang) {
+  if (typeof document !== "undefined") {
+    if (lang === "zh") {
+      document.documentElement.classList.add("lang-zh");
+    } else {
+      document.documentElement.classList.remove("lang-zh");
+    }
+  }
+}
+
 function getInitialLang(): Lang {
   if (typeof window !== "undefined") {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -17,10 +27,14 @@ function getInitialLang(): Lang {
   return "zh";
 }
 
+const initialLang = getInitialLang();
+applyLangClass(initialLang);
+
 export const useLanguageStore = create<LanguageState>((set) => ({
-  lang: getInitialLang(),
+  lang: initialLang,
   setLang: (lang) => {
     localStorage.setItem(STORAGE_KEY, lang);
+    applyLangClass(lang);
     set({ lang });
   },
 }));

@@ -8,6 +8,8 @@ import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
 import { ChatPanel } from "@/components/ide/chat-panel";
+import { useT } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { PreviewPanel } from "@/components/ide/preview-panel";
 import { ConsolePanel } from "@/components/ide/console-panel";
@@ -23,7 +25,6 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { useT } from "@/lib/i18n";
 
 export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,25 +36,50 @@ export default function IDEPage() {
   const { projects } = useProjectStore();
   const { toast } = useToast();
   const t = useT();
+  const { lang } = useLanguageStore();
+  const previewAreaRef = useRef<HTMLDivElement>(null);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
+
+  // 全屏仅针对右内容区预览
+  const handleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      previewAreaRef.current?.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => setIsPreviewFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   // ── 预览 Tab 状态提升到 ide.tsx，传给 Navbar(③) 和 PreviewPanel(⑥) ──
   type PreviewTab = { id: string; label: string; closable: boolean };
   const [previewTabs, setPreviewTabs] = useState<PreviewTab[]>([
-    { id: "preview", label: "Preview", closable: false },
+    { id: "preview", label: t("navbar.previewTab"), closable: false },
   ]);
   const [activePreviewTab, setActivePreviewTab] = useState("preview");
   const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
 
+  // 语言切换时同步更新 Preview tab 标签
+  useEffect(() => {
+    setPreviewTabs((prev) => prev.map((tab) =>
+      tab.id === "preview" ? { ...tab, label: t("navbar.previewTab") } : tab
+    ));
+  }, [lang]);
+
   const addPreviewTab = () => {
     const id = `tab-${Date.now()}`;
-    setPreviewTabs((prev) => [...prev, { id, label: "New tab", closable: true }]);
+    setPreviewTabs((prev) => [...prev, { id, label: t("navbar.newTab"), closable: true }]);
     setActivePreviewTab(id);
     setToolsPanelOpen(true);
   };
   const closePreviewTab = (id: string) => {
-    setPreviewTabs((prev) => prev.filter((t) => t.id !== id));
+    setPreviewTabs((prev) => prev.filter((tab) => tab.id !== id));
     if (activePreviewTab === id) setActivePreviewTab("preview");
   };
 
@@ -86,10 +112,15 @@ export default function IDEPage() {
     const onMove = (e: MouseEvent) => {
       const dx = e.clientX - dragStart.current.x;
       if (leftDragging.current) {
-        setLeftWidth(Math.max(140, Math.min(360, dragStart.current.leftW + dx)));
+        const newLeft = Math.max(140, Math.min(360, dragStart.current.leftW + dx));
+        setLeftWidth(newLeft);
       }
       if (rightDragging.current) {
-        setMidWidth(Math.max(280, Math.min(700, dragStart.current.midW + dx)));
+        // 右内容区最小宽度：375px（手机预览宽度）+ 20px 边距 = 395px
+        const minRightWidth = 395;
+        const totalWidth = window.innerWidth;
+        const maxMid = totalWidth - dragStart.current.leftW - 10 - minRightWidth;
+        setMidWidth(Math.max(280, Math.min(maxMid, dragStart.current.midW + dx)));
       }
     };
     const onUp = () => {
@@ -173,42 +204,56 @@ export default function IDEPage() {
         previewTabs={previewTabs}
         activePreviewTab={activePreviewTab}
         toolsPanelOpen={toolsPanelOpen}
+        isFullscreen={isPreviewFullscreen}
         onTabClick={(id) => { setActivePreviewTab(id); setToolsPanelOpen(false); }}
         onTabClose={closePreviewTab}
         onAddTab={addPreviewTab}
-        onToggleTools={() => setToolsPanelOpen((v) => !v)}
+        onToggleTools={() => { addPreviewTab(); }}
+        onFullscreen={handleFullscreen}
       />
       <CommandPalette />
 
-      {/* ── 两竖线：绝对定位，贯穿 Navbar + 内容区全高，一体化 ── */}
+      {/* ── 两竖线：绝对定位，贯穿全高（含 Navbar），1px 视觉线 + 4px 拖拽热区 ── */}
       {/* 第一竖线 */}
       <div
-        className="absolute top-0 bottom-0 cursor-col-resize select-none z-20"
-        style={{
-          left: leftWidth,
-          width: 4,
-          background: leftActive ? "hsl(var(--primary))" : "var(--panel-divider)",
-          transition: leftActive ? "none" : "background 0.15s",
-        }}
+        className="absolute top-0 bottom-0 z-20 flex items-stretch"
+        style={{ left: leftWidth, width: 5, cursor: "col-resize" }}
         onMouseDown={onLeftDragStart}
-        onMouseEnter={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
-        onMouseLeave={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
-      />
+      >
+        <div style={{ width: 2, flexShrink: 0 }} />
+        <div
+          style={{
+            width: 1,
+            flexShrink: 0,
+            background: leftActive ? "hsl(var(--primary))" : "var(--panel-divider)",
+            transition: leftActive ? "none" : "background 0.15s",
+          }}
+          onMouseEnter={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
+          onMouseLeave={(e) => { if (!leftDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
+        />
+        <div style={{ width: 2, flexShrink: 0 }} />
+      </div>
       {/* 第二竖线 */}
       <div
-        className="absolute top-0 bottom-0 cursor-col-resize select-none z-20"
-        style={{
-          left: leftWidth + 4 + midWidth,
-          width: 4,
-          background: rightActive ? "hsl(var(--primary))" : "var(--panel-divider)",
-          transition: rightActive ? "none" : "background 0.15s",
-        }}
+        className="absolute top-0 bottom-0 z-20 flex items-stretch"
+        style={{ left: leftWidth + 5 + midWidth, width: 5, cursor: "col-resize" }}
         onMouseDown={onRightDragStart}
-        onMouseEnter={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
-        onMouseLeave={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
-      />
+      >
+        <div style={{ width: 2, flexShrink: 0 }} />
+        <div
+          style={{
+            width: 1,
+            flexShrink: 0,
+            background: rightActive ? "hsl(var(--primary))" : "var(--panel-divider)",
+            transition: rightActive ? "none" : "background 0.15s",
+          }}
+          onMouseEnter={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "hsl(var(--primary))"; }}
+          onMouseLeave={(e) => { if (!rightDragging.current) (e.currentTarget as HTMLElement).style.background = "var(--panel-divider)"; }}
+        />
+        <div style={{ width: 2, flexShrink: 0 }} />
+      </div>
 
-      {/* ── 下方三列（竖线已用绝对定位，这里不再放竖线元素） ── */}
+      {/* ── 下方三列 ── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
 
         {/* ④ 左内容区 */}
@@ -216,8 +261,8 @@ export default function IDEPage() {
           <ToolsDock />
         </div>
 
-        {/* 竖线占位（4px，透明，让布局宽度对齐） */}
-        <div className="flex-shrink-0" style={{ width: 4 }} />
+        {/* 竖线占位 5px，与绝对定位竖线宽度一致 */}
+        <div className="flex-shrink-0" style={{ width: 5 }} />
 
         {/* ⑤ 中内容区 */}
         <div className="flex-shrink-0 h-full overflow-hidden" style={{ width: midWidth, background: "var(--panel-mid-bg)" }}>
@@ -233,11 +278,11 @@ export default function IDEPage() {
           )}
         </div>
 
-        {/* 竖线占位 */}
-        <div className="flex-shrink-0" style={{ width: 4 }} />
+        {/* 竖线占位 5px */}
+        <div className="flex-shrink-0" style={{ width: 5 }} />
 
         {/* ⑥ 右内容区 */}
-        <div className="flex-1 min-w-0 h-full overflow-hidden flex flex-col" style={{ background: "var(--panel-right-bg)" }}>
+        <div ref={previewAreaRef} className="flex-1 min-w-0 h-full overflow-hidden flex flex-col" style={{ background: "var(--panel-right-bg)" }}>
           <ResizablePanelGroup direction="vertical" style={{ gap: 0 }}>
             <ResizablePanel defaultSize={isConsoleOpen ? 75 : 100} minSize={30} id="preview-area" order={1}>
               <div className="h-full overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
