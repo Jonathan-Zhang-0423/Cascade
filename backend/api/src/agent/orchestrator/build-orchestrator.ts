@@ -4,7 +4,7 @@ import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
 import { VERIFIER_AGENT_SYSTEM_PROMPT } from "../prompts/verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
-import { detectCapabilitiesFromText, loadCapabilities } from "../../skills/capability-loader";
+import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
 import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
 import { storage } from "../../infra/storage";
@@ -116,7 +116,7 @@ function buildBuilderSystemPrompt(session: BuildSessionState): string {
     ? ""
     : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
   const skillSection = session.skillContent
-    ? `\n\n## Technology Skill Guidance\n\nFollow these conventions for the project type in use:\n\n${session.skillContent}`
+    ? `\n\n## Technology & Capability Skill Guidance\n\nThese conventions and capability patterns are MANDATORY for this project — apply them as hard requirements, not suggestions. Where a capability includes a checklist, every applicable item must be satisfied before you consider a step complete:\n\n${session.skillContent}`
     : "";
   const sessionFiles = Array.from(session.files.entries()).map(([path, content]) => ({ path, content }));
   const resolvedFramework = session.framework || detectFramework(sessionFiles);
@@ -430,13 +430,19 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     // Capability skills (game design, frontend design, completeness checks, ...)
     // are an additive track — keyword-detected (no LLM) and appended after the
     // tech-stack skill so they never compete for the 2 tech-stack slots above.
-    const detectedCaps = await detectCapabilitiesFromText(planText);
-    if (detectedCaps.length > 0) {
-      const capContent = await loadCapabilities(detectedCaps);
+    const detectedCapMatches = await detectCapabilitiesDetailed(planText);
+    if (detectedCapMatches.length > 0) {
+      console.log(
+        `[build-session] capability skills active: ${detectedCapMatches
+          .map((m) => `${m.name}(score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+          .join("; ")}`,
+      );
+      const capContent = await loadCapabilities(detectedCapMatches.map((m) => m.name));
       if (capContent) {
         session.skillContent = session.skillContent
           ? `${session.skillContent}\n\n---\n\n${capContent}`
           : capContent;
+        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score })) });
       }
     }
   }

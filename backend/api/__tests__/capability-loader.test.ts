@@ -10,6 +10,7 @@ vi.mock("../src/agent/providers/kimi-client", () => ({
 import {
   listCapabilities,
   detectCapabilitiesFromText,
+  detectCapabilitiesDetailed,
   loadCapability,
   loadCapabilities,
 } from "../src/skills/capability-loader";
@@ -74,6 +75,44 @@ describe("capability-loader: detection", () => {
       "做一个游戏，界面要好看，状态管理要清晰，接口对接要稳，功能填充完整，并做完备性检查",
     );
     expect(result.length).toBeLessThanOrEqual(2);
+  });
+
+  it("does NOT fire on a single stray English word below the score threshold", async () => {
+    // "review" (1) and "score" (1) are single-word hits worth 1 each — below the
+    // min score of 3 — so a casual sentence must not pull in a capability.
+    const result = await detectCapabilitiesFromText("please review the score shown on screen");
+    expect(result).not.toContain("completeness-check");
+    expect(result).not.toContain("game-design");
+  });
+
+  it("fires on a single phrase/Chinese hit (score 3)", async () => {
+    const result = await detectCapabilitiesFromText("帮我做一次完备性检查");
+    expect(result).toContain("completeness-check");
+  });
+});
+
+describe("capability-loader: detailed detection", () => {
+  it("returns score and matched keywords for observability", async () => {
+    const matches = await detectCapabilitiesDetailed("build a snake game with score and levels");
+    const game = matches.find((m) => m.name === "game-design");
+    expect(game).toBeTruthy();
+    expect(game!.score).toBeGreaterThanOrEqual(3);
+    expect(game!.matched.length).toBeGreaterThan(0);
+  });
+
+  it("orders matches by descending score and caps at 2", async () => {
+    const matches = await detectCapabilitiesDetailed(
+      "做一个游戏，界面要好看，状态管理要清晰，接口对接要稳，功能填充完整，并做完备性检查",
+    );
+    expect(matches.length).toBeLessThanOrEqual(2);
+    for (let i = 1; i < matches.length; i++) {
+      expect(matches[i - 1].score).toBeGreaterThanOrEqual(matches[i].score);
+    }
+  });
+
+  it("returns an empty array when below threshold", async () => {
+    const matches = await detectCapabilitiesDetailed("please review the score");
+    expect(matches).toEqual([]);
   });
 });
 

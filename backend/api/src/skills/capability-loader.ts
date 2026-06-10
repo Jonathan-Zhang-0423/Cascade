@@ -110,32 +110,57 @@ export async function listCapabilities(): Promise<CapabilityMeta[]> {
 }
 
 /**
+ * Minimum score a capability must reach to be injected. A single stray English
+ * word (score 1) is NOT enough — e.g. "review the layout" should not silently
+ * pull in completeness-check. Require either one phrase/Chinese hit (score 3)
+ * or several corroborating single words. Tunable via CAPABILITY_MIN_SCORE.
+ */
+const MIN_SCORE = Number(process.env.CAPABILITY_MIN_SCORE) || 3;
+
+export interface CapabilityMatch {
+  name: string;
+  score: number;
+  /** The keywords that actually matched, for logging/observability. */
+  matched: string[];
+}
+
+/**
  * Pure keyword scorer — no LLM, no network. Phrases / Chinese terms (substring
  * match) score 3, single English words (word-boundary match) score 1, mirroring
- * the fallback scorer in loader.ts. Returns capability names in descending score
- * order, capped at MAX_CAPABILITIES.
+ * the fallback scorer in loader.ts. Returns matches at or above MIN_SCORE in
+ * descending score order, capped at MAX_CAPABILITIES, with the matched keywords
+ * so callers can log exactly why a capability fired.
  */
-export async function detectCapabilitiesFromText(text: string): Promise<string[]> {
+export async function detectCapabilitiesDetailed(text: string): Promise<CapabilityMatch[]> {
   const caps = await listCapabilities();
-  const scores: Record<string, number> = {};
+  const matches: CapabilityMatch[] = [];
 
   for (const cap of caps) {
     let score = 0;
+    const matched: string[] = [];
     for (const keyword of cap.keywords) {
       // A keyword is treated as a "phrase" (substring match) when it contains a
       // space or any non-ASCII char (e.g. Chinese) — word boundaries don't apply.
       const isPhrase = keyword.includes(" ") || /[^\x00-\x7f]/.test(keyword);
       if (isPhrase ? text.toLowerCase().includes(keyword.toLowerCase()) : wordBoundaryMatch(text, keyword)) {
         score += isPhrase ? 3 : 1;
+        matched.push(keyword);
       }
     }
-    if (score > 0) scores[cap.name] = score;
+    if (score >= MIN_SCORE) matches.push({ name: cap.name, score, matched });
   }
 
-  return Object.entries(scores)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => name)
+  return matches
+    .sort((a, b) => b.score - a.score)
     .slice(0, MAX_CAPABILITIES);
+}
+
+/**
+ * Convenience wrapper returning just the capability names, in descending score
+ * order, capped at MAX_CAPABILITIES. Kept for call sites that don't need scores.
+ */
+export async function detectCapabilitiesFromText(text: string): Promise<string[]> {
+  return (await detectCapabilitiesDetailed(text)).map((m) => m.name);
 }
 
 export async function loadCapability(name: string): Promise<string | null> {
