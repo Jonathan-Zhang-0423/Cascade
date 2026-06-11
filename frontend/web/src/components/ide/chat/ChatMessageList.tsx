@@ -1,4 +1,4 @@
-import type { ChatMessage, ManagerMessage, HolisticReviewResult, ReviewPhase } from "@/stores/ide-store";
+import type { ChatMessage, ManagerMessage, HolisticReviewResult, ReviewPhase, ReviewStrictness } from "@/stores/ide-store";
 import { useIDEStore } from "@/stores/ide-store";
 import { useEffect, useRef, useState } from "react";
 import type { ActionLogEntry } from "./chat-types";
@@ -29,6 +29,13 @@ interface ChatMessageListProps {
   handleStopExecution?: () => void;
   handleContinueExecution?: (input?: string) => void;
   setUserConfirmationInput?: (v: string) => void;
+  handleStartReview?: () => void;
+  handleStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }
 
 export function ChatMessageList({
@@ -51,6 +58,13 @@ export function ChatMessageList({
   handleStopExecution,
   handleContinueExecution,
   setUserConfirmationInput,
+  handleStartReview,
+  handleStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: ChatMessageListProps) {
   const lastPlanMsgId = [...managerMessages]
     .reverse()
@@ -223,6 +237,13 @@ export function ChatMessageList({
                 fixCycle={isLastPlan ? fixCycle : undefined}
                 liveNarration={isLastPlan ? liveNarrationText : undefined}
                 completionData={isLastPlan ? completionData : undefined}
+                onStartReview={isLastPlan ? handleStartReview : undefined}
+                onStopReview={isLastPlan ? handleStopReview : undefined}
+                reviewStrictness={isLastPlan ? reviewStrictness : undefined}
+                onReviewStrictnessChange={isLastPlan ? onReviewStrictnessChange : undefined}
+                reviewLiveNarration={isLastPlan ? reviewLiveNarration : undefined}
+                reviewRound={isLastPlan ? reviewRound : undefined}
+                reviewMaxRounds={isLastPlan ? reviewMaxRounds : undefined}
               />
             </div>
           );

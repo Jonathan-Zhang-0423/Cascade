@@ -583,7 +583,7 @@ export async function registerRoutes(
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
         provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage, reviewEnabled,
+        mode: reqMode, userMessage,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -598,7 +598,6 @@ export async function registerRoutes(
         userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
-        reviewEnabled?: boolean;
       };
 
       // Per-user session cap
@@ -677,7 +676,6 @@ export async function registerRoutes(
         provider: provider || "glm",
         framework: resolvedFramework,
         mode: resolvedMode,
-        reviewEnabled: !!reviewEnabled,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,

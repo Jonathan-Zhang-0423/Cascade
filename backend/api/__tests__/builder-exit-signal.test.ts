@@ -24,23 +24,28 @@ const steps: BuildStep[] = [
 ];
 
 describe("builder exit signal (request_review bypass)", () => {
-  it("trips the exit signal + emits reviewing once the LAST step is marked complete", async () => {
+  it("trips the exit signal + emits build_complete once the LAST step is marked complete", async () => {
     const session = makeSession();
     const exitSignal = { exit: false, reason: undefined as string | undefined };
     const tools = buildBuilderTools(session, steps, undefined, exitSignal);
     const events: Array<Record<string, unknown>> = [];
     const emit = (d: Record<string, unknown>) => { events.push(d); };
 
-    // Complete step 1 — not all done yet, signal stays false.
+    // Complete step 1 — not all done yet, signal stays false. Build completion
+    // must NOT fire, and the build loop never triggers a review (review is now a
+    // separate, optional step run after the build settles).
     await tools.handlers.mark_step_complete({ step_id: "1", summary: "did 1" }, emit);
     expect(exitSignal.exit).toBe(false);
+    expect(events.some((e) => e.type === "build_complete")).toBe(false);
     expect(events.some((e) => e.type === "reviewing")).toBe(false);
 
-    // Complete step 2 (the last) — signal trips and a reviewing event fires.
+    // Complete step 2 (the last) — signal trips and a build_complete event fires.
+    // Crucially, the builder does NOT emit a review trigger of any kind.
     await tools.handlers.mark_step_complete({ step_id: "2", summary: "did 2" }, emit);
     expect(exitSignal.exit).toBe(true);
     expect(exitSignal.reason).toBe("all_steps_complete");
-    expect(events.filter((e) => e.type === "reviewing").length).toBe(1);
+    expect(events.filter((e) => e.type === "build_complete").length).toBe(1);
+    expect(events.some((e) => e.type === "reviewing")).toBe(false);
   });
 
   it("does not trip the signal when only some steps are complete", async () => {

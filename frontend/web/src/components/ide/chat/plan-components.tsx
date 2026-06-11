@@ -273,7 +273,10 @@ export function TaskPlanCard({
   const phase = reviewPhase || "idle";
   const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
   const showConfirmation = hasNeedsInput || hasReviewConfirmation;
-  const isFullyComplete = phase === "review_passed" && allDone;
+  // Build completion no longer depends on review — a build is fully complete once
+  // every step is done. Review is a separate, user-invoked step (see the run-review
+  // action) that does not gate this state.
+  const isFullyComplete = allDone;
   const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
   // The standalone review step is offered once the build has settled (build done
   // and not mid-execution). It is optional, mirroring how plan is optional.
@@ -965,6 +968,13 @@ export function ManagerMessageBubble({
   fixCycle,
   liveNarration,
   completionData,
+  onStartReview,
+  onStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: {
   message: {
     role: string;
@@ -990,6 +1000,13 @@ export function ManagerMessageBubble({
   fixCycle?: number;
   liveNarration?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
+  onStartReview?: () => void;
+  onStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }) {
   if (message.role === "user") {
     return (
@@ -1026,6 +1043,13 @@ export function ManagerMessageBubble({
         liveNarration={liveNarration}
         completionSummary={completionData?.summary}
         changedFiles={completionData?.changedFiles}
+        onStartReview={onStartReview}
+        onStopReview={onStopReview}
+        reviewStrictness={reviewStrictness}
+        onReviewStrictnessChange={onReviewStrictnessChange}
+        reviewLiveNarration={reviewLiveNarration}
+        reviewRound={reviewRound}
+        reviewMaxRounds={reviewMaxRounds}
       />
     );
   }

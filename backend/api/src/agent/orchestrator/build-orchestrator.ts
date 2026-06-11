@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT } from "../prompts/verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
@@ -11,12 +10,9 @@ import { storage } from "../../infra/storage";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
   buildBuilderTools,
-  buildVerifierTools,
-  buildFixerTools,
-  type VerifierSessionState,
 } from "../tools/agent-tools";
 import { getMobilePromptSupplement } from "../prompts/mobile-prompt-supplements";
-import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "../tools/compile-checks";
+import { buildEditorCompileCheckPrompt } from "../tools/compile-checks";
 import { detectFramework, type Framework } from "../../compiler/framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "../../infra/parts";
 import { lspManager } from "../tools/lsp-manager";
@@ -79,10 +75,8 @@ export interface BuildSessionState {
   pendingUserInputResolve?: () => void;
   /** Console errors/warnings captured from the preview iframe during this build */
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
-  /** "plan": full pipeline (builder + verifier + fix cycle). "direct": single-shot, no review. */
+  /** "plan": multi-step plan execution. "direct": single-shot. Review is a separate, user-invoked step either way. */
   mode?: "plan" | "direct";
-  /** When true, run verifier + fix cycle after build. Independent of `mode`. */
-  reviewEnabled?: boolean;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -128,22 +122,6 @@ export function buildBuilderSystemPrompt(session: BuildSessionState): string {
   return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}${compileCheckSection}`;
 }
 
-function buildVerifierSystemPrompt(session: BuildSessionState): string {
-  const label = langNativeLabel(session.userLang || "English");
-  const isEnglish = label === (session.userLang || "English") && label === "English";
-  const langPrefix = isEnglish
-    ? ""
-    : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers and file paths remain in their original language.\n\n`;
-  const verifierFiles = Array.from(session.files.entries()).map(([path, content]) => ({ path, content }));
-  const resolvedFramework = session.framework || detectFramework(verifierFiles);
-  const mobileSupplement = resolvedFramework !== "web"
-    ? getMobilePromptSupplement("verifier", resolvedFramework)
-    : null;
-  const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
-  const compileCheckSection = buildVerifierCompileCheckPrompt(resolvedFramework);
-  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}${compileCheckSection}`;
-}
-
 export function buildBuilderInitialMessage(
   session: BuildSessionState,
   steps: BuildStep[],
@@ -180,48 +158,11 @@ IMPORTANT: You are implementing a complete coding project. For each step:
 1. Read existing files using read_file before modifying them.
 2. Write the complete file content using write_file.
 3. Mark each step complete with mark_step_complete.
-4. After ALL steps are done, call request_review.
+4. After ALL steps are done, call finish_build.
 
 Preserve ALL existing content that is not part of the current step. Never truncate or omit existing code.`;
 }
 
-function buildVerifierInitialMessage(
-  session: BuildSessionState,
-  planSteps: BuildStep[],
-  userFeedback?: string,
-): string {
-  const stepsList = planSteps.map(s =>
-    `Step ${s.step}: ${s.title}\n  Description: ${s.description}\n  Acceptance: ${s.acceptance_criteria ?? "N/A"}`
-  ).join("\n\n");
-
-  const allFiles = filesMapToArray(session.files);
-  const filesList = allFiles.length > 0
-    ? allFiles.map(f => `- ${f.path}`).join("\n")
-    : "(none)";
-
-  const feedbackSection = userFeedback
-    ? `\n\n## User Feedback\n${userFeedback}\nPlease take this into account.`
-    : "";
-
-  const consoleSection = session.consoleEvents && session.consoleEvents.length > 0
-    ? `\n\n## Browser Console Errors (captured from preview)\nThese runtime errors were captured from the preview iframe. Treat each one as a potential bug.\n\n${session.consoleEvents.map(e => `[${e.level.toUpperCase()}] ${e.message}`).join("\n")}`
-    : "";
-
-  return `Please review this project against its requirements.
-
-## Original User Request
-${session.userRequest}
-
-## Build Plan (All Steps)
-${stepsList}
-
-## Available Files to Review
-${filesList}
-
-Use read_file to examine each file, then report any issues with report_issue, and finally call submit_verdict with your assessment.${consoleSection}${feedbackSection}`;
-}
-
-const MAX_FIX_CYCLES = 3;
 
 /**
  * Extract the file path from a verifier issue (best-effort parsing).
@@ -390,8 +331,6 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
   // Per-phase optimal provider selection — respects user preference, optimizes by phase
   // Each chain: [user's provider first if available, then system defaults for that phase]
   const providerChainEditor = buildFallbackChain("editor", userProvider);
-  const providerChainVerifier = buildFallbackChain("verifier", userProvider);
-  const providerChainFixer = buildFallbackChain("fixer", userProvider);
 
   // Part-based emission context — all agent loops feed into this
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
@@ -597,7 +536,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
 
   session.status = { type: "idle" };
   if (!passed) telemetry.setFinalStatus(session.aborted ? "aborted" : "fail");
-  telemetry.setFixCycle(currentCycle);
+  telemetry.setFixCycle(0);
   await telemetry.flush();
   emit({ type: "done" });
 }

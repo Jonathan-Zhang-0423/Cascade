@@ -148,7 +148,6 @@ function reviewToBuildSession(session: ReviewSessionState, plan: { steps: BuildS
     sessionDir: session.sessionDir,
     consoleEvents: session.consoleEvents,
     mode: "plan",
-    reviewEnabled: false,
   };
 }
 
