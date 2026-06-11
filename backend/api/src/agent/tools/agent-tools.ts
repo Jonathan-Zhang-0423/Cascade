@@ -52,6 +52,7 @@ export function buildBuilderTools(
   session: BuildSessionState,
   planSteps?: BuildStep[],
   telemetry?: BuildTelemetry,
+  exitSignal?: { exit: boolean; reason?: string },
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
@@ -61,6 +62,10 @@ export function buildBuilderTools(
     for (const s of planSteps) stepByNum.set(s.step, s);
   }
   const totalSteps = planSteps?.length ?? 0;
+  // Track which steps have been marked complete so we can end the builder loop
+  // deterministically once the final step is done — without depending on the
+  // model to emit a separate request_review tool call.
+  const completedSteps = new Set<number | string>();
 
   const schemas: ToolSchema[] = [
     {
@@ -408,6 +413,7 @@ export function buildBuilderTools(
       }
 
       emit({ type: "step_completed", stepNumber: resolvedNum });
+      completedSteps.add(resolvedNum);
 
       // Advance to the next step
       const numericCompleted = typeof resolvedNum === "number" ? resolvedNum : NaN;
@@ -416,6 +422,17 @@ export function buildBuilderTools(
         if (nextStep) {
           emit({ type: "step_starting", stepNumber: nextStep.step, stepTitle: nextStep.title, totalSteps });
         }
+      }
+
+      // When every plan step has been marked complete, drive the review phase
+      // directly and signal the agent loop to exit. This makes completion
+      // deterministic instead of waiting on a separate request_review tool call
+      // that the model sometimes only narrates (leaving the loop spinning to
+      // maxIterations and looking frozen at "请求审查").
+      if (totalSteps > 0 && completedSteps.size >= totalSteps && exitSignal) {
+        emit({ type: "reviewing" });
+        exitSignal.exit = true;
+        exitSignal.reason = "all_steps_complete";
       }
 
       return `Step ${stepId} marked complete: ${summary}`;
