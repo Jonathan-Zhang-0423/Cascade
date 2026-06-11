@@ -2054,12 +2054,18 @@ Rules:
       }
       const { client: nameClient } = getOptimalClient("planning", "doubao");
       const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
+      // Name the project in the same language as the idea (Chinese vs English),
+      // so a Chinese prompt yields a Chinese name instead of defaulting to English.
+      const isChinese = /[一-鿿]/.test(idea);
+      const langInstruction = isChinese
+        ? "用中文起名（2-4 个字或词），不要使用英文。"
+        : "Use English (2-4 words, title case).";
       const completion = await nameClient.chat.completions.create({
         model: DOUBAO_LITE_MODEL,
         messages: [
           {
             role: "user",
-            content: `Generate a short project name (2-4 words, title case) for this app idea${frameworkHint}:\n\n"${idea}"\n\nRespond with ONLY the project name, nothing else.`,
+            content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${idea}"\n\nRespond with ONLY the project name, nothing else.`,
           },
         ],
         max_tokens: 20,
