@@ -218,7 +218,7 @@ export function ChatMessageList({
                 onConfirmationInputChange={
                   isLastPlan ? setUserConfirmationInput : undefined
                 }
-                reviewPhase={isLastPlan ? reviewPhase : undefined}
+                reviewPhase={isLastPlan ? reviewPhase : msg.frozenReviewPhase}
                 holisticReview={isLastPlan ? holisticReview : undefined}
                 fixCycle={isLastPlan ? fixCycle : undefined}
                 liveNarration={isLastPlan ? liveNarrationText : undefined}
