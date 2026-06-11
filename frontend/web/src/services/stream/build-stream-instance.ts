@@ -89,7 +89,6 @@ export class BuildStreamInstance {
     this.actions.setManagerResponding(false);
     this.state.set({ buildPhase: "thinking" });
     this.actions.setChatMode("build");
-    if (!isDirect) this.actions.setReviewPhase("building");
     this.actions.setFixCycle(0);
     this.actions.setHolisticReview(null);
     this.actions.setCompletionData(null);
@@ -174,7 +173,6 @@ export class BuildStreamInstance {
         this.state.set({ buildPhase: null });
         this.actions.setExecutingTaskIndex(null);
         this.actions.setAiResponding(false);
-        this.actions.setReviewPhase("idle");
         return;
       }
 
@@ -273,30 +271,12 @@ export class BuildStreamInstance {
               this.actions.updateTaskStatus(key, "failed");
               if (ev.reason) this.actions.setTaskFailureReason(key, ev.reason as string);
             }
-          } else if (type === "reviewing") {
-            this.state.set({ buildPhase: "verifying", narrationText: "" });
+          } else if (type === "build_complete") {
+            // Build finished. Completion/cleanup is handled by all_complete; this
+            // is just the deterministic "editor is done" signal. Review is a
+            // separate, user-invoked step and is NOT part of the build stream.
+            this.state.set({ narrationText: "" });
             commAccumulated = "";
-            if (isCurrentProject) this.actions.setReviewPhase("reviewing");
-          } else if (type === "review_passed") {
-            // Verifier approved. Drive the PlanCard to its completed state —
-            // isFullyComplete requires reviewPhase === "review_passed".
-            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
-          } else if (type === "review_skipped") {
-            // Review disabled for this build. Treat as passed so the card can
-            // complete (it gates on review_passed, not on a separate state).
-            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
-          } else if (type === "bugs_found" || type === "fixing") {
-            this.state.set({ buildPhase: "fixing" });
-            if (isCurrentProject) this.actions.setReviewPhase("fixing");
-          } else if (type === "needs_input") {
-            if (isCurrentProject) {
-              this.actions.setPendingConfirmation({
-                stepKey: String(ev.stepNumber ?? "0"),
-                items: Array.isArray(ev.items) ? ev.items as string[] : [],
-              });
-              const key = String(ev.stepNumber ?? "0");
-              this.actions.updateTaskStatus(key, "needs-input");
-            }
           } else if (type === "all_complete") {
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
@@ -329,7 +309,6 @@ export class BuildStreamInstance {
           } else if (type === "build_error") {
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
-            this.actions.setReviewPhase("idle");
             if (isCurrentProject && !this.connectionErrorAdded) {
               this.connectionErrorAdded = true;
               this.actions.addManagerMessage({
@@ -469,23 +448,9 @@ export class BuildStreamInstance {
               const key = String(ev.stepNumber ?? 0);
               this.actions.updateTaskStatus(key, "done");
             }
-          } else if (type === "reviewing") {
-            this.state.set({ buildPhase: "verifying", narrationText: "" });
+          } else if (type === "build_complete") {
+            this.state.set({ narrationText: "" });
             commAccumulated = "";
-            if (isCurrentProject) this.actions.setReviewPhase("reviewing");
-          } else if (type === "review_passed" || type === "review_skipped") {
-            if (isCurrentProject) this.actions.setReviewPhase("review_passed");
-          } else if (type === "bugs_found" || type === "fixing") {
-            this.state.set({ buildPhase: "fixing" });
-            if (isCurrentProject) this.actions.setReviewPhase("fixing");
-          } else if (type === "needs_input") {
-            if (isCurrentProject) {
-              this.actions.setPendingConfirmation({
-                stepKey: String(ev.stepNumber ?? "0"),
-                items: Array.isArray(ev.items) ? ev.items as string[] : [],
-              });
-              this.actions.updateTaskStatus(String(ev.stepNumber ?? "0"), "needs-input");
-            }
           } else if (type === "all_complete") {
             if (isCurrentProject) {
               nSteps.forEach((step) => {
@@ -552,7 +517,6 @@ export class BuildStreamInstance {
     this.state.set({ buildPhase: null });
     this.actions.setExecutingTaskIndex(null);
     this.actions.setAiResponding(false);
-    this.actions.setReviewPhase("idle");
     this.clearLive();
   }
 

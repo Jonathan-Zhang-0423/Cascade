@@ -43,7 +43,9 @@ import {
   buildHolisticVerifierMessage,
 } from "../../agent/prompts/verifier-prompt";
 import { AB_TEST_SCENARIOS } from "../ab-test-scenarios";
-import { runBuildSession, type BuildSessionState, type BufferedEvent } from "../../agent/orchestrator/build-orchestrator";
+import { runBuildSession, type BuildSessionState, type BufferedEvent, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
+import { runReviewSession, type ReviewSessionState } from "../../agent/orchestrator/review-orchestrator";
+import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
@@ -384,6 +386,8 @@ interface ManagerChatSession {
 
 const managerChatSessions = new Map<string, ManagerChatSession>();
 
+const reviewSessions = new Map<string, ReviewSessionState>();
+
 setInterval(() => {
   const now = Date.now();
   const maxAge = 30 * 60 * 1000;
@@ -411,6 +415,18 @@ setInterval(() => {
       managerChatSessions.delete(id);
     }
   });
+  Array.from(reviewSessions.entries()).forEach(([id, session]) => {
+    if (session.done) {
+      if (session.doneAt && now - session.doneAt > doneRetention) {
+        reviewSessions.delete(id);
+      }
+      return;
+    }
+    if (session._startedAt && now - session._startedAt > maxAge) {
+      session.aborted = true;
+      reviewSessions.delete(id);
+    }
+  });
   // Also clean old sessions from DB
   storage.deleteOldManagerSessions(maxAge).catch(() => {});
   // Clean completed video jobs older than 10 minutes
@@ -423,7 +439,14 @@ setInterval(() => {
   });
 }, 60_000);
 
-function createSessionEmit(session: BuildSessionState): SseEmit {
+interface SseCapableSession {
+  nextEventId: number;
+  events: BufferedEvent[];
+  sseWriters: Set<(data: string) => void>;
+  done: boolean;
+}
+
+function createSessionEmit(session: SseCapableSession): SseEmit {
   return (data: Record<string, unknown>) => {
     const eventId = session.nextEventId++;
     const event: BufferedEvent = { eventId, data: { ...data, eventId } };
@@ -435,7 +458,7 @@ function createSessionEmit(session: BuildSessionState): SseEmit {
   };
 }
 
-function attachSseWriter(session: BuildSessionState, res: any, lastEventId: number) {
+function attachSseWriter(session: SseCapableSession, res: any, lastEventId: number) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -560,7 +583,7 @@ export async function registerRoutes(
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
         provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage, reviewEnabled,
+        mode: reqMode, userMessage,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -575,7 +598,6 @@ export async function registerRoutes(
         userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
-        reviewEnabled?: boolean;
       };
 
       // Per-user session cap
@@ -654,7 +676,6 @@ export async function registerRoutes(
         provider: provider || "glm",
         framework: resolvedFramework,
         mode: resolvedMode,
-        reviewEnabled: !!reviewEnabled,
         _startedAt: Date.now(),
         events: [],
         nextEventId: 0,
@@ -778,6 +799,145 @@ export async function registerRoutes(
     session.userConfirmation = userInput || "";
     session.pendingUserInputResolve?.();
     session.pendingUserInputResolve = undefined;
+    res.json({ ok: true });
+  });
+
+  // ─── Standalone review step (plan + build + REVIEW) ──────────────────────
+  // Mirrors /api/build-session but runs the verify→fix→re-verify loop quietly
+  // (no needs_input) and reports once. See review-orchestrator.ts.
+  app.post("/api/review-session", async (req, res) => {
+    try {
+      const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
+      if (!hasAnyProvider) {
+        res.status(500).json({ error: "No AI provider is configured" });
+        return;
+      }
+      const {
+        sessionId, files, userRequest, planSteps, userLang,
+        provider, framework: reqFramework, projectId: reqProjectId, strictness,
+      } = req.body as {
+        sessionId: string;
+        files: Array<{ path: string; content: string }>;
+        userRequest?: string;
+        planSteps?: BuildStep[];
+        userLang?: string;
+        provider?: AIProvider;
+        framework?: Framework;
+        projectId?: string;
+        strictness?: ReviewStrictness;
+      };
+
+      if (!sessionId) {
+        res.status(400).json({ error: "sessionId is required" });
+        return;
+      }
+
+      const reqUserId = (req.session as any)?.userId as string | undefined;
+      if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
+        res.status(429).json({ error: "Too many active sessions. Please wait for a running session to finish." });
+        return;
+      }
+
+      const fileMap = new Map<string, string>();
+      if (Array.isArray(files)) {
+        for (const f of files) fileMap.set(f.path, f.content);
+      }
+
+      let resolvedFramework: Framework | undefined = reqFramework;
+      if (!resolvedFramework && reqProjectId) {
+        try {
+          const projectRecord = await storage.getProject(reqProjectId);
+          if (projectRecord?.framework) resolvedFramework = projectRecord.framework as Framework;
+        } catch {}
+      }
+
+      const resolvedStrictness: ReviewStrictness =
+        strictness === "lenient" || strictness === "strict" ? strictness : "balanced";
+
+      const session: ReviewSessionState = {
+        id: sessionId,
+        projectId: reqProjectId || undefined,
+        userId: reqUserId || undefined,
+        aborted: false,
+        files: fileMap,
+        userRequest: userRequest || "",
+        planSteps: Array.isArray(planSteps) && planSteps.length > 0 ? planSteps : undefined,
+        userLang: userLang || "English",
+        provider: provider || "glm",
+        framework: resolvedFramework,
+        strictness: resolvedStrictness,
+        events: [],
+        nextEventId: 0,
+        done: false,
+        sseWriters: new Set(),
+        parts: [],
+        status: { type: "idle" },
+        _startedAt: Date.now(),
+      };
+      reviewSessions.set(sessionId, session);
+
+      const emit = createSessionEmit(session);
+      attachSseWriter(session, res, -1);
+
+      runReviewSession(session, emit)
+        .catch((err: any) => {
+          emit({ type: "review_error", message: err?.message || "Unknown error" });
+          emit({ type: "done" });
+        })
+        .finally(() => {
+          session.done = true;
+          session.doneAt = Date.now();
+          if (reqUserId) userSessions.unregister(reqUserId, sessionId);
+          if (session.sessionDir) {
+            rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
+          }
+          lspManager.stop(session.id).catch(() => {});
+          shellManager.destroyShell(session.id).catch(() => {});
+        });
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error?.message || "Review session failed" });
+      }
+    }
+  });
+
+  app.get("/api/review-session/:sessionId/status", (req, res) => {
+    const session = reviewSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({
+      active: !session.done && !session.aborted,
+      eventCount: session.events.length,
+      done: session.done,
+    });
+  });
+
+  app.get("/api/review-session/active/:projectId", (req, res) => {
+    const projectId = req.params.projectId;
+    const active = Array.from(reviewSessions.entries())
+      .find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+    if (active) {
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      return;
+    }
+    res.status(404).json({ error: "No active review session for this project" });
+  });
+
+  app.get("/api/review-session/:sessionId/stream", (req, res) => {
+    const session = reviewSessions.get(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const lastEventId = parseInt(req.query.lastEventId as string);
+    attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
+  });
+
+  app.delete("/api/review-session/:sessionId", (req, res) => {
+    const session = reviewSessions.get(req.params.sessionId);
+    if (session) session.aborted = true;
     res.json({ ok: true });
   });
 

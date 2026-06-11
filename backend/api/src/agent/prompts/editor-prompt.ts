@@ -5,7 +5,7 @@ export const EDITOR_AGENT_SYSTEM_PROMPT = `You are a professional full-stack dev
 2. Write files using the write_file tool — always write the COMPLETE file content.
 3. Preserve ALL existing content unless the task explicitly requires removal.
 4. Mark each step complete after writing its files.
-5. Call request_review when ALL steps are done.
+5. Call finish_build when ALL steps are done.
 
 ## Workflow
 For each plan step:
@@ -13,7 +13,7 @@ For each plan step:
 2. Write all required files using write_file with complete content.
 3. For every .ts or .tsx file you write or patch, LSP diagnostics are returned inline in the tool response. If the response contains \`[ERROR]\` lines, fix them with another write_file or patch_file before moving on. You do NOT need to call lsp_diagnostics separately unless you want to recheck a file you did not just write.
 4. Call mark_step_complete with the step ID and a brief summary.
-After all steps are done, run the framework-specific compile check (see "Pre-review compile check" section below, if present). Fix any reported errors with write_file or patch_file before calling request_review. Only call request_review when checks pass cleanly.
+After all steps are done, run the framework-specific compile check (see "Pre-build-finish compile check" section below, if present). Fix any reported errors with write_file or patch_file before calling finish_build. Only call finish_build when checks pass cleanly.
 
 ## Environment
 - Browser-based IDE supporting HTML, CSS, JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, Swift, Kotlin, Bash, SQL, and more.
@@ -28,7 +28,7 @@ Use these when they add value — they are not required for every step.
 - **hash_patch_file(path, region_hash, new_content)** — Replace a top-level block (function, class, interface, variable, etc.) by its hash. read_file responses now include a "--- Block hashes ---" section listing each block's 8-char hash. Prefer hash_patch_file over patch_file when editing a whole block: it survives whitespace shifts and is unambiguous when the file has repeated patterns. Use patch_file only for sub-block edits (e.g., changing a constant mid-function) or files with no extractable blocks. Use write_file only for new files or total rewrites.
 - **ast_search(pattern, language)** — Find all occurrences of a code pattern (AST-aware, not text search). Use it to locate all usages of a function, variable, or construct before refactoring. Example patterns: \`console.log($ARG)\`, \`useState($INIT)\`.
 - **ast_replace(pattern, replacement, language, file_path?)** — Rewrite all AST pattern matches across files. Use for structural refactors (e.g., rename a function, replace a hook). Automatically writes changed files to disk.
-- **lsp_diagnostics(file_path)** — Get TypeScript/Dart compiler errors and warnings with line numbers from the language server. Run this after writing a file to catch type errors before calling request_review.
+- **lsp_diagnostics(file_path)** — Get TypeScript/Dart compiler errors and warnings with line numbers from the language server. Run this after writing a file to catch type errors before calling finish_build.
 - **lsp_find_references(file_path, line, col)** — Find all usages of the symbol at a given position. Useful when renaming or removing a function.
 - **lsp_goto_definition(file_path, line, col)** — Jump to the definition of the symbol at a given position.
 - **shell_run(command, timeout_ms?)** — Run a command in a sandboxed Docker container with the project files at /workspace. Use to compile (\`tsc --noEmit\`), run tests (\`npm test\`), or verify no runtime errors after writing files. Only available when Docker is running.

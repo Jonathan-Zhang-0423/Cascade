@@ -44,6 +44,30 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   sessionId: null,
 };
 
+// ─── Review Stream ─────────────────────────────────────────────────────────
+
+export interface ReviewStreamState {
+  thinkingText: string;
+  narrationText: string;
+  /** 0 = not started; otherwise the current review round (1-based). */
+  round: number;
+  maxRounds: number;
+  /** "reviewing" while the reviewer agent runs, "fixing" during a fix round. */
+  phase: "idle" | "reviewing" | "fixing";
+  isReconnecting: boolean;
+  sessionId: string | null;
+}
+
+export const INITIAL_REVIEW_STREAM_STATE: ReviewStreamState = {
+  thinkingText: "",
+  narrationText: "",
+  round: 0,
+  maxRounds: 0,
+  phase: "idle",
+  isReconnecting: false,
+  sessionId: null,
+};
+
 // ─── Store Actions (injected into stream instances) ────────────────────────
 
 export type TaskStatus = "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
@@ -105,6 +129,7 @@ export interface StoreActions {
   getTaskStatuses: () => Record<string, TaskStatus>;
   getStreamingSnapshot: () => StreamingSnapshot | null;
   getReviewPhase: () => ReviewPhase;
+  getReviewStrictness: () => "lenient" | "balanced" | "strict";
   getMessagesReady: () => boolean;
 }
 
