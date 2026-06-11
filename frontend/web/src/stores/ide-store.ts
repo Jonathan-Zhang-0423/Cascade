@@ -72,17 +72,27 @@ export interface VerificationResult {
 
 export interface HolisticReviewBug {
   id: string;
-  severity: "critical" | "major" | "minor";
+  severity: "critical" | "major" | "minor" | "nit";
   file: string;
   description: string;
   expected: string;
   actual: string;
 }
 
+export interface HolisticReviewAdvisory {
+  id: string;
+  severity: "critical" | "major" | "minor" | "nit";
+  file: string;
+  description: string;
+}
+
 export interface HolisticReviewResult {
   overall_status: "pass" | "fail";
   requirement_match_percent: number;
   bugs: HolisticReviewBug[];
+  /** Non-blocking issues surfaced by the standalone review step (minor/nit
+   * under the active strictness). Always informational — never block. */
+  advisories?: HolisticReviewAdvisory[];
   missing_features: Array<{ id: string; description: string; related_step: number }>;
   regressions: Array<{ id: string; file: string; description: string }>;
   user_confirmation_needed: string[];
@@ -91,6 +101,10 @@ export interface HolisticReviewResult {
 }
 
 export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
+
+/** Strictness threshold for the standalone review step. Controls which
+ * severities trigger an automatic fix round. */
+export type ReviewStrictness = "lenient" | "balanced" | "strict";
 
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
@@ -321,6 +335,8 @@ interface IDEState {
   reviewPhase: ReviewPhase;
   holisticReview: HolisticReviewResult | null;
   fixCycle: number;
+  reviewStrictness: ReviewStrictness;
+  setReviewStrictness: (s: ReviewStrictness) => void;
   completionData: { changedFiles: string[]; summary: string } | null;
 
   isLLMMonitorOpen: boolean;
@@ -861,6 +877,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   reviewPhase: "idle",
   holisticReview: null,
   fixCycle: 0,
+  reviewStrictness: "balanced",
   completionData: null,
 
   isLLMMonitorOpen: false,
@@ -1712,6 +1729,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setReviewPhase: (phase) =>
     set({ reviewPhase: phase }),
+
+  setReviewStrictness: (s) =>
+    set({ reviewStrictness: s }),
 
   setHolisticReview: (review) =>
     set({ holisticReview: review }),

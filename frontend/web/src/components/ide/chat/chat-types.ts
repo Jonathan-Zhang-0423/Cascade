@@ -104,6 +104,38 @@ export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   needs_input: "verifier",
 };
 
+export const KNOWN_REVIEW_EVENT_TYPES: Set<string> = new Set([
+  "thinking_token",
+  "narration_token",
+  "communicator_token",
+  "action_log",
+  "code_applied",
+  "review_started",
+  "review_round",
+  "review_fixing",
+  "review_report",
+  "review_passed",
+  "review_done",
+  "review_error",
+  "done",
+]);
+
+export const REVIEW_SOURCE_MAP: Record<string, LLMEventSource> = {
+  thinking_token: "verifier",
+  narration_token: "verifier",
+  communicator_token: "verifier",
+  action_log: "verifier",
+  code_applied: "editor",
+  review_started: "verifier",
+  review_round: "verifier",
+  review_fixing: "editor",
+  review_report: "verifier",
+  review_passed: "verifier",
+  review_done: "verifier",
+  review_error: "verifier",
+  done: "verifier",
+};
+
 export interface ManagerSseEvent {
   type: string;
   eventId?: number;
@@ -125,6 +157,40 @@ export function validateManagerEvent(raw: { type: string; [key: string]: unknown
 
 export function validateBuildEvent(raw: { type: string; [key: string]: unknown }): BuildSseEvent {
   return raw as BuildSseEvent;
+}
+
+export interface ReviewReportRemaining {
+  blocking: Array<{ type: string; severity: string; description: string; file: string }>;
+  advisories: Array<{ type: string; severity: string; description: string; file: string }>;
+}
+
+export interface ReviewSseEvent {
+  type: string;
+  eventId?: number;
+  replay?: boolean;
+  token?: string;
+  label?: string;
+  detail?: string;
+  message?: string;
+  filePath?: string;
+  code?: string;
+  language?: string;
+  actionType?: ActionLogEntry["type"];
+  strictness?: "lenient" | "balanced" | "strict";
+  round?: number;
+  maxRounds?: number;
+  status?: "passed" | "stalled" | "exhausted";
+  rounds?: number;
+  summary?: string;
+  requirementMatchPercent?: number;
+  fixedCount?: number;
+  remaining?: ReviewReportRemaining;
+  review?: HolisticReviewResult;
+  [key: string]: unknown;
+}
+
+export function validateReviewEvent(raw: { type: string; [key: string]: unknown }): ReviewSseEvent {
+  return raw as ReviewSseEvent;
 }
 
 export interface EditorSseEvent {
@@ -297,6 +363,13 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     issuesFound: "发现 {n} 个问题",
     issuesFoundGeneric: "发现问题",
     fixingIssues: "修复问题中（第 {n}/3 轮）...",
+    reviewCode: "代码审查",
+    reviewInProgress: "正在审查...",
+    reviewFixing: "正在修复...",
+    reviewAdvisories: "建议（不阻塞）：",
+    strictness_lenient: "宽松",
+    strictness_balanced: "均衡",
+    strictness_strict: "严格",
     thinking: "思考中...",
     planning: "规划中...",
     whatAndWhy: "任务目标",
@@ -316,6 +389,18 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     regenerateNotePlaceholder: "这一版的问题是…\n比如：太复杂了，去掉排行榜功能",
     regenerateConfirm: "重新生成",
     cancel: "取消",
+    runReview: "代码审查",
+    reviewStrictness: "审查严格度",
+    strictnessLenient: "宽松",
+    strictnessBalanced: "平衡",
+    strictnessStrict: "严格",
+    reviewRound: "审查中（第 {n}/{max} 轮）...",
+    reviewFixing: "修复中（第 {n} 轮）...",
+    reviewReportPassed: "审查通过 ✓",
+    reviewReportRemaining: "审查完成 · 仍有 {n} 项待处理",
+    reviewReportClean: "未发现需要处理的问题",
+    reviewAdvisories: "建议（不阻塞）",
+    reviewFixedCount: "已修复 {n} 项",
   },
   English: {
     startBuilding: "Start building",
@@ -342,6 +427,13 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     issuesFound: "{n} issues found",
     issuesFoundGeneric: "Issues found",
     fixingIssues: "Fixing issues (cycle {n}/3)...",
+    reviewCode: "Review code",
+    reviewInProgress: "Reviewing...",
+    reviewFixing: "Fixing...",
+    reviewAdvisories: "Advisories (non-blocking):",
+    strictness_lenient: "Lenient",
+    strictness_balanced: "Balanced",
+    strictness_strict: "Strict",
     thinking: "Thinking...",
     planning: "Planning...",
     whatAndWhy: "What & Why",
@@ -361,5 +453,17 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     regenerateNotePlaceholder: "What was wrong with this plan?\ne.g. Too complex, drop the leaderboard feature.",
     regenerateConfirm: "Regenerate",
     cancel: "Cancel",
+    runReview: "Review code",
+    reviewStrictness: "Review strictness",
+    strictnessLenient: "Lenient",
+    strictnessBalanced: "Balanced",
+    strictnessStrict: "Strict",
+    reviewRound: "Reviewing (round {n}/{max})...",
+    reviewFixing: "Fixing (round {n})...",
+    reviewReportPassed: "Review passed ✓",
+    reviewReportRemaining: "Review done · {n} item(s) remain",
+    reviewReportClean: "No issues that need action",
+    reviewAdvisories: "Advisories (non-blocking)",
+    reviewFixedCount: "Fixed {n} item(s)",
   },
 };

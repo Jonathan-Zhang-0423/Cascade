@@ -92,7 +92,7 @@ function normalizeSteps(plan: BuildPlan): BuildStep[] {
   return raw.map((s, i) => ({ ...s, step: s.step ?? i + 1 }));
 }
 
-function filesMapToArray(files: Map<string, string>): BuildFile[] {
+export function filesMapToArray(files: Map<string, string>): BuildFile[] {
   return Array.from(files.entries()).map(([path, content]) => ({ path, content }));
 }
 
@@ -109,7 +109,7 @@ function langNativeLabel(userLang: string): string {
   return userLang;
 }
 
-function buildBuilderSystemPrompt(session: BuildSessionState): string {
+export function buildBuilderSystemPrompt(session: BuildSessionState): string {
   const label = langNativeLabel(session.userLang || "English");
   const isEnglish = label === (session.userLang || "English") && label === "English";
   const langPrefix = isEnglish
@@ -144,7 +144,7 @@ function buildVerifierSystemPrompt(session: BuildSessionState): string {
   return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}${compileCheckSection}`;
 }
 
-function buildBuilderInitialMessage(
+export function buildBuilderInitialMessage(
   session: BuildSessionState,
   steps: BuildStep[],
   mode: "build" | "fix",
@@ -242,7 +242,7 @@ function extractFileFromIssue(issue: { affected_file?: string; description: stri
  * plan steps need to be re-run. Returns all steps that touch the buggy files,
  * plus all subsequent steps (since they may depend on the fix).
  */
-function getAffectedSteps(issues: Array<{ affected_file?: string; description: string }>, plan: BuildStep[]): BuildStep[] {
+export function getAffectedSteps(issues: Array<{ affected_file?: string; description: string }>, plan: BuildStep[]): BuildStep[] {
   const affectedFiles = new Set<string>();
   for (const issue of issues) {
     const file = extractFileFromIssue(issue);
@@ -276,7 +276,7 @@ function getAffectedSteps(issues: Array<{ affected_file?: string; description: s
 /**
  * Build a targeted fix plan: re-number steps and inject bug context into descriptions.
  */
-function buildTargetedFixPlan(
+export function buildTargetedFixPlan(
   affectedSteps: BuildStep[],
   issuesSummary: string,
 ): BuildStep[] {
@@ -333,7 +333,7 @@ async function runBuilderParallelWaves(
             subTools.handlers,
             emit,
             {
-              exitTools: ["request_review", "mark_step_complete"],
+              exitTools: ["finish_build", "mark_step_complete"],
               maxIterations: 30,
               client,
               model,
@@ -348,12 +348,7 @@ async function runBuilderParallelWaves(
 }
 
 export async function runBuildSession(session: BuildSessionState, rawEmit: SseEmit): Promise<void> {
-  const emit: SseEmit = session.reviewEnabled
-    ? rawEmit
-    : (data) => {
-        if (data && (data as { type?: string }).type === "reviewing") return;
-        rawEmit(data);
-      };
+  const emit: SseEmit = rawEmit;
   const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
@@ -490,7 +485,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
         // Shared exit signal: completing the final plan step trips this so the
         // builder loop ends deterministically (instead of waiting on the model
-        // to emit request_review, which it sometimes only narrates).
+        // to emit finish_build, which it sometimes only narrates).
         const builderExitSignal = { exit: false, reason: undefined as string | undefined };
         const builderTools = buildBuilderTools(session, normalizedSteps, telemetry, builderExitSignal);
         // Merge user-defined tool plugins into builder tools
@@ -503,7 +498,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
@@ -524,146 +519,10 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     return;
   }
 
-  let currentCycle = 0;
-  let passed = false;
-  let currentPlanSteps = normalizedSteps;
-
-  if (!session.reviewEnabled) {
-    passed = true;
-    rawEmit({ type: "review_skipped" });
-  }
-
-  while (currentCycle < MAX_FIX_CYCLES && !passed && !session.aborted) {
-    currentCycle++;
-
-    const verifierState: VerifierSessionState = { issues: [] };
-    const verifierSystemPrompt = buildVerifierSystemPrompt(session);
-    const feedback = session.userConfirmation;
-    if (session.userConfirmation) session.userConfirmation = undefined;
-
-    session.status = { type: "busy", agent: "verifier" };
-
-    const verifierInitialMessage = buildVerifierInitialMessage(
-      session,
-      currentPlanSteps,
-      feedback,
-    );
-
-    const verifierTools = buildVerifierTools(session, verifierState);
-
-    try {
-      await telemetry.time("verifier", async () => {
-        await withFallback(providerChainVerifier, async (client, model) => {
-          await runAgentLoop(
-            verifierSystemPrompt,
-            [{ role: "user", content: verifierInitialMessage }],
-            verifierTools.schemas,
-            verifierTools.handlers,
-            emit,
-            { exitTools: ["submit_verdict"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
-          );
-        });
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[VerifierAgent] Error:", message);
-      emit({
-        type: "bugs_found",
-        bugCount: 0,
-        reviewSummary: "Review failed due to an error.",
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-      break;
-    }
-
-    if (session.aborted) break;
-
-    const verdict = verifierState.verdict;
-    if (!verdict) {
-      emit({
-        type: "bugs_found",
-        bugCount: 0,
-        reviewSummary: "Review completed without a verdict.",
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-      break;
-    }
-
-    if (verdict.status === "pass") {
-      passed = true;
-      telemetry.setFinalStatus("pass", verdict.summary);
-      emit({
-        type: "review_passed",
-        summary: verdict.summary,
-        requirementMatchPercent: verdict.requirementMatchPercent,
-      });
-    } else {
-      const issueCount = verifierState.issues.length;
-      emit({
-        type: "bugs_found",
-        bugCount: issueCount,
-        reviewSummary: verdict.summary,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-        review: verifierState.review ?? {},
-      });
-
-      if (currentCycle >= MAX_FIX_CYCLES) break;
-
-      // Pause and ask user for input before fixing
-      emit({ type: "needs_input", items: [verdict.summary] });
-      await new Promise<void>((resolve) => {
-        session.pendingUserInputResolve = resolve;
-      });
-      if (session.aborted) break;
-
-      emit({ type: "fixing", fixCycle: currentCycle });
-
-      session.status = { type: "busy", agent: "fixer" };
-
-      const issuesSummary = verifierState.issues.map(i => `- [${i.type}]${i.affected_file ? ` ${i.affected_file}` : ""}: ${i.description}`).join("\n");
-
-      // AG-8: Build a targeted fix plan instead of re-running the full plan
-      const affectedSteps = getAffectedSteps(verifierState.issues, currentPlanSteps);
-      const targetedPlanSteps = buildTargetedFixPlan(affectedSteps, issuesSummary);
-
-      // AG-17: Capture fixer scope for telemetry
-      const fixerScopeFiles = Array.from(
-        new Set(
-          verifierState.issues
-            .map((i) => i.affected_file)
-            .filter((f): f is string => !!f),
-        ),
-      );
-      if (fixerScopeFiles.length > 0) telemetry.addFixerScope(fixerScopeFiles);
-
-      const fixerSystemPrompt = buildBuilderSystemPrompt(session);
-      const fixerInitialMessage = buildBuilderInitialMessage(session, targetedPlanSteps, "fix", issuesSummary);
-      const fixerTools = buildFixerTools(session, targetedPlanSteps, telemetry);
-
-      try {
-        await telemetry.time("fixer", async () => {
-          await withFallback(providerChainFixer, async (client, model) => {
-            await runAgentLoop(
-              fixerSystemPrompt,
-              [{ role: "user", content: fixerInitialMessage }],
-              fixerTools.schemas,
-              fixerTools.handlers,
-              emit,
-              { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
-            );
-          });
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error("[FixerAgent] Error:", message);
-        emit({ type: "build_error", message });
-        break;
-      }
-    }
-  }
+  // Build mode ends here, deterministically. Review is a SEPARATE, user-invoked
+  // step (see review-orchestrator.ts / POST /api/review-session) and is no longer
+  // part of the build loop. The build always proceeds to its completion summary.
+  const passed = true;
 
   if (passed) {
     const beforeMap = new Map(initialFiles.map(f => [f.path, f.content]));
