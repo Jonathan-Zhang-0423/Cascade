@@ -85,6 +85,12 @@ export class BuildStreamInstance {
     }
 
     this.clearLiveTimer();
+    // Direct build (no plan step) skips the manager send path, so the user's
+    // prompt is never recorded in the chat. Add it here so the message shows up
+    // just like in plan mode instead of the build silently starting.
+    if (isDirect) {
+      this.actions.addManagerMessage({ role: "user", content: opts!.userMessage! });
+    }
     this.actions.setExecutingTaskIndex(0);
     this.actions.setManagerResponding(false);
     this.state.set({ buildPhase: "thinking" });
