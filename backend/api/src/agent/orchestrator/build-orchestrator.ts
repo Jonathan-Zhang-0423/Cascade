@@ -6,7 +6,7 @@ import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type Commun
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
-import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
+import { buildFallbackChain, withFallback, getFastClient, type AIProvider } from "../providers/kimi-client";
 import { storage } from "../../infra/storage";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
@@ -672,31 +672,30 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       .filter(f => !beforeMap.has(f.path) || beforeMap.get(f.path) !== f.content)
       .map(f => f.path);
 
-    // Generate completion summary server-side so the client doesn't need a second fetch.
-    // Direct mode skips this second LLM call — the builder's narration is already the summary.
+    // Generate a concise end-of-round summary server-side so the client doesn't
+    // need a second fetch. Uses the fastest available model (MiniMax → Doubao-lite)
+    // for low latency, and runs for BOTH plan and direct mode so every build
+    // round gives the user clear feedback on what was done.
     let summaryText = "";
-    if (session.mode !== "direct") {
-      try {
-        const commPrompt = buildCommunicatorMessage({
-          event: "all_complete",
-          userLanguage: session.userLang || "English",
-          changedFiles,
-          planSummary: plan.summary ?? "",
-        } as CommunicatorEvent);
-        const summaryCompletion = await withFallback(providerChainEditor, async (client, model) =>
-          client.chat.completions.create({
-            model,
-            messages: [
-              { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-              { role: "user", content: commPrompt },
-            ],
-            stream: false,
-            max_tokens: 1024,
-          })
-        );
-        summaryText = summaryCompletion.choices[0]?.message?.content || "";
-      } catch {}
-    }
+    try {
+      const commPrompt = buildCommunicatorMessage({
+        event: "all_complete",
+        userLanguage: session.userLang || "English",
+        changedFiles,
+        planSummary: plan.summary ?? "",
+      } as CommunicatorEvent);
+      const { client, model } = getFastClient();
+      const summaryCompletion = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+          { role: "user", content: commPrompt },
+        ],
+        stream: false,
+        max_tokens: 512,
+      });
+      summaryText = summaryCompletion.choices[0]?.message?.content || "";
+    } catch {}
 
     let nextStepSuggestion = "";
     const nextStepMatch = summaryText.match(/^NEXT_STEP:\s*(.+)$/m);
