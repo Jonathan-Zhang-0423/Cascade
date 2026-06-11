@@ -54,6 +54,14 @@ export interface AgentLoopOpts {
   partCtx?: PartEmitContext;
   /** Session ID for part creation. Required when partCtx is provided. */
   sessionId?: string;
+  /**
+   * Shared exit signal. A tool handler can set `.exit = true` to force the loop
+   * to stop after the current tool round, even if no exitTool was called. Used
+   * by the builder so completing the last plan step ends the loop deterministically
+   * instead of waiting on the model to emit a separate request_review tool call
+   * (which it sometimes only narrates, leaving the loop spinning to maxIterations).
+   */
+  exitSignal?: { exit: boolean; reason?: string };
 }
 
 export async function runAgentLoop(
@@ -363,6 +371,14 @@ export async function runAgentLoop(
         exitTool = tc.name;
         exitArgs = args;
       }
+    }
+
+    // A tool handler may trip the shared exit signal (e.g. the builder marking
+    // the final plan step complete) to end the loop without a dedicated exit
+    // tool call. Treat it as a clean exit.
+    if (opts.exitSignal?.exit) {
+      shouldExit = true;
+      if (!exitTool) exitTool = opts.exitSignal.reason ?? "exit_signal";
     }
 
     // ── Step Finish (tool calls processed) ──────────────────────────

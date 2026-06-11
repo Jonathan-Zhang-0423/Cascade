@@ -31,6 +31,12 @@ export class ManagerStreamInstance {
   private reconnectAbortController: AbortController | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private sessionId: string | null = null;
+  // Set synchronously the instant send() begins — BEFORE the POST resolves and
+  // the server's session_id event arrives. isActive must reflect this so the
+  // mount-time attemptReconnect() (fires ~200ms after project load) cannot race
+  // an in-flight send, find the same session via /active, and replay it from
+  // event 0 — which rendered the reply twice on a fresh project.
+  private sendInFlight = false;
   private lastEventId = -1;
   private lastActivityTs = 0;
   private generation = 0;
@@ -51,7 +57,7 @@ export class ManagerStreamInstance {
   // ─── Public API ───────────────────────────────────────────────────────
 
   get isActive(): boolean {
-    return this.sessionId !== null;
+    return this.sendInFlight || this.sessionId !== null;
   }
 
   /**
@@ -62,6 +68,9 @@ export class ManagerStreamInstance {
     const trimmed = message.trim();
     if (!trimmed) return false;
 
+    // Mark in-flight synchronously so a concurrent mount-time reconnect can't
+    // race this send (see field comment). Cleared in the finally block.
+    this.sendInFlight = true;
     this.clearLiveTimer();
     this.actions.addManagerMessage({ role: "user", content: trimmed });
     this.actions.setManagerResponding(true);
@@ -361,6 +370,9 @@ export class ManagerStreamInstance {
       }
       return false;
     } finally {
+      // The in-flight window is over for this send. Clear the synchronous guard
+      // unless a newer send has already superseded this generation.
+      if (myGen === this.generation) this.sendInFlight = false;
       if (myGen === this.generation && !this.reconnectTimer) {
         this.actions.setStreamingSnapshot(null);
         this.sessionId = null;
@@ -530,6 +542,7 @@ export class ManagerStreamInstance {
    * Abort the current stream.
    */
   abort(): void {
+    this.sendInFlight = false;
     if (this.abortController) {
       try { this.abortController.abort(); } catch {}
       this.abortController = null;

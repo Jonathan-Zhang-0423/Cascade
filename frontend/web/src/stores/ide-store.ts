@@ -124,6 +124,10 @@ export interface ManagerMessage {
   // to all-pending once a newer plan takes over the live `taskStatuses`.
   frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   frozenTaskFailureReasons?: Record<string, string>;
+  // Snapshot of reviewPhase captured when this plan's build finished. Without
+  // it, returning to the project resets reviewPhase to "idle" and a completed
+  // PlanCard loses its "已审查/完成" state (isFullyComplete needs review_passed).
+  frozenReviewPhase?: ReviewPhase;
 }
 
 interface FlatFile {
@@ -651,6 +655,7 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     errorCode: metadata?.errorCode,
     frozenTaskStatuses: metadata?.frozenTaskStatuses,
     frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
+    frozenReviewPhase: metadata?.frozenReviewPhase,
   };
 }
 
@@ -682,6 +687,7 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingC
   if (m.errorCode) metadata.errorCode = m.errorCode;
   if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
   if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;
+  if (m.frozenReviewPhase) metadata.frozenReviewPhase = m.frozenReviewPhase;
   return {
     clientId: m.id,
     kind: "manager",
@@ -1046,7 +1052,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
-      reviewPhase: "idle" as ReviewPhase,
+      // Restore the last plan's frozen reviewPhase so a completed PlanCard keeps
+      // its "已审查/完成" state on return; default to idle when none was frozen.
+      reviewPhase: ((mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenReviewPhase)?.frozenReviewPhase || "idle") as ReviewPhase,
       holisticReview: null,
       fixCycle: 0,
       selectedDevice: saved.selectedDevice || "iphone-16-pro",
@@ -1741,6 +1749,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...target,
         frozenTaskStatuses: { ...state.taskStatuses },
         frozenTaskFailureReasons: { ...state.taskFailureReasons },
+        frozenReviewPhase: state.reviewPhase,
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);

@@ -488,7 +488,11 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit, userSkillsLoaded);
       } else {
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
-        const builderTools = buildBuilderTools(session, normalizedSteps, telemetry);
+        // Shared exit signal: completing the final plan step trips this so the
+        // builder loop ends deterministically (instead of waiting on the model
+        // to emit request_review, which it sometimes only narrates).
+        const builderExitSignal = { exit: false, reason: undefined as string | undefined };
+        const builderTools = buildBuilderTools(session, normalizedSteps, telemetry, builderExitSignal);
         // Merge user-defined tool plugins into builder tools
         builderTools.schemas.push(...userSkillsLoaded.toolSchemas);
         Object.assign(builderTools.handlers, userSkillsLoaded.toolHandlers);
@@ -499,7 +503,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
