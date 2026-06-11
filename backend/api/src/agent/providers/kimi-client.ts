@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
+import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { minimaxClient, MINIMAX_MODEL } from "./minimax-client";
 import { glmClient, GLM_MODEL } from "./glm-client";
 import { deepseekClient, DEEPSEEK_PRO_MODEL, DEEPSEEK_FLASH_MODEL } from "./deepseek-client";
@@ -128,4 +128,14 @@ export function getOptimalClient(
   }
   // Last resort
   return getAIClient("doubao");
+}
+
+/**
+ * Fastest available client for short, latency-sensitive one-off calls
+ * (intent classification, end-of-round summaries). MiniMax is the fastest
+ * provider when configured; otherwise fall back to Doubao's lite model.
+ */
+export function getFastClient(): { client: OpenAI; model: string } {
+  if (process.env.MINIMAX_API_KEY) return { client: minimaxClient, model: MINIMAX_MODEL };
+  return { client: doubaoClient, model: DOUBAO_LITE_MODEL };
 }
