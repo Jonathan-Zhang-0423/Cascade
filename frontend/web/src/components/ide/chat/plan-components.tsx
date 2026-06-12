@@ -805,7 +805,25 @@ export function ManagerMessageBubble({
     return null;
   }
 
-  // Hide the top communicator narration line after task completion — the
-  // structured BuildResultCard / TaskPlanCard already shows a rich summary.
-  return null;
+  // Assistant text reply with no plan/buildResult — e.g. clarifying questions or
+  // communicator narration. Render the content; without this the reply is
+  // invisible (the user bubble shows but the agent's answer never appears).
+  if (!message.content) return null;
+
+  const cleanContent = stripMd(message.content);
+  const contentLines = cleanContent.split("\n").filter((l) => l.trim());
+  return (
+    <div data-testid="manager-narration-bubble">
+      {message.thinking && (
+        <div className="px-3.5 pb-1">
+          <ThinkingToggle thinking={message.thinking} />
+        </div>
+      )}
+      <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-muted-foreground space-y-1">
+        {contentLines.map((line, i) => (
+          <p key={i}>{line}</p>
+        ))}
+      </div>
+    </div>
+  );
 }

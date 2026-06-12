@@ -1129,14 +1129,31 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...chat.map((m) => m.seq + 1),
         ...mgr.map((m) => m.seq + 1),
       );
-      const lastPlan = mgr.slice().reverse().find((m) => m.plan)?.plan ?? cur.managerPlan;
+      // Merge, do NOT replace. This fetch was started at loadProject time against
+      // a DB snapshot taken THEN. On a freshly created project the user's first
+      // prompt — and the in-flight manager stream's messages/plan — can land
+      // AFTER the fetch started but BEFORE it resolves. Blindly replacing the
+      // arrays would discard those live messages, so the prompt looks like it
+      // "never happened" even though the backend keeps streaming. Union server
+      // rows with any live message not in the server snapshot, keyed by id.
+      const mergeById = <T extends { id: string; seq: number }>(serverMsgs: T[], liveMsgs: T[]): T[] => {
+        const byId = new Map<string, T>();
+        for (const m of serverMsgs) byId.set(m.id, m);
+        for (const m of liveMsgs) if (!byId.has(m.id)) byId.set(m.id, m);
+        return Array.from(byId.values()).sort((a, b) => a.seq - b.seq);
+      };
+      const mergedChat = chat.length > 0 ? mergeById(chat, cur.chatMessages) : cur.chatMessages;
+      const mergedMgr = mgr.length > 0 ? mergeById(mgr, cur.managerMessages) : cur.managerMessages;
       // Restore taskStatuses from the latest plan message's frozen snapshot
-      const lastPlanMsg = mgr.slice().reverse().find((m) => m.plan);
+      const lastPlanMsg = mergedMgr.slice().reverse().find((m) => m.plan);
+      // Prefer a live plan if one exists (an in-flight stream may have just set
+      // it); otherwise fall back to the newest plan from the merged history.
+      const lastPlan = cur.managerPlan ?? lastPlanMsg?.plan;
       const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? cur.taskStatuses;
       const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? cur.taskFailureReasons;
       set({
-        chatMessages: chat.length > 0 ? chat : cur.chatMessages,
-        managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
+        chatMessages: mergedChat,
+        managerMessages: mergedMgr,
         _nextSeq: maxSeq,
         managerPlan: lastPlan,
         taskStatuses: restoredTaskStatuses,
