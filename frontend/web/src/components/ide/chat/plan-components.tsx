@@ -6,8 +6,8 @@ import {
   type ReviewPhase,
   type ReviewStrictness,
   type BuildResultData,
+  useIDEStore,
 } from "@/stores/ide-store";
-import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -24,16 +24,15 @@ import {
   XCircle,
   AlertTriangle,
   ShieldCheck,
-  FileText,
   Hammer,
   PenLine,
   Search,
-  Loader2,
   ExternalLink,
   X,
   ChevronDown as DropdownChevron,
   LayoutGrid,
   Ban,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
@@ -45,8 +44,7 @@ function StepItem({
   status,
   failureReason,
   isCompleted,
-  isLast: _isLast,
-  liveNarration,
+  stepActions,
 }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
@@ -55,9 +53,10 @@ function StepItem({
   showNumber?: boolean;
   isLast?: boolean;
   liveNarration?: string;
+  stepActions?: ActionLogEntry[];
 }) {
   const s = status || "pending";
-  const tStep = useT();
+  const lang = usePlanCardLang();
   const isRunning = s === "running";
 
   const statusSymbol = (() => {
@@ -74,11 +73,31 @@ function StepItem({
   const failureReasonLabel =
     s === "failed"
       ? failureReason === "no_code"
-        ? tStep("chat.noCodeOutput")
+        ? t(lang, "noCodeOutput")
         : failureReason === "editor_error"
-          ? tStep("chat.editorError")
+          ? t(lang, "editorError")
           : null
       : null;
+
+  // Build icon×count summary from stepActions
+  const actionIconRow = (isRunning || s === "done") && stepActions && stepActions.length > 0
+    ? (() => {
+        const HIDDEN_TOOLS = new Set(["mark_step_complete", "request_review", "submit_verdict", "submit_plan", "report_issue"]);
+        const counts = new Map<string, number>();
+        for (const a of stepActions) {
+          if (a.type === "step" || a.type === "narration") continue;
+          if (a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)) continue;
+          counts.set(a.type, (counts.get(a.type) ?? 0) + 1);
+        }
+        return counts;
+      })()
+    : null;
+
+  const ACTION_ICONS: Record<string, string> = {
+    thinking: "🧠", file_read: "📄", file_write: "✏️",
+    code_applied: "⎇", code_review: "🛡", capabilities: "⚡",
+    plan: "☰", tool_call: "🔧", terminal_command: ">_",
+  };
 
   return (
     <div
@@ -92,10 +111,11 @@ function StepItem({
         {task.step}
       </span>
       <span className="w-[14px] text-center shrink-0">{statusSymbol}</span>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-start gap-2">
         <span
           className={cn(
-            isCompleted ? "text-[rgba(238,238,246,0.3)]"
+            "flex-1 min-w-0",
+            isCompleted ? "text-muted-foreground/40"
               : s === "done" ? "text-muted-foreground/60"
               : s === "failed" ? "text-[#ef4444]"
               : isRunning ? "text-foreground font-medium"
@@ -111,10 +131,15 @@ function StepItem({
             ({failureReasonLabel})
           </span>
         )}
-        {isRunning && liveNarration && (
-          <div className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
-            {liveNarration}
-          </div>
+        {actionIconRow && actionIconRow.size > 0 && (
+          <span className="flex items-center gap-1 shrink-0 text-[10px] text-muted-foreground/50">
+            {Array.from(actionIconRow.entries()).map(([type, count]) => (
+              <span key={type} className="inline-flex items-center gap-0.5">
+                <span>{ACTION_ICONS[type] ?? "○"}</span>
+                {count > 1 && <span>×{count}</span>}
+              </span>
+            ))}
+          </span>
         )}
       </div>
     </div>
@@ -169,7 +194,7 @@ export function ReviewStatusBadge({
       color: "text-[#ef4444]",
     },
     fixing: {
-      icon: <Loader2 className="w-2.5 h-2.5 animate-spin" />,
+      icon: <span className="text-[11px] animate-pulse">●</span>,
       text: t(lang, "fixingIssues", { n: fixCycle }),
       color: "text-[#f97316]",
     },
@@ -191,15 +216,16 @@ export function ReviewStatusBadge({
 
 export function ThinkingToggle({ thinking }: { thinking: string }) {
   const [open, setOpen] = useState(false);
+  const lang = usePlanCardLang();
   return (
     <div className="mb-1">
       <button
-        className="flex items-center gap-1 font-mono text-[10px] text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.5)] transition-colors"
+        className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
         onClick={() => setOpen((o) => !o)}
         data-testid="button-toggle-thinking"
       >
         {open ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
-        <span className="italic">thinking</span>
+        <span className="italic">{t(lang, "thinking")}</span>
       </button>
       {open && (
         <p className="mt-1 font-mono text-[10px] text-muted-foreground/50 italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">
@@ -236,6 +262,7 @@ export function TaskPlanCard({
   reviewLiveNarration,
   reviewRound,
   reviewMaxRounds,
+  stepActionsMap,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -262,9 +289,10 @@ export function TaskPlanCard({
   reviewLiveNarration?: string;
   reviewRound?: number;
   reviewMaxRounds?: number;
+  stepActionsMap?: Map<number, ActionLogEntry[]>;
 }) {
   const lang = usePlanCardLang();
-  const tCard = useT();
+  const { setPlanPreview, checkpoints, restoreCheckpoint, refreshPreview } = useIDEStore();
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((s) => taskStatuses[String(s.step)] === "done").length;
   const total = steps.length;
@@ -285,10 +313,11 @@ export function TaskPlanCard({
   const canStartReview = buildSettled && !isReviewing && !!onStartReview;
   const reviewAdvisories = holisticReview?.advisories ?? [];
 
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [minimized, setMinimized] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [bgDropdownOpen, setBgDropdownOpen] = useState(false);
+  const [rollbackRestored, setRollbackRestored] = useState(false);
   const bgDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -307,130 +336,39 @@ export function TaskPlanCard({
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
 
+  if (minimized) {
+    return (
+      <div className="mx-2.5 my-1 flex justify-start">
+        <button
+          onClick={() => setMinimized(false)}
+          className={cn(
+            "flex items-center gap-1.5 font-mono text-[10px] rounded-full border px-2.5 py-1 transition-colors hover:bg-accent/10",
+            isFullyComplete
+              ? "border-[rgba(52,214,138,0.3)] text-[#34d68a] bg-[rgba(52,214,138,0.06)]"
+              : "border-border text-muted-foreground/60 bg-[var(--panel-mid-bg)]"
+          )}
+          style={{ boxShadow: "0 1px 6px rgba(0,0,0,0.15)" }}
+          data-testid="task-plan-card-mini"
+        >
+          {isFullyComplete ? (
+            <span className="text-[11px]">✓</span>
+          ) : isExecuting ? (
+            <span className="text-[11px] text-[#4f82ff] animate-pulse">●</span>
+          ) : (
+            <span className="text-[11px]">○</span>
+          )}
+          <span className="max-w-[160px] truncate">{plan.summary}</span>
+          <span className="text-muted-foreground/40 text-[9px]">{doneCount}/{total}</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       {thinking && (
         <div className="px-3 mb-0.5">
           <ThinkingToggle thinking={thinking} />
-        </div>
-      )}
-
-      {/* Right-side preview panel */}
-      {previewOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setPreviewOpen(false)}
-        >
-          <div
-            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] flex flex-col bg-[var(--panel-mid-bg)] border-l border-border shadow-2xl"
-            style={{ animation: "slideInRight 180ms ease" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <style>{`
-              @keyframes slideInRight {
-                from { transform: translateX(24px); opacity: 0; }
-                to   { transform: translateX(0);    opacity: 1; }
-              }
-            `}</style>
-            {/* Panel header */}
-            <div className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)] shrink-0 flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
-              <span className="font-mono text-[12px] font-semibold text-foreground flex-1 min-w-0 truncate">
-                {plan.summary}
-              </span>
-              <button
-                className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
-                onClick={() => setPreviewOpen(false)}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {/* Panel content */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {overview && (
-                <div>
-                  <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">
-                    {t(lang, "overview")}
-                  </p>
-                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                    {overview}
-                  </p>
-                </div>
-              )}
-              {whatAndWhy && (
-                <div>
-                  <p className="font-mono text-[9px] text-[#4f82ff]/60 uppercase tracking-wider mb-1.5">
-                    {t(lang, "whatAndWhy")}
-                  </p>
-                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                    {whatAndWhy}
-                  </p>
-                </div>
-              )}
-              {doneLooksLike && (
-                <div>
-                  <p className="font-mono text-[9px] text-[#34d68a]/60 uppercase tracking-wider mb-1.5">
-                    {t(lang, "doneLooksLike")}
-                  </p>
-                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
-                    {doneLooksLike}
-                  </p>
-                </div>
-              )}
-              {outOfScope && (
-                <div>
-                  <p className="font-mono text-[9px] text-muted-foreground/50 uppercase tracking-wider mb-1.5">
-                    {t(lang, "outOfScope")}
-                  </p>
-                  <p className="text-[12px] text-[rgba(238,238,246,0.5)] leading-relaxed">
-                    {outOfScope}
-                  </p>
-                </div>
-              )}
-              <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-border/60 pt-4")}>
-                <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-2">
-                  {t(lang, "tasks")}
-                </p>
-                <div className="space-y-2.5">
-                  {steps.map((step) => (
-                    <div key={step.step} className="flex items-start gap-2.5">
-                      <span className="font-mono text-[10px] text-[rgba(238,238,246,0.3)] w-4 text-right shrink-0 pt-0.5">
-                        {step.step}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-medium text-foreground">{step.title}</p>
-                        {step.description && (
-                          <p className="text-[11px] text-[rgba(238,238,246,0.5)] mt-0.5 leading-relaxed">
-                            {step.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {/* Panel footer */}
-            <div className="px-5 py-3 border-t border-border/60 shrink-0 flex gap-2">
-              <button
-                className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-border rounded px-3 py-1.5 transition-colors flex items-center gap-1"
-                onClick={() => { setPreviewOpen(false); setRegenerateOpen(true); }}
-                data-testid="button-revise-plan-preview"
-              >
-                <PenLine className="w-2.5 h-2.5" />
-                {t(lang, "revisePlan")}
-              </button>
-              <div className="flex-1" />
-              <button
-                className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
-                onClick={() => { setPreviewOpen(false); onExecute?.(); }}
-                data-testid="button-build-now-preview"
-              >
-                <Hammer className="w-2.5 h-2.5" />
-                {t(lang, "buildNow")}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -447,21 +385,32 @@ export function TaskPlanCard({
       >
         {/* ── Section 1: Header ── */}
         <div className="px-4 pt-3.5 pb-2.5 flex items-center gap-2 border-b border-border/60">
-          <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
+          {isFullyComplete ? (
+            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-[#34d68a] text-[13px]">✓</span>
+          ) : (isExecuting && !allDone) ? (
+            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-[#4f82ff] text-[13px] animate-pulse">●</span>
+          ) : (
+            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-muted-foreground/50 text-[13px]">○</span>
+          )}
           <span className="font-mono text-[12.5px] font-semibold text-foreground flex-1 min-w-0 truncate">
-            Task plan created
+            {t(lang, "taskPlanCreated")}
           </span>
           <button
-            onClick={() => setPreviewOpen(true)}
-            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
+            onClick={() => setPlanPreview(true, {
+              summary: plan.summary,
+              overview,
+              steps: steps.map((s) => ({ title: s.title, description: s.description })),
+            })}
+            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors shrink-0"
             data-testid="button-view-plan-doc"
           >
             <ExternalLink className="w-3 h-3" />
-            <span>View</span>
+            <span>{t(lang, "view")}</span>
           </button>
           <button
-            className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.6)] transition-colors shrink-0 ml-0.5"
-            onClick={() => setExpanded((e) => !e)}
+            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors shrink-0 ml-0.5"
+            onClick={() => setMinimized(true)}
+            title="minimize"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -473,19 +422,18 @@ export function TaskPlanCard({
             {plan.summary}
           </p>
           {overview && (
-            <p className="text-[11.5px] text-[rgba(238,238,246,0.6)] leading-relaxed mb-2">
+            <p className="text-[11.5px] text-muted-foreground leading-relaxed mb-2">
               {overview}
             </p>
           )}
-          <span className="inline-block text-[10px] font-mono text-[rgba(238,238,246,0.5)] bg-[rgba(255,255,255,0.05)] border border-border rounded-full px-2.5 py-0.5">
-            Web app
+          <span className="inline-block text-[10px] font-mono text-muted-foreground/60 bg-accent/10 border border-border rounded-full px-2.5 py-0.5">
+            {t(lang, "webApp")}
           </span>
 
           {/* Steps list (collapsible) */}
           {expanded && (
             <div className="mt-2.5 space-y-0.5">
               {steps.map((task: ManagerSubTask, idx: number) => {
-                const isActive = taskStatuses[String(task.step)] === "running";
                 return (
                   <StepItem
                     key={task.step}
@@ -495,7 +443,7 @@ export function TaskPlanCard({
                     isCompleted={isFullyComplete}
                     showNumber
                     isLast={idx === steps.length - 1}
-                    liveNarration={isActive ? liveNarration : undefined}
+                    stepActions={stepActionsMap?.get(task.step)}
                   />
                 );
               })}
@@ -505,7 +453,7 @@ export function TaskPlanCard({
           {/* Progress line */}
           <div className="font-mono text-[10px] text-muted-foreground/50 mt-2">
             {t(lang, "stepsDone", { done: doneCount, total })}
-            {isFullyComplete && ` · ${tCard("chat.allDone")}`}
+            {isFullyComplete && ` · ${t(lang, "allDone")}`}
           </div>
         </div>
 
@@ -533,26 +481,71 @@ export function TaskPlanCard({
           </div>
         )}
 
-        {/* Completion line */}
-        {isFullyComplete && (
-          <div className="px-4 py-2 border-b border-border/60">
-            <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5">
-              <span>{tCard("chat.doneCheck")}</span>
-              {changedFiles && changedFiles.length > 0 && (
-                <span className="text-muted-foreground/60 text-[10px]">
-                  · {changedFiles.length === 1
-                      ? tCard("chat.fileChanged")
-                      : tCard("chat.filesChanged", { n: String(changedFiles.length) })}
-                </span>
+        {/* Completion line + rollback */}
+        {isFullyComplete && (() => {
+          // 找到最近一个 checkpoint（任务完成时自动创建的那个）
+          const latestCp = checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : null;
+          const canRollback = !!latestCp;
+
+          const handleRollback = () => {
+            if (!latestCp) return;
+            restoreCheckpoint(latestCp.id);
+            refreshPreview();
+            setRollbackRestored(true);
+            setTimeout(() => setRollbackRestored(false), 2000);
+          };
+
+          return (
+            <div className="px-4 py-2.5 border-b border-border/60">
+              {/* Done 标题行 */}
+              <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5 mb-1">
+                <span>{t(lang, "doneCheck")}</span>
+                {changedFiles && changedFiles.length > 0 && (
+                  <span className="text-muted-foreground/60 text-[10px]">
+                    · {changedFiles.length === 1
+                        ? t(lang, "fileChanged")
+                        : t(lang, "filesChanged", { n: String(changedFiles.length) })}
+                  </span>
+                )}
+              </div>
+              {/* 版本回滚区域 */}
+              {canRollback && (
+                <div
+                  className="flex items-center justify-between rounded-lg px-3 py-2 mt-1"
+                  style={{ background: "var(--panel-right-bg)", border: "1px solid var(--panel-divider)" }}
+                >
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="font-mono text-[10px] text-foreground/70 truncate">
+                      {latestCp.label || t(lang, "applied")}
+                    </span>
+                    <span className="font-mono text-[9px] text-muted-foreground/40">
+                      {new Date(latestCp.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {changedFiles && changedFiles.length > 0 && (
+                        <> · {changedFiles.length} {changedFiles.length === 1 ? t(lang, "file") : t(lang, "files")}</>
+                      )}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleRollback}
+                    className={cn(
+                      "flex items-center gap-1 font-mono text-[10px] px-2.5 py-1 rounded-md border transition-colors shrink-0 ml-3",
+                      rollbackRestored
+                        ? "text-[#34d68a] border-[rgba(52,214,138,0.3)] bg-[rgba(52,214,138,0.08)]"
+                        : "text-muted-foreground/70 hover:text-foreground border-border/60 hover:border-border hover:bg-accent/10"
+                    )}
+                    data-testid="button-rollback"
+                  >
+                    {rollbackRestored ? (
+                      <><Check className="w-2.5 h-2.5" /><span>{t(lang, "restored")}</span></>
+                    ) : (
+                      <><LayoutGrid className="w-2.5 h-2.5" /><span>{t(lang, "restore")}</span></>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
-            {completionSummary && (
-              <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
-                {completionSummary}
-              </p>
-            )}
-          </div>
-        )}
+          );
+        })()}
 
         {/* Optional standalone review step (post-build) */}
         {buildSettled && (onStartReview || isReviewing || reviewAdvisories.length > 0) && (
@@ -647,7 +640,7 @@ export function TaskPlanCard({
               }
               value={confirmationInput || ""}
               onChange={(e) => onConfirmationInputChange?.(e.target.value)}
-              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[var(--panel-mid-bg)] border-[rgba(255,255,255,0.06)]"
+              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[var(--panel-mid-bg)] border-border/40"
               rows={1}
               data-testid="input-confirmation"
             />
@@ -656,7 +649,7 @@ export function TaskPlanCard({
                 size="sm"
                 variant="outline"
                 className="flex-1 h-5 text-[9px] font-mono border-border"
-                onClick={() => onContinueWithInput(tCard("chat.looksGood"))}
+                onClick={() => onContinueWithInput(t(lang, "looksGood"))}
                 data-testid="button-approve-all"
               >
                 <Check className="w-2 h-2 mr-0.5" />
@@ -687,7 +680,7 @@ export function TaskPlanCard({
                 <span>{t(lang, "needsInput")}</span>
               </div>
               {inputs.map((item, i) => (
-                <p key={i} className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] pl-4 leading-snug">
+                <p key={i} className="font-mono text-[10px] text-muted-foreground/60 pl-4 leading-snug">
                   • {item}
                 </p>
               ))}
@@ -710,16 +703,16 @@ export function TaskPlanCard({
               <>
                 {/* Split button: Build in background */}
                 <div className="flex items-center border border-border/80 rounded-lg overflow-visible relative" ref={bgDropdownRef}>
+          <button
+            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/10 px-2.5 py-1.5 transition-colors"
+            onClick={() => onExecute?.()}
+          >
+            <Hammer className="w-3 h-3" />
+            <span>{t(lang, "buildBackground")}</span>
+          </button>
+                  <div className="w-px h-4 bg-border/40 shrink-0" />
                   <button
-                    className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-[rgba(238,238,246,0.9)] hover:bg-accent/10 px-2.5 py-1.5 transition-colors"
-                    onClick={() => onExecute?.()}
-                  >
-                    <Hammer className="w-3 h-3" />
-                    <span>Build in background</span>
-                  </button>
-                  <div className="w-px h-4 bg-[rgba(255,255,255,0.08)] shrink-0" />
-                  <button
-                    className="flex items-center justify-center px-1.5 py-1.5 text-muted-foreground/70 hover:text-[rgba(238,238,246,0.8)] hover:bg-accent/10 transition-colors"
+                    className="flex items-center justify-center px-1.5 py-1.5 text-muted-foreground/70 hover:text-foreground hover:bg-accent/10 transition-colors"
                     onClick={() => setBgDropdownOpen((o) => !o)}
                   >
                     <DropdownChevron className="w-3 h-3" />
@@ -727,16 +720,16 @@ export function TaskPlanCard({
                   {bgDropdownOpen && (
                     <div className="absolute top-full left-0 mt-1 w-44 bg-[var(--panel-mid-bg)] border border-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
                       <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-foreground transition-colors"
                         onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
                       >
-                        Build in background
+                        {t(lang, "buildBackground")}
                       </button>
                       <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-foreground transition-colors"
                         onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
                       >
-                        Build quietly
+                        {t(lang, "buildQuietly")}
                       </button>
                     </div>
                   )}
@@ -750,7 +743,7 @@ export function TaskPlanCard({
                   onClick={onExecute}
                   data-testid="button-execute-plan"
                 >
-                  Build here
+                  {t(lang, "buildHere")}
                 </button>
               </>
             ) : (
@@ -775,7 +768,7 @@ export function TaskPlanCard({
             data-testid="button-revise-plan"
           >
             <PenLine className="w-3 h-3" />
-            <span>Revise</span>
+            <span>{t(lang, "revise")}</span>
           </button>
           <button
             className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
@@ -783,25 +776,11 @@ export function TaskPlanCard({
             data-testid="button-cancel-plan"
           >
             <Ban className="w-3 h-3" />
-            <span>Cancel</span>
+            <span>{t(lang, "cancel")}</span>
           </button>
 
           <div className="flex-1" />
 
-          {/* Right: Power dropdown */}
-          <div className="flex items-center gap-0.5">
-            <button
-              className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
-            >
-              <LayoutGrid className="w-3 h-3" />
-              <span>Power</span>
-            </button>
-            <button
-              className="flex items-center justify-center font-mono text-muted-foreground/70 hover:text-foreground/80 transition-colors px-0.5 py-1 rounded hover:bg-accent/10"
-            >
-              <DropdownChevron className="w-3 h-3" />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -844,7 +823,7 @@ export function RegeneratePlanDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 bg-[var(--panel-mid-bg)] border-border">
-        <DialogHeader className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)]">
+        <DialogHeader className="px-5 pt-4 pb-3 border-b border-border/60">
           <DialogTitle className="text-sm font-mono font-medium">
             {t(lang, "regenerateTitle")}
           </DialogTitle>
@@ -882,9 +861,9 @@ export function RegeneratePlanDialog({
             />
           )}
         </div>
-        <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.06)] flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-border/60 flex justify-end gap-2">
           <button
-            className="font-mono text-[11px] text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.9)] border border-border rounded px-3 py-1.5 transition-colors"
+            className="font-mono text-[11px] text-muted-foreground hover:text-foreground border border-border rounded px-3 py-1.5 transition-colors"
             onClick={() => onOpenChange(false)}
             data-testid="button-regenerate-cancel"
           >
@@ -929,6 +908,7 @@ export function BuildResultCard({
         entries={buildResult.actionLog as ActionLogEntry[]}
         segments={segments}
         isCompleted
+        tokenUsage={(buildResult as any).tokenUsage}
       />
     </div>
   );
@@ -975,6 +955,7 @@ export function ManagerMessageBubble({
   reviewLiveNarration,
   reviewRound,
   reviewMaxRounds,
+  stepActionsMap,
 }: {
   message: {
     role: string;
@@ -1007,6 +988,7 @@ export function ManagerMessageBubble({
   reviewLiveNarration?: string;
   reviewRound?: number;
   reviewMaxRounds?: number;
+  stepActionsMap?: Map<number, ActionLogEntry[]>;
 }) {
   if (message.role === "user") {
     return (
@@ -1050,6 +1032,7 @@ export function ManagerMessageBubble({
         reviewLiveNarration={reviewLiveNarration}
         reviewRound={reviewRound}
         reviewMaxRounds={reviewMaxRounds}
+        stepActionsMap={stepActionsMap}
       />
     );
   }
@@ -1058,22 +1041,7 @@ export function ManagerMessageBubble({
     return null;
   }
 
-  if (!message.content) return null;
-
-  const cleanContent = stripMd(message.content);
-  const contentLines = cleanContent.split("\n").filter((l) => l.trim());
-  return (
-    <div data-testid="manager-narration-bubble">
-      {message.thinking && (
-        <div className="px-3.5 pb-1">
-          <ThinkingToggle thinking={message.thinking} />
-        </div>
-      )}
-      <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-muted-foreground space-y-1">
-        {contentLines.map((line, i) => (
-          <p key={i}>{line}</p>
-        ))}
-      </div>
-    </div>
-  );
+  // Hide the top communicator narration line after task completion — the
+  // structured BuildResultCard / TaskPlanCard already shows a rich summary.
+  return null;
 }

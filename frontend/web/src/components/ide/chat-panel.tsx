@@ -237,14 +237,17 @@ export function ChatPanel() {
       pendingHandled.current = true;
       const prompt = pendingPrompt;
       const mode = pendingPromptMode;
-      clearPendingPrompt();
       if (mode === "build") {
+        setChatMode("build");
+        clearPendingPrompt();
         handleDirectBuild(prompt);
       } else {
+        setChatMode("manager");
+        clearPendingPrompt();
         handleManagerSend(prompt);
       }
     }
-  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, clearPendingPrompt, handleManagerSend, handleDirectBuild, setChatMode]);
 
   useEffect(() => {
     if (!isManagerResponding && autoExecutePlanRef.current) {

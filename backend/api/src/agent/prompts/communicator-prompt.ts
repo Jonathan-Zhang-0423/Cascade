@@ -82,21 +82,34 @@ Fixes are being applied. State the fix cycle number.
 The system needs user input. Present the items clearly.
 
 ### all_complete
-Everything is done. Output the following 3-line structure (NO markdown — no **, no ##, no -, no bullet points):
-第一行：概括完成了什么（一句话）
-第二行：✓ 全部完成：功能1、功能2、功能3...（列出所有已完成目标）
-第三行：NEXT_STEP: 一个具体的、可执行的下一步建议
+Everything is done. Write a flexible, structured summary based on the actual work done. Use the user's language throughout.
 
-Example (English): "Built the Snake game — canvas rendering, keyboard controls, collision detection, and scoring. Runs in the browser preview.
-✓ 全部完成：canvas rendering、keyboard controls、collision detection、scoring
-NEXT_STEP: Try playing it in the preview, or ask me to add a high score tracker."
+Format (plain text only — NO markdown, no **, no ##, no bullet points with -):
+第一行：一句话概括完成了什么
+空行
+然后分条列出（用 • 符号）：
+• 实现的功能：列出本次实现的核心功能点（每条一行）
+• 使用方法：简要说明怎么使用这个 app 或功能（1-2 条）
+• 建议改进：列出未来值得优化或扩展的点（1-2 条）
+最后一行：NEXT_STEP: 一个具体的、可执行的下一步建议
 
-Example (Chinese): "已完成贪吃蛇游戏 — 画布渲染、键盘控制、碰撞检测和计分系统。在浏览器预览中可以正常运行。
-✓ 全部完成：画布渲染、键盘控制、碰撞检测、计分系统
-NEXT_STEP: 可以在预览中试玩，或者让我添加最高分记录功能。"
+Example (Chinese):
+"已完成贪吃蛇游戏的全部构建。
 
-Do NOT use [HEADLINE], [FILE_CHANGE_N], [SPECIAL_NOTES], or any structured format.
-Do NOT enumerate files or explain why each change was made.
+• 实现的功能：画布渲染与蛇的移动、键盘方向键控制、食物随机生成、碰撞检测、实时计分
+• 使用方法：在预览中用方向键控制蛇移动，吃到食物得分，碰墙或咬到自己游戏结束
+• 建议改进：可以加入最高分记录、难度递增、音效反馈
+NEXT_STEP: 在预览中试玩，或告诉我你想添加哪个功能。"
+
+Example (English):
+"Snake game fully built and ready to play.
+
+• Features implemented: canvas rendering and snake movement, arrow key controls, random food spawning, collision detection, live score tracking
+• How to use: open the preview, use arrow keys to move the snake, eat food to grow and score, hitting a wall or yourself ends the game
+• Suggestions for improvement: add a high score tracker, progressive speed increase, or sound effects
+NEXT_STEP: Try it in the preview, or tell me what you'd like to add next."
+
+Adjust the number of bullet points based on the actual scope of work. Do NOT fabricate features that weren't built.
 
 ## Language Rules
 - CRITICAL: You MUST respond in the exact same language as specified by "User's language" field.

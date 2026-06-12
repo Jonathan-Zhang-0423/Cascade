@@ -17,6 +17,7 @@ import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
 import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { tr } from "@/lib/i18n";
+import { useProjectStore } from "@/stores/project-store";
 
 /**
  * ManagerStreamInstance — owns the SSE connection and live state for a single
@@ -345,11 +346,14 @@ export class ManagerStreamInstance {
         }
       }
 
-      // Extract project name from marker
+      // Extract project name from marker — only if user hasn't set a custom name
       if (this.actions.getProjectId() === this.projectId && managerAccumulated) {
         const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
         if (nameFromMarker && this.projectId) {
-          this.actions.renameProject(this.projectId, nameFromMarker);
+          const currentProject = useProjectStore.getState().projects.find((p) => p.id === this.projectId);
+          if (!currentProject?.userNamed) {
+            this.actions.renameProject(this.projectId, nameFromMarker);
+          }
         }
       }
 

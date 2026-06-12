@@ -170,7 +170,7 @@ export default function DashboardPage() {
     })
       .then((r) => r.json())
       .then((data: { name?: string }) => {
-        if (data.name) renameProject(id, data.name);
+        if (data.name) renameProject(id, data.name, false);
       })
       .catch(() => {});
   };
@@ -185,7 +185,7 @@ export default function DashboardPage() {
   const handleRename = () => {
     const name = renameName.trim();
     if (!name || !renameId) return;
-    renameProject(renameId, name);
+    renameProject(renameId, name, true);
     setRenameId(null);
     setRenameName("");
   };
@@ -559,7 +559,6 @@ export default function DashboardPage() {
               </div>
               <div>
                 <div className="text-sm font-medium text-foreground">{t("dashboard.modePlanLabel")}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{t("dashboard.modePlanDesc")}</div>
               </div>
             </button>
           </div>

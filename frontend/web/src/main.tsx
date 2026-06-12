@@ -1,6 +1,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { applyFontSize, getFontSizeKey } from "@/components/ide/navbar";
+
+// Apply saved font size before first render
+applyFontSize(getFontSizeKey());
 
 // In dev, unregister any service worker left behind by an earlier prod
 // build on the same origin. A stray SW intercepts /api/* (NetworkFirst)

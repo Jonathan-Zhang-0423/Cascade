@@ -309,7 +309,7 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
             fixerTools.schemas,
             fixerTools.handlers,
             emit,
-            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
           );
         });
       });

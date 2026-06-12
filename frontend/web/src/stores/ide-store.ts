@@ -112,8 +112,10 @@ export interface BuildResultData {
     id: string;
     narration: string;
     actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+    isLive: boolean;
   }[];
-  completionData: { changedFiles: string[]; userLang?: string; summary?: string };
+  completionData?: { changedFiles: string[]; userLang?: string; summary?: string };
+  tokenUsage?: { input: number; output: number; total: number };
   nextStepSuggestion?: string;
   sessionId?: string;
 }
@@ -383,6 +385,8 @@ interface IDEState {
   refreshPreview: () => void;
   createCheckpoint: (label: string, options?: { includeManagerThread?: boolean }) => void;
   restoreCheckpoint: (id: string) => void;
+  historyTabRequest: number;
+  requestHistoryTab: () => void;
 
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
@@ -401,6 +405,11 @@ interface IDEState {
   setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
   setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
+
+  // Plan preview panel（右内容区左侧并列显示）
+  planPreviewOpen: boolean;
+  planPreviewData: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null;
+  setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
   freezeLatestPlanStatuses: () => void;
@@ -609,7 +618,7 @@ function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
   // Latest write per clientId wins (covers updates to the same message).
   byClientId.set(msg.clientId, msg);
   if (msgUploadTimer) clearTimeout(msgUploadTimer);
-  msgUploadTimer = setTimeout(flushPendingMsgUploads, 500);
+  msgUploadTimer = setTimeout(flushPendingMsgUploads, 100);
 }
 
 async function fetchMessagesFromServer(
@@ -743,10 +752,12 @@ function flushPersist() {
 
 if (typeof window !== "undefined") {
   // pagehide fires reliably on tab close and bfcache navigation; visibilitychange
-  // covers mobile/background where pagehide may not. Both just flush.
-  window.addEventListener("pagehide", flushPersist);
+  // covers mobile/background where pagehide may not. Both flush UI state AND
+  // any pending message uploads so messages aren't lost on rapid refresh.
+  const flushAll = () => { flushPersist(); flushPendingMsgUploads(); };
+  window.addEventListener("pagehide", flushAll);
   window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushPersist();
+    if (document.visibilityState === "hidden") flushAll();
   });
 }
 
@@ -847,10 +858,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   pendingPrompt: null,
   pendingPromptMode: null,
   checkpoints: [],
+  historyTabRequest: 0,
   lastBuildFileDiffs: {},
   setLastBuildFileDiff: (filePath, old, newContent) =>
     set((s) => ({ lastBuildFileDiffs: { ...s.lastBuildFileDiffs, [filePath]: { old, new: newContent } } })),
   clearLastBuildFileDiffs: () => set({ lastBuildFileDiffs: {} }),
+  planPreviewOpen: false,
+  planPreviewData: null,
+  setPlanPreview: (open, data) => set({ planPreviewOpen: open, planPreviewData: data ?? null }),
 
   layoutMode: "code",
   setLayoutMode: (mode) => { set({ layoutMode: mode }); debouncedPersist(get()); },
@@ -1568,6 +1583,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setPreviewOverrideHtml: (html) => set({ previewOverrideHtml: html }),
 
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
+
+  requestHistoryTab: () => set((state) => ({ historyTabRequest: state.historyTabRequest + 1 })),
 
   setChatMode: (mode) =>
     set((state) => {
