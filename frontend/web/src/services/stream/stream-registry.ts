@@ -1,6 +1,5 @@
 import { ManagerStreamInstance } from "./manager-stream-instance";
 import { BuildStreamInstance } from "./build-stream-instance";
-import { ReviewStreamInstance } from "./review-stream-instance";
 import {
   type StoreActions,
   type ManagerStreamState,
@@ -33,8 +32,6 @@ function createStoreActions(projectId: string): StoreActions {
     setAiResponding: (v) => { if (guard()) store().setAiResponding(v); },
     setExecutingTaskIndex: (idx) => { if (guard()) store().setExecutingTaskIndex(idx); },
     setChatMode: (mode) => { if (guard()) store().setChatMode(mode); },
-    setReviewPhase: (phase) => { if (guard()) store().setReviewPhase(phase); },
-    setHolisticReview: (review) => { if (guard()) store().setHolisticReview(review as any); },
     setFixCycle: (cycle) => { if (guard()) store().setFixCycle(cycle); },
     setPendingConfirmation: (c) => { if (guard()) store().setPendingConfirmation(c); },
     setCompletionData: (data) => { if (guard()) store().setCompletionData(data); },
@@ -70,8 +67,6 @@ function createStoreActions(projectId: string): StoreActions {
     getFiles: () => flattenFiles(store().files),
     getTaskStatuses: () => store().taskStatuses,
     getStreamingSnapshot: () => store().streamingSnapshot as any,
-    getReviewPhase: () => store().reviewPhase as any,
-    getReviewStrictness: () => store().reviewStrictness as any,
     getMessagesReady: () => store().messagesReady,
   };
 }
@@ -80,7 +75,6 @@ export interface FullProjectStreamSlot {
   projectId: string;
   manager: ManagerStreamInstance;
   build: BuildStreamInstance;
-  review: ReviewStreamInstance;
   dispose: () => void;
 }
 
@@ -102,7 +96,6 @@ class StreamServiceRegistry {
         projectId: "",
         manager: new ManagerStreamInstance("", actions),
         build: new BuildStreamInstance("", actions),
-        review: new ReviewStreamInstance("", actions),
         dispose: () => {},
       };
     }
@@ -111,16 +104,13 @@ class StreamServiceRegistry {
       const actions = createStoreActions(projectId);
       const manager = new ManagerStreamInstance(projectId, actions);
       const build = new BuildStreamInstance(projectId, actions);
-      const review = new ReviewStreamInstance(projectId, actions);
       slot = {
         projectId,
         manager,
         build,
-        review,
         dispose: () => {
           manager.dispose();
           build.dispose();
-          review.dispose();
         },
       };
       this.slots.set(projectId, slot);

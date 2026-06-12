@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useCallback, useMemo, useEffect, useRef } from "react";
 import { useIDEStore } from "@/stores/ide-store";
-import { streamRegistry, type ManagerStreamState, type BuildStreamState, type ReviewStreamState } from "@/services/stream";
+import { streamRegistry, type ManagerStreamState, type BuildStreamState } from "@/services/stream";
 
 /**
  * useActiveStream — thin React bridge that subscribes to the stream
@@ -34,9 +34,6 @@ export function useActiveStream() {
       if (!slot.build.isActive) {
         slot.build.attemptReconnect().catch(() => {});
       }
-      if (!slot.review.isActive) {
-        slot.review.attemptReconnect().catch(() => {});
-      }
     }, 200);
     return () => clearTimeout(timer);
   }, [projectId, slot]);
@@ -51,12 +48,6 @@ export function useActiveStream() {
   const buildState = useSyncExternalStore<BuildStreamState>(
     slot.build.state.subscribe,
     slot.build.state.getSnapshot,
-  );
-
-  // ─── Review stream state ─────────────────────────────────────────────
-  const reviewState = useSyncExternalStore<ReviewStreamState>(
-    slot.review.state.subscribe,
-    slot.review.state.getSnapshot,
   );
 
   // ─── Commands (bound to current slot) ────────────────────────────────
@@ -87,14 +78,6 @@ export function useActiveStream() {
 
   const handleStopExecution = useCallback(() => {
     slot.build.stop();
-  }, [slot]);
-
-  const handleStartReview = useCallback(async () => {
-    await slot.review.execute();
-  }, [slot]);
-
-  const handleStopReview = useCallback(() => {
-    slot.review.stop();
   }, [slot]);
 
   const resetManagerLiveState = useCallback(() => {
@@ -135,18 +118,6 @@ export function useActiveStream() {
       handleDirectBuild,
       handleStopExecution,
       resetLiveState: resetBuildLiveState,
-    },
-    // Review stream
-    review: {
-      phase: reviewState.phase,
-      round: reviewState.round,
-      maxRounds: reviewState.maxRounds,
-      liveThinkingText: reviewState.thinkingText,
-      liveNarrationText: reviewState.narrationText,
-      isReconnecting: reviewState.isReconnecting,
-      isActive: slot.review.isActive,
-      handleStartReview,
-      handleStopReview,
     },
     // Shared
     slot,
