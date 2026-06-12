@@ -22,6 +22,7 @@ function createStoreActions(projectId: string): StoreActions {
 
   return {
     // Guarded — only write when this project is active
+    addChatMessage: (msg) => { if (guard()) store().addChatMessage(msg as any); },
     addManagerMessage: (msg) => { if (guard()) store().addManagerMessage(msg as any); },
     setManagerPlan: (plan) => { if (guard()) store().setManagerPlan(plan); },
     clearManagerPlan: () => { if (guard()) store().clearManagerPlan(); },
@@ -60,7 +61,7 @@ function createStoreActions(projectId: string): StoreActions {
     clearLastBuildFileDiffs: () => { if (guard()) store().clearLastBuildFileDiffs(); },
     refreshPreview: () => { if (guard()) store().refreshPreview(); },
     createCheckpoint: (label, opts) => { if (guard()) store().createCheckpoint(label, opts); },
-    renameProject: (id, name) => { useProjectStore.getState().renameProject(id, name); },
+    renameProject: (id, name, fromUser) => { useProjectStore.getState().renameProject(id, name, fromUser); },
 
     // Read-only — always safe
     getProjectId: () => store().projectId,

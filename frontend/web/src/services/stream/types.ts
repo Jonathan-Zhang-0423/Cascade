@@ -32,6 +32,7 @@ export interface BuildStreamState {
   isReconnecting: boolean;
   thinkingElapsedSec: number | null;
   sessionId: string | null;
+  stepNarrations: Record<number, string>;
 }
 
 export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
@@ -42,6 +43,7 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   isReconnecting: false,
   thinkingElapsedSec: null,
   sessionId: null,
+  stepNarrations: {},
 };
 
 // ─── Review Stream ─────────────────────────────────────────────────────────
@@ -85,6 +87,9 @@ export interface StreamingSnapshot {
 }
 
 export interface StoreActions {
+  // Chat message operations
+  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
+
   // Manager message operations
   addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
@@ -119,7 +124,7 @@ export interface StoreActions {
   createCheckpoint: (label: string, opts?: { includeManagerThread?: boolean }) => void;
 
   // Project rename
-  renameProject: (id: string, name: string) => void;
+  renameProject: (id: string, name: string, fromUser?: boolean) => void;
 
   // Read-only accessors (not guarded — safe from any project context)
   getProjectId: () => string | null;

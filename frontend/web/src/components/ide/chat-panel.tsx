@@ -234,17 +234,26 @@ export function ChatPanel() {
 
   useEffect(() => {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {
+      // Guard: ensure the stream slot has already switched to the current project.
+      // useMemo for slot updates in the same render cycle as projectId, but
+      // handleManagerSend/handleDirectBuild close over the previous render's slot
+      // when pendingPrompt fires on first mount. Verify slot.projectId matches
+      // before proceeding to avoid sending on a stale (old-project) instance.
+      if (slot.manager.projectId !== projectId || slot.build.projectId !== projectId) return;
       pendingHandled.current = true;
       const prompt = pendingPrompt;
       const mode = pendingPromptMode;
-      clearPendingPrompt();
       if (mode === "build") {
+        setChatMode("build");
+        clearPendingPrompt();
         handleDirectBuild(prompt);
       } else {
+        setChatMode("manager");
+        clearPendingPrompt();
         handleManagerSend(prompt);
       }
     }
-  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, projectId, slot, clearPendingPrompt, handleManagerSend, handleDirectBuild, setChatMode]);
 
   useEffect(() => {
     if (!isManagerResponding && autoExecutePlanRef.current) {

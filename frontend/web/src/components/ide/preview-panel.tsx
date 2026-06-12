@@ -14,6 +14,7 @@ import { FlutterWebPreview } from "./flutter-web-preview";
 import { WeChatPreview } from "./wechat-preview";
 import { ConsolePanel } from "./console-panel";
 import { FileTree } from "./file-tree";
+import { CheckpointPanel } from "./CheckpointPanel";
 
 // 常用文件类型列表
 const FILE_TYPES = [
@@ -247,6 +248,9 @@ export function PreviewPanel({
     projectId,
     isConsoleOpen,
     toggleConsole,
+    planPreviewOpen,
+    planPreviewData,
+    setPlanPreview,
   } = useIDEStore();
   const { projects } = useProjectStore();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -572,7 +576,7 @@ export function PreviewPanel({
           </div>
 
           {/* 工具列表 */}
-          <div className="flex-1 overflow-y-auto pb-2">
+          <div className="flex-1 overflow-y-auto pb-2 scrollbar-auto">
             {filteredSections.map((section) => (
               <div key={section.title}>
                 <div className="px-4 pt-4 pb-1.5 text-[11px] font-semibold text-[#999999] uppercase tracking-wider">
@@ -620,8 +624,15 @@ export function PreviewPanel({
         </div>
       )}
 
+      {/* ── History 视图（右内容区版本历史） ── */}
+      {activePreviewTabState === "history" && (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
+          <CheckpointPanel />
+        </div>
+      )}
+
       {/* ── Files 视图（右内容区文件树） ── */}
-      {activeTab === "files" && (
+      {activeTab === "files" && activePreviewTabState !== "history" && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
           <div className="flex items-center justify-between px-3 h-[38px] shrink-0 border-b" style={{ borderColor: "var(--panel-divider)" }}>
             <span className="text-[12px] font-medium text-foreground">{t("tools.files")}</span>
@@ -639,7 +650,7 @@ export function PreviewPanel({
       )}
 
       {/* ── New File 视图（右内容区新建文件） ── */}
-      {activeTab === "newfile" && (
+      {activeTab === "newfile" && activePreviewTabState !== "history" && (
         <NewFilePanel
           onCreated={() => setActiveTab("files")}
           onCancel={() => setActiveTab("preview")}
@@ -649,81 +660,86 @@ export function PreviewPanel({
       {/* ── Canvas 预览内容 ── */}
       {activeTab !== "files" && activeTab !== "newfile" && activePreviewTabState === "preview" && (
         <>
-          {/* Preview toolbar — app名称 + 平台切换 + Terminal */}
-          <div className="preview-toolbar flex items-center gap-1.5 px-2.5 h-[38px] shrink-0" style={{ background: "var(--panel-right-bg)", borderBottom: "1px solid var(--panel-divider)" }}>
-            {/* App 名称：完整显示，无折叠符号 */}
-            <span
-              className="text-[12px] font-medium shrink-0"
-              style={{ color: "var(--foreground)" }}
-              data-testid="button-app-select"
-            >
-              {currentProject?.name || "App"}
-            </span>
-
-            <div className="flex-1" />
-
-            {/* 平台切换 */}
-            <div className="flex items-center rounded-[6px] p-[2px] gap-[1px] shrink-0 border" style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" }}>
-              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "android" ? "text-foreground" : "text-muted-foreground hover:text-foreground")} style={devicePlatform === "android" ? { background: "var(--panel-left-bg)" } : {}} onClick={() => handlePlatformChange("android")} data-testid="button-platform-android">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              </button>
-              <button className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "ios" ? "text-foreground" : "text-muted-foreground hover:text-foreground")} style={devicePlatform === "ios" ? { background: "var(--panel-left-bg)" } : {}} onClick={() => handlePlatformChange("ios")} data-testid="button-platform-ios">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="2"/></svg>
-              </button>
-            </div>
-
-            {/* Terminal */}
-            <button
-              className={cn("flex items-center justify-center w-[28px] h-[26px] border rounded-[6px] transition-colors shrink-0", isConsoleOpen ? "bg-[#F0F7FF] border-[#BFD9F2] text-[#0A66C2]" : "text-muted-foreground hover:text-foreground")}
-              style={!isConsoleOpen ? { background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" } : {}}
-              onClick={toggleConsole}
-              data-testid="button-toggle-console"
-            >
-              <Terminal className="w-[13px] h-[13px]" />
-            </button>
-          </div>
-
-          {/* 预览内容区 — PC全屏 / Mobile固定比例 */}
-          <div className={cn("flex-1 min-h-0 overflow-hidden", devicePlatform === "ios" ? "flex items-center justify-center" : "flex items-stretch")} style={{ background: "var(--panel-right-bg)" }}>
-            {devicePlatform === "ios" ? (
-              <div className="relative overflow-hidden flex-shrink-0" style={{ width: 375, maxWidth: "100%", aspectRatio: "375 / 812", maxHeight: "100%", borderRadius: 12, background: "var(--panel-nav-bg)", boxShadow: "0 0 0 1px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.12)" }}>
-                {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
-                previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
-                previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
-                previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
-                previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
-                  <>
-                    {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
-                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
-                        <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
-                      </div>
-                    ) : (
-                      <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
-                    )}
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-full relative">
-                {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
-                previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
-                previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
-                previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
-                previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
-                  <>
-                    {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
-                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
-                        <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
-                      </div>
-                    ) : (
-                      <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
-                    )}
-                  </>
-                )}
+          {/* 预览内容区 — 左侧可选 View 面板 + 右侧预览 */}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            {/* View 面板（Task plan 详情），左侧并列 */}
+            {planPreviewOpen && planPreviewData && (
+              <div
+                className="flex flex-col shrink-0 border-r overflow-hidden"
+                style={{ width: 300, background: "var(--panel-mid-bg)", borderColor: "var(--panel-divider)" }}
+              >
+                {/* 面板标题 */}
+                <div className="px-4 pt-3 pb-2.5 border-b shrink-0 flex items-center gap-2" style={{ borderColor: "var(--panel-divider)" }}>
+                  <span className="font-mono text-[12px] font-semibold text-foreground flex-1 min-w-0 truncate">
+                    {planPreviewData.summary ?? "Plan"}
+                  </span>
+                  <button
+                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    onClick={() => setPlanPreview(false)}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* 面板内容 */}
+                <div className="flex-1 overflow-y-auto scrollbar-auto px-4 py-3 space-y-3 text-[12px] text-foreground/80 leading-relaxed">
+                  {planPreviewData.overview && (
+                    <div>
+                      <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1">Overview</p>
+                      <p>{planPreviewData.overview}</p>
+                    </div>
+                  )}
+                  {planPreviewData.steps.map((step, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0 mt-0.5">{i + 1}.</span>
+                      <span>{step.description || step.title}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* 预览主区 */}
+            <div className={cn("flex-1 min-w-0 min-h-0 overflow-hidden", devicePlatform === "ios" ? "flex items-center justify-center" : "flex items-stretch")} style={{ background: "var(--panel-right-bg)" }}>
+              {devicePlatform === "ios" ? (
+                <div className="relative overflow-hidden flex-shrink-0" style={{ width: 375, maxWidth: "100%", aspectRatio: "375 / 812", maxHeight: "100%", borderRadius: 12, background: "#ffffff", boxShadow: "0 0 0 1px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.12)" }}>
+                  {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                  previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
+                  previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
+                  previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                  previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
+                    <>
+                      {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
+                          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
+                          <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
+                        </div>
+                      ) : (
+                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="w-full h-full relative" style={{ background: "#ffffff" }}>
+                  {previewMode === "kotlin-wasm" || previewMode === "swift-wasm" ? (<WasmPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                  previewMode === "code-preview" ? (<CodePreview files={files} framework={framework} projectId={projectId} mainEntryFile={getMainEntryFile(framework)} />) :
+                  previewMode === "rn-web" ? (<RnWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} projectName={currentProject?.name} />) :
+                  previewMode === "flutter-web" ? (<FlutterWebPreview files={files} framework={framework} projectId={projectId} refreshKey={effectiveRefresh} />) :
+                  previewMode === "wechat-preview" ? (<WeChatPreview files={files} refreshKey={effectiveRefresh} projectId={projectId} />) : (
+                    <>
+                      {!previewOverrideHtml && !previewFile && previewMode === "iframe-preview" ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white" style={{ animation: "fade-up 150ms ease" }}>
+                          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="text-slate-400"><rect x="4" y="4" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5" /><path d="M11 10l7 4-7 4V10z" fill="currentColor" /></svg>
+                          <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
+                        </div>
+                      ) : (
+                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

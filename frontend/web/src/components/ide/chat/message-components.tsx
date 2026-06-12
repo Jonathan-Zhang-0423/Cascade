@@ -102,13 +102,13 @@ export function CodeBlockView({
     >
       {/* File header line */}
       <div
-        className="flex items-center gap-2 font-mono text-[10px] text-[rgba(238,238,246,0.3)] group/code-header cursor-pointer select-none hover:text-[rgba(238,238,246,0.5)] transition-colors"
+        className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground/50 group/code-header cursor-pointer select-none hover:text-muted-foreground transition-colors"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
         <span className="shrink-0">──</span>
         <span className="truncate">{fileName}</span>
-        <span className="text-[rgba(238,238,246,0.15)]">{lineCount}L</span>
+        <span className="text-muted-foreground/30">{lineCount}L</span>
         {applied && (
           <span className="text-[#34d68a]/60 flex items-center gap-0.5">
             <Check className="w-2.5 h-2.5" />
@@ -138,11 +138,12 @@ export function CodeBlockView({
                   className="select-none text-right"
                   style={{
                     padding: "0 6px",
-                    color: "rgba(238,238,246,0.15)",
+                    color: "var(--muted-foreground)",
                     width: "32px",
                     minWidth: "32px",
                     userSelect: "none",
                     fontSize: "10px",
+                    opacity: 0.4,
                   }}
                 >
                   {idx + 1}
@@ -173,7 +174,7 @@ function TextWithSummary({ text }: { text: string }) {
   const match = findSummaryHeader(text);
 
   if (!match) {
-    return <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)]">{renderMarkdown(text)}</div>;
+    return <div className="text-[13px] leading-[1.6] text-foreground/80">{renderMarkdown(text)}</div>;
   }
 
   const before = text.slice(0, match.index);
@@ -184,7 +185,7 @@ function TextWithSummary({ text }: { text: string }) {
   return (
     <div>
       {before.trim().length > 0 && (
-        <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)] mb-1">{renderMarkdown(before)}</div>
+        <div className="text-[13px] leading-[1.6] text-foreground/80 mb-1">{renderMarkdown(before)}</div>
       )}
       <div className="mt-1 rounded-md border border-[rgba(52,214,138,0.1)] bg-[rgba(52,214,138,0.02)] px-3 py-2">
         <div className="flex items-center gap-1.5 font-mono text-[11px] font-medium text-[#34d68a]/70 mb-1">
@@ -196,7 +197,7 @@ function TextWithSummary({ text }: { text: string }) {
         </div>
       </div>
       {trailing.trim().length > 0 && (
-        <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)] mt-1">{renderMarkdown(trailing)}</div>
+        <div className="text-[13px] leading-[1.6] text-foreground/80 mt-1">{renderMarkdown(trailing)}</div>
       )}
     </div>
   );
@@ -303,7 +304,7 @@ export function MessageBubble({
     const hasCodeBlocks = message.content.includes('```');
     return (
       <div
-        className="my-0.5 px-3.5 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.7)]"
+        className="my-0.5 px-3.5 font-mono text-[12px] leading-[1.6] text-foreground/80"
         data-testid={`chat-message-${message.id}`}
       >
         {hasCodeBlocks ? (
@@ -353,7 +354,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
       className="flex items-center gap-2 mx-3 my-2 font-mono"
       data-testid={`checkpoint-${message.checkpointId}`}
     >
-      <div className="flex-1 h-px bg-[rgba(255,255,255,0.04)]" />
+      <div className="flex-1 h-px bg-border/40" />
       <div className="flex items-center gap-1.5 shrink-0">
         <span className="text-[9px] text-muted-foreground/40">
           {message.content} · {formatRelativeTime(message.timestamp)}
@@ -379,7 +380,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
           </button>
         )}
       </div>
-      <div className="flex-1 h-px bg-[rgba(255,255,255,0.04)]" />
+      <div className="flex-1 h-px bg-border/40" />
     </div>
   );
 }

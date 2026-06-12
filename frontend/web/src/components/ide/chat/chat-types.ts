@@ -8,6 +8,10 @@ export interface ActionLogEntry {
     | "terminal_command"
     | "file_read"
     | "file_write"
+    | "code_applied"
+    | "code_review"
+    | "capabilities"
+    | "plan"
     | "step"
     | "narration";
   label: string;
@@ -22,6 +26,7 @@ export interface NarrationSegment {
   narration: string;
   actions: ActionLogEntry[];
   isLive: boolean;
+  stepLabel?: string;   // e.g. "Step 2: 实现登录功能"
 }
 
 export interface ParsedCompletion {
@@ -333,6 +338,10 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     startBuilding: "开始构建",
     revisePlan: "修改方案",
     buildNow: "立即构建",
+    buildHere: "在此构建",
+    buildBackground: "后台构建",
+    buildQuietly: "静默构建",
+    revise: "修改",
     showAllSteps: "显示全部 {n} 步",
     collapse: "收起",
     viewFullPlan: "查看完整方案",
@@ -390,11 +399,31 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     reviewReportClean: "未发现需要处理的问题",
     reviewAdvisories: "建议（不阻塞）",
     reviewFixedCount: "已修复 {n} 项",
+    confirmationPlaceholder: "描述要修改的内容，或直接确认...",
+    webApp: "Web 应用",
+    file: "个文件",
+    files: "个文件",
+    taskPlanCreated: "任务计划已创建",
+    view: "查看",
+    allDone: "全部完成",
+    doneCheck: "✓ 完成",
+    fileChanged: "1 个文件已更改",
+    filesChanged: "{n} 个文件已更改",
+    applied: "已应用",
+    restored: "已还原",
+    restore: "还原",
+    looksGood: "看起来不错，按计划继续",
+    noCodeOutput: "无代码输出",
+    editorError: "编辑器错误",
   },
   English: {
     startBuilding: "Start building",
     revisePlan: "Revise Plan",
     buildNow: "Build Now",
+    buildHere: "Build here",
+    buildBackground: "Build in background",
+    buildQuietly: "Build quietly",
+    revise: "Revise",
     showAllSteps: "Show all {n} steps",
     collapse: "Collapse",
     viewFullPlan: "View full plan",
@@ -452,5 +481,21 @@ export const planCardStrings: Record<PlanCardLang, Record<string, string>> = {
     reviewReportClean: "No issues that need action",
     reviewAdvisories: "Advisories (non-blocking)",
     reviewFixedCount: "Fixed {n} item(s)",
+    confirmationPlaceholder: "Describe what to fix, or just confirm...",
+    webApp: "Web app",
+    file: "file",
+    files: "files",
+    taskPlanCreated: "Task plan created",
+    view: "View",
+    allDone: "all done",
+    doneCheck: "✓ Done",
+    fileChanged: "1 file changed",
+    filesChanged: "{n} files changed",
+    applied: "Applied",
+    restored: "Restored",
+    restore: "Restore",
+    looksGood: "Looks good, proceed as planned",
+    noCodeOutput: "No code output",
+    editorError: "Editor error",
   },
 };

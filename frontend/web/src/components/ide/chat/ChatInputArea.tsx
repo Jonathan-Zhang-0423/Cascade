@@ -88,6 +88,17 @@ export function ChatInputArea({
 
   const tGlobal = useT();
 
+  // i18n status labels
+  const STATUS_LABELS_I18N: Record<Exclude<AgentStatus, null>, string> = {
+    planning: tGlobal("agent.planning"),
+    preparing: tGlobal("agent.preparing"),
+    thinking: tGlobal("agent.thinking"),
+    working: tGlobal("agent.working"),
+    verifying: tGlobal("agent.verifying"),
+    fixing: tGlobal("agent.fixing"),
+    reconnecting: tGlobal("agent.reconnecting"),
+  };
+
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -102,25 +113,6 @@ export function ChatInputArea({
 
   return (
     <div className="px-2.5 pb-2.5 pt-1 shrink-0">
-      {/* Status line — only when agent is active */}
-      {agentStatus && (
-        <div
-          className="flex items-center gap-1.5 px-1 pb-1.5 font-mono text-[10px]"
-          style={{ color: STATUS_COLORS[agentStatus] }}
-        >
-          <span
-            className="w-[5px] h-[5px] rounded-full shrink-0"
-            style={{
-              backgroundColor: STATUS_COLORS[agentStatus],
-              animation: "pulse 1.5s ease-in-out infinite",
-            }}
-          />
-          <span>{STATUS_LABELS[agentStatus]}</span>
-          {typeof elapsed === "number" && elapsed >= 2 && (
-            <span style={{ opacity: 0.5 }}>· {elapsed}s</span>
-          )}
-        </div>
-      )}
 
       {/* Input box */}
       <div
@@ -172,7 +164,7 @@ export function ChatInputArea({
                 "w-3 h-3 rounded-sm border flex items-center justify-center shrink-0",
                 chatMode === "manager"
                   ? "bg-[#4f82ff] border-[#4f82ff]"
-                  : "border-[rgba(255,255,255,0.15)]",
+                  : "border-[#999999] dark:border-border/40",
               )}
             >
               {chatMode === "manager" && (
@@ -193,7 +185,7 @@ export function ChatInputArea({
             data-testid="button-polish"
           >
             {polishLoading ? (
-              <span className="w-3 h-3 rounded-full border border-[rgba(238,238,246,0.3)] border-t-[rgba(238,238,246,0.7)] animate-spin shrink-0" />
+              <span className="w-3 h-3 rounded-full border border-border border-t-foreground/60 animate-spin shrink-0" />
             ) : (
               <Wand2 className="w-3 h-3 text-muted-foreground/70" />
             )}
@@ -217,7 +209,7 @@ export function ChatInputArea({
                 "w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors",
                 input.trim() || (chatMode === "build" && managerPlan && !isExecuting)
                   ? "bg-[#4f82ff] hover:bg-[#3a6ee8] text-white"
-                  : "bg-[rgba(255,255,255,0.06)] text-muted-foreground/50 cursor-default",
+                  : "bg-border/20 text-muted-foreground/50 cursor-default",
               )}
               onClick={onSend}
               disabled={

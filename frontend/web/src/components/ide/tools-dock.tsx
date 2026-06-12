@@ -2,7 +2,6 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getProjectEmoji } from "@/lib/project-emoji";
 import { useT } from "@/lib/i18n";
 
 export function ToolsDock() {
