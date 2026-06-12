@@ -1210,8 +1210,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   clearPendingPrompt: () => {
     set({ pendingPrompt: null, pendingPromptMode: null });
-    const state = get();
-    debouncedPersist(state);
+    // Persist synchronously, NOT debounced: loadProject restores pendingPrompt
+    // from localStorage, so if the write hasn't landed yet and the project
+    // re-loads (remount / refresh / StrictMode), the stale prompt would be
+    // restored and auto-sent again — producing duplicate messages and repeated
+    // manager-chat calls. Cancel any pending debounced write, then write the
+    // cleared state immediately to close that window.
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+    pendingPersistState = null;
+    persistState(get());
   },
 
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => {
