@@ -76,26 +76,6 @@ function StepItem({
           : null
       : null;
 
-  // Build icon×count summary from stepActions
-  const actionIconRow = (isRunning || s === "done") && stepActions && stepActions.length > 0
-    ? (() => {
-        const HIDDEN_TOOLS = new Set(["mark_step_complete", "request_review", "submit_verdict", "submit_plan", "report_issue"]);
-        const counts = new Map<string, number>();
-        for (const a of stepActions) {
-          if (a.type === "step" || a.type === "narration") continue;
-          if (a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)) continue;
-          counts.set(a.type, (counts.get(a.type) ?? 0) + 1);
-        }
-        return counts;
-      })()
-    : null;
-
-  const ACTION_ICONS: Record<string, string> = {
-    thinking: "🧠", file_read: "📄", file_write: "✏️",
-    code_applied: "⎇", code_review: "🛡", capabilities: "⚡",
-    plan: "☰", tool_call: "🔧", terminal_command: ">_",
-  };
-
   return (
     <div
       className={cn(
@@ -126,16 +106,6 @@ function StepItem({
         {failureReasonLabel && (
           <span className="ml-2 text-[9px] text-[#ef4444]/70">
             ({failureReasonLabel})
-          </span>
-        )}
-        {actionIconRow && actionIconRow.size > 0 && (
-          <span className="flex items-center gap-1 shrink-0 text-[10px] text-muted-foreground/50">
-            {Array.from(actionIconRow.entries()).map(([type, count]) => (
-              <span key={type} className="inline-flex items-center gap-0.5">
-                <span>{ACTION_ICONS[type] ?? "○"}</span>
-                {count > 1 && <span>×{count}</span>}
-              </span>
-            ))}
           </span>
         )}
       </div>
