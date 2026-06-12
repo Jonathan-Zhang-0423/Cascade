@@ -403,6 +403,11 @@ export class BuildStreamInstance {
             try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
+            // The finalized build is now persisted as a buildResult message; clear
+            // the live action-log/thinking/narration so the live BuildLivePanel
+            // stops rendering a duplicate of the same content below the plan card.
+            // (Without this it shows twice until a refresh wipes the live state.)
+            this.clearLive();
 
             // Refresh preview immediately (files were applied live via
             // code_applied), then reconcile against the server's authoritative
@@ -644,6 +649,9 @@ export class BuildStreamInstance {
             try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
+            // Clear live state so the BuildLivePanel doesn't duplicate the
+            // finalized buildResult card (see primary all_complete path).
+            this.clearLive();
           } else if (type === "done") {
             // handled in finally
           } else if (type === "build_error") {
