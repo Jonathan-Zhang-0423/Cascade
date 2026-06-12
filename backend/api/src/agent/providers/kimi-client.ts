@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { doubaoClient, DOUBAO_MODEL } from "./doubao-client";
+import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "./doubao-client";
 import { minimaxClient, MINIMAX_MODEL } from "./minimax-client";
 import { glmClient, GLM_MODEL } from "./glm-client";
 import { deepseekClient, DEEPSEEK_PRO_MODEL, DEEPSEEK_FLASH_MODEL } from "./deepseek-client";
@@ -93,7 +93,16 @@ export function getAIClient(provider: AIProvider): { client: OpenAI; model: stri
   return { client: doubaoClient, model: DOUBAO_MODEL };
 }
 
-// Phase-to-provider preference order — used by getOptimalClient
+/**
+ * A low-latency client for short, non-critical generations (e.g. end-of-round
+ * summaries). Prefers MiniMax, then falls back to the Doubao "lite" model.
+ */
+export function getFastClient(): { client: OpenAI; model: string } {
+  if (process.env.MINIMAX_API_KEY) {
+    return { client: minimaxClient, model: MINIMAX_MODEL };
+  }
+  return { client: doubaoClient, model: DOUBAO_LITE_MODEL };
+}
 const PHASE_PROVIDER_PREFERENCE: Record<BuildPhase, AIProvider[]> = {
   planning:  ["deepseek-pro", "kimi", "glm", "doubao"],
   editing:   ["doubao", "kimi", "deepseek-flash", "minimax"],

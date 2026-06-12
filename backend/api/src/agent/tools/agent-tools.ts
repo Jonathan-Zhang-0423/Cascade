@@ -44,6 +44,28 @@ export interface VerifierSessionState {
   review?: Record<string, unknown>;
 }
 
+/** Severity assigned by the standalone review agent. Drives triage in the
+ * review orchestrator: `isBlocking(severity, strictness)` decides what triggers
+ * a fix round. `nit` is never blocking under any strictness. */
+export type ReviewSeverity = "critical" | "major" | "minor" | "nit";
+
+export interface ReviewIssue {
+  type: "bug" | "missing_feature" | "regression";
+  severity: ReviewSeverity;
+  description: string;
+  affected_file?: string;
+}
+
+export interface ReviewVerdict {
+  summary: string;
+  requirementMatchPercent: number;
+}
+
+export interface ReviewSessionState {
+  issues: ReviewIssue[];
+  verdict?: ReviewVerdict;
+}
+
 export interface ManagerSessionState {
   plan?: Record<string, unknown>;
 }
@@ -181,8 +203,8 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
-        name: "request_review",
-        description: "Signal that you are done implementing all steps and the project is ready for quality review. Call this ONLY when all plan steps are complete.",
+        name: "finish_build",
+        description: "Signal that you have finished implementing ALL plan steps and the build is complete. Call this once, after every step is done and any compile checks pass. This ENDS the build — it does NOT trigger a review.",
         parameters: {
           type: "object",
           properties: {
@@ -424,13 +446,13 @@ export function buildBuilderTools(
         }
       }
 
-      // When every plan step has been marked complete, drive the review phase
-      // directly and signal the agent loop to exit. This makes completion
-      // deterministic instead of waiting on a separate request_review tool call
-      // that the model sometimes only narrates (leaving the loop spinning to
-      // maxIterations and looking frozen at "请求审查").
+      // When every plan step has been marked complete, end the build directly
+      // and signal the agent loop to exit. This makes completion deterministic
+      // instead of waiting on a separate finish_build tool call that the model
+      // sometimes only narrates (leaving the loop spinning to maxIterations and
+      // looking frozen). Build completion does NOT trigger any review.
       if (totalSteps > 0 && completedSteps.size >= totalSteps && exitSignal) {
-        emit({ type: "reviewing" });
+        emit({ type: "build_complete" });
         exitSignal.exit = true;
         exitSignal.reason = "all_steps_complete";
       }
@@ -438,9 +460,9 @@ export function buildBuilderTools(
       return `Step ${stepId} marked complete: ${summary}`;
     },
 
-    request_review: async (_args, emit) => {
-      emit({ type: "reviewing" });
-      return "Review requested. Proceeding to quality review phase.";
+    finish_build: async (_args, emit) => {
+      emit({ type: "build_complete" });
+      return "Build finished.";
     },
   };
 
@@ -625,6 +647,148 @@ export function buildVerifierTools(
   return { schemas, handlers };
 }
 
+/**
+ * Tools for the standalone review agent. Mirrors buildVerifierTools but:
+ *  - report_issue carries a real `severity` (critical/major/minor/nit) instead
+ *    of the in-build verifier's implicit "everything is major".
+ *  - submit_review (replaces submit_verdict) derives per-severity counts from
+ *    the reported issues and emits no pass/fail itself — triage against the
+ *    strictness threshold happens in the review orchestrator.
+ * Kept separate from buildVerifierTools so the dormant in-build review path is
+ * untouched during migration.
+ */
+export function buildReviewTools(
+  session: BuildSessionState,
+  reviewState: ReviewSessionState,
+): {
+  schemas: ToolSchema[];
+  handlers: Record<string, ToolHandler>;
+} {
+  const schemas: ToolSchema[] = [
+    {
+      type: "function",
+      function: {
+        name: "read_file",
+        description: "Read the current content of a file from the project to review it.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to read, e.g. /project/index.html",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "report_issue",
+        description: "Report a real, in-scope issue found during review. Do NOT report pre-existing unrelated lint, style preferences, or speculative concerns. Assign severity honestly — do not inflate.",
+        parameters: {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              enum: ["bug", "missing_feature", "regression"],
+              description: "The type of issue",
+            },
+            severity: {
+              type: "string",
+              enum: ["critical", "major", "minor", "nit"],
+              description: "critical = app cannot build/run or core functionality broken (browser console errors are critical); major = a requested feature missing/broken or a real regression; minor = small correctness/UX issue that does not block requested functionality; nit = style/naming/formatting/preference. When unsure, choose the LOWER severity.",
+            },
+            description: {
+              type: "string",
+              description: "Clear, specific description of the issue",
+            },
+            affected_file: {
+              type: "string",
+              description: "The file path where the issue exists (optional)",
+            },
+          },
+          required: ["type", "severity", "description"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "submit_review",
+        description: "Submit your final review. Call this once after reading the relevant files and reporting all in-scope issues. Severities you assigned drive whether issues are fixed — you do not decide pass/fail here.",
+        parameters: {
+          type: "object",
+          properties: {
+            summary: {
+              type: "string",
+              description: "A plain-language summary of your review findings for the user",
+            },
+            requirement_match_percent: {
+              type: "number",
+              description: "Estimated percentage of requirements that are met (0-100)",
+            },
+          },
+          required: ["summary"],
+        },
+      },
+    },
+  ];
+
+  const handlers: Record<string, ToolHandler> = {
+    read_file: async (args, emit) => {
+      const path = args.path as string;
+      if (!path) return "Error: path is required";
+      const content = session.files.get(path);
+      const fileName = path.split("/").pop() || path;
+      emit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
+      if (content === undefined) {
+        return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      return `File: ${path}\n\n${content}`;
+    },
+
+    report_issue: async (args) => {
+      const issueType = args.type as ReviewIssue["type"];
+      const severityRaw = args.severity as string | undefined;
+      const severity: ReviewSeverity =
+        severityRaw === "critical" || severityRaw === "major" || severityRaw === "minor" || severityRaw === "nit"
+          ? severityRaw
+          : "minor";
+      const description = args.description as string;
+      const affected_file = args.affected_file as string | undefined;
+      reviewState.issues.push({ type: issueType, severity, description, affected_file });
+      return `Issue recorded (${severity} ${issueType}): ${description}`;
+    },
+
+    submit_review: async (args) => {
+      const summary = args.summary as string;
+      const requirementMatchPercent = typeof args.requirement_match_percent === "number"
+        ? args.requirement_match_percent
+        : 90;
+      reviewState.verdict = { summary, requirementMatchPercent };
+      return "Review submitted.";
+    },
+  };
+
+  // LSP diagnostics + references (read-only — no goto_definition for review)
+  const lspTools = buildLspTools(session);
+  lspTools.schemas
+    .filter(s => s.function.name !== "lsp_goto_definition")
+    .forEach(s => schemas.push(s));
+  ["lsp_diagnostics", "lsp_find_references"].forEach(name => {
+    if (lspTools.handlers[name]) handlers[name] = lspTools.handlers[name];
+  });
+
+  // Shell tools (review can run compile checks / tests to confirm correctness)
+  const shellTools = buildShellTools(session);
+  schemas.push(...shellTools.schemas);
+  Object.assign(handlers, shellTools.handlers);
+
+  return { schemas, handlers };
+}
+
 export function buildManagerTools(
   managerState: ManagerSessionState,
 ): {
@@ -706,6 +870,18 @@ export function buildManagerTools(
       const stepsRaw = args.steps;
       if (!Array.isArray(stepsRaw) || stepsRaw.length === 0) {
         throw new Error("submit_plan requires a non-empty `steps` array. Each step needs at minimum { step, title, description }. Re-call submit_plan with the full ordered build steps.");
+      }
+      // Reject placeholder steps with empty title/description. These slip past
+      // the model occasionally and render as literal "Step N" in the UI, and a
+      // step that is never given real work can never be marked complete — which
+      // would leave the build loop unable to reach its completion condition.
+      const emptyStep = (stepsRaw as Array<Record<string, unknown>>).find((s) => {
+        const title = typeof s?.title === "string" ? s.title.trim() : "";
+        const description = typeof s?.description === "string" ? s.description.trim() : "";
+        return title === "" || description === "";
+      });
+      if (emptyStep) {
+        throw new Error("submit_plan rejected: every step must have a non-empty `title` AND `description`. Remove any placeholder steps and re-call submit_plan with fully described steps only.");
       }
       const plan: Record<string, unknown> = {
         overview: args.overview as string,

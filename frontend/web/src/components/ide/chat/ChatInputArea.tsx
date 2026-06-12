@@ -80,7 +80,6 @@ export function ChatInputArea({
 
   const {
     chatMode,
-    reviewEnabled,
     managerPlan,
     pendingConfirmation,
     selectedProvider,

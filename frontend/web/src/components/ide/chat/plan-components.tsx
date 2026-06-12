@@ -4,6 +4,7 @@ import {
   type ManagerSubTask,
   type HolisticReviewResult,
   type ReviewPhase,
+  type ReviewStrictness,
   type BuildResultData,
 } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
@@ -228,6 +229,13 @@ export function TaskPlanCard({
   liveNarration,
   completionSummary,
   changedFiles,
+  onStartReview,
+  onStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -247,6 +255,13 @@ export function TaskPlanCard({
   liveNarration?: string;
   completionSummary?: string;
   changedFiles?: string[];
+  onStartReview?: () => void;
+  onStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }) {
   const lang = usePlanCardLang();
   const tCard = useT();
@@ -258,8 +273,17 @@ export function TaskPlanCard({
   const phase = reviewPhase || "idle";
   const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
   const showConfirmation = hasNeedsInput || hasReviewConfirmation;
-  const isFullyComplete = phase === "review_passed" && allDone;
+  // Build completion no longer depends on review — a build is fully complete once
+  // every step is done. Review is a separate, user-invoked step (see the run-review
+  // action) that does not gate this state.
+  const isFullyComplete = allDone;
   const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
+  // The standalone review step is offered once the build has settled (build done
+  // and not mid-execution). It is optional, mirroring how plan is optional.
+  const buildSettled = allDone && !isExecuting;
+  const isReviewing = phase === "reviewing" || phase === "fixing";
+  const canStartReview = buildSettled && !isReviewing && !!onStartReview;
+  const reviewAdvisories = holisticReview?.advisories ?? [];
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -526,6 +550,88 @@ export function TaskPlanCard({
               <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
                 {completionSummary}
               </p>
+            )}
+          </div>
+        )}
+
+        {/* Optional standalone review step (post-build) */}
+        {buildSettled && (onStartReview || isReviewing || reviewAdvisories.length > 0) && (
+          <div className="px-4 py-2 border-b border-border/60 space-y-1.5">
+            {isReviewing ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-mono text-[10px] text-[#4f82ff]">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  <span>
+                    {phase === "fixing" ? t(lang, "reviewFixing") : t(lang, "reviewInProgress")}
+                    {reviewRound && reviewMaxRounds
+                      ? ` (${reviewRound}/${reviewMaxRounds})`
+                      : ""}
+                  </span>
+                </div>
+                {onStopReview && (
+                  <button
+                    className="font-mono text-[9px] text-[#ef4444]/70 hover:text-[#ef4444] transition-colors"
+                    onClick={onStopReview}
+                    data-testid="button-stop-review"
+                  >
+                    {t(lang, "stop")}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-[rgba(238,238,246,0.9)] border border-border/80 rounded-lg px-2.5 py-1 transition-colors disabled:opacity-40"
+                  onClick={() => onStartReview?.()}
+                  disabled={!canStartReview}
+                  data-testid="button-start-review"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>{t(lang, "reviewCode")}</span>
+                </button>
+                {onReviewStrictnessChange && (
+                  <div className="flex items-center gap-0.5 rounded-md border border-border/60 p-0.5">
+                    {(["lenient", "balanced", "strict"] as ReviewStrictness[]).map((level) => (
+                      <button
+                        key={level}
+                        className={`font-mono text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                          (reviewStrictness || "balanced") === level
+                            ? "bg-[#4f82ff] text-white"
+                            : "text-muted-foreground/70 hover:text-foreground/80"
+                        }`}
+                        onClick={() => onReviewStrictnessChange(level)}
+                        data-testid={`button-strictness-${level}`}
+                      >
+                        {t(lang, `strictness_${level}` as Parameters<typeof t>[1])}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Live review narration */}
+            {isReviewing && reviewLiveNarration && (
+              <p className="font-mono text-[9px] text-muted-foreground/60 leading-snug pl-4">
+                {reviewLiveNarration}
+              </p>
+            )}
+
+            {/* Non-blocking advisories from the settled review */}
+            {!isReviewing && reviewAdvisories.length > 0 && (
+              <div className="space-y-0.5 pl-1">
+                <div className="font-mono text-[9px] text-muted-foreground/50">
+                  {t(lang, "reviewAdvisories")}
+                </div>
+                {reviewAdvisories.map((adv, i) => (
+                  <div key={adv.id || i} className="flex items-start gap-1">
+                    <span className="font-mono text-[9px] text-[#f59e0b]/80 mt-px shrink-0">[{adv.severity}]</span>
+                    <span className="font-mono text-[9px] text-muted-foreground/70 leading-snug">
+                      {adv.description}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -862,6 +968,13 @@ export function ManagerMessageBubble({
   fixCycle,
   liveNarration,
   completionData,
+  onStartReview,
+  onStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: {
   message: {
     role: string;
@@ -887,6 +1000,13 @@ export function ManagerMessageBubble({
   fixCycle?: number;
   liveNarration?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
+  onStartReview?: () => void;
+  onStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }) {
   if (message.role === "user") {
     return (
@@ -923,6 +1043,13 @@ export function ManagerMessageBubble({
         liveNarration={liveNarration}
         completionSummary={completionData?.summary}
         changedFiles={completionData?.changedFiles}
+        onStartReview={onStartReview}
+        onStopReview={onStopReview}
+        reviewStrictness={reviewStrictness}
+        onReviewStrictnessChange={onReviewStrictnessChange}
+        reviewLiveNarration={reviewLiveNarration}
+        reviewRound={reviewRound}
+        reviewMaxRounds={reviewMaxRounds}
       />
     );
   }

@@ -1,22 +1,18 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
-import { VERIFIER_AGENT_SYSTEM_PROMPT } from "../prompts/verifier-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
-import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
+import { buildFallbackChain, withFallback, getFastClient, type AIProvider } from "../providers/kimi-client";
 import { storage } from "../../infra/storage";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
   buildBuilderTools,
-  buildVerifierTools,
-  buildFixerTools,
-  type VerifierSessionState,
 } from "../tools/agent-tools";
 import { getMobilePromptSupplement } from "../prompts/mobile-prompt-supplements";
-import { buildEditorCompileCheckPrompt, buildVerifierCompileCheckPrompt } from "../tools/compile-checks";
+import { buildEditorCompileCheckPrompt } from "../tools/compile-checks";
 import { detectFramework, type Framework } from "../../compiler/framework-detector";
 import { type Part, type SessionStatus, type PartEmitContext } from "../../infra/parts";
 import { lspManager } from "../tools/lsp-manager";
@@ -79,10 +75,8 @@ export interface BuildSessionState {
   pendingUserInputResolve?: () => void;
   /** Console errors/warnings captured from the preview iframe during this build */
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
-  /** "plan": full pipeline (builder + verifier + fix cycle). "direct": single-shot, no review. */
+  /** "plan": multi-step plan execution. "direct": single-shot. Review is a separate, user-invoked step either way. */
   mode?: "plan" | "direct";
-  /** When true, run verifier + fix cycle after build. Independent of `mode`. */
-  reviewEnabled?: boolean;
 }
 
 export type SseEmit = (data: Record<string, unknown>) => void;
@@ -92,7 +86,7 @@ function normalizeSteps(plan: BuildPlan): BuildStep[] {
   return raw.map((s, i) => ({ ...s, step: s.step ?? i + 1 }));
 }
 
-function filesMapToArray(files: Map<string, string>): BuildFile[] {
+export function filesMapToArray(files: Map<string, string>): BuildFile[] {
   return Array.from(files.entries()).map(([path, content]) => ({ path, content }));
 }
 
@@ -109,7 +103,7 @@ function langNativeLabel(userLang: string): string {
   return userLang;
 }
 
-function buildBuilderSystemPrompt(session: BuildSessionState): string {
+export function buildBuilderSystemPrompt(session: BuildSessionState): string {
   const label = langNativeLabel(session.userLang || "English");
   const isEnglish = label === (session.userLang || "English") && label === "English";
   const langPrefix = isEnglish
@@ -128,23 +122,7 @@ function buildBuilderSystemPrompt(session: BuildSessionState): string {
   return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}${compileCheckSection}`;
 }
 
-function buildVerifierSystemPrompt(session: BuildSessionState): string {
-  const label = langNativeLabel(session.userLang || "English");
-  const isEnglish = label === (session.userLang || "English") && label === "English";
-  const langPrefix = isEnglish
-    ? ""
-    : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers and file paths remain in their original language.\n\n`;
-  const verifierFiles = Array.from(session.files.entries()).map(([path, content]) => ({ path, content }));
-  const resolvedFramework = session.framework || detectFramework(verifierFiles);
-  const mobileSupplement = resolvedFramework !== "web"
-    ? getMobilePromptSupplement("verifier", resolvedFramework)
-    : null;
-  const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
-  const compileCheckSection = buildVerifierCompileCheckPrompt(resolvedFramework);
-  return `${langPrefix}${VERIFIER_AGENT_SYSTEM_PROMPT}${mobileSection}${compileCheckSection}`;
-}
-
-function buildBuilderInitialMessage(
+export function buildBuilderInitialMessage(
   session: BuildSessionState,
   steps: BuildStep[],
   mode: "build" | "fix",
@@ -180,48 +158,11 @@ IMPORTANT: You are implementing a complete coding project. For each step:
 1. Read existing files using read_file before modifying them.
 2. Write the complete file content using write_file.
 3. Mark each step complete with mark_step_complete.
-4. After ALL steps are done, call request_review.
+4. After ALL steps are done, call finish_build.
 
 Preserve ALL existing content that is not part of the current step. Never truncate or omit existing code.`;
 }
 
-function buildVerifierInitialMessage(
-  session: BuildSessionState,
-  planSteps: BuildStep[],
-  userFeedback?: string,
-): string {
-  const stepsList = planSteps.map(s =>
-    `Step ${s.step}: ${s.title}\n  Description: ${s.description}\n  Acceptance: ${s.acceptance_criteria ?? "N/A"}`
-  ).join("\n\n");
-
-  const allFiles = filesMapToArray(session.files);
-  const filesList = allFiles.length > 0
-    ? allFiles.map(f => `- ${f.path}`).join("\n")
-    : "(none)";
-
-  const feedbackSection = userFeedback
-    ? `\n\n## User Feedback\n${userFeedback}\nPlease take this into account.`
-    : "";
-
-  const consoleSection = session.consoleEvents && session.consoleEvents.length > 0
-    ? `\n\n## Browser Console Errors (captured from preview)\nThese runtime errors were captured from the preview iframe. Treat each one as a potential bug.\n\n${session.consoleEvents.map(e => `[${e.level.toUpperCase()}] ${e.message}`).join("\n")}`
-    : "";
-
-  return `Please review this project against its requirements.
-
-## Original User Request
-${session.userRequest}
-
-## Build Plan (All Steps)
-${stepsList}
-
-## Available Files to Review
-${filesList}
-
-Use read_file to examine each file, then report any issues with report_issue, and finally call submit_verdict with your assessment.${consoleSection}${feedbackSection}`;
-}
-
-const MAX_FIX_CYCLES = 3;
 
 /**
  * Extract the file path from a verifier issue (best-effort parsing).
@@ -242,7 +183,7 @@ function extractFileFromIssue(issue: { affected_file?: string; description: stri
  * plan steps need to be re-run. Returns all steps that touch the buggy files,
  * plus all subsequent steps (since they may depend on the fix).
  */
-function getAffectedSteps(issues: Array<{ affected_file?: string; description: string }>, plan: BuildStep[]): BuildStep[] {
+export function getAffectedSteps(issues: Array<{ affected_file?: string; description: string }>, plan: BuildStep[]): BuildStep[] {
   const affectedFiles = new Set<string>();
   for (const issue of issues) {
     const file = extractFileFromIssue(issue);
@@ -276,7 +217,7 @@ function getAffectedSteps(issues: Array<{ affected_file?: string; description: s
 /**
  * Build a targeted fix plan: re-number steps and inject bug context into descriptions.
  */
-function buildTargetedFixPlan(
+export function buildTargetedFixPlan(
   affectedSteps: BuildStep[],
   issuesSummary: string,
 ): BuildStep[] {
@@ -333,7 +274,7 @@ async function runBuilderParallelWaves(
             subTools.handlers,
             emit,
             {
-              exitTools: ["request_review", "mark_step_complete"],
+              exitTools: ["finish_build", "mark_step_complete"],
               maxIterations: 30,
               client,
               model,
@@ -348,12 +289,7 @@ async function runBuilderParallelWaves(
 }
 
 export async function runBuildSession(session: BuildSessionState, rawEmit: SseEmit): Promise<void> {
-  const emit: SseEmit = session.reviewEnabled
-    ? rawEmit
-    : (data) => {
-        if (data && (data as { type?: string }).type === "reviewing") return;
-        rawEmit(data);
-      };
+  const emit: SseEmit = rawEmit;
   const { plan, userRequest } = session;
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
@@ -395,8 +331,6 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
   // Per-phase optimal provider selection — respects user preference, optimizes by phase
   // Each chain: [user's provider first if available, then system defaults for that phase]
   const providerChainEditor = buildFallbackChain("editor", userProvider);
-  const providerChainVerifier = buildFallbackChain("verifier", userProvider);
-  const providerChainFixer = buildFallbackChain("fixer", userProvider);
 
   // Part-based emission context — all agent loops feed into this
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
@@ -490,7 +424,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
         // Shared exit signal: completing the final plan step trips this so the
         // builder loop ends deterministically (instead of waiting on the model
-        // to emit request_review, which it sometimes only narrates).
+        // to emit finish_build, which it sometimes only narrates).
         const builderExitSignal = { exit: false, reason: undefined as string | undefined };
         const builderTools = buildBuilderTools(session, normalizedSteps, telemetry, builderExitSignal);
         // Merge user-defined tool plugins into builder tools
@@ -503,7 +437,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
@@ -524,146 +458,10 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     return;
   }
 
-  let currentCycle = 0;
-  let passed = false;
-  let currentPlanSteps = normalizedSteps;
-
-  if (!session.reviewEnabled) {
-    passed = true;
-    rawEmit({ type: "review_skipped" });
-  }
-
-  while (currentCycle < MAX_FIX_CYCLES && !passed && !session.aborted) {
-    currentCycle++;
-
-    const verifierState: VerifierSessionState = { issues: [] };
-    const verifierSystemPrompt = buildVerifierSystemPrompt(session);
-    const feedback = session.userConfirmation;
-    if (session.userConfirmation) session.userConfirmation = undefined;
-
-    session.status = { type: "busy", agent: "verifier" };
-
-    const verifierInitialMessage = buildVerifierInitialMessage(
-      session,
-      currentPlanSteps,
-      feedback,
-    );
-
-    const verifierTools = buildVerifierTools(session, verifierState);
-
-    try {
-      await telemetry.time("verifier", async () => {
-        await withFallback(providerChainVerifier, async (client, model) => {
-          await runAgentLoop(
-            verifierSystemPrompt,
-            [{ role: "user", content: verifierInitialMessage }],
-            verifierTools.schemas,
-            verifierTools.handlers,
-            emit,
-            { exitTools: ["submit_verdict"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
-          );
-        });
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[VerifierAgent] Error:", message);
-      emit({
-        type: "bugs_found",
-        bugCount: 0,
-        reviewSummary: "Review failed due to an error.",
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-      break;
-    }
-
-    if (session.aborted) break;
-
-    const verdict = verifierState.verdict;
-    if (!verdict) {
-      emit({
-        type: "bugs_found",
-        bugCount: 0,
-        reviewSummary: "Review completed without a verdict.",
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-      });
-      break;
-    }
-
-    if (verdict.status === "pass") {
-      passed = true;
-      telemetry.setFinalStatus("pass", verdict.summary);
-      emit({
-        type: "review_passed",
-        summary: verdict.summary,
-        requirementMatchPercent: verdict.requirementMatchPercent,
-      });
-    } else {
-      const issueCount = verifierState.issues.length;
-      emit({
-        type: "bugs_found",
-        bugCount: issueCount,
-        reviewSummary: verdict.summary,
-        fixCycle: currentCycle,
-        maxFixCycles: MAX_FIX_CYCLES,
-        review: verifierState.review ?? {},
-      });
-
-      if (currentCycle >= MAX_FIX_CYCLES) break;
-
-      // Pause and ask user for input before fixing
-      emit({ type: "needs_input", items: [verdict.summary] });
-      await new Promise<void>((resolve) => {
-        session.pendingUserInputResolve = resolve;
-      });
-      if (session.aborted) break;
-
-      emit({ type: "fixing", fixCycle: currentCycle });
-
-      session.status = { type: "busy", agent: "fixer" };
-
-      const issuesSummary = verifierState.issues.map(i => `- [${i.type}]${i.affected_file ? ` ${i.affected_file}` : ""}: ${i.description}`).join("\n");
-
-      // AG-8: Build a targeted fix plan instead of re-running the full plan
-      const affectedSteps = getAffectedSteps(verifierState.issues, currentPlanSteps);
-      const targetedPlanSteps = buildTargetedFixPlan(affectedSteps, issuesSummary);
-
-      // AG-17: Capture fixer scope for telemetry
-      const fixerScopeFiles = Array.from(
-        new Set(
-          verifierState.issues
-            .map((i) => i.affected_file)
-            .filter((f): f is string => !!f),
-        ),
-      );
-      if (fixerScopeFiles.length > 0) telemetry.addFixerScope(fixerScopeFiles);
-
-      const fixerSystemPrompt = buildBuilderSystemPrompt(session);
-      const fixerInitialMessage = buildBuilderInitialMessage(session, targetedPlanSteps, "fix", issuesSummary);
-      const fixerTools = buildFixerTools(session, targetedPlanSteps, telemetry);
-
-      try {
-        await telemetry.time("fixer", async () => {
-          await withFallback(providerChainFixer, async (client, model) => {
-            await runAgentLoop(
-              fixerSystemPrompt,
-              [{ role: "user", content: fixerInitialMessage }],
-              fixerTools.schemas,
-              fixerTools.handlers,
-              emit,
-              { exitTools: ["request_review"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
-            );
-          });
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error("[FixerAgent] Error:", message);
-        emit({ type: "build_error", message });
-        break;
-      }
-    }
-  }
+  // Build mode ends here, deterministically. Review is a SEPARATE, user-invoked
+  // step (see review-orchestrator.ts / POST /api/review-session) and is no longer
+  // part of the build loop. The build always proceeds to its completion summary.
+  const passed = true;
 
   if (passed) {
     const beforeMap = new Map(initialFiles.map(f => [f.path, f.content]));
@@ -672,31 +470,30 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       .filter(f => !beforeMap.has(f.path) || beforeMap.get(f.path) !== f.content)
       .map(f => f.path);
 
-    // Generate completion summary server-side so the client doesn't need a second fetch.
-    // Direct mode skips this second LLM call — the builder's narration is already the summary.
+    // Generate a concise end-of-round summary server-side so the client doesn't
+    // need a second fetch. Uses the fastest available model (MiniMax → Doubao-lite)
+    // for low latency, and runs for BOTH plan and direct mode so every build
+    // round gives the user clear feedback on what was done.
     let summaryText = "";
-    if (session.mode !== "direct") {
-      try {
-        const commPrompt = buildCommunicatorMessage({
-          event: "all_complete",
-          userLanguage: session.userLang || "English",
-          changedFiles,
-          planSummary: plan.summary ?? "",
-        } as CommunicatorEvent);
-        const summaryCompletion = await withFallback(providerChainEditor, async (client, model) =>
-          client.chat.completions.create({
-            model,
-            messages: [
-              { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
-              { role: "user", content: commPrompt },
-            ],
-            stream: false,
-            max_tokens: 1024,
-          })
-        );
-        summaryText = summaryCompletion.choices[0]?.message?.content || "";
-      } catch {}
-    }
+    try {
+      const commPrompt = buildCommunicatorMessage({
+        event: "all_complete",
+        userLanguage: session.userLang || "English",
+        changedFiles,
+        planSummary: plan.summary ?? "",
+      } as CommunicatorEvent);
+      const { client, model } = getFastClient();
+      const summaryCompletion = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: COMMUNICATOR_AGENT_SYSTEM_PROMPT },
+          { role: "user", content: commPrompt },
+        ],
+        stream: false,
+        max_tokens: 512,
+      });
+      summaryText = summaryCompletion.choices[0]?.message?.content || "";
+    } catch {}
 
     let nextStepSuggestion = "";
     const nextStepMatch = summaryText.match(/^NEXT_STEP:\s*(.+)$/m);
@@ -739,7 +536,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
 
   session.status = { type: "idle" };
   if (!passed) telemetry.setFinalStatus(session.aborted ? "aborted" : "fail");
-  telemetry.setFixCycle(currentCycle);
+  telemetry.setFixCycle(0);
   await telemetry.flush();
   emit({ type: "done" });
 }
