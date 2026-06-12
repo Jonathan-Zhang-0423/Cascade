@@ -69,6 +69,26 @@ export class ManagerStreamInstance {
     const trimmed = message.trim();
     if (!trimmed) return false;
 
+    // Readiness guards run BEFORE mutating any state. If the store is still
+    // showing another project, bail. If this project's messages haven't loaded
+    // from the DB yet, don't swallow the prompt (which used to append the user
+    // message, return false, and leave nothing running — forcing the user to
+    // resend and piling up duplicate messages). Instead wait briefly for the
+    // async load and retry.
+    if (this.actions.getProjectId() !== this.projectId) {
+      return false;
+    }
+    if (!this.actions.getMessagesReady()) {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (this.disposed || this.actions.getProjectId() !== this.projectId) return false;
+        if (this.actions.getMessagesReady()) break;
+      }
+      // Still not ready after waiting — give up without mutating state.
+      if (!this.actions.getMessagesReady()) return false;
+    }
+
     // Mark in-flight synchronously so a concurrent mount-time reconnect can't
     // race this send (see field comment). Cleared in the finally block.
     this.sendInFlight = true;
@@ -83,20 +103,6 @@ export class ManagerStreamInstance {
       narrationText: "",
       actionLog: [],
     });
-
-    // Guard: only include messages that belong to our project. If the store
-    // hasn't finished loading this project's messages yet (async fetch from DB),
-    // wait a tick and verify projectId matches before reading history.
-    if (this.actions.getProjectId() !== this.projectId) {
-      // Store is still showing another project — abort to prevent cross-project contamination
-      this.actions.setManagerResponding(false);
-      return false;
-    }
-    // Block until messages from DB are loaded
-    if (!this.actions.getMessagesReady()) {
-      this.actions.setManagerResponding(false);
-      return false;
-    }
 
     const historyMessages = this.actions.getManagerMessages()
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
