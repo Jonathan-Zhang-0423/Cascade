@@ -21,6 +21,7 @@ import {
   GitMerge,
   Zap,
   ListChecks,
+  DollarSign,
   type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
@@ -575,12 +576,13 @@ function CostSummary({
             </div>
           )}
           {cost !== null && cost > 0 && (
-            <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold text-muted-foreground/60 mt-0.5 pl-0.5">
-              <span className="w-2.5 h-2.5 flex items-center justify-center text-[9px]">¥</span>
+            <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold text-muted-foreground/60 mt-0.5">
+              <DollarSign className="w-2.5 h-2.5" />
               <span>
                 {t("build.costEstimate", { cost: formatCost(cost) })}
                 {(displayTokens as any).estimated && <span className="opacity-50 font-normal"> {t("build.estimated")}</span>}
               </span>
+              <ChevronRight className="w-2.5 h-2.5 opacity-0" />
             </div>
           )}
         </>
