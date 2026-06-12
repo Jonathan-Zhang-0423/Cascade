@@ -96,7 +96,6 @@ export class BuildStreamInstance {
     this.state.set({ buildPhase: "thinking" });
     this.actions.setChatMode("build");
     this.actions.setFixCycle(0);
-    this.actions.setHolisticReview(null);
     this.actions.setCompletionData(null);
 
     const plan: ManagerPlan = isDirect

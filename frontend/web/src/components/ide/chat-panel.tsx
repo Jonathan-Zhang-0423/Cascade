@@ -49,11 +49,7 @@ export function ChatPanel() {
     setPendingConfirmation,
     userConfirmationInput,
     setUserConfirmationInput,
-    reviewPhase,
-    holisticReview,
     fixCycle,
-    reviewStrictness,
-    setReviewStrictness,
     completionData,
     clearManagerPlan,
     addManagerMessage,
@@ -63,7 +59,7 @@ export function ChatPanel() {
   const tGlobal = useT();
   const { toast } = useToast();
 
-  const { manager, build, review, slot } = useActiveStream();
+  const { manager, build, slot } = useActiveStream();
   const {
     handleManagerSend,
     mgrPreparingPlan,
@@ -86,15 +82,6 @@ export function ChatPanel() {
     handleStopExecution,
     resetLiveState: resetBuildLiveState,
   } = build;
-
-  const {
-    phase: reviewStreamPhase,
-    round: reviewRound,
-    maxRounds: reviewMaxRounds,
-    liveNarrationText: reviewLiveNarration,
-    handleStartReview,
-    handleStopReview,
-  } = review;
 
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
@@ -344,8 +331,6 @@ export function ChatPanel() {
           isExecuting={isExecuting}
           pendingConfirmation={pendingConfirmation}
           userConfirmationInput={userConfirmationInput}
-          reviewPhase={reviewPhase}
-          holisticReview={holisticReview}
           fixCycle={fixCycle}
           liveNarrationText={liveNarrationText}
           completionData={completionData}
@@ -354,13 +339,6 @@ export function ChatPanel() {
           handleStopExecution={handleStopExecution}
           handleContinueExecution={handleContinueExecution}
           setUserConfirmationInput={setUserConfirmationInput}
-          handleStartReview={handleStartReview}
-          handleStopReview={handleStopReview}
-          reviewStrictness={reviewStrictness}
-          onReviewStrictnessChange={setReviewStrictness}
-          reviewLiveNarration={reviewStreamPhase !== "idle" ? reviewLiveNarration : undefined}
-          reviewRound={reviewRound}
-          reviewMaxRounds={reviewMaxRounds}
         />
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
           <TypingIndicator />

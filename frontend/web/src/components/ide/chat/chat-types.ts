@@ -1,5 +1,5 @@
 import type { LLMEventSource } from "@/stores/llm-monitor-store";
-import type { ManagerPlan, HolisticReviewResult } from "@/stores/ide-store";
+import type { ManagerPlan } from "@/stores/ide-store";
 
 export interface ActionLogEntry {
   type:
@@ -150,40 +150,6 @@ export function validateBuildEvent(raw: { type: string; [key: string]: unknown }
   return raw as BuildSseEvent;
 }
 
-export interface ReviewReportRemaining {
-  blocking: Array<{ type: string; severity: string; description: string; file: string }>;
-  advisories: Array<{ type: string; severity: string; description: string; file: string }>;
-}
-
-export interface ReviewSseEvent {
-  type: string;
-  eventId?: number;
-  replay?: boolean;
-  token?: string;
-  label?: string;
-  detail?: string;
-  message?: string;
-  filePath?: string;
-  code?: string;
-  language?: string;
-  actionType?: ActionLogEntry["type"];
-  strictness?: "lenient" | "balanced" | "strict";
-  round?: number;
-  maxRounds?: number;
-  status?: "passed" | "stalled" | "exhausted";
-  rounds?: number;
-  summary?: string;
-  requirementMatchPercent?: number;
-  fixedCount?: number;
-  remaining?: ReviewReportRemaining;
-  review?: HolisticReviewResult;
-  [key: string]: unknown;
-}
-
-export function validateReviewEvent(raw: { type: string; [key: string]: unknown }): ReviewSseEvent {
-  return raw as ReviewSseEvent;
-}
-
 export interface EditorSseEvent {
   type: string;
   eventId?: number;
@@ -240,7 +206,6 @@ export interface BuildSseEvent {
   stepTitle?: string;
   totalSteps?: number;
   reason?: string;
-  review?: HolisticReviewResult;
   fixCycle?: number;
   items?: string[];
   changedFiles?: string[];

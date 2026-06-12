@@ -70,42 +70,6 @@ export interface VerificationResult {
   suggestion: string;
 }
 
-export interface HolisticReviewBug {
-  id: string;
-  severity: "critical" | "major" | "minor" | "nit";
-  file: string;
-  description: string;
-  expected: string;
-  actual: string;
-}
-
-export interface HolisticReviewAdvisory {
-  id: string;
-  severity: "critical" | "major" | "minor" | "nit";
-  file: string;
-  description: string;
-}
-
-export interface HolisticReviewResult {
-  overall_status: "pass" | "fail";
-  requirement_match_percent: number;
-  bugs: HolisticReviewBug[];
-  /** Non-blocking issues surfaced by the standalone review step (minor/nit
-   * under the active strictness). Always informational — never block. */
-  advisories?: HolisticReviewAdvisory[];
-  missing_features: Array<{ id: string; description: string; related_step: number }>;
-  regressions: Array<{ id: string; file: string; description: string }>;
-  user_confirmation_needed: string[];
-  summary: string;
-  suggestion: string;
-}
-
-export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
-
-/** Strictness threshold for the standalone review step. Controls which
- * severities trigger an automatic fix round. */
-export type ReviewStrictness = "lenient" | "balanced" | "strict";
-
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
   segments?: {
@@ -138,10 +102,6 @@ export interface ManagerMessage {
   // to all-pending once a newer plan takes over the live `taskStatuses`.
   frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   frozenTaskFailureReasons?: Record<string, string>;
-  // Snapshot of reviewPhase captured when this plan's build finished. Without
-  // it, returning to the project resets reviewPhase to "idle" and a completed
-  // PlanCard loses its "已审查/完成" state (isFullyComplete needs review_passed).
-  frozenReviewPhase?: ReviewPhase;
 }
 
 interface FlatFile {
@@ -331,11 +291,7 @@ interface IDEState {
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
   userConfirmationInput: string;
-  reviewPhase: ReviewPhase;
-  holisticReview: HolisticReviewResult | null;
   fixCycle: number;
-  reviewStrictness: ReviewStrictness;
-  setReviewStrictness: (s: ReviewStrictness) => void;
   completionData: { changedFiles: string[]; summary: string } | null;
 
   isLLMMonitorOpen: boolean;
@@ -397,8 +353,6 @@ interface IDEState {
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setUserConfirmationInput: (input: string) => void;
-  setReviewPhase: (phase: ReviewPhase) => void;
-  setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
   setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
 
@@ -668,7 +622,6 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     errorCode: metadata?.errorCode,
     frozenTaskStatuses: metadata?.frozenTaskStatuses,
     frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
-    frozenReviewPhase: metadata?.frozenReviewPhase,
   };
 }
 
@@ -700,7 +653,6 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingC
   if (m.errorCode) metadata.errorCode = m.errorCode;
   if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
   if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;
-  if (m.frozenReviewPhase) metadata.frozenReviewPhase = m.frozenReviewPhase;
   return {
     clientId: m.id,
     kind: "manager",
@@ -870,10 +822,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   verificationResults: {},
   pendingConfirmation: null,
   userConfirmationInput: "",
-  reviewPhase: "idle",
-  holisticReview: null,
   fixCycle: 0,
-  reviewStrictness: "balanced",
   completionData: null,
 
   isLLMMonitorOpen: false,
@@ -1064,10 +1013,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
-      // Restore the last plan's frozen reviewPhase so a completed PlanCard keeps
-      // its "已审查/完成" state on return; default to idle when none was frozen.
-      reviewPhase: ((mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenReviewPhase)?.frozenReviewPhase || "idle") as ReviewPhase,
-      holisticReview: null,
       fixCycle: 0,
       selectedDevice: saved.selectedDevice || "iphone-16-pro",
       deviceOrientation: (saved.deviceOrientation || "portrait") as "portrait" | "landscape",
@@ -1107,8 +1052,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
-      reviewPhase: "idle" as ReviewPhase,
-      holisticReview: null,
       fixCycle: 0,
       selectedDevice: "iphone-16-pro",
       deviceOrientation: "portrait" as "portrait" | "landscape",
@@ -1590,8 +1533,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskFailureReasons: {},
       verificationResults: {},
       executingTaskIndex: null,
-      reviewPhase: "idle",
-      holisticReview: null,
       fixCycle: 0,
       completionData: null,
       pendingConfirmation: null,
@@ -1664,8 +1605,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
-      reviewPhase: "idle",
-      holisticReview: null,
       fixCycle: 0,
       completionData: null,
     }),
@@ -1689,8 +1628,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
-      reviewPhase: "idle",
-      holisticReview: null,
       fixCycle: 0,
       completionData: null,
     });
@@ -1713,15 +1650,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setUserConfirmationInput: (input) =>
     set({ userConfirmationInput: input }),
-
-  setReviewPhase: (phase) =>
-    set({ reviewPhase: phase }),
-
-  setReviewStrictness: (s) =>
-    set({ reviewStrictness: s }),
-
-  setHolisticReview: (review) =>
-    set({ holisticReview: review }),
 
   setFixCycle: (cycle) =>
     set({ fixCycle: cycle }),
@@ -1756,7 +1684,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...target,
         frozenTaskStatuses: { ...state.taskStatuses },
         frozenTaskFailureReasons: { ...state.taskFailureReasons },
-        frozenReviewPhase: state.reviewPhase,
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);
