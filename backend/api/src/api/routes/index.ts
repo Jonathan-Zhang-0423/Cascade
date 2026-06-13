@@ -3147,6 +3147,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       username: user.username,
       experienceLevel: (user as any).experienceLevel,
       hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
+      hasPassword: !!(user as any).password,
       inviteCode: (user as any).inviteCode ?? null,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
@@ -3193,6 +3194,131 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (err) console.error("[auth/logout]", err);
       res.status(204).end();
     });
+  });
+
+  // Set or change the current user's password. OTP-registered users (password
+  // === null) can set one without a current password. Users who already have a
+  // password must prove it (currentPassword) so a hijacked session can't lock
+  // out the owner. On success the session is destroyed — the user must log in
+  // again with the new credential.
+  app.post("/api/auth/set-password", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const { password, currentPassword } = req.body as {
+        password?: string; currentPassword?: string;
+      };
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      if ((user as any).password) {
+        // Already has a password — require the current one to change it.
+        if (typeof currentPassword !== "string" || !currentPassword) {
+          return res.status(403).json({ error: "Current password required" });
+        }
+        const match = await bcrypt.compare(currentPassword, (user as any).password);
+        if (!match) return res.status(403).json({ error: "Current password incorrect" });
+      }
+
+      const hashed = await bcrypt.hash(password, 10);
+      await db.update(users).set({ password: hashed }).where(eq(users.id, userId));
+
+      // Force re-login with the new credential.
+      req.session.destroy((err) => {
+        if (err) console.error("[auth/set-password] session destroy", err);
+        res.json({ ok: true, reauth: true });
+      });
+    } catch (err) {
+      console.error("[auth/set-password]", err);
+      res.status(500).json({ error: "Failed to set password" });
+    }
+  });
+
+  // Send a password-reset code to an email/phone. Anti-enumeration: always
+  // returns 200 regardless of whether an account exists; only sends a code when
+  // a matching user is found. Uses a distinct OTP purpose so a reset code can't
+  // be replayed against the login endpoint (and vice versa).
+  app.post("/api/auth/reset-password/send", async (req, res) => {
+    try {
+      const { channel, target } = req.body as { channel?: string; target?: string };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+
+      const existing = channel === "email"
+        ? await storage.getUserByEmail(normalized)
+        : await storage.getUserByPhone(normalized);
+
+      if (existing) {
+        const result = await sendOtp({ channel, target: normalized, purpose: "reset_password" });
+        if (!result.ok) {
+          return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
+        }
+      }
+      // Identical response whether or not the account exists.
+      res.json({ ok: true, retryAfterSec: 60 });
+    } catch (err) {
+      console.error("[auth/reset-password/send]", err);
+      res.status(500).json({ error: "Failed to send code" });
+    }
+  });
+
+  // Verify a reset code and set a new password. Does NOT log the user in — they
+  // sign in afterwards with the new credential. Receiving the code proves
+  // ownership of the email/phone, so the matching verified flag is also set.
+  app.post("/api/auth/reset-password/verify", async (req, res) => {
+    try {
+      const { channel, target, code, password } = req.body as {
+        channel?: string; target?: string; code?: string; password?: string;
+      };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+      if (!code || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Invalid or expired code" });
+      }
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const verify = await verifyOtp({ channel, target: normalized, code, purpose: "reset_password" });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      const existing = channel === "email"
+        ? await storage.getUserByEmail(normalized)
+        : await storage.getUserByPhone(normalized);
+      // Generic 401 — don't reveal whether the account exists at this stage.
+      if (!existing) return res.status(401).json({ error: "Invalid or expired code" });
+
+      const hashed = await bcrypt.hash(password, 10);
+      const verifiedPatch = channel === "email"
+        ? { emailVerified: true }
+        : { phoneVerified: true };
+      await db.update(users)
+        .set({ password: hashed, ...verifiedPatch })
+        .where(eq(users.id, existing.id));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/reset-password/verify]", err);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
   });
 
   // === OTP (email + phone) ===

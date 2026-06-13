@@ -28,6 +28,12 @@ export default function AuthPage() {
   const [resendIn, setResendIn] = useState(0);
   const resendTimerRef = useRef<number | null>(null);
 
+  // Forgot-password subview state (reuses otpTarget/otpCode/resendIn machinery).
+  const [forgot, setForgot] = useState(false);
+  const [forgotChannel, setForgotChannel] = useState<"email" | "sms">("email");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -38,6 +44,13 @@ export default function AuthPage() {
       setError(t("auth.githubError"));
       const url = new URL(window.location.href);
       url.searchParams.delete("github_error");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // After setting a password the user is bounced here to re-login.
+    if (params.has("passwordSet")) {
+      setNotice(t("auth.setPasswordDone"));
+      const url = new URL(window.location.href);
+      url.searchParams.delete("passwordSet");
       window.history.replaceState({}, "", url.toString());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,7 +181,9 @@ export default function AuthPage() {
       if (!res.ok) { setError(mapServerError(data.error)); return; }
       setUserId(data.id);
       setStoredUsername(data.username);
-      setLocation("/app");
+      // 201 = a new account was just auto-created via OTP. Offer to add a
+      // password before continuing. 200 = existing user logged in → straight to app.
+      setLocation(res.status === 201 ? "/set-password" : "/app");
     } finally {
       setLoading(false);
     }
@@ -178,7 +193,200 @@ export default function AuthPage() {
     window.location.href = "/api/auth/github";
   };
 
+  const openForgot = () => {
+    setForgot(true);
+    setForgotChannel("email");
+    setError(null);
+    setNotice(null);
+    setOtpTarget("");
+    setOtpCode("");
+    setOtpSent(false);
+    setResetNewPassword("");
+    setResendIn(0);
+  };
+
+  const closeForgot = () => {
+    setForgot(false);
+    setError(null);
+    setOtpCode("");
+    setOtpSent(false);
+    setResetNewPassword("");
+  };
+
+  const validateResetTarget = (): string | null => {
+    if (forgotChannel === "email") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpTarget.trim().toLowerCase())) return t("auth.otpInvalidEmail");
+    } else if (!/^\+\d{8,15}$/.test(otpTarget.trim())) {
+      return t("auth.otpInvalidPhone");
+    }
+    return null;
+  };
+
+  const handleResetSend = async () => {
+    const validationError = validateResetTarget();
+    if (validationError) { setError(validationError); return; }
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: forgotChannel, target: otpTarget.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(mapServerError(data.error));
+        if (typeof data.retryAfterSec === "number") setResendIn(data.retryAfterSec);
+        return;
+      }
+      setOtpSent(true);
+      setResendIn(data.retryAfterSec ?? 60);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
+    if (resetNewPassword.length < 6) { setError(t("auth.passwordTooShort")); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel: forgotChannel,
+          target: otpTarget.trim(),
+          code: otpCode,
+          password: resetNewPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(mapServerError(data.error)); return; }
+      // Reset succeeded — return to the username/password login with a hint.
+      setForgot(false);
+      setTab("username");
+      setMode("login");
+      setOtpCode("");
+      setOtpSent(false);
+      setResetNewPassword("");
+      setNotice(t("auth.resetSuccess"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const channelLabel = tab === "email" ? t("auth.otpChannelEmail") : t("auth.otpChannelPhone");
+
+  if (forgot) {
+    const resetChannelLabel = forgotChannel === "email" ? t("auth.otpChannelEmail") : t("auth.otpChannelPhone");
+    return (
+      <div className="min-h-screen bg-[#080810] flex items-center justify-center">
+        <div className="w-full max-w-md bg-[#0d1525] border border-[rgba(255,255,255,0.08)] rounded-2xl p-8 shadow-2xl">
+          <div className="mb-8 text-center">
+            <h1 className="text-2xl font-bold text-white">{t("auth.resetTitle")}</h1>
+            <p className="mt-1 text-sm text-[rgba(255,255,255,0.4)]">{t("auth.resetSubtitle")}</p>
+          </div>
+
+          {/* Channel switcher (email / phone) */}
+          <div className="grid grid-cols-2 gap-1 mb-5 p-1 bg-[rgba(255,255,255,0.04)] rounded-lg border border-[rgba(255,255,255,0.06)]">
+            {(["email", "sms"] as const).map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => { setForgotChannel(ch); setError(null); setOtpCode(""); setOtpSent(false); setOtpTarget(""); }}
+                className={`text-xs py-1.5 rounded-md transition-colors ${
+                  forgotChannel === ch ? "bg-[rgba(255,255,255,0.08)] text-white" : "text-[rgba(255,255,255,0.5)] hover:text-white"
+                }`}
+              >
+                {ch === "email" ? t("auth.tabEmail") : t("auth.tabPhone")}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleResetSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">
+                {forgotChannel === "email" ? t("auth.emailLabel") : t("auth.phoneLabel")}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type={forgotChannel === "email" ? "email" : "tel"}
+                  className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                  value={otpTarget}
+                  onChange={(e) => setOtpTarget(e.target.value)}
+                  placeholder={forgotChannel === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
+                  autoComplete={forgotChannel === "email" ? "email" : "tel"}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={handleResetSend}
+                  disabled={loading || resendIn > 0 || !otpTarget.trim()}
+                  className="px-3 py-2 rounded-lg bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] text-white text-xs font-medium hover:bg-[rgba(255,255,255,0.1)] disabled:opacity-40 whitespace-nowrap"
+                >
+                  {loading && !otpSent
+                    ? t("auth.otpSending")
+                    : resendIn > 0
+                    ? t("auth.otpResendIn", { n: String(resendIn) })
+                    : t("auth.otpSend")}
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-[rgba(255,255,255,0.35)]">
+                {t("auth.resetSendHint", { channel: resetChannelLabel })}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.otpCodeLabel")}</label>
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-[0.5em]"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder={t("auth.otpCodePlaceholder")}
+                autoComplete="one-time-code"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.resetNewPasswordLabel")}</label>
+              <input
+                type="password"
+                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                value={resetNewPassword}
+                onChange={(e) => setResetNewPassword(e.target.value)}
+                placeholder={t("auth.setPasswordPlaceholder")}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+
+            {error && <p className="text-sm text-red-400">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
+            >
+              {loading ? "…" : t("auth.resetSubmit")}
+            </button>
+            <button
+              type="button"
+              onClick={closeForgot}
+              className="w-full py-2 text-[rgba(255,255,255,0.5)] text-sm font-medium hover:text-white"
+            >
+              {t("auth.resetBackToLogin")}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#080810] flex items-center justify-center">
@@ -191,6 +399,12 @@ export default function AuthPage() {
               : t("auth.signInSubtitle")}
           </p>
         </div>
+
+        {notice && (
+          <div className="mb-5 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/30 text-sm text-green-300">
+            {notice}
+          </div>
+        )}
 
         <button
           type="button"
@@ -252,6 +466,15 @@ export default function AuthPage() {
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 required
               />
+              {mode === "login" && (
+                <button
+                  type="button"
+                  onClick={openForgot}
+                  className="mt-1.5 text-[11px] text-blue-400 hover:text-blue-300"
+                >
+                  {t("auth.forgotPassword")}
+                </button>
+              )}
             </div>
 
             {mode === "register" && (
