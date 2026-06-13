@@ -17,6 +17,12 @@ class ShellManager {
   private docker: Docker | null = null;
   private sessions = new Map<string, ShellSession>();
   private enabled = process.env.ENABLE_SHELL === "true";
+  // Per-image readiness: an in-flight/resolved promise so we pull each sandbox
+  // image at most once. A missing image otherwise makes createContainer throw a
+  // cryptic "(HTTP code 404) no such image" that surfaces to the agent as a
+  // useless "Shell error:". The first command for a framework pays the pull;
+  // subsequent ones are instant.
+  private imageReady = new Map<string, Promise<void>>();
 
   constructor() {
     if (this.enabled) {
@@ -34,6 +40,39 @@ class ShellManager {
   async createShell(sessionId: string, sessionDir: string, framework?: Framework): Promise<void> {
     if (!this.enabled) return;
     this.sessions.set(sessionId, { sessionDir, framework });
+  }
+
+  /**
+   * Ensure a sandbox image is present locally, pulling it once if missing.
+   * Memoized per image so concurrent/repeat commands don't trigger parallel
+   * pulls. Throws a clear error if the pull fails (e.g. no registry access).
+   */
+  private async ensureImage(image: string): Promise<void> {
+    if (!this.docker) throw new Error("Docker not available");
+    let ready = this.imageReady.get(image);
+    if (!ready) {
+      ready = (async () => {
+        const docker = this.docker!;
+        try {
+          await docker.getImage(image).inspect();
+          return; // already present
+        } catch {
+          // Not present — pull it.
+        }
+        const stream = await docker.pull(image);
+        await new Promise<void>((resolve, reject) => {
+          docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()));
+        });
+      })();
+      this.imageReady.set(image, ready);
+    }
+    try {
+      await ready;
+    } catch (err) {
+      // Don't cache a failed pull — allow a later retry.
+      this.imageReady.delete(image);
+      throw err;
+    }
   }
 
   /**
@@ -60,6 +99,14 @@ class ShellManager {
 
     let container: Docker.Container | null = null;
     try {
+      // Pull the sandbox image on first use so a missing image doesn't surface
+      // as a cryptic Docker 404. Bounded by the command timeout budget.
+      try {
+        await this.ensureImage(image);
+      } catch (pullErr) {
+        const m = pullErr instanceof Error ? pullErr.message : String(pullErr);
+        return { stdout: "", stderr: `Sandbox image "${image}" is unavailable (pull failed: ${m}). Shell commands can't run until it's pulled.`, exitCode: 1 };
+      }
       container = await this.docker.createContainer({
         Image: image,
         Cmd: ["sh", "-c", command],
