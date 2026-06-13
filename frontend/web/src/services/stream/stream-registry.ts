@@ -55,6 +55,7 @@ function createStoreActions(projectId: string): StoreActions {
       }
     },
     setLastBuildFileDiff: (path, old, next) => { if (guard()) store().setLastBuildFileDiff(path, old, next); },
+    deleteFile: (path: string) => { if (guard()) store().deleteFile(path); },
     clearLastBuildFileDiffs: () => { if (guard()) store().clearLastBuildFileDiffs(); },
     refreshPreview: () => { if (guard()) store().refreshPreview(); },
     createCheckpoint: (label, opts) => { if (guard()) store().createCheckpoint(label, opts); },

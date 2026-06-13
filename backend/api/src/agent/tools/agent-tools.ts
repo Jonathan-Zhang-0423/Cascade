@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
 import type { BuildSessionState, BuildStep, SseEmit } from "../orchestrator/build-orchestrator";
@@ -203,6 +203,23 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "delete_file",
+        description: "Delete a file from the project. Use this for genuine cleanup — removing a dead/obsolete file, or the old file after moving its content elsewhere (rename = write_file the new path, then delete_file the old). Do NOT delete files a plan step doesn't call for. Fails if the file does not exist.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to delete, e.g. /project/old-helper.ts",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "finish_build",
         description: "Signal that you have finished implementing ALL plan steps and the build is complete. Call this once, after every step is done and any compile checks pass. This ENDS the build — it does NOT trigger a review.",
         parameters: {
@@ -284,6 +301,14 @@ export function buildBuilderTools(
       }
       if (!current.includes(oldContent)) {
         return `Error: old_content not found verbatim in ${path_}. The file may have changed. Read the file first and retry with the exact current content.`;
+      }
+      // Refuse ambiguous patches: if old_content appears more than once, a blind
+      // replace would silently patch only the FIRST occurrence — a real
+      // correctness footgun. Make the model disambiguate with more context
+      // (or use hash_patch_file for a named block).
+      const occurrences = current.split(oldContent).length - 1;
+      if (occurrences > 1) {
+        return `Error: old_content appears ${occurrences} times in ${path_}, so the patch is ambiguous. Include more surrounding context to make old_content unique, or use hash_patch_file to target a specific block.`;
       }
       const patched = current.replace(oldContent, newContent);
       const fileName = path_.split("/").pop() || path_;
@@ -398,6 +423,37 @@ export function buildBuilderTools(
       telemetry?.incr("hashPatchFileCount");
       telemetry?.addFileWritten(path_);
       return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
+    },
+
+    delete_file: async (args, emit) => {
+      const path_ = args.path as string;
+      if (!path_) return "Error: path is required";
+      if (!session.files.has(path_)) {
+        return `Error: file not found: ${path_}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      const fileName = path_.split("/").pop() || path_;
+      emit({ type: "action_log", actionType: "file_delete", label: fileName, detail: "", filePath: path_ });
+      session.files.delete(path_);
+      if (session.projectId) {
+        storage.deleteProjectFile(session.projectId, path_).catch((err) => {
+          console.warn(`[agent-tools] DB delete failed for ${path_}:`, err instanceof Error ? err.message : err);
+        });
+      }
+      emit({ type: "file_deleted", filePath: path_ });
+
+      // Remove the disk mirror + tell the LSP the file is gone (empty content).
+      if (session.sessionDir) {
+        try {
+          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          await rm(abs, { force: true });
+        } catch (err) {
+          console.warn("[agent-tools] disk delete failed for", path_, err instanceof Error ? err.message : err);
+        }
+        lspManager.notifyFileChange(session.id, path_, "").catch(() => {});
+      }
+
+      telemetry?.incr("deleteFileCount");
+      return `File deleted: ${path_}`;
     },
 
     read_file: async (args, emit) => {

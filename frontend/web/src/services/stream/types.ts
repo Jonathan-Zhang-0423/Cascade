@@ -89,6 +89,7 @@ export interface StoreActions {
 
   // File operations
   applyCodeBlock: (block: { filePath: string; code: string; language: string }) => Promise<void>;
+  deleteFile: (path: string) => void;
   setLastBuildFileDiff: (filePath: string, oldContent: string, newContent: string) => void;
   clearLastBuildFileDiffs: () => void;
   refreshPreview: () => void;

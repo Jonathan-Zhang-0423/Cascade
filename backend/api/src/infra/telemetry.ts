@@ -7,6 +7,7 @@ export type TelemetryCounter =
   | "patchFileCount"
   | "hashPatchFileCount"
   | "hashPatchMissCount"
+  | "deleteFileCount"
   | "runTestsCount";
 
 export type TelemetryPhase = "builder" | "verifier" | "fixer";
@@ -36,6 +37,7 @@ export interface BuildTelemetryRecord {
   patchFileCount: number;
   hashPatchFileCount: number;
   hashPatchMissCount: number;
+  deleteFileCount: number;
 
   filesWritten: string[];
   filesInFixerScope: string[];
@@ -98,6 +100,7 @@ export class BuildTelemetry {
       patchFileCount: 0,
       hashPatchFileCount: 0,
       hashPatchMissCount: 0,
+      deleteFileCount: 0,
       filesWritten: [],
       filesInFixerScope: [],
       runTestsCount: 0,
