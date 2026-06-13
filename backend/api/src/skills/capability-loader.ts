@@ -63,6 +63,62 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
     "retry", "timeout", "abort", "loading state", "error state", "auth header",
     "optimistic update", "cancel request", "data fetching", "call the api",
   ],
+  "art-direction": [
+    "美术", "美术设计", "视觉风格", "视觉设计", "配色方案", "色板", "调色", "插画",
+    "图标风格", "品牌", "暗色模式", "深色模式", "主题配色", "风格基调", "质感",
+    "art direction", "color palette", "visual style", "visual identity", "mood board",
+    "iconography", "illustration", "imagery", "dark mode", "color scheme",
+    "brand identity", "design language", "aesthetic", "look and feel",
+  ],
+  "animation-design": [
+    "动画", "动效", "过渡动画", "缓动", "微交互", "转场", "加载动画", "入场动画",
+    "悬停效果", "滚动动效", "动画设计", "渐隐", "渐入", "弹性动画",
+    "animation", "motion design", "transition", "easing", "keyframes",
+    "microinteraction", "micro-interaction", "fade in", "slide in", "spring animation",
+    "parallax", "scroll animation", "hover effect", "loading animation", "reduced motion",
+  ],
+  "copywriting-typography": [
+    "文案", "排版", "字体", "字号", "行距", "行高", "标题层级", "措辞", "微文案",
+    "可读性", "字阶", "正文排版", "文字排版", "界面文案", "空状态文案",
+    "copywriting", "microcopy", "typography", "type scale", "line height",
+    "readability", "tone of voice", "wording", "ui copy", "font pairing",
+    "letter spacing", "text hierarchy", "empty state copy", "error message copy",
+  ],
+  "responsive-layout": [
+    "响应式", "自适应", "响应式布局", "移动端适配", "断点", "栅格", "网格布局",
+    "流式布局", "移动优先", "屏幕适配", "弹性布局", "安全区",
+    "responsive", "responsive layout", "adaptive layout", "mobile first",
+    "breakpoint", "fluid grid", "media query", "container query", "flexbox",
+    "css grid", "viewport", "safe area", "mobile layout", "screen size",
+  ],
+  "data-visualization": [
+    "数据可视化", "图表", "可视化", "柱状图", "折线图", "饼图", "散点图", "仪表盘",
+    "图例", "坐标轴", "热力图", "趋势图", "数据图表",
+    "data visualization", "data viz", "chart", "charting", "bar chart",
+    "line chart", "pie chart", "scatter plot", "heatmap", "dashboard",
+    "graph", "plot", "axis", "legend", "d3", "recharts", "chart.js", "echarts",
+  ],
+  "accessibility": [
+    "无障碍", "可访问性", "无障碍设计", "键盘可达", "屏幕阅读器", "焦点管理",
+    "对比度", "语义化", "辅助功能", "读屏", "可达性",
+    "accessibility", "a11y", "screen reader", "keyboard navigation", "focus management",
+    "aria", "wcag", "contrast ratio", "semantic html", "alt text",
+    "accessible", "skip link", "focus visible", "color contrast",
+  ],
+  "performance-optimization": [
+    "性能优化", "加载速度", "卡顿", "首屏", "懒加载", "代码分割", "打包体积",
+    "渲染优化", "性能", "提速", "优化加载", "防抖", "节流",
+    "performance", "performance optimization", "page speed", "load time", "lazy load",
+    "code splitting", "bundle size", "core web vitals", "lcp", "debounce",
+    "throttle", "virtualize", "render optimization", "optimize performance", "faster",
+  ],
+  "form-ux": [
+    "表单", "表单设计", "表单校验", "输入校验", "表单体验", "错误提示", "校验",
+    "输入框", "提交", "多步表单", "表单验证", "字段校验", "占位提示",
+    "form", "form validation", "form ux", "input validation", "error message",
+    "field validation", "submit button", "multi-step form", "form design",
+    "inline error", "required field", "autocomplete", "double submit", "form field",
+  ],
 };
 
 function extractDescription(content: string): string {

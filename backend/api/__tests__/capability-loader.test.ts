@@ -22,10 +22,18 @@ const EXPECTED = [
   "completeness-check",
   "state-management",
   "api-integration",
+  "art-direction",
+  "animation-design",
+  "copywriting-typography",
+  "responsive-layout",
+  "data-visualization",
+  "accessibility",
+  "performance-optimization",
+  "form-ux",
 ];
 
 describe("capability-loader: discovery", () => {
-  it("discovers all six capability skills", async () => {
+  it("discovers all capability skills", async () => {
     const caps = await listCapabilities();
     const names = caps.map((c) => c.name).sort();
     expect(names).toEqual([...EXPECTED].sort());
@@ -63,6 +71,26 @@ describe("capability-loader: detection", () => {
   it("detects completeness-check from an audit request", async () => {
     const result = await detectCapabilitiesFromText("做一次完备性检查，确保没有断链和报错");
     expect(result).toContain("completeness-check");
+  });
+
+  it("detects art-direction from a visual-style request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("帮我定一套视觉风格和配色方案")).toContain("art-direction");
+    expect(await detectCapabilitiesFromText("define the art direction and color palette")).toContain("art-direction");
+  });
+
+  it("detects animation-design from a motion request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("给按钮加一些动效和过渡动画")).toContain("animation-design");
+    expect(await detectCapabilitiesFromText("add motion design with smooth transitions")).toContain("animation-design");
+  });
+
+  it("detects copywriting-typography from a copy/type request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("优化界面文案和排版")).toContain("copywriting-typography");
+    expect(await detectCapabilitiesFromText("improve the ui copy and tone of voice")).toContain("copywriting-typography");
+  });
+
+  it("detects accessibility from an a11y request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("做一下无障碍和键盘可达")).toContain("accessibility");
+    expect(await detectCapabilitiesFromText("improve screen reader and keyboard navigation")).toContain("accessibility");
   });
 
   it("returns an empty array when nothing matches", async () => {
