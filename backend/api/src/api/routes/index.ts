@@ -49,7 +49,7 @@ import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
-import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
+import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
@@ -1216,14 +1216,14 @@ This override applies to THIS message only — it does not change behavior for p
       if (detectedCapMatches.length > 0) {
         console.log(
           `[manager-chat] capability skills active: ${detectedCapMatches
-            .map((m) => `${m.name}(score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+            .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
             .join("; ")}`,
         );
-        const capContent = await loadCapabilities(detectedCapMatches.map((m) => m.name));
+        const capContent = await loadCapabilitiesTiered(detectedCapMatches);
         if (capContent) {
-          systemPrompt = `${systemPrompt}\n\n## Capability Skills (MANDATORY)\n\nThe following capability guidance is in scope for this request. You MUST apply these patterns in your plan and step descriptions — treat them as hard requirements, not suggestions. If a capability's checklist applies, every item must be addressed:\n\n${capContent}`;
+          systemPrompt = `${systemPrompt}\n\n## Capability Skills (MANDATORY)\n\nThe following capability guidance is in scope for this request. You MUST apply these patterns in your plan and step descriptions — treat them as hard requirements, not suggestions. Full entries give complete guidance; "(digest)" entries are supporting concerns — apply their checklist. If a capability's checklist applies, every item must be addressed:\n\n${capContent}`;
           // Surface which capabilities were activated so the client can show it.
-          emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score })) });
+          emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })) });
         }
       }
 

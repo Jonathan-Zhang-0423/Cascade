@@ -118,3 +118,12 @@ reads as a bug). Animate transitions at 150–250ms; longer feels sluggish.
 - Centralize tokens in `:root`; reference with `var(--token)`.
 - Compose layout with utility classes (`.stack`, `.row`, `.grid`) over one-off rules.
 - Keep specificity flat — prefer single classes over deep selectors.
+
+## Self-check
+- [ ] Spacing, type, color, radius pulled from `:root` tokens — no hardcoded one-off pixels/hex.
+- [ ] Clear visual hierarchy: one primary action per screen; 2–3 font sizes; 2 weights.
+- [ ] Layout uses flex/grid utilities; no fixed pixel widths that overflow on mobile.
+- [ ] Text meets contrast (no light-gray-on-white body text); states have semantic color.
+- [ ] Interactive elements are real `<button>`/`<a>` with hover/focus/active feedback.
+- [ ] Whitespace groups related items; consistent rhythm via the spacing scale.
+- [ ] Responsive at mobile widths; flat selector specificity (single classes).

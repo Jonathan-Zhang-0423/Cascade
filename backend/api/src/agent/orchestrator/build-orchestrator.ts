@@ -3,7 +3,7 @@ import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
-import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
+import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
 import { buildFallbackChain, withFallback, getFastClient, type AIProvider } from "../providers/kimi-client";
 import { storage } from "../../infra/storage";
@@ -368,15 +368,15 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     if (detectedCapMatches.length > 0) {
       console.log(
         `[build-session] capability skills active: ${detectedCapMatches
-          .map((m) => `${m.name}(score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+          .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
           .join("; ")}`,
       );
-      const capContent = await loadCapabilities(detectedCapMatches.map((m) => m.name));
+      const capContent = await loadCapabilitiesTiered(detectedCapMatches);
       if (capContent) {
         session.skillContent = session.skillContent
           ? `${session.skillContent}\n\n---\n\n${capContent}`
           : capContent;
-        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score })) });
+        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })) });
       }
     }
   }

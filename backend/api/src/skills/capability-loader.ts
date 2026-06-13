@@ -21,13 +21,20 @@ export interface CapabilityMeta {
 
 const CAPABILITIES_BASE_DIR = srcDir("skills", "capabilities");
 
-// Max capability skills injected per request. Bounded to keep the prompt from
-// ballooning, but set to 4 (not 2) so a broad request — e.g. "a polished,
-// responsive landing page with animations and good copy" — can combine several
-// complementary capabilities (art-direction + animation-design + responsive-
-// layout + copywriting-typography) instead of only the top one or two. Tunable
-// via CAPABILITY_MAX.
-const MAX_CAPABILITIES = Number(process.env.CAPABILITY_MAX) || 4;
+// Tiered, dynamic allocation — token-aware. A task needs anywhere from 1 to ~6
+// skills; injecting every match in full is wasteful. So we split matches into:
+//   • FULL tier  — the top few highest-scoring skills get their complete SKILL.md
+//   • DIGEST tier — supporting skills get only a compact digest (description +
+//                   Self-check checklist, ~10 lines instead of ~100)
+// A narrow prompt (one strong match) injects one full skill; a broad prompt
+// injects a couple full + several digests. Cost ≈ 2 full + 4 digests ≈ 2.5
+// full-equivalents instead of 6, while the dominant concerns still get complete
+// guidance and supporting ones get an actionable checklist. All env-tunable.
+const MAX_CAPABILITIES = Number(process.env.CAPABILITY_MAX) || 6;       // hard ceiling on total skills
+const FULL_CAPABILITIES = Number(process.env.CAPABILITY_FULL) || 2;     // how many get the full doc
+// A supporting match joins the digest tier only if it's reasonably close to the
+// strongest match — keeps weak, tangential matches out even under a high MAX.
+const SECONDARY_RATIO = Number(process.env.CAPABILITY_SECONDARY_RATIO) || 0.5;
 
 // Bilingual keywords (English word-boundary matched, phrases/Chinese matched via
 // substring). Phrase/Chinese matches score higher than single English words.
@@ -225,18 +232,21 @@ export interface CapabilityMatch {
   score: number;
   /** The keywords that actually matched, for logging/observability. */
   matched: string[];
+  /** "full" → inject the complete SKILL.md; "digest" → inject the compact digest. */
+  tier: "full" | "digest";
 }
 
 /**
- * Pure keyword scorer — no LLM, no network. Phrases / Chinese terms (substring
- * match) score 3, single English words (word-boundary match) score 1, mirroring
- * the fallback scorer in loader.ts. Returns matches at or above MIN_SCORE in
- * descending score order, capped at MAX_CAPABILITIES, with the matched keywords
- * so callers can log exactly why a capability fired.
+ * Pure keyword scorer + tiered allocation — no LLM, no network. Phrases / Chinese
+ * terms (substring match) score 3, single English words (word-boundary match)
+ * score 1. Skills at or above MIN_SCORE are kept, sorted by score; the top
+ * FULL_CAPABILITIES become the "full" tier and the rest (that clear the
+ * SECONDARY_RATIO relative gate, up to MAX_CAPABILITIES total) become the
+ * "digest" tier. Returns 1..MAX matches with their tier + matched keywords.
  */
 export async function detectCapabilitiesDetailed(text: string): Promise<CapabilityMatch[]> {
   const caps = await listCapabilities();
-  const matches: CapabilityMatch[] = [];
+  const scored: Array<{ name: string; score: number; matched: string[] }> = [];
 
   for (const cap of caps) {
     let score = 0;
@@ -250,12 +260,25 @@ export async function detectCapabilitiesDetailed(text: string): Promise<Capabili
         matched.push(keyword);
       }
     }
-    if (score >= MIN_SCORE) matches.push({ name: cap.name, score, matched });
+    if (score >= MIN_SCORE) scored.push({ name: cap.name, score, matched });
   }
 
-  return matches
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CAPABILITIES);
+  scored.sort((a, b) => b.score - a.score);
+  if (scored.length === 0) return [];
+
+  const topScore = scored[0].score;
+  const result: CapabilityMatch[] = [];
+  for (let i = 0; i < scored.length && result.length < MAX_CAPABILITIES; i++) {
+    const m = scored[i];
+    if (i < FULL_CAPABILITIES) {
+      result.push({ ...m, tier: "full" });
+    } else if (m.score >= topScore * SECONDARY_RATIO) {
+      // Supporting skill — close enough to the strongest match to be relevant.
+      result.push({ ...m, tier: "digest" });
+    }
+    // else: too weak relative to the top match → skip (don't pad the prompt).
+  }
+  return result;
 }
 
 /**
@@ -293,6 +316,73 @@ export async function loadCapabilities(names: string[]): Promise<string | null> 
     const content = await loadCapability(name);
     if (content) {
       parts.push(`### Capability: ${name}\n\n${content}`);
+    }
+  }
+  if (parts.length === 0) return null;
+  return parts.join("\n\n---\n\n");
+}
+
+/**
+ * Build a compact digest of a SKILL.md for the "digest" tier: the one-line
+ * description (first non-heading line) plus the `## Self-check` checklist if the
+ * skill has one, else its `##` section headers as a topic outline. ~10 lines vs
+ * the full ~100, so supporting skills cost a fraction of a full injection while
+ * still giving the agent the actionable checklist for that concern.
+ */
+export function buildDigest(name: string, content: string): string {
+  const lines = content.split("\n");
+  const description = extractDescription(content);
+
+  // Find the checklist section: the FIRST `##` heading whose body contains
+  // `- [ ]` items. Skills use varied heading names for it ("Self-check",
+  // "Checklist", "Definition of done", …), so match by content, not title.
+  const headingIdxs: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i])) headingIdxs.push(i);
+  }
+  let checklist: string[] | null = null;
+  for (let h = 0; h < headingIdxs.length; h++) {
+    const start = headingIdxs[h] + 1;
+    const end = h + 1 < headingIdxs.length ? headingIdxs[h + 1] : lines.length;
+    const body = lines.slice(start, end);
+    if (body.some((l) => /^\s*-\s*\[\s*\]/.test(l))) {
+      checklist = body.filter((l) => /^\s*-\s*\[\s*\]/.test(l));
+      break;
+    }
+  }
+
+  let body: string;
+  if (checklist && checklist.length) {
+    body = "Checklist:\n" + checklist.join("\n").trim();
+  } else {
+    // Fallback: list the section headers as a topic outline.
+    const headers = headingIdxs.map((i) => "- " + lines[i].replace(/^##\s+/, "").trim());
+    body = headers.length ? "Covers:\n" + headers.join("\n") : "";
+  }
+  return `${description}\n\n${body}`.trim();
+}
+
+export async function loadCapabilityDigest(name: string): Promise<string | null> {
+  const content = await loadCapability(name);
+  if (!content) return null;
+  return buildDigest(name, content);
+}
+
+/**
+ * Tier-aware loader. `full` matches get their complete SKILL.md; `digest` matches
+ * get the compact digest. Output is one block per skill with a clear header so
+ * the agent can tell full guidance from a supporting checklist.
+ */
+export async function loadCapabilitiesTiered(matches: CapabilityMatch[]): Promise<string | null> {
+  if (matches.length === 0) return null;
+  const parts: string[] = [];
+  for (const m of matches) {
+    if (m.tier === "full") {
+      const content = await loadCapability(m.name);
+      if (content) parts.push(`### Capability: ${m.name}\n\n${content}`);
+    } else {
+      const digest = await loadCapabilityDigest(m.name);
+      if (digest) parts.push(`### Capability (digest): ${m.name}\n\n${digest}`);
     }
   }
   if (parts.length === 0) return null;
