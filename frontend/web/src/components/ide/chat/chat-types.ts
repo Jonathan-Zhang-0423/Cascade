@@ -8,6 +8,7 @@ export interface ActionLogEntry {
     | "terminal_command"
     | "file_read"
     | "file_write"
+    | "file_delete"
     | "code_applied"
     | "code_review"
     | "capabilities"

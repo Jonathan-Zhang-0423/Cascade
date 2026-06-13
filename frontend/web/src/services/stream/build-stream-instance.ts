@@ -316,6 +316,20 @@ export class BuildStreamInstance {
               await this.actions.applyCodeBlock({ filePath, code: newCode, language: "" });
               this.actions.refreshPreview();
             }
+          } else if (type === "file_deleted") {
+            const filePath = ev.filePath || "";
+            this.appendActionLog({
+              type: "file_delete",
+              label: filePath.split("/").pop() || filePath,
+              detail: "",
+              timestamp: Date.now(),
+              filePath: filePath || undefined,
+              precedingNarration: commAccumulated || undefined,
+            });
+            if (isCurrentProject && filePath) {
+              this.actions.deleteFile(filePath);
+              this.actions.refreshPreview();
+            }
           } else if (type === "step_completed") {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
