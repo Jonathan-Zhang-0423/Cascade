@@ -9,6 +9,7 @@ import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import OnboardingPage from "@/pages/onboarding";
+import SetPasswordPage from "@/pages/set-password";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
       <Route path="/onboarding" component={OnboardingPage} />
+      <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
