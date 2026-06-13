@@ -208,40 +208,46 @@ export function ChatMessageList({
             );
           }
           const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
+          // A card that already has frozen statuses is finished — always show its
+          // frozen snapshot, never the live taskStatuses. Otherwise a later build
+          // (especially a direct build, which adds a buildResult instead of a new
+          // plan card so this stale card stays "lastPlan") would bleed its live
+          // "running" status onto this completed card's step 1.
+          const useLiveStatuses = isLastPlan && !msg.frozenTaskStatuses;
           return (
             <div key={`m-${msg.id}`} className="space-y-2">
               <ManagerMessageBubble
                 message={msg}
                 taskStatuses={
-                  isLastPlan
+                  useLiveStatuses
                     ? taskStatuses
                     : (msg.frozenTaskStatuses ?? {})
                 }
                 taskFailureReasons={
-                  isLastPlan
+                  useLiveStatuses
                     ? taskFailureReasons
                     : msg.frozenTaskFailureReasons
                 }
-                onExecute={isLastPlan ? handleExecutePlan : undefined}
-                onRevise={isLastPlan ? handleRevisePlan : undefined}
-                isExecuting={isLastPlan ? isExecuting : undefined}
-                onStop={isLastPlan ? handleStopExecution : undefined}
+                onExecute={useLiveStatuses ? handleExecutePlan : undefined}
+                onRevise={useLiveStatuses ? handleRevisePlan : undefined}
+                isExecuting={useLiveStatuses ? isExecuting : undefined}
+                onStop={useLiveStatuses ? handleStopExecution : undefined}
                 onContinueWithInput={
-                  isLastPlan ? handleContinueExecution : undefined
+                  useLiveStatuses ? handleContinueExecution : undefined
                 }
                 pendingConfirmation={
-                  isLastPlan ? pendingConfirmation : undefined
+                  useLiveStatuses ? pendingConfirmation : undefined
                 }
                 confirmationInput={
-                  isLastPlan ? userConfirmationInput : undefined
+                  useLiveStatuses ? userConfirmationInput : undefined
                 }
                 onConfirmationInputChange={
-                  isLastPlan ? setUserConfirmationInput : undefined
+                  useLiveStatuses ? setUserConfirmationInput : undefined
                 }
-                fixCycle={isLastPlan ? fixCycle : undefined}
-                liveNarration={isLastPlan ? liveNarrationText : undefined}
-                completionData={isLastPlan ? completionData : undefined}
-                stepActionsMap={isLastPlan ? stepActionsMap : undefined}
+                fixCycle={useLiveStatuses ? fixCycle : undefined}
+                liveNarration={useLiveStatuses ? liveNarrationText : undefined}
+                completionData={useLiveStatuses ? completionData : undefined}
+                stepActionsMap={useLiveStatuses ? stepActionsMap : undefined}
               />
             </div>
           );
