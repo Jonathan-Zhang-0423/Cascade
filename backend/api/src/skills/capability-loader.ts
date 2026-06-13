@@ -159,6 +159,13 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
     "gltf", "glb", "orbitcontrols", "shader", "webgl context", "render loop",
     "import map", "importmap", "first person", "3d graphics", "game engine",
   ],
+  "testing": [
+    "测试", "单元测试", "集成测试", "端到端", "端到端测试", "写测试", "测试用例",
+    "覆盖率", "回归测试", "断言", "用例", "自动化测试", "压力测试", "mock",
+    "test", "unit test", "integration test", "end-to-end", "e2e test",
+    "test case", "test coverage", "regression test", "assertion", "vitest",
+    "jest", "playwright", "test suite", "write tests", "mock", "stub",
+  ],
 };
 
 function extractDescription(content: string): string {

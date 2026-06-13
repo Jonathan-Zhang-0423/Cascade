@@ -28,7 +28,11 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["backend/api/__tests__/**/*.test.ts"],
+          include: [
+            "backend/api/__tests__/**/*.test.ts",
+            // Pure, dependency-free frontend logic (no DOM/React) is unit-testable too.
+            "frontend/web/src/**/*.test.ts",
+          ],
           exclude: [
             "backend/api/__tests__/integration/**",
             "backend/api/__tests__/stress/**",

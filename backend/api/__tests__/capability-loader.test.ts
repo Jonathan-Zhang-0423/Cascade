@@ -35,6 +35,7 @@ const EXPECTED = [
   "navigation-ia",
   "empty-error-states",
   "webgl-3d",
+  "testing",
 ];
 
 describe("capability-loader: discovery", () => {
@@ -121,6 +122,11 @@ describe("capability-loader: detection", () => {
   it("detects webgl-3d from a 3D game request (zh + en)", async () => {
     expect(await detectCapabilitiesFromText("做一个3D网页游戏")).toContain("webgl-3d");
     expect(await detectCapabilitiesFromText("build a three.js 3d game")).toContain("webgl-3d");
+  });
+
+  it("detects testing from a tests request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("帮我写单元测试")).toContain("testing");
+    expect(await detectCapabilitiesFromText("add unit tests and test coverage")).toContain("testing");
   });
 
   it("returns an empty array when nothing matches", async () => {
