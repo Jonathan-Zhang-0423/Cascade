@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useIDEStore, findFileContent, flattenFiles, type FileNode } from "@/stores/ide-store";
+import { inlineExternalFiles } from "@/lib/inline-preview-assets";
 import { useProjectStore } from "@/stores/project-store";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw, ExternalLink, Terminal, Monitor, Plus, X, Search, ChevronRight, Globe, Database, Lock, Shield, Key, Zap, BarChart2, Settings, Users, CheckSquare, GitBranch, Code, Cpu, Workflow, FileText, FilePlus, ChevronDown } from "lucide-react";
@@ -151,68 +152,6 @@ function NewFilePanel({ onCreated, onCancel }: { onCreated: () => void; onCancel
       </div>
     </div>
   );
-}
-
-function resolveFilePath(src: string, basePath: string): string {
-  if (src.startsWith("/project/")) return src;
-
-  let resolved: string;
-  if (src.startsWith("/")) {
-    resolved = `/project${src}`;
-  } else {
-    const baseDir = basePath.substring(0, basePath.lastIndexOf("/"));
-    resolved = `${baseDir}/${src}`;
-  }
-
-  const parts = resolved.split("/");
-  const normalized: string[] = [];
-  for (const part of parts) {
-    if (part === "" && normalized.length > 0) continue;
-    if (part === ".") continue;
-    if (part === ".." && normalized.length > 1) {
-      normalized.pop();
-    } else {
-      normalized.push(part);
-    }
-  }
-  return normalized.join("/");
-}
-
-function isExternalUrl(url: string): boolean {
-  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("//");
-}
-
-function inlineExternalFiles(html: string, files: FileNode[], entryPath = "/project/index.html"): string {
-  let result = html;
-
-  result = result.replace(
-    /<link\s+([^>]*?)(?:rel=["']stylesheet["'][^>]*?href=["']([^"']+)["']|href=["']([^"']+)["'][^>]*?rel=["']stylesheet["'])[^>]*\/?>/gi,
-    (match, _attrs, href1, href2) => {
-      const href = href1 || href2;
-      if (!href || isExternalUrl(href)) return match;
-      const filePath = resolveFilePath(href, entryPath);
-      const content = findFileContent(files, filePath);
-      if (content !== undefined) {
-        return `<style>/* ${href} */\n${content}\n</style>`;
-      }
-      return match;
-    }
-  );
-
-  result = result.replace(
-    /<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi,
-    (match, src) => {
-      if (isExternalUrl(src)) return match;
-      const filePath = resolveFilePath(src, entryPath);
-      const content = findFileContent(files, filePath);
-      if (content !== undefined) {
-        return `<script>/* ${src} */\n${content}\n</script>`;
-      }
-      return match;
-    }
-  );
-
-  return result;
 }
 
 export function PreviewPanel({
