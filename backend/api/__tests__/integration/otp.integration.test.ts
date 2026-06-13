@@ -14,12 +14,16 @@ import { HttpClient } from "../_helpers/http-client";
 
 // Captured codes keyed by target.
 const sentCodes = new Map<string, string>();
+// Targets for which the email sender should throw (simulates an unverified
+// sender domain / provider outage).
+const failSendFor = new Set<string>();
 
 vi.mock("../../src/infra/email", async (orig) => {
   const actual = await orig<typeof import("../../src/infra/email")>();
   return {
     ...actual,
     sendEmail: vi.fn(async (input: any) => {
+      if (failSendFor.has(input.to)) throw new Error("simulated send failure");
       const m = /code:\s*(\d{6})/.exec(input.subject ?? "") ?? /(\d{6})/.exec(input.text ?? "");
       if (m) sentCodes.set(input.to, m[1]);
     }),
@@ -49,6 +53,7 @@ describeIntegration("OTP send + verify", () => {
   beforeEach(async () => {
     await truncateAll();
     sentCodes.clear();
+    failSendFor.clear();
   });
 
   const email = () => `u${Math.random().toString(36).slice(2, 8)}@example.com`;
@@ -72,6 +77,23 @@ describeIntegration("OTP send + verify", () => {
       const http = new HttpClient(appCtx.baseUrl);
       const res = await http.post("/api/auth/otp/send", { channel: "email", target: "not-an-email" });
       expect(res.status).toBe(400);
+    });
+
+    it("a failed send is rolled back and does not burn the cooldown", async () => {
+      const http = new HttpClient(appCtx.baseUrl);
+      const target = email();
+      // First attempt: delivery throws → route surfaces 500, row rolled back.
+      failSendFor.add(target);
+      const failed = await http.post("/api/auth/otp/send", { channel: "email", target });
+      expect(failed.status).toBe(500);
+      expect(sentCodes.has(target)).toBe(false);
+
+      // Immediate retry must NOT be blocked by the 60s cooldown — the failed
+      // attempt left no row behind.
+      failSendFor.delete(target);
+      const retry = await http.post("/api/auth/otp/send", { channel: "email", target });
+      expect(retry.status).toBe(200);
+      expect(sentCodes.get(target)).toMatch(/^\d{6}$/);
     });
 
     it("enforces the 60s resend cooldown (429 with retryAfterSec)", async () => {

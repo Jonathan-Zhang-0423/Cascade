@@ -80,24 +80,32 @@ export async function sendOtp(args: {
   const code = generateCode();
   const codeHash = await bcrypt.hash(code, 10);
 
-  await db.insert(otpCodes).values({
+  const [inserted] = await db.insert(otpCodes).values({
     channel,
     target,
     codeHash,
     purpose,
     // Compute expiry on the DB clock for the same tz-safety reason.
     expiresAt: sql`now() + interval '${sql.raw(String(CODE_TTL_MINUTES))} minutes'`,
-  });
+  }).returning({ id: otpCodes.id });
 
-  if (channel === "email") {
-    await sendEmail({
-      to: target,
-      subject: `Your Cascade verification code: ${code}`,
-      text: `Your Cascade verification code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.`,
-      html: `<p>Your Cascade verification code is <strong style="font-size:20px;letter-spacing:4px">${code}</strong>.</p><p>It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
-    });
-  } else {
-    await sendSmsOtp({ to: target, code, expiresMinutes: CODE_TTL_MINUTES });
+  // Send the code. If delivery throws (e.g. unverified sender domain, provider
+  // outage), roll back the row we just inserted — otherwise a failed send would
+  // still burn the 60s cooldown and the hourly cap, blocking the user's retry.
+  try {
+    if (channel === "email") {
+      await sendEmail({
+        to: target,
+        subject: `Your Cascade verification code: ${code}`,
+        text: `Your Cascade verification code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.`,
+        html: `<p>Your Cascade verification code is <strong style="font-size:20px;letter-spacing:4px">${code}</strong>.</p><p>It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
+      });
+    } else {
+      await sendSmsOtp({ to: target, code, expiresMinutes: CODE_TTL_MINUTES });
+    }
+  } catch (err) {
+    await db.delete(otpCodes).where(eq(otpCodes.id, inserted.id)).catch(() => {});
+    throw err;
   }
 
   return { ok: true };
