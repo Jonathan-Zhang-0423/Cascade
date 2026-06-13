@@ -152,6 +152,13 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
     "skeleton loader", "placeholder state", "no data", "no results",
     "retry", "404 page", "error boundary", "fallback ui", "first run",
   ],
+  "webgl-3d": [
+    "3d", "3d游戏", "三维", "webgl", "three.js", "threejs", "babylon",
+    "3d网页游戏", "3d场景", "3d模型", "着色器", "渲染器", "粒子效果", "第一人称",
+    "3d game", "webgl game", "three js", "babylon.js", "3d scene", "3d model",
+    "gltf", "glb", "orbitcontrols", "shader", "webgl context", "render loop",
+    "import map", "importmap", "first person", "3d graphics", "game engine",
+  ],
 };
 
 function extractDescription(content: string): string {

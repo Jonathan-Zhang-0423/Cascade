@@ -34,6 +34,7 @@ const EXPECTED = [
   "internationalization",
   "navigation-ia",
   "empty-error-states",
+  "webgl-3d",
 ];
 
 describe("capability-loader: discovery", () => {
@@ -115,6 +116,11 @@ describe("capability-loader: detection", () => {
   it("detects empty-error-states from a states request (zh + en)", async () => {
     expect(await detectCapabilitiesFromText("加上空状态和骨架屏")).toContain("empty-error-states");
     expect(await detectCapabilitiesFromText("add empty state and skeleton screen")).toContain("empty-error-states");
+  });
+
+  it("detects webgl-3d from a 3D game request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("做一个3D网页游戏")).toContain("webgl-3d");
+    expect(await detectCapabilitiesFromText("build a three.js 3d game")).toContain("webgl-3d");
   });
 
   it("returns an empty array when nothing matches", async () => {
