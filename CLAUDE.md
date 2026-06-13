@@ -44,7 +44,26 @@ There are two distinct chat modes with separate agent pipelines:
 
 Sessions are kept alive server-side (stored in memory maps in `backend/api/src/api/routes/index.ts`). Clients can reconnect mid-stream using session IDs stored in localStorage.
 
-### State management
+### Agent tools
+
+Tools exposed to the LLM agents are built in `backend/api/src/agent/tools/` and assembled per-agent (builder/fixer get the full set; verifier/reviewer/manager get read-only subsets). Categories:
+
+- **File I/O** (`agent-tools.ts`): `write_file`, `read_file`, `patch_file`, `hash_patch_file`, `delete_file`. All text-only; no binary/image support. `read_file` appends a block-hash index so the agent can target blocks with `hash_patch_file`.
+  - `patch_file` requires `old_content` to match **exactly once** — it refuses ambiguous (multi-match) patches rather than silently patching the first occurrence. Use `hash_patch_file` for repeated patterns.
+  - File writes/deletes mirror to three places: `session.files` (in-memory), the DB (`storage.upsertProjectFile`/`deleteProjectFile`), and the on-disk session dir (`/tmp/cascade-sessions/<id>`, for LSP/shell), plus an LSP change notification.
+- **Code intelligence**: `ast_search`/`ast_replace` (ast-grep structural search/rewrite), `lsp_diagnostics`/`lsp_find_references`/`lsp_goto_definition` (`lsp-manager.ts`). TS/TSX writes return inline LSP diagnostics in the tool response.
+- **Shell/compile/test** (`shell-tools.ts`, `test-tools.ts`): `shell_run`, `run_tests`. Runs in a per-command Docker sandbox (`shell-manager.ts`): `network=none`, 512MB / 0.5 CPU, project bind-mounted at `/workspace`. Gated by `ENABLE_SHELL=true`. Sandbox images (`node:20-slim`, `ghcr.io/cirruslabs/flutter:stable`) are auto-pulled on first use.
+- **Control-flow**: `mark_step_complete`, `finish_build` (builder), `submit_plan` (manager), `submit_verdict`/`submit_review`/`report_issue` (verifier/reviewer). Completing the final step trips a shared exit signal so the builder loop ends deterministically instead of relying on the model to emit `finish_build`.
+- **Absent by design**: no network/HTTP-fetch tool, no image/OCR/binary tool. Agents cannot reach the network except through the sandboxed shell (which itself runs `network=none`).
+
+### Capability skills
+
+An additive guidance layer, orthogonal to the framework/tech-stack skills. Each is a `SKILL.md` under `backend/api/src/skills/capabilities/<name>/`; `capability-loader.ts` keyword-scores the user/plan text (bilingual zh/en, no LLM call) and injects the matches into the build/manager system prompt.
+
+- Selection is **tiered & token-aware**: top `FULL_CAPABILITIES` (default 2) get their complete `SKILL.md`; further matches that clear a relative score gate get a compact **digest** (description + checklist, ~10 lines), up to `MAX_CAPABILITIES` (default 6). Env-tunable: `CAPABILITY_FULL` / `CAPABILITY_MAX` / `CAPABILITY_SECONDARY_RATIO` / `CAPABILITY_MIN_SCORE`.
+- Adding a skill = new directory + `SKILL.md` (with a `## Self-check`/`## Checklist`-style `- [ ]` section for the digest) + a `CAPABILITY_KEYWORDS` entry, and bump `EXPECTED` in `capability-loader.test.ts`.
+
+
 
 All IDE state lives in Zustand (`frontend/web/src/stores/ide-store.ts`) and is debounce-persisted to localStorage under `cascade-project-${projectId}`. On project switch, `loadProject()` restores state from localStorage and falls back to the DB for files.
 
@@ -100,6 +119,9 @@ All providers use the OpenAI-compatible chat completions API. Configured via env
 | `backend/api/src/agent/prompts/manager-prompt.ts` | Manager agent system prompt |
 | `backend/api/src/agent/prompts/editor-prompt.ts` | Editor agent system prompt |
 | `backend/api/src/agent/prompts/communicator-prompt.ts` | Communicator agent prompt (step narration + completion summary) |
+| `backend/api/src/agent/tools/agent-tools.ts` | File I/O + control-flow agent tools (write/read/patch/delete, step/plan/verdict) |
+| `backend/api/src/agent/tools/shell-manager.ts` | Docker sandbox for `shell_run` (per-command container, auto-pulls images) |
+| `backend/api/src/skills/capability-loader.ts` | Capability-skill keyword scorer + tiered (full/digest) injection |
 | `frontend/web/src/stores/ide-store.ts` | All IDE state, persistence, checkpoints |
 | `frontend/web/src/services/stream/manager-stream-instance.ts` | Plan mode SSE stream handler |
 | `frontend/web/src/services/stream/build-stream-instance.ts` | Build mode SSE stream handler |
