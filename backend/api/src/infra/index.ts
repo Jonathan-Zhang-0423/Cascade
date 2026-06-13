@@ -31,6 +31,13 @@ app.use(express.urlencoded({ extended: false }));
 
 const PgSession = connectPgSimple(session);
 
+// Session secret: never ship the dev fallback to production. A predictable
+// secret lets anyone forge a signed session cookie → full account takeover.
+const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret-change-me";
+if (process.env.NODE_ENV === "production" && SESSION_SECRET === "dev-secret-change-me") {
+  throw new Error("SESSION_SECRET must be set in production (refusing to start with the dev fallback).");
+}
+
 app.use(session({
   store: new PgSession({
     pool,
@@ -38,7 +45,7 @@ app.use(session({
     // 进程重启也不丢登录态。表不存在时自动创建（单表 "session"）。
     createTableIfMissing: true,
   }),
-  secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" },

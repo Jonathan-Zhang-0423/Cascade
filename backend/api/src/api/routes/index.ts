@@ -3035,6 +3035,19 @@ Generate the cascade.md content for this project based on both the plan and the 
     return { ok: true, trialExpiresAt, code: trimmed };
   }
 
+  // Establish an authenticated session, rotating the session id first to defend
+  // against session fixation (an attacker who planted a known pre-auth cookie
+  // must not retain a valid session after the victim logs in). express-session
+  // regenerate() issues a fresh id; we then set userId on the new session.
+  function startSession(req: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      req.session.regenerate((err: unknown) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
   app.post("/api/auth/register", async (req, res) => {
     try {
       const { username, password, inviteCode } = req.body as {
@@ -3052,6 +3065,25 @@ Generate the cascade.md content for this project based on both the plan and the 
       const hashed = await bcrypt.hash(password, 10);
       const user = await storage.createUser({ username: username.trim(), password: hashed });
 
+      // If the user registered with an email-shaped username, also populate the
+      // `email` column (normalized, but NOT marked verified — registration
+      // doesn't prove ownership). Without this, the account is invisible to the
+      // email-OTP login and forgot-password flows, which look users up by the
+      // `email` column. Skip silently if that email already belongs to someone
+      // else (the username uniqueness check already gated the primary identity).
+      const maybeEmail = normalizeTarget("email", username.trim());
+      if (maybeEmail) {
+        const emailOwner = await storage.getUserByEmail(maybeEmail);
+        if (!emailOwner) {
+          try {
+            await db.update(users).set({ email: maybeEmail }).where(eq(users.id, user.id));
+          } catch (err: any) {
+            // Unique-constraint race — fine to leave email unset, username still works.
+            if (!String(err?.message ?? "").includes("users_email")) throw err;
+          }
+        }
+      }
+
       const redeem = await redeemInviteCode(inviteCode, user.id);
       if (!redeem.ok) {
         // Roll back the user we just created so the username doesn't get
@@ -3063,6 +3095,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
         .where(eq(users.id, user.id));
 
+      await startSession(req);
       (req.session as any).userId = user.id;
       res.status(201).json({
         id: user.id,
@@ -3120,6 +3153,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
+      await startSession(req);
       (req.session as any).userId = user.id;
       res.json({
         id: user.id,
@@ -3376,6 +3410,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           ? { emailVerified: true }
           : { phoneVerified: true };
         await db.update(users).set(verifiedPatch).where(eq(users.id, existing.id));
+        await startSession(req);
         (req.session as any).userId = existing.id;
         return res.json({
           id: existing.id,
@@ -3432,6 +3467,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
         .where(eq(users.id, createdUserId));
 
+      await startSession(req);
       (req.session as any).userId = createdUserId;
       res.status(201).json({
         id: createdUserId,
@@ -3470,9 +3506,19 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(401).json({ error: errMsg });
       }
 
-      await db.update(users)
-        .set({ email: normalized, emailVerified: true })
-        .where(eq(users.id, userId));
+      try {
+        await db.update(users)
+          .set({ email: normalized, emailVerified: true })
+          .where(eq(users.id, userId));
+      } catch (err: any) {
+        // Lost the race: another account claimed this email between the check
+        // above and here. The DB unique constraint on users.email is the source
+        // of truth — surface it as 409 rather than a 500.
+        if (String(err?.message ?? "").includes("users_email")) {
+          return res.status(409).json({ error: "Email already in use" });
+        }
+        throw err;
+      }
 
       res.json({ ok: true });
     } catch (err) {
@@ -3639,6 +3685,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
       }
 
+      await startSession(req);
       (req.session as any).userId = user.id;
       // Users without a redeemed invite code (new GitHub-only signups, or any
       // pre-existing user that was created before invite gating) must visit

@@ -135,14 +135,26 @@ export async function verifyOtp(args: {
 
   const match = await bcrypt.compare(code, row.codeHash);
   if (!match) {
-    await db
+    // Atomic increment on the DB side (attempts = attempts + 1) so concurrent
+    // wrong guesses can't clobber each other's counter and slip past the cap.
+    const [updated] = await db
       .update(otpCodes)
-      .set({ attempts: row.attempts + 1 })
-      .where(eq(otpCodes.id, row.id));
-    if (row.attempts + 1 >= MAX_ATTEMPTS) return { ok: false, error: "locked" };
+      .set({ attempts: sql`${otpCodes.attempts} + 1` })
+      .where(eq(otpCodes.id, row.id))
+      .returning({ attempts: otpCodes.attempts });
+    if ((updated?.attempts ?? row.attempts + 1) >= MAX_ATTEMPTS) return { ok: false, error: "locked" };
     return { ok: false, error: "invalid_or_expired" };
   }
 
-  await db.update(otpCodes).set({ consumedAt: sql`now()` }).where(eq(otpCodes.id, row.id));
+  // Atomically claim the code: only update if still unconsumed. The WHERE guard
+  // + returning() means exactly one concurrent request wins — a second request
+  // that already passed the bcrypt check finds 0 rows updated and is rejected,
+  // so a single code can never be consumed twice (TOCTOU-safe).
+  const claimed = await db
+    .update(otpCodes)
+    .set({ consumedAt: sql`now()` })
+    .where(and(eq(otpCodes.id, row.id), isNull(otpCodes.consumedAt)))
+    .returning({ id: otpCodes.id });
+  if (claimed.length === 0) return { ok: false, error: "invalid_or_expired" };
   return { ok: true };
 }

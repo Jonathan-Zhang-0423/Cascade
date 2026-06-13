@@ -189,6 +189,29 @@ describeIntegration("OTP send + verify", () => {
       const reuse = await http.post("/api/auth/otp/verify-login", { channel: "email", target, code });
       expect(reuse.status).toBe(401);
     });
+
+    it("concurrent verifies of the same code consume it exactly once (TOCTOU-safe)", async () => {
+      // The user already exists so both concurrent requests take the login
+      // branch (no invite-code/auto-register divergence). Atomic consumption
+      // must let exactly one win.
+      const target = email();
+      {
+        const { http, code } = await sendAndGetCode(target);
+        const invite = await seedInviteCode();
+        expect((await http.post("/api/auth/otp/verify-login", { channel: "email", target, code, inviteCode: invite })).status).toBe(201);
+      }
+      await truncateOtpOnly();
+
+      const { code } = await sendAndGetCode(target);
+      // Fire two verifies for the same code in parallel on fresh clients.
+      const [a, b] = await Promise.all([
+        new HttpClient(appCtx.baseUrl).post("/api/auth/otp/verify-login", { channel: "email", target, code }),
+        new HttpClient(appCtx.baseUrl).post("/api/auth/otp/verify-login", { channel: "email", target, code }),
+      ]);
+      const statuses = [a.status, b.status].sort();
+      // Exactly one success (200), the other rejected (401) — never two 200s.
+      expect(statuses).toEqual([200, 401]);
+    });
   });
 
   describe("bind-email", () => {

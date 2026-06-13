@@ -87,6 +87,27 @@ describeIntegration("auth (password)", () => {
       const r2 = await h2.post("/api/auth/register", { ...creds(), inviteCode: code });
       expect(r2.status).toBe(400);
     });
+
+    it("registering with an email-shaped username also populates the email column", async () => {
+      // Root-cause regression: an account registered with email-as-username
+      // must be reachable by the email-OTP / forgot-password flows, which look
+      // users up by the `email` column. The column is populated (normalized,
+      // lowercased) but NOT marked verified.
+      const http = new HttpClient(appCtx.baseUrl);
+      const code = await seedInviteCode();
+      const emailUser = `Reg.User.${Math.random().toString(36).slice(2, 8)}@Example.COM`;
+      const res = await http.post("/api/auth/register", {
+        username: emailUser, password: "hunter2-strong", inviteCode: code,
+      });
+      expect(res.status).toBe(201);
+
+      const { db } = await import("../../src/infra/db");
+      const { users } = await import("@cascade/database");
+      const { eq } = await import("drizzle-orm");
+      const [row] = await db.select().from(users).where(eq(users.username, emailUser));
+      expect(row.email).toBe(emailUser.toLowerCase()); // normalized
+      expect(row.emailVerified).toBe(false);           // registration doesn't prove ownership
+    });
   });
 
   describe("login / logout / me", () => {
@@ -106,6 +127,20 @@ describeIntegration("auth (password)", () => {
       expect(res.body.username).toBe(c.username);
       const me = await fresh.get("/api/auth/me");
       expect(me.status).toBe(200);
+    });
+
+    it("rotates the session id on login (session-fixation defense)", async () => {
+      const { c } = await registered();
+      const fresh = new HttpClient(appCtx.baseUrl);
+      // Touch an endpoint first so a pre-auth session cookie is established.
+      await fresh.get("/api/auth/me");
+      const before = fresh.getCookie("connect.sid");
+      const res = await fresh.post("/api/auth/login", c);
+      expect(res.status).toBe(200);
+      const after = fresh.getCookie("connect.sid");
+      // The authenticated session must not reuse a pre-auth session id.
+      if (before) expect(after).not.toBe(before);
+      expect(after).toBeTruthy();
     });
 
     it("rejects wrong password with generic 401", async () => {

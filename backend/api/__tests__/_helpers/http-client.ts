@@ -39,6 +39,11 @@ export class HttpClient {
     this.cookies.set(name, value);
   }
 
+  /** Read a cookie value from the jar (e.g. to assert the session id rotated). */
+  getCookie(name: string): string | undefined {
+    return this.cookies.get(name);
+  }
+
   clearCookies() {
     this.cookies.clear();
   }
