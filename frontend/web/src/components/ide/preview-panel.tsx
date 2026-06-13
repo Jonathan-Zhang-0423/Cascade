@@ -17,6 +17,18 @@ import { ConsolePanel } from "./console-panel";
 import { FileTree } from "./file-tree";
 import { CheckpointPanel } from "./CheckpointPanel";
 
+// Preview iframe capability policy. Kept in one place so the iOS/Android
+// iframes stay in sync. 3D/WebGL games need more than the old token set:
+//   - allow-pointer-lock  → FPS / orbit mouse-capture controls
+//   - allow-popups-to-escape-sandbox → opened windows aren't crippled
+// The `allow` attribute (Permissions Policy) grants the powerful features
+// browsers gate separately from sandbox: fullscreen, gamepad, WebXR/VR,
+// device motion/orientation (mobile tilt controls), and autoplay audio.
+const PREVIEW_SANDBOX =
+  "allow-scripts allow-modals allow-same-origin allow-forms allow-popups allow-pointer-lock allow-popups-to-escape-sandbox";
+const PREVIEW_ALLOW =
+  "fullscreen; autoplay; gamepad; xr-spatial-tracking; accelerometer; gyroscope; magnetometer";
+
 // 常用文件类型列表
 const FILE_TYPES = [
   { ext: "tsx",  label: "TypeScript React (.tsx)" },
@@ -653,7 +665,7 @@ export function PreviewPanel({
                           <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
                         </div>
                       ) : (
-                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox={PREVIEW_SANDBOX} allow={PREVIEW_ALLOW} data-testid="preview-iframe" />
                       )}
                     </>
                   )}
@@ -672,7 +684,7 @@ export function PreviewPanel({
                           <p className="text-[12px] text-slate-400">{t("preview.runFirst")}</p>
                         </div>
                       ) : (
-                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" data-testid="preview-iframe" />
+                        <iframe ref={iframeRef} key={effectiveRefresh} srcDoc={previewOverrideHtml ?? injectedHtml} className="w-full h-full border-0" style={{ cursor: "pointer" }} title={t("preview.title")} sandbox={PREVIEW_SANDBOX} allow={PREVIEW_ALLOW} data-testid="preview-iframe" />
                       )}
                     </>
                   )}

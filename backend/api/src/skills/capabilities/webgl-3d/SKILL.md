@@ -132,8 +132,14 @@ Use Pattern A when you need addons (loaders/controls); Pattern B for simple scen
 
 - Pointer + keyboard via event listeners that set intent flags; read flags in the
   update step (don't mutate scene objects inside the event handler).
-- For pointer-lock/first-person controls, request lock on a user click (sandboxed
-  iframes allow it under `allow-scripts`). Provide a visible "Click to play" prompt.
+- The preview iframe grants pointer-lock, fullscreen, gamepad, WebXR, and device
+  orientation/motion. Use them freely — but ALWAYS request them from a user gesture
+  (a click/tap), never on load, or the browser rejects the request.
+  - First-person look: call `renderer.domElement.requestPointerLock()` on click;
+    show a visible "Click to play" prompt and handle `pointerlockchange` to pause.
+  - Fullscreen: `el.requestFullscreen()` from a button; don't auto-enter.
+  - Gamepad: poll `navigator.getGamepads()` inside the update loop.
+  - Mobile tilt: listen for `deviceorientation`/`devicemotion` (granted).
 - Pause the loop on `visibilitychange` (hidden tab) to save battery and avoid dt spikes.
 
 ## Self-check (prevents the common crashes)
