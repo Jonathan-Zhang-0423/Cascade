@@ -21,8 +21,13 @@ export interface CapabilityMeta {
 
 const CAPABILITIES_BASE_DIR = srcDir("skills", "capabilities");
 
-// Cap at 2 to bound prompt size — same rationale as MAX_SKILLS in loader.ts.
-const MAX_CAPABILITIES = 2;
+// Max capability skills injected per request. Bounded to keep the prompt from
+// ballooning, but set to 4 (not 2) so a broad request — e.g. "a polished,
+// responsive landing page with animations and good copy" — can combine several
+// complementary capabilities (art-direction + animation-design + responsive-
+// layout + copywriting-typography) instead of only the top one or two. Tunable
+// via CAPABILITY_MAX.
+const MAX_CAPABILITIES = Number(process.env.CAPABILITY_MAX) || 4;
 
 // Bilingual keywords (English word-boundary matched, phrases/Chinese matched via
 // substring). Phrase/Chinese matches score higher than single English words.
@@ -118,6 +123,34 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
     "form", "form validation", "form ux", "input validation", "error message",
     "field validation", "submit button", "multi-step form", "form design",
     "inline error", "required field", "autocomplete", "double submit", "form field",
+  ],
+  "seo-metadata": [
+    "seo", "搜索引擎优化", "元数据", "网页标题", "页面标题", "分享卡片", "站点地图",
+    "结构化数据", "收录", "爬虫", "元标签", "社交分享预览",
+    "search engine optimization", "meta tags", "meta description", "open graph",
+    "og image", "twitter card", "structured data", "json-ld", "canonical",
+    "sitemap", "robots.txt", "rich results", "link preview", "page title",
+  ],
+  "internationalization": [
+    "国际化", "多语言", "本地化", "语言切换", "翻译", "多语种", "中英文切换",
+    "右到左", "地区格式", "货币格式", "日期格式", "语言包",
+    "internationalization", "i18n", "localization", "l10n", "multilingual",
+    "translation", "locale", "rtl", "right to left", "language switch",
+    "currency format", "date format", "pluralization", "intl",
+  ],
+  "navigation-ia": [
+    "导航", "信息架构", "导航栏", "菜单", "侧边栏", "面包屑", "标签页", "路由",
+    "页面结构", "导航设计", "底部导航", "抽屉菜单", "返回",
+    "navigation", "information architecture", "nav bar", "navbar", "sidebar",
+    "breadcrumb", "tab bar", "menu", "routing", "site structure",
+    "drawer menu", "bottom nav", "active state", "wayfinding", "ia",
+  ],
+  "empty-error-states": [
+    "空状态", "空白页", "加载态", "加载状态", "错误状态", "错误页", "骨架屏",
+    "占位状态", "缺省页", "无数据", "重试", "404页面", "异常状态",
+    "empty state", "loading state", "error state", "skeleton screen",
+    "skeleton loader", "placeholder state", "no data", "no results",
+    "retry", "404 page", "error boundary", "fallback ui", "first run",
   ],
 };
 

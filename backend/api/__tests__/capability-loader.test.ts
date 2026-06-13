@@ -30,6 +30,10 @@ const EXPECTED = [
   "accessibility",
   "performance-optimization",
   "form-ux",
+  "seo-metadata",
+  "internationalization",
+  "navigation-ia",
+  "empty-error-states",
 ];
 
 describe("capability-loader: discovery", () => {
@@ -93,16 +97,46 @@ describe("capability-loader: detection", () => {
     expect(await detectCapabilitiesFromText("improve screen reader and keyboard navigation")).toContain("accessibility");
   });
 
+  it("detects seo-metadata from an SEO request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("优化一下搜索引擎优化和分享卡片")).toContain("seo-metadata");
+    expect(await detectCapabilitiesFromText("add open graph meta tags and structured data")).toContain("seo-metadata");
+  });
+
+  it("detects internationalization from an i18n request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("支持多语言和语言切换")).toContain("internationalization");
+    expect(await detectCapabilitiesFromText("add i18n and right to left support")).toContain("internationalization");
+  });
+
+  it("detects navigation-ia from a navigation request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("设计导航栏和面包屑")).toContain("navigation-ia");
+    expect(await detectCapabilitiesFromText("design the information architecture and nav bar")).toContain("navigation-ia");
+  });
+
+  it("detects empty-error-states from a states request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("加上空状态和骨架屏")).toContain("empty-error-states");
+    expect(await detectCapabilitiesFromText("add empty state and skeleton screen")).toContain("empty-error-states");
+  });
+
   it("returns an empty array when nothing matches", async () => {
     const result = await detectCapabilitiesFromText("xyzzy plugh quux frobnicate");
     expect(result).toEqual([]);
   });
 
-  it("caps results at 2 even when many capabilities match", async () => {
+  it("caps results at MAX_CAPABILITIES (4) even when many capabilities match", async () => {
     const result = await detectCapabilitiesFromText(
       "做一个游戏，界面要好看，状态管理要清晰，接口对接要稳，功能填充完整，并做完备性检查",
     );
-    expect(result.length).toBeLessThanOrEqual(2);
+    expect(result.length).toBeLessThanOrEqual(4);
+  });
+
+  it("combines several complementary capabilities for a broad request", async () => {
+    // A rich prompt should pull in MORE than one or two capabilities now that the
+    // cap is 4 — this is the multi-skill collaboration the cap raise enables.
+    const result = await detectCapabilitiesFromText(
+      "做一个漂亮的响应式落地页：定一套视觉风格和配色方案，加入场动效和过渡动画，优化界面文案和排版",
+    );
+    expect(result.length).toBeGreaterThanOrEqual(3);
+    expect(result.length).toBeLessThanOrEqual(4);
   });
 
   it("does NOT fire on a single stray English word below the score threshold", async () => {
@@ -128,11 +162,11 @@ describe("capability-loader: detailed detection", () => {
     expect(game!.matched.length).toBeGreaterThan(0);
   });
 
-  it("orders matches by descending score and caps at 2", async () => {
+  it("orders matches by descending score and caps at MAX_CAPABILITIES (4)", async () => {
     const matches = await detectCapabilitiesDetailed(
       "做一个游戏，界面要好看，状态管理要清晰，接口对接要稳，功能填充完整，并做完备性检查",
     );
-    expect(matches.length).toBeLessThanOrEqual(2);
+    expect(matches.length).toBeLessThanOrEqual(4);
     for (let i = 1; i < matches.length; i++) {
       expect(matches[i - 1].score).toBeGreaterThanOrEqual(matches[i].score);
     }
