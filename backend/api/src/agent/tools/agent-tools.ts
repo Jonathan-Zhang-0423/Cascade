@@ -32,6 +32,46 @@ export interface VerifierIssue {
   affected_file?: string;
 }
 
+/**
+ * Shared `update_project_memory` tool. Lets the agent (builder/fixer/manager)
+ * record durable, project-specific learnings into the per-project memory doc,
+ * which is injected as authoritative context at the start of future sessions.
+ * The model rewrites the WHOLE doc each call (self-compacting); storage caps it.
+ */
+function buildProjectMemoryTool(
+  projectId: string | undefined,
+  userId: string | undefined,
+  onUpdate?: (content: string) => void,
+): { schema: ToolSchema; handler: ToolHandler } {
+  const schema: ToolSchema = {
+    type: "function",
+    function: {
+      name: "update_project_memory",
+      description:
+        "Record durable, project-specific knowledge into this project's long-term memory: bugs you hit and their fix, the architecture/tools/conventions in use, gotchas, and ideas worth revisiting. This memory is shown to you at the start of every future session for THIS project, so it compounds. Provide the COMPLETE new memory document — rewrite it, keeping it tight (drop stale/obvious entries, merge duplicates). Only record things that will help future sessions; skip one-off trivia.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "The full updated memory document (markdown). Replaces the previous one.",
+          },
+        },
+        required: ["content"],
+      },
+    },
+  };
+  const handler: ToolHandler = async (args) => {
+    const content = args.content as string;
+    if (typeof content !== "string") return "Error: content (string) is required";
+    if (!projectId) return "Project memory unavailable (no project context).";
+    await storage.setProjectMemory(projectId, userId ?? "", content);
+    onUpdate?.(content); // reflect within this session too
+    return `Project memory updated (${content.length} chars).`;
+  };
+  return { schema, handler };
+}
+
 export interface VerifierVerdict {
   status: "pass" | "fail";
   summary: string;
@@ -542,6 +582,11 @@ export function buildBuilderTools(
   schemas.push(...testTools.schemas);
   Object.assign(handlers, testTools.handlers);
 
+  // Self-evolving project memory
+  const mem = buildProjectMemoryTool(session.projectId, session.userId, (c) => { session.projectMemory = c; });
+  schemas.push(mem.schema);
+  handlers[mem.schema.function.name] = mem.handler;
+
   return { schemas, handlers };
 }
 
@@ -847,6 +892,7 @@ export function buildReviewTools(
 
 export function buildManagerTools(
   managerState: ManagerSessionState,
+  memoryCtx?: { projectId?: string; userId?: string },
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
@@ -953,6 +999,13 @@ export function buildManagerTools(
       return "Plan submitted successfully.";
     },
   };
+
+  // Self-evolving project memory (planning-time insights)
+  if (memoryCtx?.projectId) {
+    const mem = buildProjectMemoryTool(memoryCtx.projectId, memoryCtx.userId);
+    schemas.push(mem.schema);
+    handlers[mem.schema.function.name] = mem.handler;
+  }
 
   return { schemas, handlers };
 }
