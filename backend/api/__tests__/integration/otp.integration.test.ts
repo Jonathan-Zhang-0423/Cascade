@@ -192,7 +192,15 @@ describeIntegration("OTP send + verify", () => {
   });
 
   describe("bind-email", () => {
-    async function sendAndGetCode(http: HttpClient, target: string) {
+    // Send a bind_email-purpose OTP (used by the bind-email route).
+    async function sendBindCode(http: HttpClient, target: string) {
+      const res = await http.post("/api/auth/otp/send", { channel: "email", target, purpose: "bind_email" });
+      expect(res.status).toBe(200);
+      return sentCodes.get(target)!;
+    }
+
+    // Send a login-purpose OTP (used during registration via otp/verify-login).
+    async function sendLoginCode(http: HttpClient, target: string) {
       const res = await http.post("/api/auth/otp/send", { channel: "email", target });
       expect(res.status).toBe(200);
       return sentCodes.get(target)!;
@@ -203,7 +211,7 @@ describeIntegration("OTP send + verify", () => {
     async function registerOtpUser(): Promise<{ http: HttpClient; userId: string }> {
       const http = new HttpClient(appCtx.baseUrl);
       const target = email();
-      const code = await sendAndGetCode(http, target);
+      const code = await sendLoginCode(http, target);
       const invite = await seedInviteCode();
       const res = await http.post("/api/auth/otp/verify-login", { channel: "email", target, code, inviteCode: invite });
       expect(res.status).toBe(201);
@@ -227,7 +235,7 @@ describeIntegration("OTP send + verify", () => {
     it("401 on a wrong code", async () => {
       const { http } = await registerOtpUser();
       const newEmail = email();
-      await sendAndGetCode(http, newEmail);
+      await sendBindCode(http, newEmail);
       const res = await http.post("/api/auth/bind-email", { target: newEmail, code: "000000" });
       expect(res.status).toBe(401);
     });
@@ -235,7 +243,7 @@ describeIntegration("OTP send + verify", () => {
     it("binds a verified email to the logged-in account", async () => {
       const { http, userId } = await registerOtpUser();
       const newEmail = email();
-      const code = await sendAndGetCode(http, newEmail);
+      const code = await sendBindCode(http, newEmail);
       const res = await http.post("/api/auth/bind-email", { target: newEmail, code });
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
@@ -253,13 +261,13 @@ describeIntegration("OTP send + verify", () => {
       // First account binds an email.
       const { http: httpA } = await registerOtpUser();
       const shared = email();
-      const codeA = await sendAndGetCode(httpA, shared);
+      const codeA = await sendBindCode(httpA, shared);
       expect((await httpA.post("/api/auth/bind-email", { target: shared, code: codeA })).status).toBe(200);
       await truncateOtpOnly();
 
       // Second account tries to bind the same email → 409.
       const { http: httpB } = await registerOtpUser();
-      const codeB = await sendAndGetCode(httpB, shared);
+      const codeB = await sendBindCode(httpB, shared);
       const res = await httpB.post("/api/auth/bind-email", { target: shared, code: codeB });
       expect(res.status).toBe(409);
     });

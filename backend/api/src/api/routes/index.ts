@@ -3036,46 +3036,9 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
 
   app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { username, password, inviteCode } = req.body as {
-        username: string; password: string; inviteCode?: string;
-      };
-      if (typeof username !== "string" || typeof password !== "string" || !username.trim() || !password) {
-        return res.status(400).json({ error: "username and password required" });
-      }
-      if (typeof inviteCode !== "string" || !inviteCode.trim()) {
-        return res.status(400).json({ error: "Invite code required" });
-      }
-      const existing = await storage.getUserByUsername(username.trim());
-      if (existing) return res.status(409).json({ error: "Username already taken" });
-
-      const hashed = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ username: username.trim(), password: hashed });
-
-      const redeem = await redeemInviteCode(inviteCode, user.id);
-      if (!redeem.ok) {
-        // Roll back the user we just created so the username doesn't get
-        // burned on a bad invite code.
-        await db.delete(users).where(eq(users.id, user.id));
-        return res.status(400).json({ error: redeem.error });
-      }
-      await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
-        .where(eq(users.id, user.id));
-
-      (req.session as any).userId = user.id;
-      res.status(201).json({
-        id: user.id,
-        username: user.username,
-        experienceLevel: (user as any).experienceLevel,
-        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
-        inviteCode: redeem.code,
-        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
-      });
-    } catch (err) {
-      console.error("[auth/register]", err);
-      res.status(500).json({ error: "Registration failed" });
-    }
+    // Username-based registration is closed. New users must register via
+    // email OTP, phone OTP, or GitHub OAuth.
+    return res.status(403).json({ error: "Registration via username is not available. Please sign up with email, phone, or GitHub." });
   });
 
   app.post("/api/auth/invite-gate", async (req, res) => {
@@ -3263,8 +3226,10 @@ Generate the cascade.md content for this project based on both the plan and the 
         if (!result.ok) {
           return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
         }
+        // Identical response whether or not the account exists — anti-enumeration.
+        return res.json({ ok: true, retryAfterSec: result.retryAfterSec });
       }
-      // Identical response whether or not the account exists.
+      // Account not found — return identical shape so callers can't enumerate.
       res.json({ ok: true, retryAfterSec: 60 });
     } catch (err) {
       console.error("[auth/reset-password/send]", err);
@@ -3325,7 +3290,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.post("/api/auth/otp/send", async (req, res) => {
     try {
-      const { channel, target } = req.body as { channel?: string; target?: string };
+      const { channel, target, purpose: rawPurpose } = req.body as { channel?: string; target?: string; purpose?: string };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
       }
@@ -3333,11 +3298,12 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const result = await sendOtp({ channel, target: normalized, purpose: "login" });
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : "login";
+      const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
       }
-      res.json({ ok: true, retryAfterSec: 60 });
+      res.json({ ok: true, retryAfterSec: result.retryAfterSec });
     } catch (err) {
       console.error("[auth/otp/send]", err);
       res.status(500).json({ error: "Failed to send code" });
@@ -3464,7 +3430,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(409).json({ error: "Email already in use" });
       }
 
-      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "login" });
+      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "bind_email" });
       if (!verify.ok) {
         const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
         return res.status(401).json({ error: errMsg });
