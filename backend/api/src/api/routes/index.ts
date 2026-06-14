@@ -1187,6 +1187,19 @@ export async function registerRoutes(
         : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
 
       let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
+
+      // Per-project self-evolving memory — authoritative context from past sessions.
+      if (reqProjectId) {
+        try {
+          const memory = await storage.getProjectMemory(reqProjectId);
+          if (memory.trim()) {
+            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — past bugs and fixes, the architecture/tools in use, gotchas. Use it to plan better and avoid repeating mistakes. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
+          }
+        } catch (err) {
+          console.warn("[manager-chat] getProjectMemory failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const isNewProject = !files || files.length === 0;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
@@ -1251,7 +1264,7 @@ This override applies to THIS message only — it does not change behavior for p
       }
 
       const managerState: ManagerSessionState = {};
-      const managerTools = buildManagerTools(managerState);
+      const managerTools = buildManagerTools(managerState, { projectId: reqProjectId, userId: reqUserId });
 
       // Fast intent classification — use MiniMax if available (fastest), else active provider
       const fastClientForIntent = process.env.MINIMAX_API_KEY

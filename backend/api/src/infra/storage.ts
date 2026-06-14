@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions } from "@cascade/database";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 
@@ -25,6 +25,11 @@ function stripNul(s: string): string {
   return s.indexOf("\u0000") === -1 ? s : s.replace(/\u0000/g, "");
 }
 
+/** Reserved projectSkills row name for the per-project self-evolving memory doc. */
+export const PROJECT_MEMORY_NAME = "__memory__";
+/** Hard char cap so the memory never bloats the prompt. */
+export const PROJECT_MEMORY_MAX = Number(process.env.PROJECT_MEMORY_MAX) || 6000;
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -47,6 +52,9 @@ export interface IStorage {
   updateProjectPlan(id: string, plan: unknown): Promise<void>;
   updateProjectBuildResult(id: string, result: unknown): Promise<void>;
   deleteProject(id: string): Promise<void>;
+
+  getProjectMemory(projectId: string): Promise<string>;
+  setProjectMemory(projectId: string, userId: string, content: string): Promise<void>;
 
   getProjectFiles(projectId: string): Promise<ProjectFile[]>;
   upsertProjectFile(projectId: string, path: string, content: string): Promise<void>;
@@ -156,6 +164,41 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProject(id: string): Promise<void> {
     await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  // ─── Project memory ──────────────────────────────────────────────────────
+  // A single self-evolving knowledge doc per project, stored as a reserved
+  // projectSkills row named PROJECT_MEMORY_NAME. The agent reads it at the start
+  // of build/plan and rewrites it at the end (bugs+fixes, architecture, ideas),
+  // so it improves at THAT project over time. Bounded by PROJECT_MEMORY_MAX.
+
+  async getProjectMemory(projectId: string): Promise<string> {
+    if (!projectId) return "";
+    const [row] = await db
+      .select({ content: projectSkills.content })
+      .from(projectSkills)
+      .where(and(eq(projectSkills.projectId, projectId), eq(projectSkills.name, PROJECT_MEMORY_NAME)));
+    return row?.content ?? "";
+  }
+
+  async setProjectMemory(projectId: string, userId: string, content: string): Promise<void> {
+    if (!projectId) return;
+    const safe = stripNul(content).slice(0, PROJECT_MEMORY_MAX);
+    await db
+      .insert(projectSkills)
+      .values({
+        projectId,
+        userId: userId || "",
+        name: PROJECT_MEMORY_NAME,
+        description: "Self-evolving project memory (agent-maintained)",
+        type: "memory",
+        content: safe,
+        enabled: true,
+      })
+      .onConflictDoUpdate({
+        target: [projectSkills.projectId, projectSkills.name],
+        set: { content: safe },
+      });
   }
 
   async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
