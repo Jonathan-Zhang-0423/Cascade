@@ -173,6 +173,13 @@ const CAPABILITY_KEYWORDS: Record<string, string[]> = {
     "test case", "test coverage", "regression test", "assertion", "vitest",
     "jest", "playwright", "test suite", "write tests", "mock", "stub",
   ],
+  "wechat-miniprogram": [
+    "微信小程序", "小程序", "微信", "wxml", "wxss", "setdata", "小程序页面",
+    "小程序开发", "公众号小程序", "wx.request", "wx.navigateto", "页面跳转",
+    "wechat mini program", "wechat miniprogram", "mini program", "miniprogram",
+    "weapp", "page(", "app.json", "usingcomponents",
+    "rpx", "bindtap", "wx:for", "navigateto",
+  ],
 };
 
 function extractDescription(content: string): string {

@@ -38,6 +38,7 @@ const EXPECTED = [
   "empty-error-states",
   "webgl-3d",
   "testing",
+  "wechat-miniprogram",
 ];
 
 describe("capability-loader: discovery", () => {
@@ -129,6 +130,11 @@ describe("capability-loader: detection", () => {
   it("detects testing from a tests request (zh + en)", async () => {
     expect(await detectCapabilitiesFromText("帮我写单元测试")).toContain("testing");
     expect(await detectCapabilitiesFromText("add unit tests and test coverage")).toContain("testing");
+  });
+
+  it("detects wechat-miniprogram from a mini-program request (zh + en)", async () => {
+    expect(await detectCapabilitiesFromText("做一个微信小程序")).toContain("wechat-miniprogram");
+    expect(await detectCapabilitiesFromText("build a wechat mini program with wxml")).toContain("wechat-miniprogram");
   });
 
   it("returns an empty array when nothing matches", async () => {
