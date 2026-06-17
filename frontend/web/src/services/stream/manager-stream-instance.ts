@@ -225,7 +225,6 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_preparing") {
             if (isCurrentProject) this.state.set({ preparingPlan: true });
           } else if (evType === "plan_ready") {
-            planEmitted = true;
             if (isCurrentProject) {
               const plan = ev.plan;
               if (plan) {
@@ -236,6 +235,7 @@ export class ManagerStreamInstance {
                   plan,
                   thinking: managerThinkingAccumulated || undefined,
                 });
+                planEmitted = true;
               }
             }
           } else if (evType === "manager_done") {

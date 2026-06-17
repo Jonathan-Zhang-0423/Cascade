@@ -393,6 +393,7 @@ export function ChatPanel() {
             narrationText={liveNarrationText || undefined}
             thinkingElapsedSec={thinkingElapsedSec}
             isCompleted={!isExecuting && buildPhase === null}
+            completionSummary={completionData?.summary || undefined}
           />
         )}
       </div>

@@ -17,6 +17,9 @@ export const users = pgTable("users", {
   hasSetExperienceLevel: boolean("has_set_experience_level").notNull().default(false),
   inviteCode: text("invite_code"),
   trialExpiresAt: timestamp("trial_expires_at", { mode: "date", withTimezone: true }),
+  // Referral system
+  referralCode: text("referral_code").unique(),   // this user's shareable code
+  referredBy: varchar("referred_by"),             // id of the user who referred them
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

@@ -31,14 +31,10 @@ interface BuildLivePanelProps {
   thinkingText?: string;
   narrationText?: string;
   thinkingElapsedSec?: number | null;
-  /** Persisted, narration-bound segments. When present the panel renders these
-   *  instead of deriving live segments from `entries`. */
   segments?: NarrationSegment[];
-  /** True once the build has finished — switches the panel into a settled,
-   *  fully-collapsible view and reveals the cost summary card. */
   isCompleted?: boolean;
-  /** Token usage from the backend all_complete event. */
   tokenUsage?: { input: number; output: number; total: number };
+  completionSummary?: string;
 }
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -161,6 +157,7 @@ function getActionNarration(entry: ActionLogEntry): string {
   switch (entry.type) {
     case "file_read":      return `读取了 ${fileName(entry)}`;
     case "file_write":     return `编辑了 ${fileName(entry)}`;
+    case "file_delete":    return `删除了 ${fileName(entry)}`;
     case "thinking":       return extractThinkingNarration(entry.detail);
     case "tool_call":      return TOOL_NARRATION[entry.label] || `调用了 ${entry.label}`;
     case "terminal_command": return `执行命令：${entry.label}`;
@@ -186,6 +183,8 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
         content: entry.detail ? entry.detail.slice(0, 2000) : undefined,
       };
     case "file_write":
+      return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
+    case "file_delete":
       return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
     case "code_applied":
       return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
@@ -434,6 +433,10 @@ const SegmentView = memo(function SegmentView({
               {nonThinkingActions.map((a, i) => (
                 <ActionDetailRow key={i} entry={a} />
               ))}
+              {/* narration after actions */}
+              {segment.narration && (
+                <NarrationBlock text={segment.narration} isLive={isLive} />
+              )}
             </div>
           </div>
         )}
@@ -727,6 +730,7 @@ export function BuildLivePanel({
   segments,
   isCompleted,
   tokenUsage,
+  completionSummary,
 }: BuildLivePanelProps) {
   const t = useT();
 
@@ -797,6 +801,13 @@ export function BuildLivePanel({
       {/* Trailing live narration not yet bound to an action */}
       {showTrailingNarration && (
         <NarrationBlock text={narrationText!} isLive />
+      )}
+
+      {/* Completion summary — shown after all steps finish */}
+      {isCompleted && completionSummary && (
+        <div className="px-3.5 py-2 mt-1 border-t border-border/30">
+          <NarrationBlock text={completionSummary} />
+        </div>
       )}
 
       {/* Cost summary card */}

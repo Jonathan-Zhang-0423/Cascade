@@ -371,6 +371,12 @@ export default function AuthPage() {
   const [signInMode, setSignInMode] = useState<SignInMode>("password");
   const [signUpChannel, setSignUpChannel] = useState<SignUpChannel>("email");
 
+  // Pre-fill invite code from ?ref= query param and switch to signup tab
+  const [refCode, setRefCode] = useState<string>(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("ref") ?? "";
+  });
+
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [otpTarget, setOtpTarget] = useState("");
@@ -378,7 +384,10 @@ export default function AuthPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const resendRef = useRef<number | null>(null);
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("ref") ?? "";
+  });
 
   const [forgot, setForgot] = useState(false);
   const [forgotChannel, setForgotChannel] = useState<"email" | "sms">("email");
@@ -406,6 +415,10 @@ export default function AuthPage() {
       const url = new URL(window.location.href);
       url.searchParams.delete("passwordSet");
       window.history.replaceState({}, "", url.toString());
+    }
+    // Auto-switch to signup tab when a referral code is in the URL
+    if (p.has("ref")) {
+      setPage("signup");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -517,7 +530,17 @@ export default function AuthPage() {
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
-      setUserId(data.id); setStoredUsername(data.username); setLocation("/set-password");
+      setUserId(data.id); setStoredUsername(data.username);
+      // If the user arrived via a referral link, silently redeem the referral code
+      if (refCode.trim()) {
+        try {
+          await fetch("/api/referral/redeem", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ referralCode: refCode.trim().toUpperCase() }),
+          });
+        } catch { /* non-fatal */ }
+      }
+      setLocation("/set-password");
     } finally { setLoading(false); }
   };
 

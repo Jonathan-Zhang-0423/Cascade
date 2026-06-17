@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
@@ -106,6 +106,39 @@ export default function DashboardPage() {
   const [newUsername, setNewUsername] = useState("");
   const [editUsernameError, setEditUsernameError] = useState("");
   const [editUsernameLoading, setEditUsernameLoading] = useState(false);
+
+  // ── Invite panel state ────────────────────────────────────────────────────
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralLink, setReferralLink] = useState<string | null>(null);
+  const [referralCount, setReferralCount] = useState(0);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const openInviteDialog = () => {
+    setShowInviteDialog(true);
+    if (referralCode) return;
+    setInviteLoading(true);
+    fetch("/api/referral/my-code")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.referralCode) {
+          setReferralCode(d.referralCode);
+          setReferralLink(d.referralLink);
+          setReferralCount(d.referralCount ?? 0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInviteLoading(false));
+  };
+
+  const copyText = (text: string, type: "code" | "link") => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (type === "code") { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }
+      else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
+    });
+  };
 
   const handleEditUsernameOpen = () => {
     setNewUsername(username ?? "");
@@ -349,6 +382,13 @@ export default function DashboardPage() {
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   {t("auth.editUsername")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs cursor-pointer gap-2"
+                  onClick={openInviteDialog}
+                >
+                  <Gift className="w-3.5 h-3.5" />
+                  {t("navbar.invite")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -752,6 +792,55 @@ export default function DashboardPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={(open) => !open && setShowInviteDialog(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[15px]">
+              <Gift className="w-4 h-4 text-[#4f82ff]" />
+              {t("navbar.invitePanel.title")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.desc")}</p>
+          {inviteLoading ? (
+            <p className="text-[12px] text-muted-foreground py-2">{t("navbar.invitePanel.loading")}</p>
+          ) : referralCode ? (
+            <div className="flex flex-col gap-3 pt-1">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  {t("navbar.invitePanel.yourCode")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-[14px] font-mono tracking-widest px-3 py-2 rounded-lg bg-muted text-foreground">
+                    {referralCode}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => copyText(referralCode, "code")}
+                  >
+                    {copiedCode ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              <Button
+                className="w-full gap-2"
+                style={copiedLink ? { background: "rgba(52,214,138,0.15)", color: "#34d68a" } : {}}
+                onClick={() => referralLink && copyText(referralLink, "link")}
+              >
+                {copiedLink
+                  ? <><Check className="w-4 h-4" />{t("navbar.invitePanel.copied")}</>
+                  : <><Copy className="w-4 h-4" />{t("navbar.invitePanel.copyLink")}</>}
+              </Button>
+              <p className="text-[11px] text-center text-muted-foreground">
+                {t("navbar.invitePanel.referralCount").replace("{n}", String(referralCount))}
+              </p>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>
