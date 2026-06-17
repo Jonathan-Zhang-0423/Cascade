@@ -506,9 +506,9 @@ export function PreviewPanel({
 
       {/* ── Tools & files 展开面板（完整复刻图2/3/4） ── */}
       {toolsPanelOpenState && (
-        <div className="absolute top-[38px] left-0 right-0 bottom-0 z-40 bg-white flex flex-col overflow-hidden">
+        <div className="absolute top-[38px] left-0 right-0 bottom-0 z-40 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg, #fff)" }}>
           {/* 搜索框 */}
-          <div className="px-4 pt-4 pb-3 border-b border-[#F5F5F5] shrink-0">
+          <div className="px-4 pt-2 pb-2 border-b border-[#F5F5F5] shrink-0">
             <div className="flex items-center gap-2 h-9 px-3 bg-[#F5F5F5] rounded-lg border border-transparent focus-within:border-[#BFD9F2] focus-within:bg-white transition-colors">
               <Search className="w-3.5 h-3.5 text-[#999999] shrink-0" />
               <input
@@ -609,8 +609,11 @@ export function PreviewPanel({
       )}
 
       {/* ── Canvas 预览内容 ── */}
-      {activeTab !== "files" && activeTab !== "newfile" && activePreviewTabState === "preview" && (
-        <>
+      {/* Kept in DOM to avoid iframe reload on tab switch; hidden via display:none */}
+      <div
+        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        style={{ display: (!toolsPanelOpenState && activeTab !== "files" && activeTab !== "newfile" && activePreviewTabState === "preview") ? "flex" : "none" }}
+      >
           {/* 预览内容区 — 左侧可选 View 面板 + 右侧预览 */}
           <div className="flex-1 min-h-0 flex overflow-hidden">
             {/* View 面板（Task plan 详情），左侧并列 */}
@@ -692,8 +695,7 @@ export function PreviewPanel({
               )}
             </div>
           </div>
-        </>
-      )}
+      </div>
     </div>
   );
 }

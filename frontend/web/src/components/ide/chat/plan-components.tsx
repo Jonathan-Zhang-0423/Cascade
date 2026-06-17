@@ -670,6 +670,7 @@ export function BuildResultCard({
         segments={segments}
         isCompleted
         tokenUsage={(buildResult as any).tokenUsage}
+        completionSummary={(buildResult as any).completionData?.summary}
       />
     </div>
   );

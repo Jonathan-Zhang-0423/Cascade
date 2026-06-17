@@ -5,7 +5,7 @@ import { useIDEStore, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
-import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type } from "lucide-react";
+import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check } from "lucide-react";
 import { type ThemeId } from "@/lib/themes";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useT } from "@/lib/i18n";
@@ -121,7 +121,50 @@ export function Navbar({
   const [logoMenuOpen, setLogoMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // font size state
+  // invite panel
+  const [invitePanelOpen, setInvitePanelOpen] = useState(false);
+  const invitePanelRef = useRef<HTMLDivElement>(null);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralLink, setReferralLink] = useState<string | null>(null);
+  const [referralCount, setReferralCount] = useState<number>(0);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (!invitePanelOpen || referralCode) return;
+    setInviteLoading(true);
+    fetch("/api/referral/my-code")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.referralCode) {
+          setReferralCode(d.referralCode);
+          setReferralLink(d.referralLink);
+          setReferralCount(d.referralCount ?? 0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInviteLoading(false));
+  }, [invitePanelOpen, referralCode]);
+
+  const copyToClipboard = (text: string, type: "code" | "link") => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (type === "code") { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }
+      else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
+    });
+  };
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!invitePanelRef.current) return;
+      if (!invitePanelRef.current.contains(e.target as Node)) {
+        setInvitePanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const [fontSize, setFontSize] = useState<FontSizeKey>(getFontSizeKey);
 
   const handleFontSize = (key: FontSizeKey) => {
@@ -293,7 +336,7 @@ export function Navbar({
       <div style={{ width: 5, flexShrink: 0 }} />
 
       {/* ③ 右导航区 */}
-      <div className="flex-1 flex items-center px-2 min-w-0 overflow-hidden gap-0.5">
+      <div className="flex-1 flex items-center px-2 min-w-0 overflow-visible gap-0.5">
 
         {/* Tab 列表 */}
         {previewTabs.map((tab) => (
@@ -396,6 +439,89 @@ export function Navbar({
             ? <Minimize className="w-[13px] h-[13px]" />
             : <Maximize className="w-[13px] h-[13px]" />}
         </button>
+
+        {/* 邀请按钮 */}
+        <div className="relative shrink-0 ml-1" ref={invitePanelRef}>
+          <button
+            className={cn(
+              "flex items-center gap-1 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors border",
+              invitePanelOpen
+                ? "bg-[#4f82ff]/10 border-[#4f82ff]/30 text-[#4f82ff]"
+                : "text-muted-foreground hover:text-foreground border-[var(--panel-divider)]"
+            )}
+            style={!invitePanelOpen ? { background: "var(--panel-nav-bg)" } : {}}
+            onClick={() => setInvitePanelOpen((v) => !v)}
+            title={t("navbar.invite")}
+          >
+            <Gift className="w-[12px] h-[12px]" />
+            <span className="hidden sm:inline">{t("navbar.invite")}</span>
+          </button>
+
+          {invitePanelOpen && (
+            <div
+              className="absolute top-full right-0 mt-1.5 w-72 rounded-xl p-4 z-50 flex flex-col gap-3"
+              style={{
+                background: mode === "dark" ? "hsl(222,22%,11%)" : "#fff",
+                border: "1px solid var(--panel-divider)",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">{t("navbar.invitePanel.title")}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{t("navbar.invitePanel.desc")}</p>
+              </div>
+
+              {inviteLoading ? (
+                <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+              ) : referralCode ? (
+                <>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                      {t("navbar.invitePanel.yourCode")}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code
+                        className="flex-1 text-[13px] font-mono tracking-widest px-3 py-2 rounded-lg"
+                        style={{ background: "var(--panel-left-bg)", color: "var(--foreground)" }}
+                      >
+                        {referralCode}
+                      </code>
+                      <button
+                        className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                        style={{ background: "var(--panel-left-bg)" }}
+                        onClick={() => copyToClipboard(referralCode, "code")}
+                        title={t("navbar.invitePanel.copyCode")}
+                      >
+                        {copiedCode
+                          ? <Check className="w-3.5 h-3.5 text-green-500" />
+                          : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-[12px] font-medium transition-colors"
+                    style={{
+                      background: copiedLink ? "rgba(52,214,138,0.12)" : "#4f82ff",
+                      color: copiedLink ? "#34d68a" : "white",
+                    }}
+                    onClick={() => referralLink && copyToClipboard(referralLink, "link")}
+                  >
+                    {copiedLink
+                      ? <><Check className="w-3.5 h-3.5" />{t("navbar.invitePanel.copied")}</>
+                      : <><Copy className="w-3.5 h-3.5" />{t("navbar.invitePanel.copyLink")}</>}
+                  </button>
+
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {t("navbar.invitePanel.referralCount").replace("{n}", String(referralCount))}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

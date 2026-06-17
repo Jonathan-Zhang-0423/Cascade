@@ -22,7 +22,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants } from "@cascade/database";
 import { db } from "../../infra/db";
 import { eq, and, desc, count, isNull, or } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -3125,6 +3125,115 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // === REFERRAL ===
+
+  const REFERRAL_GRANT_DAYS = 30;
+
+  // 6-character random suffix from an unambiguous charset.
+  // Space: 32^6 = ~1 billion combinations — no practical upper limit for user referral codes.
+  function randomSuffix(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let s = "";
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  // Determine the referral code prefix for a user based on their email.
+  // CASCQJ = 奇迹创坛, CASCEDU = edu, CASC = standard
+  // Format matches admin-issued invite codes: prefix + 6 random chars, no separator.
+  async function referralCodePrefix(userId: string): Promise<string> {
+    const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+    const email = row?.email ?? "";
+    if (isQizhiEmail(email)) return "CASCQJ";
+    if (isEduEmail(email)) return "CASCEDU";
+    return "CASC";
+  }
+
+  // Ensure the user has a referral code, generating one if absent.
+  // Retries up to 20 times on unique-constraint collision (probability negligible at scale).
+  async function ensureReferralCode(userId: string): Promise<string> {
+    const [row] = await db.select({ referralCode: users.referralCode }).from(users).where(eq(users.id, userId));
+    if (row?.referralCode) return row.referralCode;
+    const prefix = await referralCodePrefix(userId);
+    for (let i = 0; i < 20; i++) {
+      const code = `${prefix}${randomSuffix()}`;
+      try {
+        await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+        return code;
+      } catch {
+        // unique constraint violation — retry with a new suffix
+      }
+    }
+    throw new Error("Failed to generate referral code after 20 attempts");
+  }
+
+  // Extend trialExpiresAt by N days (from now or from current expiry, whichever is later)
+  async function extendTrial(userId: string, days: number, reason: string, relatedUserId?: string): Promise<void> {
+    const [row] = await db.select({ trialExpiresAt: users.trialExpiresAt }).from(users).where(eq(users.id, userId));
+    const base = row?.trialExpiresAt && row.trialExpiresAt > new Date() ? row.trialExpiresAt : new Date();
+    const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+    await db.update(users).set({ trialExpiresAt: newExpiry }).where(eq(users.id, userId));
+    await db.insert(subscriptionGrants).values({ userId, grantedDays: days, reason, relatedUserId: relatedUserId ?? null });
+  }
+
+  // GET /api/referral/my-code — return the current user's referral code and stats
+  app.get("/api/referral/my-code", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const code = await ensureReferralCode(userId);
+
+      // Count how many users this person has successfully referred
+      const [{ referralCount }] = await db
+        .select({ referralCount: count() })
+        .from(users)
+        .where(eq(users.referredBy, userId));
+
+      const baseUrl = process.env.APP_BASE_URL || "http://localhost:5000";
+      res.json({
+        referralCode: code,
+        referralLink: `${baseUrl}/register?ref=${code}`,
+        referralCount: Number(referralCount),
+        grantDays: REFERRAL_GRANT_DAYS,
+      });
+    } catch (err) {
+      console.error("[referral/my-code]", err);
+      res.status(500).json({ error: "Failed to get referral code" });
+    }
+  });
+
+  // POST /api/referral/redeem — new user redeems a referral code after registration
+  // Body: { referralCode: string }
+  app.post("/api/referral/redeem", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const { referralCode: code } = req.body as { referralCode?: string };
+      if (!code?.trim()) return res.status(400).json({ error: "Referral code required" });
+
+      // Check the invitee hasn't already used a referral code
+      const [me] = await db.select({ referredBy: users.referredBy }).from(users).where(eq(users.id, userId));
+      if (me?.referredBy) return res.status(400).json({ error: "You have already used a referral code" });
+
+      // Look up the referrer
+      const [referrer] = await db.select({ id: users.id }).from(users).where(eq(users.referralCode, code.trim().toUpperCase()));
+      if (!referrer) return res.status(400).json({ error: "Invalid referral code" });
+      if (referrer.id === userId) return res.status(400).json({ error: "You cannot use your own referral code" });
+
+      // Record the referral and grant both parties 30 days
+      await db.update(users).set({ referredBy: referrer.id }).where(eq(users.id, userId));
+      await extendTrial(userId, REFERRAL_GRANT_DAYS, "referral_invitee", referrer.id);
+      await extendTrial(referrer.id, REFERRAL_GRANT_DAYS, "referral_inviter", userId);
+
+      res.json({ ok: true, grantedDays: REFERRAL_GRANT_DAYS });
+    } catch (err) {
+      console.error("[referral/redeem]", err);
+      res.status(500).json({ error: "Failed to redeem referral code" });
+    }
+  });
+
   // === AUTH ===
 
   // Validate an invite code and atomically mark it redeemed by the given user.
@@ -3574,6 +3683,11 @@ Generate the cascade.md content for this project based on both the plan and the 
         await db.delete(users).where(eq(users.id, createdUserId));
         return res.status(400).json({ error: redeem.error });
       }
+
+      // Generate a unique referral code for the new user
+      let newReferralCode: string | null = null;
+      try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
+
       await db.update(users)
         .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
         .where(eq(users.id, createdUserId));
@@ -3586,6 +3700,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         hasSetExperienceLevel: false,
         inviteCode: redeem.code,
         trialExpiresAt: redeem.trialExpiresAt.toISOString(),
+        referralCode: newReferralCode,
       });
     } catch (err) {
       console.error("[auth/otp/verify-login]", err);
