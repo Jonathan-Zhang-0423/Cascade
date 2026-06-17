@@ -101,6 +101,44 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
+  // ── Edit username state ───────────────────────────────────────────────────
+  const [showEditUsername, setShowEditUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [editUsernameError, setEditUsernameError] = useState("");
+  const [editUsernameLoading, setEditUsernameLoading] = useState(false);
+
+  const handleEditUsernameOpen = () => {
+    setNewUsername(username ?? "");
+    setEditUsernameError("");
+    setShowEditUsername(true);
+  };
+
+  const handleEditUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditUsernameError("");
+    const trimmed = newUsername.trim();
+    if (trimmed.length < 2) { setEditUsernameError(t("auth.usernameTooShort")); return; }
+    setEditUsernameLoading(true);
+    try {
+      const res = await fetch("/api/auth/me/username", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditUsernameError(
+          data.error === "Username already taken" ? t("auth.usernameTaken") : data.error
+        );
+        return;
+      }
+      setUsername(data.username);
+      setShowEditUsername(false);
+    } finally {
+      setEditUsernameLoading(false);
+    }
+  };
+
   // close logo menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -304,6 +342,14 @@ export default function DashboardPage() {
                 <DropdownMenuLabel className="text-xs font-semibold text-foreground">
                   {username ?? "…"}
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs cursor-pointer gap-2"
+                  onClick={handleEditUsernameOpen}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  {t("auth.editUsername")}
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-xs cursor-pointer gap-2"
@@ -674,6 +720,40 @@ export default function DashboardPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Edit username dialog */}
+      <Dialog open={showEditUsername} onOpenChange={(open) => !open && setShowEditUsername(false)}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">{t("auth.editUsername")}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditUsernameSubmit} className="flex flex-col gap-4 mt-2">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                {t("auth.editUsernameLabel")}
+              </label>
+              <Input
+                value={newUsername}
+                onChange={(e) => { setNewUsername(e.target.value); setEditUsernameError(""); }}
+                placeholder={t("auth.editUsernamePlaceholder")}
+                autoFocus
+                maxLength={32}
+              />
+              {editUsernameError && (
+                <p className="mt-1.5 text-xs text-destructive">{editUsernameError}</p>
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="ghost" size="sm"
+                onClick={() => setShowEditUsername(false)}>
+                {t("auth.editUsernameCancel")}
+              </Button>
+              <Button type="submit" size="sm" disabled={editUsernameLoading || !newUsername.trim()}>
+                {editUsernameLoading ? "…" : t("auth.editUsernameSubmit")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

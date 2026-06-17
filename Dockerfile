@@ -4,7 +4,7 @@ WORKDIR /app
 
 # 只复制 package.json 和安装依赖
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # 代码通过 volume 挂载，不复制进来
 

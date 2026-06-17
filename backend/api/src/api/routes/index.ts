@@ -11,6 +11,10 @@ import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
 import archiver from "archiver";
 import { z } from "zod";
+// @ts-ignore
+import helmet from "helmet";
+// @ts-ignore
+import rateLimit from "express-rate-limit";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
@@ -558,6 +562,117 @@ export async function registerRoutes(
   checkCompilerOnStartup();
   checkSwiftCompilerOnStartup();
   checkFlutterOnStartup();
+
+  // ── Security: Helmet ────────────────────────────────────────────────────────
+  app.use(helmet({
+    contentSecurityPolicy: false, // disabled to allow Vite dev inline scripts
+    crossOriginEmbedderPolicy: false,
+  }));
+
+  // ── Security: IP blocklist (in-memory) ──────────────────────────────────────
+  // Map<ip, { blockedUntil: number, reason: string, blockedAt: number }>
+  const ipBlocklist = new Map<string, { blockedUntil: number; reason: string; blockedAt: number }>();
+  // Track 429 hits per IP to auto-block after 3 strikes
+  const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
+
+  function getClientIp(req: any): string {
+    return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  }
+
+  function isIpBlocked(ip: string): boolean {
+    const entry = ipBlocklist.get(ip);
+    if (!entry) return false;
+    if (entry.blockedUntil > Date.now()) return true;
+    ipBlocklist.delete(ip);
+    return false;
+  }
+
+  function recordIpStrike(ip: string) {
+    const now = Date.now();
+    const WINDOW = 10 * 60 * 1000; // 10 min window
+    const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
+    if (now - entry.windowStart > WINDOW) {
+      entry.count = 1; entry.windowStart = now;
+    } else {
+      entry.count++;
+    }
+    ipStrikeCount.set(ip, entry);
+    if (entry.count >= 3) {
+      ipBlocklist.set(ip, { blockedUntil: now + 60 * 60 * 1000, reason: "Auto: 3x rate-limit violations", blockedAt: now });
+      ipStrikeCount.delete(ip);
+    }
+  }
+
+  // Expose blocklist controls on app locals for admin routes
+  (app as any)._ipBlocklist = ipBlocklist;
+
+  // Middleware: reject blocked IPs
+  app.use((req: any, res: any, next: any) => {
+    const ip = getClientIp(req);
+    if (isIpBlocked(ip)) {
+      return res.status(403).json({ error: "Your IP has been blocked. Contact support." });
+    }
+    next();
+  });
+
+  // ── Security: Account lockout (in-memory) ───────────────────────────────────
+  // Map<userId, { failCount: number; lockedUntil: number | null }>
+  const accountLockout = new Map<string, { failCount: number; lockedUntil: number | null; lockedAt: number | null }>();
+  const MAX_FAIL = 5;
+  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+  function recordLoginFail(userId: string) {
+    const entry = accountLockout.get(userId) ?? { failCount: 0, lockedUntil: null, lockedAt: null };
+    entry.failCount++;
+    if (entry.failCount >= MAX_FAIL) {
+      entry.lockedUntil = Date.now() + LOCKOUT_MS;
+      entry.lockedAt = Date.now();
+    }
+    accountLockout.set(userId, entry);
+  }
+
+  function isAccountLocked(userId: string): boolean {
+    const entry = accountLockout.get(userId);
+    if (!entry || !entry.lockedUntil) return false;
+    if (entry.lockedUntil > Date.now()) return true;
+    // Auto-unlock
+    accountLockout.delete(userId);
+    return false;
+  }
+
+  function clearAccountLockout(userId: string) {
+    accountLockout.delete(userId);
+  }
+
+  (app as any)._accountLockout = accountLockout;
+  (app as any)._clearAccountLockout = clearAccountLockout;
+
+  // ── Security: Rate limiters ─────────────────────────────────────────────────
+  function makeRateLimiter(max: number, windowMinutes: number, message: string) {
+    return rateLimit({
+      windowMs: windowMinutes * 60 * 1000,
+      max,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req: any) => getClientIp(req),
+      message: { error: message },
+      handler: (req: any, res: any, next: any, options: any) => {
+        recordIpStrike(getClientIp(req));
+        res.status(options.statusCode).json(options.message);
+      },
+      skip: (req: any) => {
+        // Never rate-limit already-blocked IPs (they get 403 earlier)
+        return false;
+      },
+    });
+  }
+
+  // All auth endpoints: 30 req / 15 min per IP
+  app.use("/api/auth", makeRateLimiter(30, 15, "Too many requests. Please try again later."));
+  // Login specifically: 10 req / 15 min per IP
+  app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
+  // OTP send: 10 req / 60 min per IP
+  app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
 
   app.get("/api/providers", (_req, res) => {
     res.json({
@@ -3049,46 +3164,9 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
 
   app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { username, password, inviteCode } = req.body as {
-        username: string; password: string; inviteCode?: string;
-      };
-      if (typeof username !== "string" || typeof password !== "string" || !username.trim() || !password) {
-        return res.status(400).json({ error: "username and password required" });
-      }
-      if (typeof inviteCode !== "string" || !inviteCode.trim()) {
-        return res.status(400).json({ error: "Invite code required" });
-      }
-      const existing = await storage.getUserByUsername(username.trim());
-      if (existing) return res.status(409).json({ error: "Username already taken" });
-
-      const hashed = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ username: username.trim(), password: hashed });
-
-      const redeem = await redeemInviteCode(inviteCode, user.id);
-      if (!redeem.ok) {
-        // Roll back the user we just created so the username doesn't get
-        // burned on a bad invite code.
-        await db.delete(users).where(eq(users.id, user.id));
-        return res.status(400).json({ error: redeem.error });
-      }
-      await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
-        .where(eq(users.id, user.id));
-
-      (req.session as any).userId = user.id;
-      res.status(201).json({
-        id: user.id,
-        username: user.username,
-        experienceLevel: (user as any).experienceLevel,
-        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
-        inviteCode: redeem.code,
-        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
-      });
-    } catch (err) {
-      console.error("[auth/register]", err);
-      res.status(500).json({ error: "Registration failed" });
-    }
+    // Username-based registration is closed. New users must register via
+    // email OTP, phone OTP, or GitHub OAuth.
+    return res.status(403).json({ error: "Registration via username is not available. Please sign up with email, phone, or GitHub." });
   });
 
   app.post("/api/auth/invite-gate", async (req, res) => {
@@ -3125,14 +3203,39 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
         return res.status(400).json({ error: "username and password required" });
       }
-      const user = await storage.getUserByUsername(username.trim());
+      const identifier = username.trim();
+
+      // Resolve user by email, phone, or username — whichever matches first.
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.toLowerCase());
+      const isPhone = /^\+\d{8,15}$/.test(identifier);
+      let user =
+        isEmail ? await storage.getUserByEmail(identifier.toLowerCase())
+        : isPhone ? await storage.getUserByPhone(identifier)
+        : await storage.getUserByUsername(identifier);
+
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
-      // GitHub-only users (created via OAuth) have no password — reject the
-      // password-based login path with the same generic error so we don't
-      // leak which accounts are GitHub-only.
       if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
+
+      // Account lockout check
+      if (isAccountLocked(user.id)) {
+        const entry = accountLockout.get(user.id);
+        const remainingSec = entry?.lockedUntil ? Math.ceil((entry.lockedUntil - Date.now()) / 1000) : 900;
+        return res.status(403).json({ error: "Account temporarily locked due to too many failed attempts.", remainingSec });
+      }
+
       const match = await bcrypt.compare(password, user.password);
-      if (!match) return res.status(401).json({ error: "Invalid credentials" });
+      if (!match) {
+        recordLoginFail(user.id);
+        const entry = accountLockout.get(user.id);
+        const remaining = MAX_FAIL - (entry?.failCount ?? 0);
+        const msg = remaining <= 0
+          ? "Account temporarily locked due to too many failed attempts."
+          : `Invalid credentials. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`;
+        return res.status(401).json({ error: msg });
+      }
+
+      // Success — clear any lockout
+      clearAccountLockout(user.id);
       (req.session as any).userId = user.id;
       res.json({
         id: user.id,
@@ -3166,6 +3269,33 @@ Generate the cascade.md content for this project based on both the plan and the 
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
     });
+  });
+
+  app.put("/api/auth/me/username", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { username } = req.body as { username?: string };
+      if (!username || typeof username !== "string" || !username.trim()) {
+        return res.status(400).json({ error: "Username required" });
+      }
+      const trimmed = username.trim();
+      if (trimmed.length < 2 || trimmed.length > 32) {
+        return res.status(400).json({ error: "Username must be 2–32 characters" });
+      }
+      if (!/^[a-zA-Z0-9_\-一-龥]+$/.test(trimmed)) {
+        return res.status(400).json({ error: "Username contains invalid characters" });
+      }
+      const existing = await storage.getUserByUsername(trimmed);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ error: "Username already taken" });
+      }
+      await db.update(users).set({ username: trimmed }).where(eq(users.id, userId));
+      res.json({ ok: true, username: trimmed });
+    } catch (err) {
+      console.error("[auth/me/username]", err);
+      res.status(500).json({ error: "Failed to update username" });
+    }
   });
 
   app.put("/api/auth/me/experience", async (req, res) => {
@@ -3276,8 +3406,10 @@ Generate the cascade.md content for this project based on both the plan and the 
         if (!result.ok) {
           return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
         }
+        // Identical response whether or not the account exists — anti-enumeration.
+        return res.json({ ok: true, retryAfterSec: result.retryAfterSec });
       }
-      // Identical response whether or not the account exists.
+      // Account not found — return identical shape so callers can't enumerate.
       res.json({ ok: true, retryAfterSec: 60 });
     } catch (err) {
       console.error("[auth/reset-password/send]", err);
@@ -3338,7 +3470,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.post("/api/auth/otp/send", async (req, res) => {
     try {
-      const { channel, target } = req.body as { channel?: string; target?: string };
+      const { channel, target, purpose: rawPurpose } = req.body as { channel?: string; target?: string; purpose?: string };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
       }
@@ -3346,11 +3478,12 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const result = await sendOtp({ channel, target: normalized, purpose: "login" });
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : "login";
+      const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
       }
-      res.json({ ok: true, retryAfterSec: 60 });
+      res.json({ ok: true, retryAfterSec: result.retryAfterSec });
     } catch (err) {
       console.error("[auth/otp/send]", err);
       res.status(500).json({ error: "Failed to send code" });
@@ -3477,7 +3610,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(409).json({ error: "Email already in use" });
       }
 
-      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "login" });
+      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "bind_email" });
       if (!verify.ok) {
         const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
         return res.status(401).json({ error: errMsg });
@@ -3919,8 +4052,8 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
   function formatInviteCode(isEdu: boolean, seq: number): string {
     return isEdu
-      ? `CASC-EDU-${String(seq).padStart(4, "0")}`
-      : `CASC-${String(seq).padStart(3, "0")}`;
+      ? `CASCEDU${String(seq).padStart(4, "0")}`
+      : `CASC${String(seq).padStart(3, "0")}`;
   }
   function checkAdmin(req: any, res: any): boolean {
     if (!ADMIN_SECRET) {
@@ -4007,6 +4140,103 @@ Generate the cascade.md content for this project based on both the plan and the 
       console.error("[waitlist/list]", err);
       res.status(500).json({ error: "Failed to fetch waitlist" });
     }
+  });
+
+  // ── Admin: IP blocklist management ─────────────────────────────────────────
+
+  // GET /api/admin/blocklist/ip — list all blocked IPs
+  app.get("/api/admin/blocklist/ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const now = Date.now();
+    const list = Array.from((app as any)._ipBlocklist.entries())
+      .filter(([, v]: [string, any]) => v.blockedUntil > now)
+      .map(([ip, v]: [string, any]) => ({
+        ip,
+        reason: v.reason,
+        blockedAt: new Date(v.blockedAt).toISOString(),
+        blockedUntil: new Date(v.blockedUntil).toISOString(),
+        remainingSec: Math.ceil((v.blockedUntil - now) / 1000),
+      }));
+    res.json({ total: list.length, items: list });
+  });
+
+  // DELETE /api/admin/blocklist/ip/:ip — unblock an IP
+  app.delete("/api/admin/blocklist/ip/:ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const ip = decodeURIComponent(req.params.ip);
+    const existed = (app as any)._ipBlocklist.has(ip);
+    (app as any)._ipBlocklist.delete(ip);
+    res.json({ ok: true, ip, unblocked: existed });
+  });
+
+  // POST /api/admin/blocklist/ip — manually block an IP
+  app.post("/api/admin/blocklist/ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { ip, durationHours = 1, reason = "Manual block" } = req.body as {
+      ip?: string; durationHours?: number; reason?: string;
+    };
+    if (!ip || typeof ip !== "string") return res.status(400).json({ error: "ip required" });
+    const now = Date.now();
+    (app as any)._ipBlocklist.set(ip.trim(), {
+      blockedUntil: now + durationHours * 60 * 60 * 1000,
+      reason,
+      blockedAt: now,
+    });
+    res.json({ ok: true, ip: ip.trim(), durationHours });
+  });
+
+  // ── Admin: Account lockout management ──────────────────────────────────────
+
+  // GET /api/admin/blocklist/users — list locked accounts
+  app.get("/api/admin/blocklist/users", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const now = Date.now();
+    const locked: any[] = [];
+    for (const [userId, entry] of (app as any)._accountLockout.entries()) {
+      if (entry.lockedUntil && entry.lockedUntil > now) {
+        // fetch username
+        const user = await storage.getUser(userId).catch(() => null);
+        locked.push({
+          userId,
+          username: (user as any)?.username ?? "unknown",
+          email: (user as any)?.email ?? null,
+          failCount: entry.failCount,
+          lockedAt: entry.lockedAt ? new Date(entry.lockedAt).toISOString() : null,
+          lockedUntil: new Date(entry.lockedUntil).toISOString(),
+          remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
+        });
+      }
+    }
+    res.json({ total: locked.length, items: locked });
+  });
+
+  // DELETE /api/admin/blocklist/users/:userId — unlock an account
+  app.delete("/api/admin/blocklist/users/:userId", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { userId } = req.params;
+    const existed = (app as any)._accountLockout.has(userId);
+    (app as any)._clearAccountLockout(userId);
+    res.json({ ok: true, userId, unlocked: existed });
+  });
+
+  // GET /api/admin/blocklist/users/:userId — check a specific user's lockout
+  app.get("/api/admin/blocklist/users/:userId", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { userId } = req.params;
+    const entry = (app as any)._accountLockout.get(userId);
+    const now = Date.now();
+    if (!entry || !entry.lockedUntil || entry.lockedUntil <= now) {
+      return res.json({ locked: false, userId });
+    }
+    const user = await storage.getUser(userId).catch(() => null);
+    res.json({
+      locked: true,
+      userId,
+      username: (user as any)?.username ?? "unknown",
+      failCount: entry.failCount,
+      lockedUntil: new Date(entry.lockedUntil).toISOString(),
+      remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
+    });
   });
 
   // POST /api/admin/send-invites — manual bulk send by IDs
