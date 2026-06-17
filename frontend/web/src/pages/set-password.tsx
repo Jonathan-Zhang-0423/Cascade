@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useT } from "@/lib/i18n";
@@ -106,24 +106,45 @@ export default function SetPasswordPage() {
   const [, setLocation] = useLocation();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [hasPassword, setHasPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Check if user already has a password set
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => { if (data.hasPassword) setHasPassword(true); })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (password.length < 6) { setError(t("auth.passwordTooShort")); return; }
     if (password !== confirm) { setError(t("auth.setPasswordMismatch")); return; }
+    if (hasPassword && !currentPassword) {
+      setError("请输入当前密码");
+      return;
+    }
     setLoading(true);
     try {
+      const body: Record<string, string> = { password };
+      if (hasPassword && currentPassword) body.currentPassword = currentPassword;
       const res = await fetch("/api/auth/set-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t("auth.genericError"));
+        const msg = data.error === "Current password incorrect"
+          ? "当前密码不正确"
+          : data.error === "Current password required"
+          ? "请输入当前密码"
+          : data.error ?? t("auth.genericError");
+        setError(msg);
         return;
       }
       setLocation("/login?passwordSet=1");
@@ -196,6 +217,21 @@ export default function SetPasswordPage() {
 
           {/* form */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Current password — only shown when user already has a password */}
+            {hasPassword && (
+              <motion.div variants={fadeUp} custom={0.5}>
+                <label className={labelCls}>当前密码</label>
+                <input
+                  type="password"
+                  className={inputCls}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="输入当前密码"
+                  autoComplete="current-password"
+                  autoFocus
+                />
+              </motion.div>
+            )}
             <motion.div variants={fadeUp} custom={1}>
               <label className={labelCls}>{t("auth.setPasswordLabel")}</label>
               <input
@@ -205,21 +241,48 @@ export default function SetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={t("auth.setPasswordPlaceholder")}
                 autoComplete="new-password"
-                autoFocus
+                autoFocus={!hasPassword}
               />
               <PasswordStrength password={password} />
             </motion.div>
 
             <motion.div variants={fadeUp} custom={2}>
               <label className={labelCls}>{t("auth.setPasswordConfirmLabel")}</label>
-              <input
-                type="password"
-                className={inputCls}
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder={t("auth.setPasswordConfirmPlaceholder")}
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <input
+                  type="password"
+                  className={inputCls + (confirm && password && confirm === password
+                    ? " border-green-400 focus:border-green-500 focus:shadow-[0_0_0_3px_rgba(34,197,94,0.12)]"
+                    : confirm && password && confirm !== password
+                    ? " border-red-300 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.08)]"
+                    : "")}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder={t("auth.setPasswordConfirmPlaceholder")}
+                  autoComplete="new-password"
+                />
+                {confirm && password && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {confirm === password ? (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="7" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.5)" strokeWidth="1"/>
+                        <path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="7" fill="rgba(239,68,68,0.08)" stroke="rgba(239,68,68,0.35)" strokeWidth="1"/>
+                        <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                  </div>
+                )}
+              </div>
+              {confirm && password && confirm !== password && (
+                <p className="mt-1.5 text-[11px] text-red-500">{t("auth.setPasswordMismatch")}</p>
+              )}
+              {confirm && password && confirm === password && (
+                <p className="mt-1.5 text-[11px] text-green-600">密码一致</p>
+              )}
             </motion.div>
 
             <motion.div variants={fadeUp} custom={3}>

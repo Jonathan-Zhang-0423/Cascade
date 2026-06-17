@@ -86,6 +86,30 @@ export function ChatPanel() {
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
   const [polishResult, setPolishResult] = useState<{ original: string; polished: string } | null>(null);
+
+  // Thinking indicator — covers both manager mode (isManagerResponding) and
+  // build mode (buildPhase="thinking" before any live content arrives).
+  const [showThinking, setShowThinking] = useState(false);
+  useEffect(() => {
+    const shouldShow =
+      isManagerResponding ||
+      mgrPreparingPlan ||
+      buildPhase === "thinking";
+    if (shouldShow) {
+      setShowThinking(true);
+    } else {
+      setShowThinking(false);
+    }
+  }, [isManagerResponding, mgrPreparingPlan, buildPhase]);
+  // Hide once any live content arrives (manager or build)
+  useEffect(() => {
+    if (
+      mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 ||
+      liveThinkingText || liveNarrationText || liveActionLog.length > 0
+    ) {
+      setShowThinking(false);
+    }
+  }, [mgrLiveThinkingText, mgrLiveNarrationText, mgrLiveActionLog, liveThinkingText, liveNarrationText, liveActionLog]);
   const [providers, setProviders] = useState<{
     doubao: boolean;
     kimi: boolean;
@@ -350,6 +374,9 @@ export function ChatPanel() {
           setUserConfirmationInput={setUserConfirmationInput}
         />
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
+          <TypingIndicator />
+        )}
+        {showThinking && (
           <TypingIndicator />
         )}
         {(isManagerResponding || mgrPreparingPlan) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (

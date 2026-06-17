@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useIDEStore,
   type ChatMessage,
 } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
 import {
   Check,
   ExternalLink,
@@ -385,15 +386,100 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
   );
 }
 
+// ── Thinking phrases ─────────────────────────────────────────────────────────
+const THINKING_PHRASES: Record<"zh" | "en", string[]> = {
+  zh: [
+    "正在脑洞大开中…",
+    "灵感正在路上，请稍候…",
+    "AI 正在认真思考，不是在摸鱼…",
+    "代码宇宙正在重组中…",
+    "正在向平行宇宙借点智慧…",
+    "思维发动机预热中…",
+    "正在把你的想法翻译成代码语言…",
+    "正在解锁最优解…",
+    "AI 大脑正在高速运转…",
+    "正在召唤代码精灵…",
+    "把咖啡因转化为代码中…",
+    "正在对齐神经元…",
+    "想法正在结晶…",
+    "正在量子计算最优解…",
+    "创意引擎已启动，请系好安全带…",
+    "正在消化你的需求，别催…",
+    "大模型正在认真上班…",
+    "正在把文字变成魔法…",
+    "灵感女神正在降临…",
+    "正在高速检索知识库…",
+  ],
+  en: [
+    "Brainwaves detected, processing…",
+    "Consulting the code oracle…",
+    "Firing up the neural engines…",
+    "Turning caffeine into code…",
+    "Assembling brilliant thoughts…",
+    "Summoning the AI muse…",
+    "Untangling the idea spaghetti…",
+    "Crunching possibilities…",
+    "Downloading inspiration…",
+    "Aligning neurons, please hold…",
+    "Your idea is in good hands…",
+    "Wrangling electrons into shape…",
+    "Searching all known universes…",
+    "Cooking up something great…",
+    "Debugging the space-time fabric…",
+    "Connecting the creative dots…",
+    "Big thoughts incoming…",
+    "Making sense of it all…",
+    "Spinning up the idea turbine…",
+    "Almost there, stay curious…",
+  ],
+};
+
 export function TypingIndicator({ text }: { text?: string }) {
-  const lang = usePlanCardLang();
+  const { lang } = useLanguageStore();
+  const phrases = THINKING_PHRASES[lang === "zh" ? "zh" : "en"];
+
+  // Pick once per mount — guarantees different text each conversation
+  const phrase = useRef<string>(
+    phrases[Math.floor(Math.random() * phrases.length)]
+  ).current;
+
+  // Fade in after a short delay so it doesn't flash on very fast responses
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 120);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div
-      className="px-3.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/60"
-      data-testid="typing-indicator"
-    >
-      <span className="animate-pulse">⠋</span>
-      <span>{text || t(lang, "thinking")}</span>
-    </div>
+    <>
+      <style>{`
+        @keyframes cascade-bar {
+          0%, 100% { transform: scaleY(0.35); opacity: 0.45; }
+          50%       { transform: scaleY(1);    opacity: 1;    }
+        }
+        .cb-1 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0s;     }
+        .cb-2 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0.18s;  }
+        .cb-3 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0.36s;  }
+      `}</style>
+      <div
+        className="px-3.5 py-1 flex items-center gap-2 text-[12px] text-muted-foreground/70"
+        style={{
+          opacity: visible ? 1 : 0,
+          transition: "opacity 0.25s ease",
+        }}
+        data-testid="typing-indicator"
+      >
+        {/* Cascade-brand three-bar animation */}
+        <div className="flex items-end gap-[2.5px] shrink-0" style={{ height: 14 }}>
+          <div className="cb-1 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 7  }} />
+          <div className="cb-2 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 11 }} />
+          <div className="cb-3 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 14 }} />
+        </div>
+        {/* Random humorous phrase */}
+        <span className="font-medium tracking-tight">
+          {text || phrase}
+        </span>
+      </div>
+    </>
   );
 }
