@@ -48,10 +48,8 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    // nginx 只监听 HTTP(80)，SSL 在上游 Cloudflare/CDN 终止。
-    // secure:true 导致 Set-Cookie 在 HTTP 内部链路被浏览器拒绝存储。
-    // 设为 false 让 cookie 在 Cloudflare HTTPS + nginx HTTP 混合链路下正常工作。
-    secure: false,
+    // nginx 现在监听 443(HTTPS)，SSL 在本机终止，secure:true 正确。
+    secure: process.env.NODE_ENV === "production",
   },
 }));
 
