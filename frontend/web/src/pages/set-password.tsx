@@ -120,7 +120,7 @@ export default function SetPasswordPage() {
 
   // Check if user already has a password set
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/auth/me", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => { if (data.hasPassword) setHasPassword(true); })
       .catch(() => {});
@@ -143,6 +143,7 @@ export default function SetPasswordPage() {
       const res = await fetch("/api/auth/set-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -260,7 +261,7 @@ export default function SetPasswordPage() {
               <div className="relative">
                 <input
                   type="password"
-                  className={inputCls + (pwMatch
+                  className={inputCls + " no-native-reveal" + (pwMatch
                     ? " border-green-400 focus:border-green-500 focus:shadow-[0_0_0_3px_rgba(34,197,94,0.12)]"
                     : pwMismatch
                     ? " border-red-300 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.08)]"

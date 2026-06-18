@@ -12,6 +12,10 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+// 生产部署在反代（Nginx 等）之后，开启 trust proxy 才能从 X-Forwarded-For
+// 取到客户端真实外网 IP——人机验证验票（captcha）和限流都依赖它。
+app.set("trust proxy", true);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -41,7 +45,14 @@ app.use(session({
   secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" },
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    // nginx 只监听 HTTP(80)，SSL 在上游 Cloudflare/CDN 终止。
+    // secure:true 导致 Set-Cookie 在 HTTP 内部链路被浏览器拒绝存储。
+    // 设为 false 让 cookie 在 Cloudflare HTTPS + nginx HTTP 混合链路下正常工作。
+    secure: false,
+  },
 }));
 
 export function log(message: string, source = "express") {

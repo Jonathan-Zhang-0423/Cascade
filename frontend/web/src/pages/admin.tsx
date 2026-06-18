@@ -19,7 +19,20 @@ interface LockedUser {
   remainingSec: number;
 }
 
-type AdminTab = "waitlist" | "security";
+type AdminTab = "waitlist" | "users" | "security";
+
+interface AppUser {
+  id: string;
+  username: string;
+  email: string | null;
+  phone: string | null;
+  activated: boolean;
+  authMethod: string;
+  projectCount: number;
+  lastActiveAt: string | null;
+  trialExpiresAt: string | null;
+  trialRemainingSec: number | null;
+}
 
 interface Subscriber {
   id: number;
@@ -69,6 +82,15 @@ export default function AdminPage() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [activeTab, setActiveTab] = useState<AdminTab>("waitlist");
 
+  // Users panel state
+  const [appUsers, setAppUsers] = useState<AppUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [usersSearch, setUsersSearch] = useState("");
+  // 点击表头列名后弹出的筛选菜单：当前激活的列 + 每列已选值集合。
+  const [openHeader, setOpenHeader] = useState<string | null>(null);
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+
   // Security panel state
   const [blockedIps, setBlockedIps] = useState<BlockedIp[]>([]);
   const [lockedUsers, setLockedUsers] = useState<LockedUser[]>([]);
@@ -81,6 +103,13 @@ export default function AdminPage() {
   const [manualReason, setManualReason] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [search, setSearch] = useState("");
+
+  // OTP limit panel state
+  const [otpTarget, setOtpTarget] = useState("");
+  const [otpRecords, setOtpRecords] = useState<{ id: number; channel: string; purpose: string; attempts: number; expiresAt: string; consumedAt: string | null; createdAt: string }[]>([]);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpMsg, setOtpMsg] = useState("");
+  const [otpError, setOtpError] = useState("");
 
   const fetchData = useCallback(async (adminSecret: string) => {
     const res = await fetch("/api/waitlist", {
@@ -121,6 +150,21 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Unable to reach the server.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ── Users handlers ─────────────────────────────────────────────────────────
+  async function fetchUsers() {
+    setUsersLoading(true); setUsersError("");
+    try {
+      const res = await fetch("/api/admin/users", { headers: { "x-admin-secret": secret.trim() } });
+      if (!res.ok) throw new Error("加载失败");
+      const json = await res.json();
+      setAppUsers(json.items ?? []);
+    } catch {
+      setUsersError("加载失败，请重试");
+    } finally {
+      setUsersLoading(false);
     }
   }
 
@@ -190,10 +234,59 @@ export default function AdminPage() {
     }
   }
 
+  async function handleFetchOtp() {
+    if (!otpTarget.trim()) return;
+    setOtpLoading(true); setOtpError(""); setOtpMsg("");
+    try {
+      const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("查询失败");
+      const json = await res.json();
+      setOtpRecords(json.items ?? []);
+    } catch {
+      setOtpError("查询失败，请重试");
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function handleClearOtp() {
+    if (!otpTarget.trim()) return;
+    setOtpLoading(true); setOtpError(""); setOtpMsg("");
+    try {
+      const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("清除失败");
+      const json = await res.json();
+      setOtpMsg(`已清除 ${json.deleted} 条 OTP 记录，限制已解除`);
+      setOtpRecords([]);
+    } catch {
+      setOtpError("清除失败，请重试");
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
   // Load security data when switching to security tab
   useEffect(() => {
     if (authed && activeTab === "security") fetchSecurity();
   }, [authed, activeTab]);
+
+  // Load users when switching to users tab
+  useEffect(() => {
+    if (authed && activeTab === "users") fetchUsers();
+  }, [authed, activeTab]);
+
+  // 点击页面任意处关闭表头筛选下拉。
+  useEffect(() => {
+    if (!openHeader) return;
+    const close = () => setOpenHeader(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [openHeader]);
 
   async function handleSendInvites() {
     if (selected.size === 0) return;
@@ -244,6 +337,64 @@ export default function AdminPage() {
       year: "numeric", month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
+  }
+
+  // ── Users: 列定义 + 每行在该列的“分类值”（点击表头按这些值筛选）──────────────
+  // value(u) 返回该用户在此列的分类标签；筛选时按标签精确匹配。
+  const userColumns: { key: string; label: string; value: (u: AppUser) => string }[] = [
+    { key: "user", label: "用户", value: (u) => u.username },
+    {
+      key: "type", label: "类型",
+      value: (u) => {
+        const e = (u.email ?? "").toLowerCase();
+        if (e.endsWith("@miracleplus.com")) return "奇迹";
+        if (e.endsWith(".edu") || e.endsWith(".edu.cn")) return "EDU";
+        return "普通";
+      },
+    },
+    { key: "auth", label: "注册方式", value: (u) => ({ github: "GitHub", email: "邮箱", phone: "手机", other: "其他" } as Record<string, string>)[u.authMethod] ?? u.authMethod },
+    { key: "activated", label: "状态", value: (u) => (u.activated ? "已激活" : "未激活") },
+    { key: "projects", label: "项目数", value: (u) => String(u.projectCount) },
+    { key: "trial", label: "免费期", value: (u) => (u.trialRemainingSec == null ? "无" : u.trialRemainingSec <= 0 ? "已过期" : "试用中") },
+  ];
+  const userColByKey = Object.fromEntries(userColumns.map((c) => [c.key, c]));
+
+  // 某列的全部可选分类值（去重、稳定排序），供表头下拉展示。
+  function colOptions(key: string): string[] {
+    const col = userColByKey[key];
+    if (!col) return [];
+    return Array.from(new Set(appUsers.map((u) => col.value(u)))).sort();
+  }
+
+  // 应用搜索 + 所有列的多选筛选。
+  const filteredUsers = appUsers.filter((u) => {
+    if (usersSearch) {
+      const q = usersSearch.toLowerCase();
+      const hit = u.username.toLowerCase().includes(q)
+        || (u.email ?? "").toLowerCase().includes(q)
+        || (u.phone ?? "").toLowerCase().includes(q);
+      if (!hit) return false;
+    }
+    for (const [key, sel] of Object.entries(colFilters)) {
+      if (sel.size === 0) continue;
+      const col = userColByKey[key];
+      if (col && !sel.has(col.value(u))) return false;
+    }
+    return true;
+  });
+
+  // 切换某列某个分类值的选中状态。
+  function toggleColFilter(key: string, val: string) {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      const set = new Set(next[key] ?? []);
+      set.has(val) ? set.delete(val) : set.add(val);
+      next[key] = set;
+      return next;
+    });
+  }
+  function clearColFilter(key: string) {
+    setColFilters((prev) => { const next = { ...prev }; delete next[key]; return next; });
   }
 
   const filtered = (data?.subscribers ?? []).filter((s) => {
@@ -356,7 +507,7 @@ export default function AdminPage() {
           <>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-8 border-b border-black/[0.07]">
-              {([["waitlist", "Waitlist"], ["security", "安全管理"]] as [AdminTab, string][]).map(([tab, label]) => (
+              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"]] as [AdminTab, string][]).map(([tab, label]) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -376,16 +527,29 @@ export default function AdminPage() {
                   className="font-bold text-black leading-tight"
                   style={{ fontSize: "clamp(28px, 4vw, 40px)", fontFamily: FONT }}
                 >
-                  {activeTab === "waitlist" ? "Waitlist" : "安全管理"}
+                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : "安全管理"}
                 </h1>
                 {activeTab === "waitlist" && (
                   <p className="text-gray-500 text-[14px] mt-1">cascadeai.co · {data.total} subscribers</p>
+                )}
+                {activeTab === "users" && (
+                  <p className="text-gray-500 text-[14px] mt-1">共 {appUsers.length} 人 · 已激活 {appUsers.filter((u) => u.activated).length} 人</p>
                 )}
                 {activeTab === "security" && (
                   <p className="text-gray-500 text-[14px] mt-1">IP 封禁 {blockedIps.length} 条 · 账号锁定 {lockedUsers.length} 条</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {activeTab === "users" && (
+                  <button
+                    onClick={fetchUsers}
+                    disabled={usersLoading}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+                  >
+                    {usersLoading ? "刷新中…" : "刷新"}
+                  </button>
+                )}
                 {activeTab === "waitlist" && (
                   <>
                     <button
@@ -455,6 +619,7 @@ export default function AdminPage() {
                 placeholder="Search email…"
                 className="px-3 py-2.5 rounded-xl text-[13px] outline-none w-52"
                 style={{
+                  fontFamily: FONT,
                   background: "rgba(255,255,255,0.9)",
                   border: "1px solid rgba(0,0,0,0.10)",
                   boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
@@ -466,29 +631,31 @@ export default function AdminPage() {
                 onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
                 className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
                 style={{
+                  fontFamily: FONT,
                   background: "rgba(255,255,255,0.9)",
                   border: "1px solid rgba(0,0,0,0.10)",
                   boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
                 }}
               >
-                <option value="all">All status</option>
-                <option value="pending">Pending</option>
-                <option value="invited">Invited</option>
-                <option value="email_failed">Email Failed</option>
+                <option value="all" style={{ fontFamily: FONT }}>All status</option>
+                <option value="pending" style={{ fontFamily: FONT }}>Pending</option>
+                <option value="invited" style={{ fontFamily: FONT }}>Invited</option>
+                <option value="email_failed" style={{ fontFamily: FONT }}>Email Failed</option>
               </select>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as FilterType)}
                 className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
                 style={{
+                  fontFamily: FONT,
                   background: "rgba(255,255,255,0.9)",
                   border: "1px solid rgba(0,0,0,0.10)",
                   boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
                 }}
               >
-                <option value="all">All types</option>
-                <option value="normal">Normal</option>
-                <option value="edu">EDU</option>
+                <option value="all" style={{ fontFamily: FONT }}>All types</option>
+                <option value="normal" style={{ fontFamily: FONT }}>Normal</option>
+                <option value="edu" style={{ fontFamily: FONT }}>EDU</option>
               </select>
 
               <div className="ml-auto flex items-center gap-3">
@@ -501,7 +668,7 @@ export default function AdminPage() {
                   onClick={handleSendInvites}
                   disabled={selected.size === 0 || sending}
                   className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                  style={{ fontFamily: FONT, background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
                 >
                   {sending ? "Sending…" : `Send Invite${selected.size > 1 ? "s" : ""}${selected.size > 0 ? ` (${selected.size})` : ""}`}
                 </button>
@@ -600,6 +767,142 @@ export default function AdminPage() {
             )}
             </>)} {/* end waitlist tab */}
 
+            {/* ── Users tab ────────────────────────────────────────────── */}
+            {activeTab === "users" && (
+              <div className="flex flex-col gap-5">
+                {usersError && <p className="text-[13px] text-red-500">{usersError}</p>}
+
+                {/* Search + active filter chips */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    value={usersSearch}
+                    onChange={(e) => setUsersSearch(e.target.value)}
+                    placeholder="搜索用户名 / 邮箱 / 手机…"
+                    className="px-3 py-2.5 rounded-xl text-[13px] outline-none w-64"
+                    style={{ fontFamily: FONT, background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)", color: "#111827" }}
+                  />
+                  {Object.entries(colFilters).flatMap(([key, sel]) =>
+                    Array.from(sel).map((val) => (
+                      <button
+                        key={`${key}:${val}`}
+                        onClick={() => toggleColFilter(key, val)}
+                        className="px-2.5 py-1 rounded-full text-[12px] font-medium text-gray-700 flex items-center gap-1.5 hover:bg-gray-100 transition-colors"
+                        style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.10)" }}
+                      >
+                        <span className="text-gray-400">{userColByKey[key]?.label}:</span> {val}
+                        <span className="text-gray-400">✕</span>
+                      </button>
+                    ))
+                  )}
+                  <span className="ml-auto text-[13px] text-gray-500">
+                    <strong className="text-black">{filteredUsers.length}</strong> / {appUsers.length}
+                  </span>
+                </div>
+
+                {/* Table */}
+                {appUsers.length === 0 ? (
+                  <div className="text-center py-20 text-gray-400 text-[14px]">{usersLoading ? "加载中…" : "暂无用户"}</div>
+                ) : (
+                  <div className="rounded-2xl overflow-visible" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 20px rgba(0,0,0,0.05)" }}>
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "rgba(0,0,0,0.015)" }}>
+                          {userColumns.map((col) => {
+                            const sel = colFilters[col.key];
+                            const activeCount = sel?.size ?? 0;
+                            return (
+                              <th key={col.key} className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setOpenHeader(openHeader === col.key ? null : col.key); }}
+                                  className="flex items-center gap-1.5 hover:text-gray-700 transition-colors uppercase"
+                                >
+                                  {col.label}
+                                  {activeCount > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold normal-case" style={{ background: "rgba(0,0,0,0.08)", color: "#111" }}>{activeCount}</span>
+                                  )}
+                                  <svg width="9" height="9" viewBox="0 0 10 10" fill="none" className="opacity-50"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                </button>
+                                {openHeader === col.key && (
+                                  <div className="absolute left-3 top-full mt-1 z-20 min-w-[160px] rounded-xl py-1.5 normal-case"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ background: "white", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 8px 28px rgba(0,0,0,0.14)" }}>
+                                    <div className="flex items-center justify-between px-3 py-1.5">
+                                      <span className="text-[11px] font-semibold text-gray-400">筛选{col.label}</span>
+                                      {activeCount > 0 && (
+                                        <button onClick={() => clearColFilter(col.key)} className="text-[11px] text-gray-400 hover:text-gray-700">清除</button>
+                                      )}
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto">
+                                      {colOptions(col.key).map((opt) => {
+                                        const checked = sel?.has(opt) ?? false;
+                                        const n = appUsers.filter((u) => col.value(u) === opt).length;
+                                        return (
+                                          <button
+                                            key={opt}
+                                            onClick={() => toggleColFilter(col.key, opt)}
+                                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 transition-colors text-left"
+                                          >
+                                            <span className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0" style={{ border: checked ? "none" : "1.5px solid rgba(0,0,0,0.25)", background: checked ? "#111" : "transparent" }}>
+                                              {checked && <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                            </span>
+                                            <span className="flex-1 font-medium normal-case">{opt}</span>
+                                            <span className="text-gray-400">{n}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </th>
+                            );
+                          })}
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">最后活跃</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredUsers.map((u, i) => (
+                          <tr key={u.id} style={{ borderBottom: i < filteredUsers.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }} className="hover:bg-gray-50/40 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <div className="font-medium text-gray-900">{u.username}</div>
+                              <div className="text-gray-400 text-[12px]">{u.email ?? u.phone ?? "—"}</div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {(() => {
+                                const cat = userColByKey["type"].value(u);
+                                const style = cat === "奇迹" ? { background: "rgba(168,85,247,0.08)", color: "#9333ea" }
+                                  : cat === "EDU" ? { background: "rgba(99,102,241,0.08)", color: "#4f46e5" }
+                                  : { background: "rgba(0,0,0,0.05)", color: "#374151" };
+                                return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={style}>{cat}</span>;
+                              })()}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600">{userColByKey["auth"].value(u)}</td>
+                            <td className="px-5 py-3.5">
+                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={u.activated ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" } : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}>
+                                {u.activated ? "已激活" : "未激活"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-900 font-medium">{u.projectCount}</td>
+                            <td className="px-5 py-3.5">
+                              {u.trialRemainingSec == null ? (
+                                <span className="text-gray-400 text-[12px]">无</span>
+                              ) : u.trialRemainingSec <= 0 ? (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(239,68,68,0.08)", color: "#dc2626" }}>已过期</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>剩 {fmtRemain(u.trialRemainingSec)}</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-400 text-[12px]">{u.lastActiveAt ? fmt(u.lastActiveAt) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Security tab ─────────────────────────────────────────── */}
             {activeTab === "security" && (
               <div className="flex flex-col gap-8">
@@ -614,13 +917,13 @@ export default function AdminPage() {
                     onChange={(e) => setSecSearch(e.target.value)}
                     placeholder="搜索 IP 或用户名…"
                     className="px-3 py-2.5 rounded-xl text-[13px] outline-none w-52"
-                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)", color: "#111827" }}
+                    style={{ fontFamily: FONT, background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)", color: "#111827" }}
                   />
                   <select
                     value={secFilter}
                     onChange={(e) => setSecFilter(e.target.value as "all" | "ip" | "user")}
                     className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
+                    style={{ fontFamily: FONT, background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
                   >
                     <option value="all">全部类型</option>
                     <option value="ip">IP 封禁</option>
@@ -641,14 +944,14 @@ export default function AdminPage() {
                         onChange={(e) => setManualIp(e.target.value)}
                         placeholder="IP 地址（如 1.2.3.4）"
                         className="px-3 py-2 rounded-xl text-[13px] outline-none flex-1 min-w-[160px]"
-                        style={{ border: "1px solid rgba(0,0,0,0.12)", background: "white" }}
+                        style={{ fontFamily: FONT, border: "1px solid rgba(0,0,0,0.12)", background: "white" }}
                       />
                       <input
                         value={manualReason}
                         onChange={(e) => setManualReason(e.target.value)}
                         placeholder="封禁原因（可选）"
                         className="px-3 py-2 rounded-xl text-[13px] outline-none flex-1 min-w-[160px]"
-                        style={{ border: "1px solid rgba(0,0,0,0.12)", background: "white" }}
+                        style={{ fontFamily: FONT, border: "1px solid rgba(0,0,0,0.12)", background: "white" }}
                       />
                       <button
                         type="submit"
@@ -775,7 +1078,58 @@ export default function AdminPage() {
                     )}
                   </div>
                 )}
+
+              {/* OTP 发送限制解除 */}
+              <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
+                <h3 className="text-[13px] font-semibold text-gray-700 mb-4">解除验证码发送限制</h3>
+                {otpError && <p className="text-[12px] text-red-500 mb-3">{otpError}</p>}
+                {otpMsg && <p className="text-[12px] text-green-600 font-medium mb-3">{otpMsg}</p>}
+                <div className="flex gap-2 mb-4">
+                  <input type="text" value={otpTarget}
+                    onChange={(e) => { setOtpTarget(e.target.value); setOtpMsg(""); setOtpError(""); }}
+                    placeholder="邮箱或手机号（如 929954000@qq.com）"
+                    className="flex-1 px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
+                    onKeyDown={(e) => e.key === "Enter" && handleFetchOtp()}
+                  />
+                  <button onClick={handleFetchOtp} disabled={otpLoading || !otpTarget.trim()}
+                    className="px-4 py-2 rounded-xl text-[13px] font-semibold"
+                    style={{ background: "rgba(0,0,0,0.06)", color: "#374151" }}>查询</button>
+                  <button onClick={handleClearOtp} disabled={otpLoading || !otpTarget.trim()}
+                    className="px-4 py-2 rounded-xl text-[13px] font-semibold"
+                    style={{ background: "rgba(239,68,68,0.1)", color: "#dc2626" }}>解除限制</button>
+                </div>
+                {otpRecords.length > 0 && (
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                        <th className="px-3 py-2 text-left text-gray-400 font-semibold uppercase tracking-wider">渠道</th>
+                        <th className="px-3 py-2 text-left text-gray-400 font-semibold uppercase tracking-wider">用途</th>
+                        <th className="px-3 py-2 text-left text-gray-400 font-semibold uppercase tracking-wider">发送时间</th>
+                        <th className="px-3 py-2 text-left text-gray-400 font-semibold uppercase tracking-wider">已使用</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {otpRecords.map((r, idx, arr) => (
+                        <tr key={r.id} style={{ borderBottom: idx < arr.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }} className="hover:bg-gray-50/40">
+                          <td className="px-3 py-2 text-gray-700">{r.channel}</td>
+                          <td className="px-3 py-2 text-gray-700">{r.purpose}</td>
+                          <td className="px-3 py-2 text-gray-400">{fmt(r.createdAt)}</td>
+                          <td className="px-3 py-2">
+                            {r.consumedAt
+                              ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a" }}>已使用</span>
+                              : <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(234,179,8,0.08)", color: "#a16207" }}>未使用</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {otpRecords.length === 0 && otpTarget && !otpLoading && !otpMsg && (
+                  <p className="text-[12px] text-gray-400">暂无记录</p>
+                )}
               </div>
+            </div>
             )}
           </>
         )}
