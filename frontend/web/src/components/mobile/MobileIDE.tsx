@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useProjectStore } from "@/stores/project-store";
 import { MobileChatPanel } from "./MobileChatPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
@@ -7,6 +7,7 @@ import { useTheme } from "@/components/theme-provider";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { applyFontSize, getFontSizeKey, FONT_SIZES } from "@/components/ide/navbar";
 import { cn } from "@/lib/utils";
+import { Gift, Copy, Check } from "lucide-react";
 
 type Tab = "chat" | "preview";
 
@@ -28,6 +29,56 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   const { mode } = useTheme();
   const [fontSize, setFontSize] = useState(() => getFontSizeKey());
   const [fontMenuOpen, setFontMenuOpen] = useState(false);
+
+  // invite panel state
+  const [invitePanelOpen, setInvitePanelOpen] = useState(false);
+  const invitePanelRef = useRef<HTMLDivElement>(null);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralLink, setReferralLink] = useState<string | null>(null);
+  const [referralCount, setReferralCount] = useState<number>(0);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (!invitePanelOpen || referralCode) return;
+    setInviteLoading(true);
+    fetch("/api/referral/my-code")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.referralCode) {
+          setReferralCode(d.referralCode);
+          setReferralLink(d.referralLink);
+          setReferralCount(d.referralCount ?? 0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInviteLoading(false));
+  }, [invitePanelOpen, referralCode]);
+
+  const copyToClipboard = (text: string, type: "code" | "link") => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (type === "code") { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }
+      else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
+    });
+  };
+
+  // close invite panel on outside touch
+  useEffect(() => {
+    if (!invitePanelOpen) return;
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (!invitePanelRef.current) return;
+      if (!invitePanelRef.current.contains(e.target as Node)) {
+        setInvitePanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [invitePanelOpen]);
 
   const handleFontSize = (key: typeof FONT_SIZES[number]["key"]) => {
     setFontSize(key);
@@ -108,43 +159,132 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
             </span>
           </div>
 
-          {/* 字体大小按钮（右侧绝对定位） */}
-          <div className="absolute right-3 flex items-center">
-            <button
-              className="flex items-center justify-center w-8 h-8 rounded-lg"
-              style={{ color: "var(--foreground)", opacity: 0.7 }}
-              onClick={() => setFontMenuOpen((v) => !v)}
-              aria-label={t("navbar.fontSize")}
-            >
-              <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>A</span>
-            </button>
-            {fontMenuOpen && (
-              <div
-                className="absolute top-full right-0 mt-1 rounded-xl py-2 px-3 flex gap-2 items-center"
-                style={{
-                  background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2",
-                  border: "1px solid var(--panel-divider)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-                  zIndex: 100,
-                }}
+          {/* 右侧按钮组（字体 + invite） */}
+          <div className="absolute right-3 flex items-center gap-1">
+
+            {/* 字体大小按钮 */}
+            <div className="relative">
+              <button
+                className="flex items-center justify-center w-8 h-8 rounded-lg"
+                style={{ color: "var(--foreground)", opacity: 0.7 }}
+                onClick={() => { setFontMenuOpen((v) => !v); setInvitePanelOpen(false); }}
+                aria-label={t("navbar.fontSize")}
               >
-                {FONT_SIZES.map((f, fi) => (
-                  <button
-                    key={f.key}
-                    onClick={() => handleFontSize(f.key)}
-                    className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                      fontSize === f.key
-                        ? "bg-[#4f82ff] text-white"
-                        : "text-muted-foreground hover:bg-accent/30"
-                    )}
-                    style={{ fontSize: 9 + fi * 2 }}
-                  >
-                    A
-                  </button>
-                ))}
-              </div>
-            )}
+                <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>A</span>
+              </button>
+              {fontMenuOpen && (
+                <div
+                  className="absolute top-full right-0 mt-1 rounded-xl py-2 px-3 flex gap-2 items-center"
+                  style={{
+                    background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2",
+                    border: "1px solid var(--panel-divider)",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+                    zIndex: 100,
+                  }}
+                >
+                  {FONT_SIZES.map((f, fi) => (
+                    <button
+                      key={f.key}
+                      onClick={() => handleFontSize(f.key)}
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                        fontSize === f.key
+                          ? "bg-[#4f82ff] text-white"
+                          : "text-muted-foreground hover:bg-accent/30"
+                      )}
+                      style={{ fontSize: 9 + fi * 2 }}
+                    >
+                      A
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Invite 按钮 */}
+            <div className="relative" ref={invitePanelRef}>
+              <button
+                className={cn(
+                  "flex items-center justify-center w-8 h-8 rounded-lg transition-colors",
+                  invitePanelOpen
+                    ? "bg-[#4f82ff]/15 text-[#4f82ff]"
+                    : "text-muted-foreground"
+                )}
+                style={{ opacity: invitePanelOpen ? 1 : 0.7 }}
+                onClick={() => { setInvitePanelOpen((v) => !v); setFontMenuOpen(false); }}
+                aria-label={t("navbar.invite")}
+              >
+                <Gift style={{ width: 17, height: 17 }} />
+              </button>
+
+              {invitePanelOpen && (
+                <div
+                  className="absolute top-full right-0 mt-1.5 rounded-xl p-4 flex flex-col gap-3"
+                  style={{
+                    width: "min(288px, calc(100vw - 24px))",
+                    background: mode === "dark" ? "hsl(222,22%,11%)" : "#fff",
+                    border: "1px solid var(--panel-divider)",
+                    boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+                    zIndex: 100,
+                  }}
+                >
+                  <div>
+                    <p className="text-[13px] font-semibold text-foreground">{t("navbar.invitePanel.title")}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{t("navbar.invitePanel.desc")}</p>
+                  </div>
+
+                  {inviteLoading ? (
+                    <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+                  ) : referralCode ? (
+                    <>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                          {t("navbar.invitePanel.yourCode")}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code
+                            className="flex-1 text-[13px] font-mono tracking-widest px-3 py-2 rounded-lg"
+                            style={{ background: "var(--panel-left-bg)", color: "var(--foreground)" }}
+                          >
+                            {referralCode}
+                          </code>
+                          <button
+                            className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                            style={{ background: "var(--panel-left-bg)" }}
+                            onClick={() => copyToClipboard(referralCode, "code")}
+                            title={t("navbar.invitePanel.copyCode")}
+                          >
+                            {copiedCode
+                              ? <Check style={{ width: 14, height: 14, color: "#22c55e" }} />
+                              : <Copy style={{ width: 14, height: 14 }} className="text-muted-foreground" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-[12px] font-medium transition-colors"
+                        style={{
+                          background: copiedLink ? "rgba(52,214,138,0.12)" : "#4f82ff",
+                          color: copiedLink ? "#34d68a" : "white",
+                        }}
+                        onClick={() => referralLink && copyToClipboard(referralLink, "link")}
+                      >
+                        {copiedLink
+                          ? <><Check style={{ width: 14, height: 14 }} />{t("navbar.invitePanel.copied")}</>
+                          : <><Copy style={{ width: 14, height: 14 }} />{t("navbar.invitePanel.copyLink")}</>}
+                      </button>
+
+                      <p className="text-[11px] text-muted-foreground text-center">
+                        {t("navbar.invitePanel.referralCount").replace("{n}", String(referralCount))}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}

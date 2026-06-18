@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:15
+    container_name: cascade-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cascade
+      POSTGRES_PASSWORD: cascade
+      POSTGRES_DB: cascade
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cascade -d cascade"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cascade-app
+    # 不自动启动 — 手动运行: docker compose run --rm app npm run dev
+    profiles:
+      - manual
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://cascade:cascade@db:5432/cascade
+      NODE_ENV: development
+    volumes:
+      # 代码热重载：本地代码 mount 进容器
+      - .:/app
+      # 避免覆盖容器内已安装的 node_modules
+      - node_modules_cache:/app/node_modules
+    ports:
+      - "5000:5000"
+    working_dir: /app
+
+volumes:
+  postgres_data:
+  node_modules_cache:

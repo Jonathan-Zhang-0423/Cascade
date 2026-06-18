@@ -802,7 +802,8 @@ export function BuildLivePanel({
         const narration = stepNarrations[currentStepNum] ?? "";
         segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
       } else {
-        if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+        // Only add to existing segments — skip orphan actions before first step entry
+        if (segs.length === 0) continue;
         segs[segs.length - 1].actions.push(entry);
       }
     }

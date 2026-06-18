@@ -1,7 +1,13 @@
 import { ChatPanel } from "@/components/ide/chat-panel";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
-import { TOP_BAR_H } from "./MobileIDE";
 import { useTheme } from "@/components/theme-provider";
+
+// 这些常量直接内联，避免与 MobileIDE.tsx 产生循环依赖
+const TOP_BAR_H = 44;
+const INPUT_AREA_H = 84;
+const CAPSULE_H = 38;
+const CAPSULE_BOTTOM_OFFSET = INPUT_AREA_H + 24;
+const MSG_LIST_BOTTOM_PAD = CAPSULE_BOTTOM_OFFSET + CAPSULE_H + 16;
 
 export function MobileChatPanel() {
   const { mode } = useTheme();
@@ -25,9 +31,10 @@ export function MobileChatPanel() {
           display: none !important;
         }
 
-        /* ── 消息列表顶部留出 bar 高度，内容不被遮罩盖住 ── */
+        /* ── 消息列表顶部留出 bar 高度，底部留出胶囊高度，内容不被遮住 ── */
         .mobile-chat-wrap [data-testid="chat-panel"] > .flex-1 {
           padding-top: ${TOP_BAR_H + 4}px !important;
+          padding-bottom: ${MSG_LIST_BOTTOM_PAD}px !important;
         }
 
         /* ── 消息列表上滑虚化：顶部渐隐遮罩 ── */
