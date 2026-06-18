@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
+import { getCaptchaTicket } from "@/lib/captcha";
 import cascadeLogo from "../assets/cascade-logo.png";
 
 // ── Font ─────────────────────────────────────────────────────────────────────
@@ -552,14 +553,24 @@ export default function AuthPage() {
     return null;
   };
 
+  // 取人机验证票据；用户取消返回 null（调用方应中止）。未启用时返回空票。
+  const acquireCaptcha = async (): Promise<{ ticket: string; randstr: string } | null> => {
+    const cap = await getCaptchaTicket();
+    if (!cap) { setError(t("auth.captchaFailed")); return null; }
+    return cap;
+  };
+
   const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
     if (!identifier.trim() || !password) { setError(t("auth.fillBothFields")); return; }
     setLoading(true);
     try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: identifier.trim(), password }),
+        credentials: "include",
+        body: JSON.stringify({ username: identifier.trim(), password, ...cap }),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
@@ -572,9 +583,12 @@ export default function AuthPage() {
     if (err) { setError(err); return; }
     setError(null); setLoading(true);
     try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/otp/send", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, target: target.trim() }),
+        credentials: "include",
+        body: JSON.stringify({ channel, target: target.trim(), ...cap }),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); if (typeof data.retryAfterSec === "number") setResendIn(data.retryAfterSec); return; }
@@ -588,9 +602,12 @@ export default function AuthPage() {
     const channel = signInChannel === "email" ? "email" : "sms";
     setLoading(true);
     try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/otp/verify-login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode }),
+        credentials: "include",
+        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode, ...cap }),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
@@ -606,9 +623,12 @@ export default function AuthPage() {
     const channel = signUpChannel === "email" ? "email" : "sms";
     setLoading(true);
     try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/otp/verify-login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode, inviteCode: inviteCode.trim() }),
+        credentials: "include",
+        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode, inviteCode: inviteCode.trim(), ...cap }),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
@@ -618,6 +638,7 @@ export default function AuthPage() {
         try {
           await fetch("/api/referral/redeem", {
             method: "POST", headers: { "Content-Type": "application/json" },
+            credentials: "include",
             body: JSON.stringify({ referralCode: refCode.trim().toUpperCase() }),
           });
         } catch { /* non-fatal */ }
@@ -636,9 +657,12 @@ export default function AuthPage() {
     if (err) { setError(err); return; }
     setError(null); setLoading(true);
     try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/reset-password/send", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: forgotChannel, target: forgotTarget.trim() }),
+        credentials: "include",
+        body: JSON.stringify({ channel: forgotChannel, target: forgotTarget.trim(), ...cap }),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); if (typeof data.retryAfterSec === "number") setForgotResendIn(data.retryAfterSec); return; }
@@ -654,6 +678,7 @@ export default function AuthPage() {
     try {
       const res = await fetch("/api/auth/reset-password/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ channel: forgotChannel, target: forgotTarget.trim(), code: forgotCode, password: newPassword }),
       });
       const data = await res.json();

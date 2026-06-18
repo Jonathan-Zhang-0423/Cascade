@@ -332,6 +332,21 @@ html * {
     @apply hidden;
   }
 
+  /* Hide browser-injected password reveal/clear controls (Edge ::-ms-reveal,
+     WebKit credentials button). Used on the confirm-password field so the
+     native "eye" doesn't collide with our own match check mark. */
+  .no-native-reveal::-ms-reveal,
+  .no-native-reveal::-ms-clear {
+    display: none;
+  }
+  .no-native-reveal::-webkit-credentials-auto-fill-button,
+  .no-native-reveal::-webkit-strong-password-auto-fill-button {
+    visibility: hidden;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+  }
+
   [contenteditable][data-placeholder]:empty::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
