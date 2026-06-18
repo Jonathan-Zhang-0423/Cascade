@@ -530,7 +530,7 @@ export function buildBuilderTools(
         if (matched) resolvedNum = matched.step;
       }
 
-      emit({ type: "step_completed", stepNumber: resolvedNum });
+      emit({ type: "step_completed", stepNumber: resolvedNum, summary });
       completedSteps.add(resolvedNum);
 
       // Advance to the next step

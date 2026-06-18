@@ -1,5 +1,13 @@
 import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
+import { useLanguageStore } from "@/stores/language-store";
+
+function getWelcomeMessage(): string {
+  const lang = useLanguageStore.getState().lang;
+  return lang === "en"
+    ? "Hi! I'm your AI coding assistant. Tell me what you'd like to build, and I'll help you plan, code, and ship it."
+    : "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。";
+}
 
 export interface FileNode {
   name: string;
@@ -791,8 +799,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     {
       id: "welcome",
       role: "assistant",
-      content:
-        "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+      content: getWelcomeMessage(),
       timestamp: Date.now(),
       seq: 0,
     },
@@ -940,8 +947,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       {
         id: "welcome",
         role: "assistant" as const,
-        content:
-          "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+        content: getWelcomeMessage(),
         seq: 1,
         timestamp: Date.now(),
       },
@@ -1654,7 +1660,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     const welcome = {
       id: "welcome-" + Date.now(),
       role: "assistant" as const,
-      content: "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+      content: getWelcomeMessage(),
       timestamp: Date.now(),
       seq: 0,
     };

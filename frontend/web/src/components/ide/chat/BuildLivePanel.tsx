@@ -35,6 +35,7 @@ interface BuildLivePanelProps {
   isCompleted?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
   completionSummary?: string;
+  stepNarrations?: Record<number, string>;
 }
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -356,8 +357,24 @@ const SegmentView = memo(function SegmentView({
     (a) => a.type !== "thinking" && !(a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)),
   );
 
-  // Nothing to show at all
-  if (!thinkingEntry && nonThinkingActions.length === 0) return null;
+  // Nothing to show at all — but if isLive, show a spinner placeholder so the
+  // row is visible while the first action of this step is still arriving.
+  if (!thinkingEntry && nonThinkingActions.length === 0) {
+    if (!isLive) return null;
+    return (
+      <div className="mb-0.5 px-3.5" data-testid="segment-view">
+        <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
+          <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
+          <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
+          {segment.narration && (
+            <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
+              {segment.narration.split("\n")[0].replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "").replace(/^•\s*/, "").trim()}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Step label stripped of "Step N/M: " prefix for display
   const stepTitle = stepLabel
@@ -380,7 +397,7 @@ const SegmentView = memo(function SegmentView({
                 <Brain className="w-3 h-3 text-muted-foreground/50" />
               </span>
             )}
-            {/* non-thinking action icon counts */}
+            {/* non-thinking action icon counts — cap at 3 types to leave room for narration */}
             <span className="flex items-center gap-1.5 shrink-0">
               {(() => {
                 const counts = new Map<ActionType, number>();
@@ -388,7 +405,7 @@ const SegmentView = memo(function SegmentView({
                   const dt = toDisplayType(a.type);
                   counts.set(dt, (counts.get(dt) ?? 0) + 1);
                 }
-                return Array.from(counts.entries()).map(([dt, count]) => {
+                return Array.from(counts.entries()).slice(0, 3).map(([dt, count]) => {
                   const meta = ACTION_META[dt];
                   const Icon = meta.icon;
                   return (
@@ -404,8 +421,24 @@ const SegmentView = memo(function SegmentView({
             {isLive && (
               <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
             )}
-            {/* step title on the right */}
-            {stepTitle && (
+            {/* narration text inline — always shown when available (live or done) */}
+            {segment.narration && (
+              <span className={cn(
+                "ml-2 text-[10.5px] truncate min-w-0 max-w-[50%]",
+                isLive ? "text-muted-foreground/40" : "text-muted-foreground/55"
+              )}>
+                {segment.narration
+                  // Strip ## Step N: style prefixes
+                  .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
+                  .replace(/^•\s*/, "")
+                  .trim()
+                  // Take only the first sentence (split on 。.!? and their full-width variants)
+                  .split(/(?<=[。．！？.!?])\s*/)[0]
+                  .trim()}
+              </span>
+            )}
+            {/* step title on the right — only when no narration */}
+            {stepTitle && !segment.narration && (
               <span className="ml-auto text-[10px] text-muted-foreground/35 truncate max-w-[180px]">
                 {stepTitle}
               </span>
@@ -414,16 +447,25 @@ const SegmentView = memo(function SegmentView({
         ) : (
           <div>
             <button
-              className="flex items-center gap-1 py-0.5 text-muted-foreground/70 hover:text-foreground/80 transition-colors font-mono text-[11px] w-full"
+              className="flex items-start gap-1 py-0.5 text-muted-foreground/70 hover:text-foreground/80 transition-colors font-mono text-[11px] w-full text-left"
               onClick={() => setExpanded(false)}
               data-testid="segment-expanded"
             >
-              <ChevronDown className="w-3 h-3 shrink-0" />
-              {stepTitle && (
-                <span className="ml-1 text-[10px] text-muted-foreground/35 truncate">
+              <ChevronDown className="w-3 h-3 shrink-0 mt-[1px]" />
+              {segment.narration ? (
+                <span className="ml-2 text-[10.5px] text-foreground/80 leading-relaxed">
+                  {segment.narration
+                    .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
+                    .replace(/^•\s*/, "")
+                    .trim()
+                    .split(/(?<=[。．！？.!?])\s*/)[0]
+                    .trim()}
+                </span>
+              ) : stepTitle ? (
+                <span className="ml-1 text-[10px] text-muted-foreground/35">
                   {stepTitle}
                 </span>
-              )}
+              ) : null}
             </button>
             <div className="border-l border-border/40 ml-1 pl-2 mt-0.5">
               {/* thinking row first */}
@@ -433,10 +475,6 @@ const SegmentView = memo(function SegmentView({
               {nonThinkingActions.map((a, i) => (
                 <ActionDetailRow key={i} entry={a} />
               ))}
-              {/* narration after actions */}
-              {segment.narration && (
-                <NarrationBlock text={segment.narration} isLive={isLive} />
-              )}
             </div>
           </div>
         )}
@@ -731,36 +769,50 @@ export function BuildLivePanel({
   isCompleted,
   tokenUsage,
   completionSummary,
+  stepNarrations = {},
 }: BuildLivePanelProps) {
   const t = useT();
 
   const isPersisted = !!segments && segments.length > 0;
 
+  // When persisted, dynamically merge stepNarrations into segments — narration
+  // tokens can arrive after all_complete and stepNarrations keeps accumulating.
+  const mergedSegments = useMemo<NarrationSegment[]>(() => {
+    if (!isPersisted || !segments) return [];
+    return segments.map((seg, i) => {
+      const stepNum = i + 1;
+      const lateNarration = stepNarrations[stepNum];
+      if (lateNarration && lateNarration !== seg.narration) {
+        return { ...seg, narration: lateNarration };
+      }
+      return seg;
+    });
+  }, [isPersisted, segments, stepNarrations]);
+
   // Live mode: group by step entries in the action log.
-  // thinking entry is written once per step (at narration_token time) — no in-place merge needed.
   const liveSegments = useMemo<NarrationSegment[]>(() => {
     if (isPersisted) return [];
     const segs: NarrationSegment[] = [];
+    let currentStepNum = 0;
     for (const entry of entries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
-        segs.push({ id: String(segs.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+        const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
+        currentStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentStepNum + 1;
+        const narration = stepNarrations[currentStepNum] ?? "";
+        segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
       } else {
-        if (segs.length === 0) segs.push({ id: "0", narration: "", actions: [], isLive: false });
-        const last = segs[segs.length - 1];
-        if (!last.narration && entry.precedingNarration) {
-          last.narration = entry.precedingNarration;
-        }
-        last.actions.push(entry);
+        if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+        segs[segs.length - 1].actions.push(entry);
       }
     }
     if (segs.length > 0 && !isCompleted) {
       segs[segs.length - 1] = { ...segs[segs.length - 1], isLive: true };
     }
     return segs;
-  }, [entries, isPersisted, isCompleted]);
+  }, [entries, isPersisted, isCompleted, stepNarrations]);
 
-  const renderSegments = isPersisted ? segments! : liveSegments;
+  const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
   // Thinking is now per-step inside SegmentView — no global thinking state needed.
   const showTrailingNarration = false;

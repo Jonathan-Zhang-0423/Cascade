@@ -124,7 +124,7 @@ Adjust the number of bullet points based on the actual scope of work. Do NOT fab
 - Emojis are optional — use them sparingly (0-1 per message) only if they add genuine clarity.
 - Match the energy to the event: factual for status updates, straightforward for errors, clear for input requests.
 - For step_completed, describe what was built in one short phrase — e.g., "Step 3 complete — keyboard event handlers added."
-- For all_complete, write exactly 2 sentences as described above — no structured format.
+- For all_complete, follow the structured format exactly as described above — first line summary, blank line, bullet points with •, then NEXT_STEP.
 
 ## Output Rules
 - Keep messages SHORT — 1-3 sentences max per event.

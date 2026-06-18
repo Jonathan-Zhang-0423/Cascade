@@ -75,6 +75,7 @@ export function ChatPanel() {
     liveActionLog,
     liveThinkingText,
     liveNarrationText,
+    liveStepNarrations,
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
@@ -101,15 +102,15 @@ export function ChatPanel() {
       setShowThinking(false);
     }
   }, [isManagerResponding, mgrPreparingPlan, buildPhase]);
-  // Hide once any live content arrives (manager or build)
+  // Hide once actual action log entries arrive (not just thinking tokens) — this
+  // ensures the TypingIndicator stays visible until BuildLivePanel has real content,
+  // eliminating the 1-3s gap between prompt send and first visible live content.
   useEffect(() => {
-    if (
-      mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0 ||
-      liveThinkingText || liveNarrationText || liveActionLog.length > 0
-    ) {
-      setShowThinking(false);
-    }
-  }, [mgrLiveThinkingText, mgrLiveNarrationText, mgrLiveActionLog, liveThinkingText, liveNarrationText, liveActionLog]);
+    const hasActionContent = mgrLiveActionLog.length > 0 || liveActionLog.length > 0;
+    if (!hasActionContent) return;
+    const t = setTimeout(() => setShowThinking(false), 50);
+    return () => clearTimeout(t);
+  }, [mgrLiveActionLog, liveActionLog]);
   const [providers, setProviders] = useState<{
     doubao: boolean;
     kimi: boolean;
@@ -394,6 +395,7 @@ export function ChatPanel() {
             thinkingElapsedSec={thinkingElapsedSec}
             isCompleted={!isExecuting && buildPhase === null}
             completionSummary={completionData?.summary || undefined}
+            stepNarrations={liveStepNarrations}
           />
         )}
       </div>

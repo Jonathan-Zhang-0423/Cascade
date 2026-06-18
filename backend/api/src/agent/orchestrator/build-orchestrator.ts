@@ -550,6 +550,8 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         max_tokens: 512,
       });
       summaryText = summaryCompletion.choices[0]?.message?.content || "";
+      // Strip <think>...</think> blocks that some models emit
+      summaryText = summaryText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     } catch {}
 
     let nextStepSuggestion = "";
