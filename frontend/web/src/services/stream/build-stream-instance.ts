@@ -331,8 +331,6 @@ export class BuildStreamInstance {
               this.actions.refreshPreview();
             }
           } else if (type === "step_completed") {
-            this.state.set({ narrationText: "" });
-            commAccumulated = "";
             const rawNum = ev.stepNumber;
             const parsedNum = typeof rawNum === "number" ? rawNum : parseInt(String(rawNum), 10);
             let resolvedKey: string;
@@ -342,6 +340,16 @@ export class BuildStreamInstance {
               const matched = normalizedSteps.find((s) => s.sub_task_id === String(rawNum));
               resolvedKey = matched ? String(matched.step) : String(rawNum);
             }
+            // Write the step summary from mark_step_complete into stepNarrations.
+            // This is the authoritative one-line summary of what the step did —
+            // zero latency, no extra LLM call, replaces the raw editor narration.
+            const stepSummary = (ev.summary as string | undefined)?.trim() || "";
+            if (stepSummary && !isNaN(parsedNum)) {
+              const prev = this.state.get().stepNarrations;
+              this.state.set({ stepNarrations: { ...prev, [parsedNum]: stepSummary } });
+            }
+            this.state.set({ narrationText: "" });
+            commAccumulated = "";
             if (isCurrentProject) this.actions.updateTaskStatus(resolvedKey, "done");
           } else if (type === "step_failed") {
             this.state.set({ narrationText: "" });
@@ -386,19 +394,23 @@ export class BuildStreamInstance {
               this.actions.setCompletionData({ changedFiles, summary: summaryText });
               if (this.actionLog.length > 0) {
                 // Group by step entry — each "step" action_log entry starts a new segment.
+                // Narration comes from stepNarrations (keyed by step number), which is populated
+                // as communicator tokens arrive and finalized at step_completed. This is more
+                // reliable than precedingNarration (which is empty when actions fire before narration).
+                const stepNarrations = this.state.get().stepNarrations;
                 const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+                let currentSegStepNum = 0;
                 for (const entry of this.actionLog) {
                   if (entry.type === "narration") continue;
                   if (entry.type === "step") {
-                    segs.push({ id: String(segs.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+                    // Extract step number from label e.g. "Step 2/4: ..."
+                    const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
+                    currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
+                    const narration = stepNarrations[currentSegStepNum] ?? "";
+                    segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
                   } else {
-                    if (segs.length === 0) segs.push({ id: "0", narration: "", actions: [], isLive: false });
-                    const last = segs[segs.length - 1];
-                    // Keep the first non-empty narration as the step's label text
-                    if (!last.narration && entry.precedingNarration) {
-                      last.narration = entry.precedingNarration;
-                    }
-                    last.actions.push(entry);
+                    if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+                    segs[segs.length - 1].actions.push(entry);
                   }
                 }
                 this.actions.addManagerMessage({
@@ -834,6 +846,8 @@ export class BuildStreamInstance {
   }
 
   private clearLive(): void {
+    // Keep stepNarrations — narration tokens can arrive after all_complete,
+    // and BuildLivePanel uses them to fill persisted segment narrations.
     this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
   }
 
