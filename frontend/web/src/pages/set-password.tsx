@@ -111,6 +111,13 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Normalize before comparing/submitting so two visually-identical entries don't
+  // fail to match due to invisible trailing whitespace (mobile keyboards / autofill)
+  // or Unicode composition differences (NFC vs NFD from an IME).
+  const norm = (s: string) => s.normalize("NFC").trim();
+  const pwMatch = !!password && !!confirm && norm(password) === norm(confirm);
+  const pwMismatch = !!password && !!confirm && !pwMatch;
+
   // Check if user already has a password set
   useEffect(() => {
     fetch("/api/auth/me")
@@ -122,15 +129,16 @@ export default function SetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) { setError(t("auth.passwordTooShort")); return; }
-    if (password !== confirm) { setError(t("auth.setPasswordMismatch")); return; }
+    const pw = norm(password);
+    if (pw.length < 6) { setError(t("auth.passwordTooShort")); return; }
+    if (pw !== norm(confirm)) { setError(t("auth.setPasswordMismatch")); return; }
     if (hasPassword && !currentPassword) {
       setError("请输入当前密码");
       return;
     }
     setLoading(true);
     try {
-      const body: Record<string, string> = { password };
+      const body: Record<string, string> = { password: pw };
       if (hasPassword && currentPassword) body.currentPassword = currentPassword;
       const res = await fetch("/api/auth/set-password", {
         method: "POST",
@@ -152,8 +160,6 @@ export default function SetPasswordPage() {
       setLoading(false);
     }
   };
-
-  const handleSkip = () => setLocation("/app");
 
   return (
     <div
@@ -241,6 +247,9 @@ export default function SetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={t("auth.setPasswordPlaceholder")}
                 autoComplete="new-password"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus={!hasPassword}
               />
               <PasswordStrength password={password} />
@@ -251,19 +260,22 @@ export default function SetPasswordPage() {
               <div className="relative">
                 <input
                   type="password"
-                  className={inputCls + (confirm && password && confirm === password
+                  className={inputCls + (pwMatch
                     ? " border-green-400 focus:border-green-500 focus:shadow-[0_0_0_3px_rgba(34,197,94,0.12)]"
-                    : confirm && password && confirm !== password
+                    : pwMismatch
                     ? " border-red-300 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.08)]"
                     : "")}
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder={t("auth.setPasswordConfirmPlaceholder")}
                   autoComplete="new-password"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
                 {confirm && password && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    {confirm === password ? (
+                    {pwMatch ? (
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <circle cx="8" cy="8" r="7" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.5)" strokeWidth="1"/>
                         <path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -277,11 +289,8 @@ export default function SetPasswordPage() {
                   </div>
                 )}
               </div>
-              {confirm && password && confirm !== password && (
+              {pwMismatch && (
                 <p className="mt-1.5 text-[11px] text-red-500">{t("auth.setPasswordMismatch")}</p>
-              )}
-              {confirm && password && confirm === password && (
-                <p className="mt-1.5 text-[11px] text-green-600">密码一致</p>
               )}
             </motion.div>
 
@@ -303,16 +312,6 @@ export default function SetPasswordPage() {
                     className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white"
                   />
                 ) : t("auth.setPasswordSubmit")}
-              </button>
-            </motion.div>
-
-            <motion.div variants={fadeUp} custom={5} className="text-center">
-              <button
-                type="button"
-                onClick={handleSkip}
-                className="text-[13px] text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                {t("auth.setPasswordSkip")} →
               </button>
             </motion.div>
           </form>

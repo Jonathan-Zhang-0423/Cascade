@@ -344,7 +344,7 @@ function OtpBlock({
             className={inputCls + " flex-1"}
             value={otpTarget}
             onChange={(e) => setOtpTarget(e.target.value)}
-            placeholder={placeholderTarget}
+            placeholder=""
             autoComplete={channel === "email" ? "email" : "tel"}
             required
           />
@@ -358,7 +358,7 @@ function OtpBlock({
           className={inputCls + " tracking-[0.5em] font-mono text-center"}
           value={otpCode}
           onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          placeholder="• • • • • •" autoComplete="one-time-code" required />
+          placeholder="" autoComplete="one-time-code" required />
       </div>
       {isSignUp && (
         <div>
@@ -366,7 +366,7 @@ function OtpBlock({
           <input className={inputCls + " tracking-widest font-mono uppercase"}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            placeholder="CASCXXX 或 CASCEDUXXXX" autoComplete="off" required />
+            placeholder="" autoComplete="off" required />
           <p className="mt-1.5 text-[11px] text-gray-400">{labelInviteCodeHint}</p>
         </div>
       )}
@@ -423,7 +423,6 @@ export default function AuthPage() {
 
   const [page, setPage] = useState<Page>("signin");
   const [signInChannel, setSignInChannel] = useState<SignInChannel>("email");
-  const [signInMode, setSignInMode] = useState<SignInMode>("password");
   const [signUpChannel, setSignUpChannel] = useState<SignUpChannel>("email");
 
   // Replit-style two-step flow: landing (pick a method) → detail (enter creds)
@@ -509,7 +508,7 @@ export default function AuthPage() {
     setDetailMethod(method);
     if (method !== "github") {
       const channel = method as SignInChannel;
-      if (page === "signin") { setSignInChannel(channel); setSignInMode("password"); }
+      if (page === "signin") { setSignInChannel(channel); }
       else { setSignUpChannel(channel); }
     }
     setView("detail");
@@ -517,7 +516,18 @@ export default function AuthPage() {
   const backToLanding = () => {
     setView("landing"); setError(null); resetOtp(); setIdentifier(""); setPassword(""); setShowPassword(false);
   };
-  const switchSignInMode = (m: SignInMode) => { setSignInMode(m); setError(null); resetOtp(); setPassword(""); };
+
+  // Detail-page toggle: flip signin ⇄ signup but stay on the SAME method's detail page
+  const togglePageInDetail = () => {
+    const next: Page = page === "signin" ? "signup" : "signin";
+    setPage(next); setError(null); setNotice(null);
+    resetOtp(); setIdentifier(""); setPassword(""); setInviteCode(""); setShowPassword(false);
+    if (detailMethod !== "github") {
+      const channel = detailMethod as SignInChannel;
+      if (next === "signin") setSignInChannel(channel); else setSignUpChannel(channel);
+    }
+  };
+  const switchSignUpChannel = (c: string) => { setSignUpChannel(c as SignUpChannel); setError(null); resetOtp(); setInviteCode(""); };
 
   const mapError = (msg: string): string => ({
     "Username already taken": t("auth.usernameTaken"),
@@ -777,17 +787,8 @@ export default function AuthPage() {
               <NoticeMsg msg={notice} />
             </motion.div>
 
-            {/* Page tabs — centered */}
-            <motion.div variants={fadeUp} custom={1}>
-              <PageTabs
-                page={page} onChange={switchPage}
-                labelSignIn={t("auth.pageSignIn")}
-                labelSignUp={t("auth.pageSignUp")}
-              />
-            </motion.div>
-
-            {/* Lang pill — centered, right below tabs */}
-            <motion.div variants={fadeUp} custom={1.5} className="flex justify-center mt-3 mb-5">
+            {/* Lang pill — centered */}
+            <motion.div variants={fadeUp} custom={1.5} className="flex justify-center mt-1 mb-5">
               <LangPill />
             </motion.div>
 
@@ -842,12 +843,8 @@ export default function AuthPage() {
   }
 
   // ── Detail card: enter credentials for the chosen method ──────────────────
-  const detailTitle =
-    detailMethod === "github"
-      ? (page === "signin" ? t("auth.detailGithubTitle") : t("auth.detailGithubTitleSignUp"))
-      : page === "signin"
-        ? (detailChannel === "email" ? t("auth.detailEmailTitle") : t("auth.detailPhoneTitle"))
-        : (detailChannel === "email" ? t("auth.detailEmailTitleSignUp") : t("auth.detailPhoneTitleSignUp"));
+  // Title is simply "Log in" / "Sign up" (figure 1) — language-switchable
+  const detailTitle = page === "signin" ? t("auth.detailLoginTitle") : t("auth.detailSignUpTitle");
 
   return (
     <Shell footer={t("auth.footer")} wide showLogo={false}>
@@ -907,69 +904,38 @@ export default function AuthPage() {
                 initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
 
-                {/* Password / OTP — underline tabs */}
-                <div className="flex border-b border-black/[0.07] mb-6">
-                  {([{ id: "password", label: t("auth.passwordLogin") }, { id: "otp", label: t("auth.codeLogin") }]).map((tab) => (
-                    <button key={tab.id} type="button" onClick={() => switchSignInMode(tab.id as SignInMode)}
-                      className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-all duration-200 ${
-                        signInMode === tab.id
-                          ? "border-black text-gray-900"
-                          : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                <AnimatePresence mode="wait">
-                  {signInMode === "password" ? (
-                    <motion.form key="pwd"
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                      onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
-                      <div>
-                        <label className={labelCls}>
-                          {detailChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
-                        </label>
-                        <input
-                          type={detailChannel === "email" ? "email" : "tel"}
-                          className={inputCls + " h-12"}
-                          value={identifier}
-                          onChange={(e) => setIdentifier(e.target.value)}
-                          placeholder={detailChannel === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
-                          autoComplete={detailChannel === "email" ? "email" : "tel"}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className={labelCls}>{t("auth.passwordLabel")}</label>
-                        <div className="relative">
-                          <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"} value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••" autoComplete="current-password" required />
-                          <button type="button" onClick={() => setShowPassword((s) => !s)}
-                            aria-label="toggle password"
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
-                            <EyeIcon open={showPassword} />
-                          </button>
-                        </div>
-                      </div>
-                      <ErrorMsg msg={error} />
-                      <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
-                      <div className="text-center">
-                        <button type="button" onClick={openForgot}
-                          className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
-                          {t("auth.forgotPassword")}
-                        </button>
-                      </div>
-                    </motion.form>
-                  ) : (
-                    <motion.div key="otp"
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}>
-                      <OtpBlock {...otpBlockProps(false)} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <motion.form
+                  onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
+                  <div>
+                    <label className={labelCls}>
+                      {detailChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
+                    </label>
+                    <input
+                      type={detailChannel === "email" ? "email" : "tel"}
+                      className={inputCls + " h-12"}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder=""
+                      autoComplete={detailChannel === "email" ? "email" : "tel"}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t("auth.passwordLabel")}</label>
+                    <div className="relative">
+                      <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"} value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="" autoComplete="current-password" required />
+                      <button type="button" onClick={() => setShowPassword((s) => !s)}
+                        aria-label="toggle password"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
+                        <EyeIcon open={showPassword} />
+                      </button>
+                    </div>
+                  </div>
+                  <ErrorMsg msg={error} />
+                  <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
+                </motion.form>
               </motion.div>
             ) : (
               <motion.div key={"signup-" + detailChannel}
@@ -980,14 +946,20 @@ export default function AuthPage() {
             )}
           </AnimatePresence>
 
-          {/* Switch sign-in / sign-up */}
-          <motion.div variants={fadeUp} custom={4} className="mt-8 text-center text-[13px] text-gray-500">
-            {page === "signin" ? t("auth.landingNoAccount") : t("auth.landingHasAccount")}{" "}
-            <button type="button"
-              onClick={() => switchPage(page === "signin" ? "signup" : "signin")}
-              className="font-semibold text-gray-900 hover:underline">
-              {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
+          {/* Bottom links — Forgot password? / New to CascadeAI? Create account */}
+          <motion.div variants={fadeUp} custom={4} className="mt-8 flex flex-col items-center gap-2.5">
+            <button type="button" onClick={openForgot}
+              className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
+              {t("auth.forgotPassword")}
             </button>
+            <p className="text-[13px] text-gray-500">
+              {page === "signin" ? t("auth.newToCascade") : t("auth.landingHasAccount")}{" "}
+              <button type="button"
+                onClick={togglePageInDetail}
+                className="font-semibold text-gray-900 hover:underline">
+                {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
+              </button>
+            </p>
           </motion.div>
         </motion.div>
       </div>

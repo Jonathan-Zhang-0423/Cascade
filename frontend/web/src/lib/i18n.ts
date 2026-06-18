@@ -517,6 +517,9 @@ const zh: Dict = {
   "auth.detailGithubTitleSignUp": "GitHub 注册",
   "auth.githubContinueDesc": "点击下方按钮，将跳转到 GitHub 授权页面完成登录。",
   "auth.close": "关闭",
+  "auth.detailLoginTitle": "登录",
+  "auth.detailSignUpTitle": "注册",
+  "auth.newToCascade": "还没有 CascadeAI 账户？",
 };
 
 const en: Dict = {
@@ -1034,6 +1037,9 @@ const en: Dict = {
   "auth.detailGithubTitleSignUp": "Sign up with GitHub",
   "auth.githubContinueDesc": "Click the button below to continue to GitHub and authorize sign-in.",
   "auth.close": "Close",
+  "auth.detailLoginTitle": "Log in",
+  "auth.detailSignUpTitle": "Sign up",
+  "auth.newToCascade": "New to CascadeAI?",
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
