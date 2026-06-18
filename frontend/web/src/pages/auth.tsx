@@ -75,6 +75,59 @@ function LangPill() {
   );
 }
 
+// ── Method icons (landing card) ───────────────────────────────────────────────
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] shrink-0" fill="none" aria-hidden>
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M10.5 18.5h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+function MailIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] shrink-0" fill="none" aria-hidden>
+      <rect x="2.75" y="4.75" width="18.5" height="14.5" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 6.5l8.5 6 8.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ── Method button (landing card, Replit style) ────────────────────────────────
+function MethodBtn({ icon, label, onClick }: {
+  icon: React.ReactNode; label: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 h-12 px-4 rounded-xl text-[14px] font-semibold text-gray-800 bg-white transition-all duration-200 hover:bg-gray-50 hover:border-black/25 active:scale-[0.99]"
+      style={{ border: "1px solid rgba(0,0,0,0.14)", fontFamily: FONT, letterSpacing: "-0.01em" }}
+    >
+      <span className="text-gray-700">{icon}</span>
+      <span className="flex-1 text-left">{label}</span>
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" className="text-gray-300 shrink-0">
+        <path d="M5.5 3.5l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+// ── Eye toggle icon (password visibility) ─────────────────────────────────────
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg viewBox="0 0 20 20" className="w-[18px] h-[18px]" fill="none" aria-hidden>
+      <path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10Z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="10" cy="10" r="2.25" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" className="w-[18px] h-[18px]" fill="none" aria-hidden>
+      <path d="M2 10s3-5.5 8-5.5c1.4 0 2.66.43 3.74 1.05M18 10s-3 5.5-8 5.5c-1.4 0-2.66-.43-3.74-1.05" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 3l14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ── Primary button ────────────────────────────────────────────────────────────
 function PrimaryBtn({ children, loading, disabled, type = "submit" }: {
   children: React.ReactNode; loading?: boolean; disabled?: boolean; type?: "submit" | "button";
@@ -291,7 +344,7 @@ function OtpBlock({
             className={inputCls + " flex-1"}
             value={otpTarget}
             onChange={(e) => setOtpTarget(e.target.value)}
-            placeholder={placeholderTarget}
+            placeholder=""
             autoComplete={channel === "email" ? "email" : "tel"}
             required
           />
@@ -305,7 +358,7 @@ function OtpBlock({
           className={inputCls + " tracking-[0.5em] font-mono text-center"}
           value={otpCode}
           onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          placeholder="• • • • • •" autoComplete="one-time-code" required />
+          placeholder="" autoComplete="one-time-code" required />
       </div>
       {isSignUp && (
         <div>
@@ -313,7 +366,7 @@ function OtpBlock({
           <input className={inputCls + " tracking-widest font-mono uppercase"}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            placeholder="CASCXXX 或 CASCEDUXXXX" autoComplete="off" required />
+            placeholder="" autoComplete="off" required />
           <p className="mt-1.5 text-[11px] text-gray-400">{labelInviteCodeHint}</p>
         </div>
       )}
@@ -324,10 +377,10 @@ function OtpBlock({
 }
 
 // ── Shell — standalone component (prevents remount on parent re-render) ───────
-function Shell({ children, footer }: { children: React.ReactNode; footer: string }) {
+function Shell({ children, footer, wide, showLogo = true }: { children: React.ReactNode; footer: string; wide?: boolean; showLogo?: boolean }) {
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-start px-4"
+      className="min-h-screen w-full flex flex-col items-center px-4 justify-start md:justify-center md:py-10"
       style={{
         fontFamily: FONT,
         background: "linear-gradient(160deg, #fafafa 0%, #f4f4f5 100%)",
@@ -337,11 +390,13 @@ function Shell({ children, footer }: { children: React.ReactNode; footer: string
     >
       <div className="fixed inset-0 pointer-events-none opacity-[0.025]"
         style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")" }} />
-      <div className="w-full max-w-[400px] flex flex-col items-center">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="mb-5">
-          <img src={cascadeLogo} alt="Cascade AI" className="h-8 w-auto object-contain" />
-        </motion.div>
+      <div className={`w-full flex flex-col items-center ${wide ? "max-w-[400px] md:max-w-[480px]" : "max-w-[400px]"}`}>
+        {showLogo && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="mb-5">
+            <img src={cascadeLogo} alt="Cascade AI" className="h-8 w-auto object-contain" />
+          </motion.div>
+        )}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
           className="w-full relative bg-white rounded-2xl overflow-hidden"
@@ -368,8 +423,11 @@ export default function AuthPage() {
 
   const [page, setPage] = useState<Page>("signin");
   const [signInChannel, setSignInChannel] = useState<SignInChannel>("email");
-  const [signInMode, setSignInMode] = useState<SignInMode>("password");
   const [signUpChannel, setSignUpChannel] = useState<SignUpChannel>("email");
+
+  // Replit-style two-step flow: landing (pick a method) → detail (enter creds)
+  const [view, setView] = useState<"landing" | "detail">("landing");
+  const [detailMethod, setDetailMethod] = useState<"phone" | "email" | "github">("email");
 
   // Pre-fill invite code from ?ref= query param and switch to signup tab
   const [refCode, setRefCode] = useState<string>(() => {
@@ -379,6 +437,7 @@ export default function AuthPage() {
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otpTarget, setOtpTarget] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -440,11 +499,34 @@ export default function AuthPage() {
   const switchPage = (p: Page) => {
     setPage(p); setError(null); setNotice(null);
     resetOtp(); setIdentifier(""); setPassword(""); setInviteCode("");
+    setView("landing");
   };
-  const switchSignInChannel = (c: string) => {
-    setSignInChannel(c as SignInChannel); setError(null); resetOtp(); setIdentifier(""); setPassword("");
+
+  // Replit-style: pick a method on the landing card → open its detail form
+  const openMethod = (method: "phone" | "email" | "github") => {
+    setError(null); resetOtp(); setIdentifier(""); setPassword("");
+    setDetailMethod(method);
+    if (method !== "github") {
+      const channel = method as SignInChannel;
+      if (page === "signin") { setSignInChannel(channel); }
+      else { setSignUpChannel(channel); }
+    }
+    setView("detail");
   };
-  const switchSignInMode = (m: SignInMode) => { setSignInMode(m); setError(null); resetOtp(); setPassword(""); };
+  const backToLanding = () => {
+    setView("landing"); setError(null); resetOtp(); setIdentifier(""); setPassword(""); setShowPassword(false);
+  };
+
+  // Detail-page toggle: flip signin ⇄ signup but stay on the SAME method's detail page
+  const togglePageInDetail = () => {
+    const next: Page = page === "signin" ? "signup" : "signin";
+    setPage(next); setError(null); setNotice(null);
+    resetOtp(); setIdentifier(""); setPassword(""); setInviteCode(""); setShowPassword(false);
+    if (detailMethod !== "github") {
+      const channel = detailMethod as SignInChannel;
+      if (next === "signin") setSignInChannel(channel); else setSignUpChannel(channel);
+    }
+  };
   const switchSignUpChannel = (c: string) => { setSignUpChannel(c as SignUpChannel); setError(null); resetOtp(); setInviteCode(""); };
 
   const mapError = (msg: string): string => ({
@@ -685,156 +767,199 @@ export default function AuthPage() {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Sign In / Sign Up
+  // Sign In / Sign Up — Replit-style two-step flow
   // ════════════════════════════════════════════════════════════════════════
+
+  // Active channel for the detail view depends on which page we're on
+  const detailChannel: SignInChannel = page === "signin" ? signInChannel : signUpChannel;
+
+  // ── Landing card: pick a login method ─────────────────────────────────────
+  if (view === "landing") {
+    return (
+      <Shell footer={t("auth.footer")} wide>
+        <div className="px-6 pb-6 pt-4 md:px-8 md:pb-8 md:pt-6">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+          >
+            <motion.div variants={fadeUp} custom={0}>
+              <NoticeMsg msg={notice} />
+            </motion.div>
+
+            {/* Lang pill — centered */}
+            <motion.div variants={fadeUp} custom={1.5} className="flex justify-center mt-1 mb-5">
+              <LangPill />
+            </motion.div>
+
+            {/* Title */}
+            <motion.div variants={fadeUp} custom={2} className="mb-6 text-center">
+              <h1 className="text-[22px] font-bold text-gray-900 tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+                {page === "signin" ? t("auth.landingTitleSignIn") : t("auth.landingTitleSignUp")}
+              </h1>
+              <p className="mt-1.5 text-[13px] text-gray-500">
+                {page === "signin" ? t("auth.signInDesc") : t("auth.signUpDesc")}
+              </p>
+            </motion.div>
+
+            {/* Method buttons — phone, email, GitHub */}
+            <div className="flex flex-col gap-3">
+              <motion.div variants={fadeUp} custom={3}>
+                <MethodBtn
+                  icon={<PhoneIcon />}
+                  label={page === "signin" ? t("auth.methodPhoneBtn") : t("auth.methodPhoneBtnSignUp")}
+                  onClick={() => openMethod("phone")}
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={4}>
+                <MethodBtn
+                  icon={<MailIcon />}
+                  label={page === "signin" ? t("auth.methodEmailBtn") : t("auth.methodEmailBtnSignUp")}
+                  onClick={() => openMethod("email")}
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={5}>
+                <MethodBtn
+                  icon={<GitHubIcon />}
+                  label={page === "signin" ? t("auth.methodGithubBtn") : t("auth.methodGithubBtnSignUp")}
+                  onClick={() => openMethod("github")}
+                />
+              </motion.div>
+            </div>
+
+            {/* Switch sign-in / sign-up */}
+            <motion.div variants={fadeUp} custom={6} className="mt-6 text-center text-[13px] text-gray-500">
+              {page === "signin" ? t("auth.landingNoAccount") : t("auth.landingHasAccount")}{" "}
+              <button type="button"
+                onClick={() => switchPage(page === "signin" ? "signup" : "signin")}
+                className="font-semibold text-gray-900 hover:underline">
+                {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
+              </button>
+            </motion.div>
+          </motion.div>
+        </div>
+      </Shell>
+    );
+  }
+
+  // ── Detail card: enter credentials for the chosen method ──────────────────
+  // Title is simply "Log in" / "Sign up" (figure 1) — language-switchable
+  const detailTitle = page === "signin" ? t("auth.detailLoginTitle") : t("auth.detailSignUpTitle");
+
   return (
-    <Shell footer={t("auth.footer")}>
-      {/* no top-bar — lang pill moves below tabs */}
-      <div className="px-6 pb-6 pt-4">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
-        >
-          <motion.div variants={fadeUp} custom={0}>
-            <NoticeMsg msg={notice} />
+    <Shell footer={t("auth.footer")} wide showLogo={false}>
+      <div className="relative p-6 md:px-12 md:py-12">
+        {/* Close (X) — top-right, returns to landing */}
+        <button type="button" onClick={backToLanding} aria-label={t("auth.close")}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-900 hover:bg-black/[0.04] transition-all duration-200 z-10">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.06 } } }}>
+          {/* Logo — centered inside card (replica of figure 1) */}
+          <motion.div variants={fadeUp} custom={0} className="flex justify-center mb-7 md:mb-9">
+            <img src={cascadeLogo} alt="Cascade AI" className="h-9 md:h-10 w-auto object-contain" />
           </motion.div>
 
-          {/* Page tabs — centered */}
-          <motion.div variants={fadeUp} custom={1}>
-            <PageTabs
-              page={page} onChange={switchPage}
-              labelSignIn={t("auth.pageSignIn")}
-              labelSignUp={t("auth.pageSignUp")}
-            />
+          {/* Title — large, centered */}
+          <motion.div variants={fadeUp} custom={1} className="mb-5 text-center">
+            <h1 className="text-[26px] md:text-[30px] font-bold text-gray-900 tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+              {detailTitle}
+            </h1>
           </motion.div>
 
-          {/* Lang pill — centered, right below tabs */}
-          <motion.div variants={fadeUp} custom={1.5} className="flex justify-center mt-3 mb-5">
+          {/* Back + lang — centered row below title */}
+          <motion.div variants={fadeUp} custom={2} className="flex items-center justify-between mb-7">
+            <button type="button" onClick={backToLanding}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400 hover:text-gray-900 transition-colors">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {t("auth.back")}
+            </button>
             <LangPill />
           </motion.div>
 
-          {/* Title */}
-          <motion.div variants={fadeUp} custom={2} className="mb-5 text-center">
-            <h1 className="text-[22px] font-bold text-gray-900 tracking-tight" style={{ letterSpacing: "-0.02em" }}>
-              {page === "signin" ? t("auth.welcomeBack") : t("auth.createAccount2")}
-            </h1>
-            <p className="mt-1 text-[13px] text-gray-500">
-              {page === "signin" ? t("auth.signInDesc") : t("auth.signUpDesc")}
-            </p>
-          </motion.div>
+          <AnimatePresence mode="wait">
+            {detailMethod === "github" ? (
+              /* ── GitHub continue page ── */
+              <motion.div key="github"
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}
+                className="flex flex-col gap-5">
+                <p className="text-center text-[13px] text-gray-500 leading-relaxed">
+                  {t("auth.githubContinueDesc")}
+                </p>
+                <button type="button" onClick={handleGitHub}
+                  className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-black text-white text-[14px] font-semibold transition-all duration-200 hover:opacity-80 active:scale-[0.98]"
+                  style={{ fontFamily: FONT, letterSpacing: "-0.01em" }}>
+                  <GitHubIcon />
+                  {page === "signin" ? t("auth.continueWithGithub") : t("auth.signUpWithGithub")}
+                </button>
+              </motion.div>
+            ) : page === "signin" ? (
+              <motion.div key={"signin-" + detailChannel}
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
 
-          {/* GitHub */}
-          <motion.div variants={fadeUp} custom={3}>
-            <button type="button" onClick={handleGitHub}
-              className="w-full flex items-center justify-center gap-2.5 h-11 rounded-xl text-[13px] font-semibold text-gray-700 transition-all duration-200 hover:bg-gray-50 active:scale-[0.98]"
-              style={{ border: "1px solid rgba(0,0,0,0.12)", background: "white" }}>
-              <GitHubIcon />
-              {page === "signin" ? t("auth.continueWithGithub") : t("auth.signUpWithGithub")}
+                <motion.form
+                  onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
+                  <div>
+                    <label className={labelCls}>
+                      {detailChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
+                    </label>
+                    <input
+                      type={detailChannel === "email" ? "email" : "tel"}
+                      className={inputCls + " h-12"}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder=""
+                      autoComplete={detailChannel === "email" ? "email" : "tel"}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t("auth.passwordLabel")}</label>
+                    <div className="relative">
+                      <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"} value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="" autoComplete="current-password" required />
+                      <button type="button" onClick={() => setShowPassword((s) => !s)}
+                        aria-label="toggle password"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
+                        <EyeIcon open={showPassword} />
+                      </button>
+                    </div>
+                  </div>
+                  <ErrorMsg msg={error} />
+                  <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
+                </motion.form>
+              </motion.div>
+            ) : (
+              <motion.div key={"signup-" + detailChannel}
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
+                <OtpBlock {...otpBlockProps(true)} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Bottom links — Forgot password? / New to CascadeAI? Create account */}
+          <motion.div variants={fadeUp} custom={4} className="mt-8 flex flex-col items-center gap-2.5">
+            <button type="button" onClick={openForgot}
+              className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
+              {t("auth.forgotPassword")}
             </button>
-          </motion.div>
-
-          <motion.div variants={fadeUp} custom={4}>
-            <Divider label={t("auth.or")} />
-          </motion.div>
-
-          {/* Forms */}
-          <motion.div variants={fadeUp} custom={5}>
-            <AnimatePresence mode="wait">
-              {page === "signin" ? (
-                <motion.div key="signin"
-                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.2 }}>
-
-                  {/* Email / Phone — underline tabs */}
-                  <div className="flex border-b border-black/[0.07] mb-5">
-                    {([{ id: "email", label: t("auth.signinMethodEmail") }, { id: "phone", label: t("auth.signinMethodPhone") }]).map((tab) => (
-                      <button key={tab.id} type="button" onClick={() => switchSignInChannel(tab.id)}
-                        className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all duration-200 ${
-                          signInChannel === tab.id
-                            ? "border-black text-gray-900"
-                            : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Password / OTP — underline tabs */}
-                  <div className="flex border-b border-black/[0.07] mb-5">
-                    {([{ id: "password", label: t("auth.passwordLogin") }, { id: "otp", label: t("auth.codeLogin") }]).map((tab) => (
-                      <button key={tab.id} type="button" onClick={() => switchSignInMode(tab.id as SignInMode)}
-                        className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all duration-200 ${
-                          signInMode === tab.id
-                            ? "border-black text-gray-900"
-                            : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <AnimatePresence mode="wait">
-                    {signInMode === "password" ? (
-                      <motion.form key="pwd"
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                        onSubmit={handlePasswordSignIn} className="flex flex-col gap-4">
-                        <div>
-                          <label className={labelCls}>
-                            {signInChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
-                          </label>
-                          <input
-                            type={signInChannel === "email" ? "email" : "tel"}
-                            className={inputCls}
-                            value={identifier}
-                            onChange={(e) => setIdentifier(e.target.value)}
-                            placeholder={signInChannel === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
-                            autoComplete={signInChannel === "email" ? "email" : "tel"}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className={labelCls + " mb-0"}>{t("auth.passwordLabel")}</label>
-                            <button type="button" onClick={openForgot}
-                              className="text-[11px] font-medium text-gray-400 hover:text-gray-800 transition-colors">
-                              {t("auth.forgotPassword")}
-                            </button>
-                          </div>
-                          <input type="password" className={inputCls} value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••" autoComplete="current-password" required />
-                        </div>
-                        <ErrorMsg msg={error} />
-                        <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
-                      </motion.form>
-                    ) : (
-                      <motion.div key="otp"
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        transition={{ duration: 0.15 }}>
-                        <OtpBlock {...otpBlockProps(false)} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ) : (
-                <motion.div key="signup"
-                  initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
-                  <div className="flex border-b border-black/[0.07] mb-5">
-                    {([{ id: "email", label: t("auth.methodEmail") }, { id: "phone", label: t("auth.methodPhone") }]).map((tab) => (
-                      <button key={tab.id} type="button" onClick={() => switchSignUpChannel(tab.id)}
-                        className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all duration-200 ${
-                          signUpChannel === tab.id
-                            ? "border-black text-gray-900"
-                            : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                  <OtpBlock {...otpBlockProps(true)} />
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <p className="text-[13px] text-gray-500">
+              {page === "signin" ? t("auth.newToCascade") : t("auth.landingHasAccount")}{" "}
+              <button type="button"
+                onClick={togglePageInDetail}
+                className="font-semibold text-gray-900 hover:underline">
+                {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
+              </button>
+            </p>
           </motion.div>
         </motion.div>
       </div>

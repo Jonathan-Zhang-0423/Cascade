@@ -689,7 +689,30 @@ export async function registerRoutes(
     res.json(getConcurrencyMetrics());
   });
 
-  app.post("/api/build-session", async (req, res) => {
+  // ── Security: invite-code gate ──────────────────────────────────────────────
+  // Front-end guards the invite gate, but the core endpoints (project creation,
+  // planning, building) must independently enforce it: the session must be
+  // authenticated AND the user must have redeemed an invite code. Without this,
+  // a logged-in but un-gated user (e.g. a brand-new GitHub-only signup) could hit
+  // these APIs directly. Returns 401 if unauthenticated, 403 if no invite code.
+  const requireInviteCode = async (req: any, res: any, next: any) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+      const user = await storage.getUser(userId);
+      if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+      if (!(user as any).inviteCode) {
+        res.status(403).json({ error: "Invite code required" });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error("[requireInviteCode]", err);
+      res.status(500).json({ error: "Authorization check failed" });
+    }
+  };
+
+  app.post("/api/build-session", requireInviteCode, async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -1172,7 +1195,7 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/manager-chat", async (req, res) => {
+  app.post("/api/manager-chat", requireInviteCode, async (req, res) => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let mgrSessionId: string | undefined;
     let clientDisconnected = false;
@@ -2330,7 +2353,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   const deleteFileSchema = z.object({ path: z.string().min(1) });
 
-  app.post("/api/projects", async (req, res) => {
+  app.post("/api/projects", requireInviteCode, async (req, res) => {
     try {
       const parsed = createProjectSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3855,16 +3878,20 @@ Generate the cascade.md content for this project based on both the plan and the 
       // The /user endpoint returns email = null when the user marks it
       // private. Fetch /user/emails (which the user:email scope grants)
       // to find the verified primary email for account merging.
-      let primaryEmail: string | null = ghUser.email;
+      // Normalize to trimmed lowercase everywhere: OTP signup stores emails
+      // lowercased, so without this an existing user is missed here and a
+      // duplicate GitHub-only account gets created.
+      let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
         const emailsRes = await ghFetch("https://api.github.com/user/emails", {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
         });
         if (emailsRes.ok) {
           const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-          primaryEmail = emails.find(e => e.primary && e.verified)?.email
+          const picked = emails.find(e => e.primary && e.verified)?.email
             ?? emails.find(e => e.verified)?.email
             ?? null;
+          primaryEmail = picked ? picked.trim().toLowerCase() : null;
         }
       }
 
