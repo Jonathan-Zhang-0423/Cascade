@@ -183,6 +183,8 @@ export function ChatPanel() {
     mgrLiveThinkingText,
     mgrLiveNarrationText,
     mgrLiveActionLog,
+    isAiResponding,
+    isManagerResponding,
   ]);
 
   useEffect(() => {

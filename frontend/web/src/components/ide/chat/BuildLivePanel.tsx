@@ -3,6 +3,28 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useIDEStore } from "@/stores/ide-store";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+// ── AnimatedDots — 从左到右逐个显示的三点动画 ─────────────────────────────
+function AnimatedDots() {
+  return (
+    <>
+      <style>{`
+        @keyframes dot-fade {
+          0%, 20%   { opacity: 0; }
+          40%, 100% { opacity: 1; }
+        }
+        .anim-dot-1 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0s;    }
+        .anim-dot-2 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.3s;  }
+        .anim-dot-3 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.6s;  }
+      `}</style>
+      <span aria-hidden="true">
+        <span className="anim-dot-1">.</span>
+        <span className="anim-dot-2">.</span>
+        <span className="anim-dot-3">.</span>
+      </span>
+    </>
+  );
+}
 import {
   FileText,
   PencilLine,
@@ -325,7 +347,7 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
           <Brain className="w-3.5 h-3.5 text-muted-foreground/50" />
         </span>
         <span className="truncate text-muted-foreground/70">
-          {isLive ? t("chat.thinkingLive") : t("agent.thinking")}
+          {isLive ? <>{t("chat.thinkingLive")}<AnimatedDots /></> : t("agent.thinking")}
         </span>
         {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin ml-1 shrink-0 text-muted-foreground/50" />}
       </button>

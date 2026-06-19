@@ -429,17 +429,6 @@ export function Navbar({
           </button>
         </div>
 
-        {/* 全屏按钮 */}
-        <button
-          className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-accent/20 transition-colors shrink-0 ml-0.5"
-          onClick={handleFullscreen}
-          title={isFullscreen ? t("navbar.exitFullscreen") : t("navbar.enterFullscreen")}
-        >
-          {isFullscreen
-            ? <Minimize className="w-[13px] h-[13px]" />
-            : <Maximize className="w-[13px] h-[13px]" />}
-        </button>
-
         {/* 邀请按钮 */}
         <div className="relative shrink-0 ml-1" ref={invitePanelRef}>
           <button
@@ -522,6 +511,17 @@ export function Navbar({
             </div>
           )}
         </div>
+
+        {/* 全屏按钮 */}
+        <button
+          className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-accent/20 transition-colors shrink-0 ml-0.5"
+          onClick={handleFullscreen}
+          title={isFullscreen ? t("navbar.exitFullscreen") : t("navbar.enterFullscreen")}
+        >
+          {isFullscreen
+            ? <Minimize className="w-[13px] h-[13px]" />
+            : <Maximize className="w-[13px] h-[13px]" />}
+        </button>
       </div>
     </header>
   );

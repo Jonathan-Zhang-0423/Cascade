@@ -7,6 +7,7 @@ import { useTheme } from "@/components/theme-provider";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { applyFontSize, getFontSizeKey, FONT_SIZES } from "@/components/ide/navbar";
 import { cn } from "@/lib/utils";
+import { MobileInvitePanel } from "./MobileInvitePanel";
 
 type Tab = "chat" | "preview";
 
@@ -108,8 +109,8 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
             </span>
           </div>
 
-          {/* 字体大小按钮（右侧绝对定位） */}
-          <div className="absolute right-3 flex items-center">
+          {/* 字体大小按钮 + 邀请按钮（右侧绝对定位） */}
+          <div className="absolute right-3 flex items-center gap-1">
             <button
               className="flex items-center justify-center w-8 h-8 rounded-lg"
               style={{ color: "var(--foreground)", opacity: 0.7 }}
@@ -120,7 +121,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
             </button>
             {fontMenuOpen && (
               <div
-                className="absolute top-full right-0 mt-1 rounded-xl py-2 px-3 flex gap-2 items-center"
+                className="absolute top-full right-8 mt-1 rounded-xl py-2 px-3 flex gap-2 items-center"
                 style={{
                   background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2",
                   border: "1px solid var(--panel-divider)",
@@ -145,6 +146,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
                 ))}
               </div>
             )}
+            <MobileInvitePanel />
           </div>
         </div>
       )}

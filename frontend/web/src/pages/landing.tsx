@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { SiteBeian } from "../components/SiteBeian";
 import cascadeLogo from "../assets/cascade-logo.png";
 import iconFeature1 from "../assets/icon-feature-1.svg";
 import iconFeature2 from "../assets/icon-feature-2.svg";
@@ -667,14 +668,17 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="py-8 px-8 border-t border-black/[0.06]">
-        <div className="max-w-7xl mx-auto flex items-center justify-center md:justify-between">
+        <div className="max-w-7xl mx-auto flex flex-col items-center gap-3 md:flex-row md:justify-between">
           <img
             src={cascadeLogo}
             alt="Cascade AI"
             className="hidden md:block h-6 w-auto"
             style={{ filter: "brightness(0)" }}
           />
-          <p className="text-[13px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
+          <div className="flex flex-col items-center gap-1.5 md:items-end">
+            <p className="text-[13px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
+            <SiteBeian />
+          </div>
         </div>
       </footer>
     </div>
