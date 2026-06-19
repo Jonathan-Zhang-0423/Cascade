@@ -5,6 +5,7 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 import { getCaptchaTicket } from "@/lib/captcha";
+import { SiteBeian } from "@/components/SiteBeian";
 import cascadeLogo from "../assets/cascade-logo.png";
 
 // ── Font ─────────────────────────────────────────────────────────────────────
@@ -408,6 +409,7 @@ function Shell({ children, footer, wide, showLogo = true }: { children: React.Re
           className="mt-5 text-center text-[11px] text-gray-400">
           {footer}
         </motion.p>
+        <SiteBeian className="mt-2" />
       </div>
     </div>
   );

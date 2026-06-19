@@ -77,6 +77,21 @@ export default function IDEPage() {
     if (historyTabRequest > 0) openHistoryTab();
   }, [historyTabRequest]);
 
+  // 监听 plan-preview-open 事件，点击计划卡"查看"时在右侧新建/切换到计划详情 Tab
+  const PLAN_PREVIEW_TAB_ID = "plan-preview";
+  useEffect(() => {
+    const handler = () => {
+      setPreviewTabs((prev) => {
+        if (prev.some((tab) => tab.id === PLAN_PREVIEW_TAB_ID)) return prev;
+        return [...prev, { id: PLAN_PREVIEW_TAB_ID, label: t("navbar.planPreviewTab") ?? "任务计划", closable: true }];
+      });
+      setActivePreviewTab(PLAN_PREVIEW_TAB_ID);
+      setToolsPanelOpen(false);
+    };
+    window.addEventListener("plan-preview-open", handler);
+    return () => window.removeEventListener("plan-preview-open", handler);
+  }, [t]);
+
   const addPreviewTab = () => {
     const id = `tab-${Date.now()}`;
     setPreviewTabs((prev) => [...prev, { id, label: t("navbar.newTab"), closable: true }]);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import {
   type ManagerPlan,
   type ManagerSubTask,
@@ -26,7 +26,6 @@ import {
   Search,
   ExternalLink,
   X,
-  ChevronDown as DropdownChevron,
   LayoutGrid,
   Ban,
   Loader2,
@@ -113,7 +112,7 @@ function StepItem({
   );
 }
 
-export function ThinkingToggle({ thinking }: { thinking: string }) {
+export function ThinkingToggle({ thinking, isCompleted }: { thinking: string; isCompleted?: boolean }) {
   const [open, setOpen] = useState(false);
   const lang = usePlanCardLang();
   return (
@@ -124,7 +123,7 @@ export function ThinkingToggle({ thinking }: { thinking: string }) {
         data-testid="button-toggle-thinking"
       >
         {open ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
-        <span className="italic">{t(lang, "thinking")}</span>
+        <span className="italic">{t(lang, isCompleted ? "thinking" : "thinkingInProgress")}</span>
       </button>
       {open && (
         <p className="mt-1 font-mono text-[10px] text-muted-foreground/50 italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">
@@ -187,20 +186,7 @@ export function TaskPlanCard({
   const [expanded, setExpanded] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
-  const [bgDropdownOpen, setBgDropdownOpen] = useState(false);
   const [rollbackRestored, setRollbackRestored] = useState(false);
-  const bgDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!bgDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (bgDropdownRef.current && !bgDropdownRef.current.contains(e.target as Node)) {
-        setBgDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [bgDropdownOpen]);
 
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
@@ -239,7 +225,7 @@ export function TaskPlanCard({
     <>
       {thinking && (
         <div className="px-3 mb-0.5">
-          <ThinkingToggle thinking={thinking} />
+          <ThinkingToggle thinking={thinking} isCompleted={isFullyComplete} />
         </div>
       )}
 
@@ -264,14 +250,17 @@ export function TaskPlanCard({
             <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-muted-foreground/50 text-[13px]">○</span>
           )}
           <span className="font-mono text-[12.5px] font-semibold text-foreground flex-1 min-w-0 truncate">
-            {t(lang, "taskPlanCreated")}
+            {t(lang, isFullyComplete ? "taskPlanCreated" : "taskPlanInProgress")}
           </span>
           <button
-            onClick={() => setPlanPreview(true, {
-              summary: plan.summary,
-              overview,
-              steps: steps.map((s) => ({ title: s.title, description: s.description })),
-            })}
+            onClick={() => {
+              setPlanPreview(true, {
+                summary: plan.summary,
+                overview,
+                steps: steps.map((s) => ({ title: s.title, description: s.description })),
+              });
+              window.dispatchEvent(new Event("plan-preview-open"));
+            }}
             className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors shrink-0"
             data-testid="button-view-plan-doc"
           >
@@ -297,9 +286,6 @@ export function TaskPlanCard({
               {overview}
             </p>
           )}
-          <span className="inline-block text-[10px] font-mono text-muted-foreground/60 bg-accent/10 border border-border rounded-full px-2.5 py-0.5">
-            {t(lang, "webApp")}
-          </span>
 
           {/* Steps list (collapsible) */}
           {expanded && (
@@ -327,72 +313,6 @@ export function TaskPlanCard({
             {isFullyComplete && ` · ${t(lang, "allDone")}`}
           </div>
         </div>
-
-        {/* Completion line + rollback */}
-        {isFullyComplete && (() => {
-          // 找到最近一个 checkpoint（任务完成时自动创建的那个）
-          const latestCp = checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : null;
-          const canRollback = !!latestCp;
-
-          const handleRollback = () => {
-            if (!latestCp) return;
-            restoreCheckpoint(latestCp.id);
-            refreshPreview();
-            setRollbackRestored(true);
-            setTimeout(() => setRollbackRestored(false), 2000);
-          };
-
-          return (
-            <div className="px-4 py-2.5 border-b border-border/60">
-              {/* Done 标题行 */}
-              <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5 mb-1">
-                <span>{t(lang, "doneCheck")}</span>
-                {changedFiles && changedFiles.length > 0 && (
-                  <span className="text-muted-foreground/60 text-[10px]">
-                    · {changedFiles.length === 1
-                        ? t(lang, "fileChanged")
-                        : t(lang, "filesChanged", { n: String(changedFiles.length) })}
-                  </span>
-                )}
-              </div>
-              {/* 版本回滚区域 */}
-              {canRollback && (
-                <div
-                  className="flex items-center justify-between rounded-lg px-3 py-2 mt-1"
-                  style={{ background: "var(--panel-right-bg)", border: "1px solid var(--panel-divider)" }}
-                >
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <span className="font-mono text-[10px] text-foreground/70 truncate">
-                      {latestCp.label || t(lang, "applied")}
-                    </span>
-                    <span className="font-mono text-[9px] text-muted-foreground/40">
-                      {new Date(latestCp.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      {changedFiles && changedFiles.length > 0 && (
-                        <> · {changedFiles.length} {changedFiles.length === 1 ? t(lang, "file") : t(lang, "files")}</>
-                      )}
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleRollback}
-                    className={cn(
-                      "flex items-center gap-1 font-mono text-[10px] px-2.5 py-1 rounded-md border transition-colors shrink-0 ml-3",
-                      rollbackRestored
-                        ? "text-[#34d68a] border-[rgba(52,214,138,0.3)] bg-[rgba(52,214,138,0.08)]"
-                        : "text-muted-foreground/70 hover:text-foreground border-border/60 hover:border-border hover:bg-accent/10"
-                    )}
-                    data-testid="button-rollback"
-                  >
-                    {rollbackRestored ? (
-                      <><Check className="w-2.5 h-2.5" /><span>{t(lang, "restored")}</span></>
-                    ) : (
-                      <><LayoutGrid className="w-2.5 h-2.5" /><span>{t(lang, "restore")}</span></>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
         {/* Confirmation input */}
         {showConfirmation && pendingConfirmation && onContinueWithInput && (
@@ -462,42 +382,7 @@ export function TaskPlanCard({
               </button>
             ) : isPreExecution ? (
               <>
-                {/* Split button: Build in background */}
-                <div className="flex items-center border border-border/80 rounded-lg overflow-visible relative" ref={bgDropdownRef}>
-          <button
-            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/10 px-2.5 py-1.5 transition-colors"
-            onClick={() => onExecute?.()}
-          >
-            <Hammer className="w-3 h-3" />
-            <span>{t(lang, "buildBackground")}</span>
-          </button>
-                  <div className="w-px h-4 bg-border/40 shrink-0" />
-                  <button
-                    className="flex items-center justify-center px-1.5 py-1.5 text-muted-foreground/70 hover:text-foreground hover:bg-accent/10 transition-colors"
-                    onClick={() => setBgDropdownOpen((o) => !o)}
-                  >
-                    <DropdownChevron className="w-3 h-3" />
-                  </button>
-                  {bgDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-44 bg-[var(--panel-mid-bg)] border border-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
-                      <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-foreground transition-colors"
-                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
-                      >
-                        {t(lang, "buildBackground")}
-                      </button>
-                      <button
-                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-foreground transition-colors"
-                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
-                      >
-                        {t(lang, "buildQuietly")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 <div className="flex-1" />
-
                 {/* Primary: Build here */}
                 <button
                   className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded-lg px-4 py-1.5 transition-colors font-semibold"

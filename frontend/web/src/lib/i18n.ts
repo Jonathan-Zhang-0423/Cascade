@@ -394,7 +394,7 @@ const zh: Dict = {
   "chat.filesChanged": "{n} 个文件已更改",
   "chat.fileChanged": "1 个文件已更改",
   "chat.thoughtFor": "思考了 {n} 秒",
-  "chat.thinkingLive": "思考中...",
+  "chat.thinkingLive": "思考中",
 
   "wechat.buildFailed": "构建失败",
   "wechat.askAiFix": "让 AI 修复",
@@ -916,7 +916,7 @@ const en: Dict = {
   "chat.filesChanged": "{n} files changed",
   "chat.fileChanged": "1 file changed",
   "chat.thoughtFor": "thought for {n}s",
-  "chat.thinkingLive": "thinking...",
+  "chat.thinkingLive": "thinking",
 
   "wechat.buildFailed": "Build Failed",
   "wechat.askAiFix": "Ask AI to Fix",

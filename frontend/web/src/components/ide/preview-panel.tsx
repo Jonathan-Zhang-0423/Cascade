@@ -582,6 +582,53 @@ export function PreviewPanel({
         </div>
       )}
 
+      {/* ── Plan Preview 视图（任务计划详情全页展示） ── */}
+      {activePreviewTabState === "plan-preview" && planPreviewData && (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
+          {/* 标题栏 */}
+          <div className="px-5 py-3 border-b shrink-0 flex items-center gap-2" style={{ borderColor: "var(--panel-divider)" }}>
+            <span className="font-mono text-[13px] font-semibold text-foreground flex-1 min-w-0 truncate">
+              {planPreviewData.summary ?? t("navbar.planPreviewTab") ?? "任务计划"}
+            </span>
+            <button
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onClick={() => setPlanPreview(false)}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {/* 内容区 */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-[13px] text-foreground/80 leading-relaxed">
+            {planPreviewData.overview && (
+              <div>
+                <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">Overview</p>
+                <p className="leading-relaxed">{planPreviewData.overview}</p>
+              </div>
+            )}
+            {planPreviewData.steps.length > 0 && (
+              <div>
+                <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-2">Steps</p>
+                <div className="space-y-3">
+                  {planPreviewData.steps.map((step, i) => (
+                    <div key={i} className="flex gap-3">
+                      <span className="font-mono text-[11px] text-muted-foreground/50 shrink-0 mt-0.5 w-5 text-right">{i + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        {step.title && (
+                          <p className="font-medium text-foreground/90 mb-0.5">{step.title}</p>
+                        )}
+                        {step.description && (
+                          <p className="text-[12px] text-muted-foreground/70 leading-relaxed">{step.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Files 视图（右内容区文件树） ── */}
       {activeTab === "files" && activePreviewTabState !== "history" && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
@@ -616,42 +663,6 @@ export function PreviewPanel({
       >
           {/* 预览内容区 — 左侧可选 View 面板 + 右侧预览 */}
           <div className="flex-1 min-h-0 flex overflow-hidden">
-            {/* View 面板（Task plan 详情），左侧并列 */}
-            {planPreviewOpen && planPreviewData && (
-              <div
-                className="flex flex-col shrink-0 border-r overflow-hidden"
-                style={{ width: 300, background: "var(--panel-mid-bg)", borderColor: "var(--panel-divider)" }}
-              >
-                {/* 面板标题 */}
-                <div className="px-4 pt-3 pb-2.5 border-b shrink-0 flex items-center gap-2" style={{ borderColor: "var(--panel-divider)" }}>
-                  <span className="font-mono text-[12px] font-semibold text-foreground flex-1 min-w-0 truncate">
-                    {planPreviewData.summary ?? "Plan"}
-                  </span>
-                  <button
-                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                    onClick={() => setPlanPreview(false)}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                {/* 面板内容 */}
-                <div className="flex-1 overflow-y-auto scrollbar-auto px-4 py-3 space-y-3 text-[12px] text-foreground/80 leading-relaxed">
-                  {planPreviewData.overview && (
-                    <div>
-                      <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1">Overview</p>
-                      <p>{planPreviewData.overview}</p>
-                    </div>
-                  )}
-                  {planPreviewData.steps.map((step, i) => (
-                    <div key={i} className="flex gap-2">
-                      <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0 mt-0.5">{i + 1}.</span>
-                      <span>{step.description || step.title}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* 预览主区 */}
             <div className={cn("flex-1 min-w-0 min-h-0 overflow-hidden", devicePlatform === "ios" ? "flex items-center justify-center" : "flex items-stretch")} style={{ background: "var(--panel-right-bg)" }}>
               {devicePlatform === "ios" ? (
@@ -698,4 +709,4 @@ export function PreviewPanel({
       </div>
     </div>
   );
-}
+}
