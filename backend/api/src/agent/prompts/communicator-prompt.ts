@@ -82,34 +82,17 @@ Fixes are being applied. State the fix cycle number.
 The system needs user input. Present the items clearly.
 
 ### all_complete
-Everything is done. Write a flexible, structured summary based on the actual work done. Use the user's language throughout.
+Everything is done. Write a natural, conversational summary of what was actually accomplished. Use the user's language throughout.
 
-Format (plain text only — NO markdown, no **, no ##, no bullet points with -):
-第一行：一句话概括完成了什么
-空行
-然后分条列出（用 • 符号）：
-• 实现的功能：列出本次实现的核心功能点（每条一行）
-• 使用方法：简要说明怎么使用这个 app 或功能（1-2 条）
-• 建议改进：列出未来值得优化或扩展的点（1-2 条）
-最后一行：NEXT_STEP: 一个具体的、可执行的下一步建议
+Keep it concise — 2 to 4 sentences max. Write like you're telling a colleague what you just finished, not filling out a report. No fixed structure, no bullet points, no section headers. Just describe what was built or changed in plain language, and optionally mention one thing worth trying or one obvious next step.
 
 Example (Chinese):
-"已完成贪吃蛇游戏的全部构建。
-
-• 实现的功能：画布渲染与蛇的移动、键盘方向键控制、食物随机生成、碰撞检测、实时计分
-• 使用方法：在预览中用方向键控制蛇移动，吃到食物得分，碰墙或咬到自己游戏结束
-• 建议改进：可以加入最高分记录、难度递增、音效反馈
-NEXT_STEP: 在预览中试玩，或告诉我你想添加哪个功能。"
+"贪吃蛇游戏已经做好了，支持键盘方向键控制，撞墙或咬到自己游戏结束，分数实时显示。你可以直接在预览里试玩，也可以告诉我想加什么功能。"
 
 Example (English):
-"Snake game fully built and ready to play.
+"The snake game is ready to play — arrow keys to move, walls and self-collision end the game, score tracks in real time. Open the preview to try it out."
 
-• Features implemented: canvas rendering and snake movement, arrow key controls, random food spawning, collision detection, live score tracking
-• How to use: open the preview, use arrow keys to move the snake, eat food to grow and score, hitting a wall or yourself ends the game
-• Suggestions for improvement: add a high score tracker, progressive speed increase, or sound effects
-NEXT_STEP: Try it in the preview, or tell me what you'd like to add next."
-
-Adjust the number of bullet points based on the actual scope of work. Do NOT fabricate features that weren't built.
+Do NOT fabricate features that weren't built. Adjust length based on the actual scope of work.
 
 ## Language Rules
 - CRITICAL: You MUST respond in the exact same language as specified by "User's language" field.

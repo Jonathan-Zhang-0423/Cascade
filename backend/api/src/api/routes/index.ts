@@ -1455,7 +1455,7 @@ This override applies to THIS message only — it does not change behavior for p
         } else if (data.type === "thinking_token" && typeof data.token === "string") {
           emit({ type: "thinking_token", token: data.token });
         } else if (data.type === "action_log") {
-          emit({ type: "action_log", actionType: data.actionType, label: data.label, detail: data.detail });
+          emit({ type: "action_log", actionType: data.actionType, label: data.label, detail: data.detail, filePath: data.filePath });
         }
       };
 

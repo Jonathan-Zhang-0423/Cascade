@@ -170,10 +170,16 @@ export function ChatPanel() {
       .catch(() => {});
   }, [setProviders]);
 
+  // ── 自动滚底：实时读 DOM 距底距离，避免 passive scroll 事件与 React commit 的竞态 ──
+  const SCROLL_THRESHOLD = 120; // px，距底部多少以内算"在底部"
+
+  // 内容变化时：直接读当前 scrollTop 判断用户是否在底部，不依赖异步 ref
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom > SCROLL_THRESHOLD) return;
+    el.scrollTop = el.scrollHeight;
   }, [
     chatMessages,
     managerMessages,

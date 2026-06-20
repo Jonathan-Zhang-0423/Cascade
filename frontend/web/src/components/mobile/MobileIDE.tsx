@@ -66,7 +66,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   return (
     <div
       className="h-screen w-screen overflow-hidden bg-background relative"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      style={{ paddingTop: "env(safe-area-inset-top)", overscrollBehaviorY: "none" }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
