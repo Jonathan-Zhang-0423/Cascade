@@ -115,6 +115,10 @@ function StepItem({
 export function ThinkingToggle({ thinking, isCompleted }: { thinking: string; isCompleted?: boolean }) {
   const [open, setOpen] = useState(false);
   const lang = usePlanCardLang();
+  // 从 store 实时读取：规划中或执行中 → 显示"思考中"；否则 → 显示"思考步骤"
+  const isManagerResponding = useIDEStore((s) => s.isManagerResponding);
+  const executingTaskIndex = useIDEStore((s) => s.executingTaskIndex);
+  const isActive = isManagerResponding || executingTaskIndex !== null;
   return (
     <div className="mb-1">
       <button
@@ -123,7 +127,7 @@ export function ThinkingToggle({ thinking, isCompleted }: { thinking: string; is
         data-testid="button-toggle-thinking"
       >
         {open ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
-        <span className="italic">{t(lang, isCompleted ? "thinking" : "thinkingInProgress")}</span>
+        <span className="italic">{t(lang, isActive ? "thinkingInProgress" : "thinking")}</span>
       </button>
       {open && (
         <p className="mt-1 font-mono text-[10px] text-muted-foreground/50 italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">

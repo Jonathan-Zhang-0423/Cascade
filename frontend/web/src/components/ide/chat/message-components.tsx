@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { AnimatedDots } from "./AnimatedDots";
 import {
   useIDEStore,
   type ChatMessage,
@@ -389,48 +390,48 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
 // ── Thinking phrases ─────────────────────────────────────────────────────────
 const THINKING_PHRASES: Record<"zh" | "en", string[]> = {
   zh: [
-    "正在脑洞大开中…",
-    "灵感正在路上，请稍候…",
-    "AI 正在认真思考，不是在摸鱼…",
-    "代码宇宙正在重组中…",
-    "正在向平行宇宙借点智慧…",
-    "思维发动机预热中…",
-    "正在把你的想法翻译成代码语言…",
-    "正在解锁最优解…",
-    "AI 大脑正在高速运转…",
-    "正在召唤代码精灵…",
-    "把咖啡因转化为代码中…",
-    "正在对齐神经元…",
-    "想法正在结晶…",
-    "正在量子计算最优解…",
-    "创意引擎已启动，请系好安全带…",
-    "正在消化你的需求，别催…",
-    "大模型正在认真上班…",
-    "正在把文字变成魔法…",
-    "灵感女神正在降临…",
-    "正在高速检索知识库…",
+    "正在脑洞大开中",
+    "灵感正在路上，请稍候",
+    "AI 正在认真思考，不是在摸鱼",
+    "代码宇宙正在重组中",
+    "正在向平行宇宙借点智慧",
+    "思维发动机预热中",
+    "正在把你的想法翻译成代码语言",
+    "正在解锁最优解",
+    "AI 大脑正在高速运转",
+    "正在召唤代码精灵",
+    "把咖啡因转化为代码中",
+    "正在对齐神经元",
+    "想法正在结晶",
+    "正在量子计算最优解",
+    "创意引擎已启动，请系好安全带",
+    "正在消化你的需求，别催",
+    "大模型正在认真上班",
+    "正在把文字变成魔法",
+    "灵感女神正在降临",
+    "正在高速检索知识库",
   ],
   en: [
-    "Brainwaves detected, processing…",
-    "Consulting the code oracle…",
-    "Firing up the neural engines…",
-    "Turning caffeine into code…",
-    "Assembling brilliant thoughts…",
-    "Summoning the AI muse…",
-    "Untangling the idea spaghetti…",
-    "Crunching possibilities…",
-    "Downloading inspiration…",
-    "Aligning neurons, please hold…",
-    "Your idea is in good hands…",
-    "Wrangling electrons into shape…",
-    "Searching all known universes…",
-    "Cooking up something great…",
-    "Debugging the space-time fabric…",
-    "Connecting the creative dots…",
-    "Big thoughts incoming…",
-    "Making sense of it all…",
-    "Spinning up the idea turbine…",
-    "Almost there, stay curious…",
+    "Brainwaves detected, processing",
+    "Consulting the code oracle",
+    "Firing up the neural engines",
+    "Turning caffeine into code",
+    "Assembling brilliant thoughts",
+    "Summoning the AI muse",
+    "Untangling the idea spaghetti",
+    "Crunching possibilities",
+    "Downloading inspiration",
+    "Aligning neurons, please hold",
+    "Your idea is in good hands",
+    "Wrangling electrons into shape",
+    "Searching all known universes",
+    "Cooking up something great",
+    "Debugging the space-time fabric",
+    "Connecting the creative dots",
+    "Big thoughts incoming",
+    "Making sense of it all",
+    "Spinning up the idea turbine",
+    "Almost there, stay curious",
   ],
 };
 
@@ -438,10 +439,37 @@ export function TypingIndicator({ text }: { text?: string }) {
   const { lang } = useLanguageStore();
   const phrases = THINKING_PHRASES[lang === "zh" ? "zh" : "en"];
 
-  // Pick once per mount — guarantees different text each conversation
+  // Pick once per mount
   const phrase = useRef<string>(
     phrases[Math.floor(Math.random() * phrases.length)]
   ).current;
+
+  const displayText = text || phrase;
+
+  // 逐字打字机效果：每 60ms 显示一个字，显示完后停顿 800ms 再重新循环
+  const [charCount, setCharCount] = useState(0);
+  useEffect(() => {
+    let i = charCount;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      if (i < displayText.length) {
+        i++;
+        setCharCount(i);
+        timer = setTimeout(tick, 90);
+      } else {
+        // 显示完整文字后停顿再重置
+        timer = setTimeout(() => {
+          i = 0;
+          setCharCount(0);
+          timer = setTimeout(tick, 90);
+        }, 2400);
+      }
+    };
+    timer = setTimeout(tick, 90);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayText]);
 
   // Fade in after a short delay so it doesn't flash on very fast responses
   const [visible, setVisible] = useState(false);
@@ -475,9 +503,10 @@ export function TypingIndicator({ text }: { text?: string }) {
           <div className="cb-2 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 11 }} />
           <div className="cb-3 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 14 }} />
         </div>
-        {/* Random humorous phrase */}
+        {/* 打字机逐字显示 + 三点 */}
         <span className="font-medium tracking-tight">
-          {text || phrase}
+          {displayText.slice(0, charCount)}
+          <AnimatedDots />
         </span>
       </div>
     </>

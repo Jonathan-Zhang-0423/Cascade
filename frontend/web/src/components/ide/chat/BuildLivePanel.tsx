@@ -1,8 +1,36 @@
-import { useState, useEffect, useMemo, memo } from "react";
+import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useIDEStore } from "@/stores/ide-store";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useLanguageStore } from "@/stores/language-store";
+
+// ── useTypewriter — 打字机逐字显示 hook ───────────────────────────────────
+function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () => void): string {
+  const [displayed, setDisplayed] = useState("");
+  const prevText = useRef("");
+  const doneRef = useRef(false);
+  useEffect(() => {
+    if (!enabled || !text) { setDisplayed(text || ""); return; }
+    if (text === prevText.current) return;
+    prevText.current = text;
+    doneRef.current = false;
+    setDisplayed("");
+    let i = 0;
+    const tick = () => {
+      if (i >= text.length) {
+        if (!doneRef.current) { doneRef.current = true; onDone?.(); }
+        return;
+      }
+      i++;
+      setDisplayed(text.slice(0, i));
+      setTimeout(tick, charMs);
+    };
+    setTimeout(tick, charMs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, enabled, charMs]);
+  return displayed;
+}
 
 // ── AnimatedDots — 从左到右逐个显示的三点动画 ─────────────────────────────
 function AnimatedDots() {
@@ -130,7 +158,22 @@ function NarrationBlock({ text, isLive }: { text: string; isLive?: boolean }) {
   );
 }
 
-// ── D. extractThinkingNarration ───────────────────────────────────────────
+// ── C2. TypewriterNarration — 打字机逐字显示的 narration ─────────────────
+function TypewriterNarration({ text, onDone, skipAnimation }: { text: string; onDone?: () => void; skipAnimation?: boolean }) {
+  const displayed = useTypewriter(text, !skipAnimation, 18, onDone);
+  // skipAnimation=true 时直接显示完整文字，不跑打字机
+  const finalText = skipAnimation ? text : displayed;
+  const clean = stripMarkdown(finalText);
+  const lines = clean.split("\n").filter((l) => l.trim());
+  if (lines.length === 0) return null;
+  return (
+    <div className="px-3.5 py-1 font-mono text-[12px] leading-[1.6] text-muted-foreground space-y-0.5">
+      {lines.map((line, i) => (
+        <NarrationLine key={i} line={line} />
+      ))}
+    </div>
+  );
+}
 // Map raw English chain-of-thought to a short Chinese summary so we never
 // surface untranslated thinking text in the timeline.
 function extractThinkingNarration(text: string): string {
@@ -190,6 +233,58 @@ function getActionNarration(entry: ActionLogEntry): string {
     case "plan":           return entry.label || "任务计划";
     default:               return entry.label || "";
   }
+}
+
+// ── E2. summarizeActions — 根据 actions 生成智能简短 narration ─────────────
+function summarizeActions(actions: ActionLogEntry[]): string {
+  if (actions.length === 0) return "";
+
+  const writes  = actions.filter(a => a.type === "file_write" || a.type === "code_applied");
+  const reads   = actions.filter(a => a.type === "file_read");
+  const deletes = actions.filter(a => a.type === "file_delete");
+  const terms   = actions.filter(a => a.type === "terminal_command");
+  const reviews = actions.filter(a => a.type === "code_review");
+
+  // 取文件名（去掉路径前缀）
+  const name = (entry: ActionLogEntry) =>
+    (entry.filePath || entry.label || "").split("/").pop() || "";
+
+  // 合并读+写的文件列表，展示"读取并修改了 X"
+  const rwFiles = [...new Set([
+    ...reads.map(name),
+    ...writes.map(name),
+  ])].filter(Boolean);
+
+  const parts: string[] = [];
+
+  if (reads.length > 0 && writes.length > 0) {
+    // 既读又写
+    const files = rwFiles.slice(0, 2).join("、");
+    const extra = rwFiles.length > 2 ? ` 等 ${rwFiles.length} 个文件` : "";
+    parts.push(`读取并修改了 ${files}${extra}`);
+  } else if (writes.length > 0) {
+    const files = writes.slice(0, 2).map(name).filter(Boolean).join("、");
+    const extra = writes.length > 2 ? ` 等 ${writes.length} 个文件` : "";
+    parts.push(`修改了 ${files}${extra}`);
+  } else if (reads.length > 0) {
+    const files = reads.slice(0, 2).map(name).filter(Boolean).join("、");
+    const extra = reads.length > 2 ? ` 等 ${reads.length} 个文件` : "";
+    parts.push(`读取了 ${files}${extra}`);
+  }
+
+  if (deletes.length > 0) {
+    const files = deletes.slice(0, 2).map(name).filter(Boolean).join("、");
+    parts.push(`删除了 ${files}${deletes.length > 2 ? ` 等 ${deletes.length} 个文件` : ""}`);
+  }
+
+  if (terms.length > 0) {
+    const cmd = (terms[0].label || terms[0].detail || "命令").slice(0, 30);
+    parts.push(terms.length === 1 ? `执行了 ${cmd}` : `执行了 ${terms.length} 条命令`);
+  }
+
+  if (reviews.length > 0) parts.push("代码审查");
+
+  return parts.join("，");
 }
 
 // ── F. getActionDetail ────────────────────────────────────────────────────
@@ -336,6 +431,14 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const [open, setOpen] = useState(false);
+  const { lang } = useLanguageStore();
+  const isChinese = lang === "zh";
+  // 中文：用 extractThinkingNarration 提取关键节点；英文：截取前150字符
+  const thinkingSummary = entry.detail
+    ? isChinese
+      ? extractThinkingNarration(entry.detail)
+      : entry.detail.slice(0, 150).replace(/\n+/g, " ").trim() + (entry.detail.length > 150 ? "…" : "")
+    : "";
   return (
     <div className="font-mono text-[11px]" data-testid="thinking-action-row">
       <button
@@ -351,10 +454,10 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
         </span>
         {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin ml-1 shrink-0 text-muted-foreground/50" />}
       </button>
-      {open && entry.detail && (
+      {open && thinkingSummary && (
         <div className="pl-[34px] pb-1">
-          <p className="text-[10px] text-muted-foreground/40 italic whitespace-pre-wrap break-words leading-relaxed max-h-[160px] overflow-y-auto">
-            {entry.detail}
+          <p className="text-[10px] text-muted-foreground/40 italic whitespace-pre-wrap break-words leading-relaxed max-h-[120px] overflow-y-auto">
+            {thinkingSummary}
           </p>
         </div>
       )}
@@ -379,18 +482,21 @@ const SegmentView = memo(function SegmentView({
     (a) => a.type !== "thinking" && !(a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)),
   );
 
-  // Nothing to show at all — but if isLive, show a spinner placeholder so the
-  // row is visible while the first action of this step is still arriving.
+  // Nothing to show at all — show spinner if live (waiting for first action),
+  // or a minimal done row if completed (step had no file actions but still ran).
   if (!thinkingEntry && nonThinkingActions.length === 0) {
-    if (!isLive) return null;
+    const stepTitle0 = stepLabel ? stepLabel.replace(/^Step\s*\d+\/\d+:\s*/i, "").trim() : "";
+    const displayText0 = segment.narration
+      ? segment.narration.split("\n")[0].replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "").replace(/^•\s*/, "").trim()
+      : stepTitle0;
     return (
       <div className="mb-0.5 px-3.5" data-testid="segment-view">
         <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
           <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-          <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
-          {segment.narration && (
+          {isLive && <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />}
+          {displayText0 && (
             <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
-              {segment.narration.split("\n")[0].replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "").replace(/^•\s*/, "").trim()}
+              {displayText0}
             </span>
           )}
         </div>
@@ -407,65 +513,68 @@ const SegmentView = memo(function SegmentView({
     <div className="mb-0.5" data-testid="segment-view">
       <div className="px-3.5">
         {!expanded ? (
-          <button
-            className="flex items-center gap-1.5 py-0.5 w-full text-left text-foreground/80 hover:text-foreground/90 transition-colors font-mono text-[11px]"
-            onClick={() => setExpanded(true)}
-            data-testid="segment-collapsed"
-          >
-            <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-            {/* thinking icon — same style as other action icons */}
-            {thinkingEntry && (
-              <span className="inline-flex items-center gap-0.5 shrink-0">
-                <Brain className="w-3 h-3 text-muted-foreground/50" />
-              </span>
-            )}
-            {/* non-thinking action icon counts — cap at 3 types to leave room for narration */}
-            <span className="flex items-center gap-1.5 shrink-0">
+          <div>
+            {/* 第一行：折叠符号 + narration（去掉左侧 spinner） */}
+            <button
+              className="flex items-center gap-1.5 py-0.5 w-full text-left text-foreground/80 hover:text-foreground/90 transition-colors font-mono text-[11px]"
+              onClick={() => setExpanded(true)}
+              data-testid="segment-collapsed"
+            >
+              <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
               {(() => {
-                const counts = new Map<ActionType, number>();
-                for (const a of nonThinkingActions) {
-                  const dt = toDisplayType(a.type);
-                  counts.set(dt, (counts.get(dt) ?? 0) + 1);
-                }
-                return Array.from(counts.entries()).slice(0, 3).map(([dt, count]) => {
-                  const meta = ACTION_META[dt];
-                  const Icon = meta.icon;
-                  return (
-                    <span key={dt} className="inline-flex items-center gap-0.5">
-                      <Icon className={cn("w-3 h-3", meta.color)} />
-                      <span className={cn("text-[10px]", meta.color)}>×{count}</span>
-                    </span>
-                  );
-                });
+                // narration 优先；为空时 fallback 到 stepTitle；都没有时 live 显示占位
+                const displayText = segment.narration
+                  ? segment.narration
+                      .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
+                      .replace(/^•\s*/, "")
+                      .trim()
+                      .split(/(?<=[。．！？.!?])\s*/)[0]
+                      .trim()
+                  : stepTitle || (isLive ? "处理中" : "");
+                if (!displayText) return null;
+                return (
+                  <span className={cn(
+                    "text-[10.5px] truncate min-w-0",
+                    isLive ? "text-muted-foreground/40" : "text-muted-foreground/55"
+                  )}>
+                    {displayText}
+                  </span>
+                );
               })()}
-            </span>
-            {/* live spinner */}
-            {isLive && (
-              <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
+            </button>
+            {/* 第二行：actions 图标摘要 + spinner 在最右侧 */}
+            {(thinkingEntry || nonThinkingActions.length > 0) && (
+              <div className="flex items-center gap-1.5 pl-[18px] pb-0.5">
+                {thinkingEntry && (
+                  <span className="inline-flex items-center gap-0.5 shrink-0">
+                    <Brain className="w-3 h-3 text-muted-foreground/50" />
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {(() => {
+                    const counts = new Map<ActionType, number>();
+                    for (const a of nonThinkingActions) {
+                      const dt = toDisplayType(a.type);
+                      counts.set(dt, (counts.get(dt) ?? 0) + 1);
+                    }
+                    return Array.from(counts.entries()).slice(0, 3).map(([dt, count]) => {
+                      const meta = ACTION_META[dt];
+                      const Icon = meta.icon;
+                      return (
+                        <span key={dt} className="inline-flex items-center gap-0.5">
+                          <Icon className={cn("w-3 h-3", meta.color)} />
+                          <span className={cn("text-[10px]", meta.color)}>×{count}</span>
+                        </span>
+                      );
+                    });
+                  })()}
+                </span>
+                {isLive && (
+                  <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
+                )}
+              </div>
             )}
-            {/* narration text inline — always shown when available (live or done) */}
-            {segment.narration && (
-              <span className={cn(
-                "ml-2 text-[10.5px] truncate min-w-0 max-w-[50%]",
-                isLive ? "text-muted-foreground/40" : "text-muted-foreground/55"
-              )}>
-                {segment.narration
-                  // Strip ## Step N: style prefixes
-                  .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
-                  .replace(/^•\s*/, "")
-                  .trim()
-                  // Take only the first sentence (split on 。.!? and their full-width variants)
-                  .split(/(?<=[。．！？.!?])\s*/)[0]
-                  .trim()}
-              </span>
-            )}
-            {/* step title on the right — only when no narration */}
-            {stepTitle && !segment.narration && (
-              <span className="ml-auto text-[10px] text-muted-foreground/35 truncate max-w-[180px]">
-                {stepTitle}
-              </span>
-            )}
-          </button>
+          </div>
         ) : (
           <div>
             <button
@@ -550,6 +659,10 @@ function CostSummary({
   const selectedProvider = useIDEStore((s) => s.selectedProvider);
   const t = useT();
 
+  // 打字机效果：mounted 后触发一次，让时间/token 数字逐字出现
+  const [ready, setReady] = useState(false);
+  useEffect(() => { const id = setTimeout(() => setReady(true), 60); return () => clearTimeout(id); }, []);
+
   const stats = useMemo(() => {
     const reads = entries.filter((e) => e.type === "file_read");
     const writes = entries.filter((e) => e.type === "file_write");
@@ -593,7 +706,11 @@ function CostSummary({
     : null;
 
   return (
-    <div className="px-3.5 pt-1" data-testid="cost-summary">
+    <div
+      className="px-3.5 pt-1"
+      data-testid="cost-summary"
+      style={{ opacity: ready ? 1 : 0, transition: "opacity 0.4s ease" }}
+    >
       {/* 时间消耗 */}
       <button
         className="flex items-center gap-1.5 font-mono text-[10px] font-semibold text-muted-foreground/70 hover:text-foreground/80 transition-colors"
@@ -794,45 +911,58 @@ export function BuildLivePanel({
   stepNarrations = {},
 }: BuildLivePanelProps) {
   const t = useT();
+  const projectId = useIDEStore((s) => s.projectId);
+
+  // 打字机效果只触发一次：用 localStorage 记录"已展示完毕"
+  // 刷新/重进项目后直接完整显示，不重复动画
+  const summaryKey = projectId ? `cascade-summary-shown-${projectId}` : null;
+  const alreadyShown = summaryKey ? !!localStorage.getItem(summaryKey) : false;
+  const [summaryDone, setSummaryDone] = useState(() => !completionSummary || alreadyShown);
+
+  const handleSummaryDone = () => {
+    setSummaryDone(true);
+    if (summaryKey) localStorage.setItem(summaryKey, "1");
+  };
+
+  useEffect(() => {
+    if (!completionSummary) setSummaryDone(true);
+  }, [completionSummary]);
 
   const isPersisted = !!segments && segments.length > 0;
 
-  // When persisted, dynamically merge stepNarrations into segments — narration
-  // tokens can arrive after all_complete and stepNarrations keeps accumulating.
+  // Persisted 模式：优先用 summarizeActions，actions 为空则保留原有 narration
   const mergedSegments = useMemo<NarrationSegment[]>(() => {
     if (!isPersisted || !segments) return [];
-    return segments.map((seg, i) => {
-      const stepNum = i + 1;
-      const lateNarration = stepNarrations[stepNum];
-      if (lateNarration && lateNarration !== seg.narration) {
-        return { ...seg, narration: lateNarration };
-      }
-      return seg;
+    return segments.map((seg) => {
+      const summary = summarizeActions(seg.actions);
+      return { ...seg, narration: summary || seg.narration };
     });
-  }, [isPersisted, segments, stepNarrations]);
+  }, [isPersisted, segments]);
 
-  // Live mode: group by step entries in the action log.
+  // Live 模式：每次 entries 变化都重算 narration
+  // live 最后一个 segment 用当前已有 actions 实时生成文字（哪怕只有1个action）
   const liveSegments = useMemo<NarrationSegment[]>(() => {
     if (isPersisted) return [];
     const segs: NarrationSegment[] = [];
-    let currentStepNum = 0;
     for (const entry of entries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
-        const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
-        currentStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentStepNum + 1;
-        const narration = stepNarrations[currentStepNum] ?? "";
-        segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
+        segs.push({ id: String(segs.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
       } else {
-        if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+        if (segs.length === 0) segs.push({ id: "0", narration: "", actions: [], isLive: false });
         segs[segs.length - 1].actions.push(entry);
       }
+    }
+    // 每个 step 根据已收集的 actions 生成 narration；live step 实时更新
+    for (const seg of segs) {
+      const summary = summarizeActions(seg.actions);
+      seg.narration = summary;
     }
     if (segs.length > 0 && !isCompleted) {
       segs[segs.length - 1] = { ...segs[segs.length - 1], isLive: true };
     }
     return segs;
-  }, [entries, isPersisted, isCompleted, stepNarrations]);
+  }, [entries, isPersisted, isCompleted]);
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
@@ -877,18 +1007,22 @@ export function BuildLivePanel({
         <NarrationBlock text={narrationText!} isLive />
       )}
 
-      {/* Completion summary — shown after all steps finish */}
+      {/* Completion summary — 打字机效果逐字出现，完成后再显示 CostSummary */}
       {isCompleted && completionSummary && (
         <div className="px-3.5 py-2 mt-1 border-t border-border/30">
-          <NarrationBlock text={completionSummary} />
+          <TypewriterNarration
+            text={completionSummary}
+            skipAnimation={alreadyShown}
+            onDone={handleSummaryDone}
+          />
         </div>
       )}
 
-      {/* Cost summary card */}
-      {showCost && <CostSummary entries={entries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
+      {/* Cost summary card — 等总结打字机完成后才显示 */}
+      {showCost && summaryDone && <CostSummary entries={entries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
 
       {/* Checkpoint card */}
-      {showCost && <CheckpointSummary />}
+      {showCost && summaryDone && <CheckpointSummary />}
     </div>
   );
 }

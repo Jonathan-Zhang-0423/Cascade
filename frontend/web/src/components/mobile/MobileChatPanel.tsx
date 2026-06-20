@@ -8,36 +8,38 @@ export function MobileChatPanel() {
   const { mode } = useTheme();
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // 两层 MutationObserver：
-  // 1. 先监听 wrap 本身，等滚动容器挂载后立即滚底并切换到内容监听
-  // 2. 内容监听：子节点变化（新消息/动态icon）时自动滚底
+  // 两层 MutationObserver + 用户滚动检测：
+  // 仅当用户在底部附近时才自动滚底，避免强制打断手动上滑
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
 
+    const SCROLL_THRESHOLD = 120;
     const SCROLL_SEL = '[data-testid="chat-panel"] > .flex-1';
 
+    const isNearBottom = (el: HTMLElement) =>
+      el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
+
     const scrollToBottom = (el: HTMLElement) => {
-      el.scrollTop = el.scrollHeight;
+      if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
     };
 
     let contentObserver: MutationObserver | null = null;
 
     const attachContentObserver = (el: HTMLElement) => {
-      if (contentObserver) return; // 已经在监听了
-      scrollToBottom(el);          // 立即滚一次
+      if (contentObserver) return;
+      // 挂载时强制滚一次（用户刚进入，还没手动上滑）
+      el.scrollTop = el.scrollHeight;
       contentObserver = new MutationObserver(() => scrollToBottom(el));
       contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
     };
 
-    // 先看容器是否已经存在
     const existing = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
     if (existing) {
       attachContentObserver(existing);
       return () => contentObserver?.disconnect();
     }
 
-    // 容器还没出现，监听 wrap 直到它出现
     const waitObserver = new MutationObserver(() => {
       const el = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
       if (!el) return;
