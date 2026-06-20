@@ -5,13 +5,14 @@ import { useIDEStore, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
-import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check } from "lucide-react";
+import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check, Share2 } from "lucide-react";
 import { type ThemeId } from "@/lib/themes";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 import { getFirstDeviceForPlatform } from "@/lib/device-specs";
 import { cn } from "@/lib/utils";
+import { PublishDialog } from "@/components/square/publish-dialog";
 
 // 字体大小档位：value = html font-size 百分比
 export const FONT_SIZES = [
@@ -165,7 +166,29 @@ export function Navbar({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // publish dialog
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [existingPublish, setExistingPublish] = useState<null | {
+    id: string; title: string; description: string | null;
+    isOpenSource: boolean; visibility: "public" | "link_only" | "private";
+    previewScreenshot: string | null;
+  }>(null);
+
+  // font size state
   const [fontSize, setFontSize] = useState<FontSizeKey>(getFontSizeKey);
+
+  // Load existing publish info for current project
+  useEffect(() => {
+    if (!projectId) return;
+    fetch(`/api/square/my`)
+      .then((r) => r.ok ? r.json() : { apps: [] })
+      .then((data) => {
+        const found = (data.apps ?? []).find((a: { projectId: string }) => a.projectId === projectId);
+        if (found) setExistingPublish(found);
+        else setExistingPublish(null);
+      })
+      .catch(() => {});
+  }, [projectId]);
 
   const handleFontSize = (key: FontSizeKey) => {
     setFontSize(key);
@@ -231,6 +254,7 @@ export function Navbar({
   ];
 
   return (
+    <>
     <header
       className="flex items-stretch shrink-0"
       style={{ height: 40, background: "var(--panel-nav-bg)", borderBottom: "1px solid var(--panel-divider)" }}
@@ -512,6 +536,24 @@ export function Navbar({
           )}
         </div>
 
+        {/* 发布按钮 */}
+        {projectId && (
+          <button
+            className={cn(
+              "flex items-center gap-1 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors shrink-0 ml-0.5 border",
+              existingPublish
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            style={!existingPublish ? { background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" } : {}}
+            onClick={() => setPublishOpen(true)}
+            title={t("navbar.publish")}
+          >
+            <Share2 className="w-3 h-3" />
+            {t("navbar.publish")}
+          </button>
+        )}
+
         {/* 全屏按钮 */}
         <button
           className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-accent/20 transition-colors shrink-0 ml-0.5"
@@ -524,5 +566,19 @@ export function Navbar({
         </button>
       </div>
     </header>
+
+    {/* Publish dialog — rendered outside header to avoid stacking context issues */}
+    {projectId && (
+      <PublishDialog
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        existing={existingPublish}
+        onPublished={(app) => setExistingPublish(app as typeof existingPublish)}
+        onUnpublished={() => setExistingPublish(null)}
+      />
+    )}
+  </>
   );
 }

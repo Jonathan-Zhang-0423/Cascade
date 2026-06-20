@@ -12,6 +12,8 @@ import SetPasswordPage from "@/pages/set-password";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
+import CreateSquarePage from "@/pages/create-square";
+import AppDetailPage from "@/pages/app-detail";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -20,7 +22,9 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/admin", "/invite-gate"];
+// /CreateSquare and /CreateSquare/app/:id are public (no auth required).
+const UNGUARDED_PATHS = ["/", "/login", "/onboarding", "/admin", "/invite-gate", "/CreateSquare"];
+const UNGUARDED_PREFIXES = ["/CreateSquare/app/"];
 
 function Router() {
   return (
@@ -32,6 +36,9 @@ function Router() {
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
+      {/* Creator Square — public browsing, auth required for detail/fork/use */}
+      <Route path="/CreateSquare" component={CreateSquarePage} />
+      <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
       {import.meta.env.DEV && (
         <Route path="/ab-test">
           <Suspense fallback={<div className="p-8 text-muted-foreground">Loading…</div>}>
@@ -50,7 +57,7 @@ function App() {
 
   useEffect(() => {
     const path = window.location.pathname;
-    const isUnguarded = UNGUARDED_PATHS.includes(path);
+    const isUnguarded = UNGUARDED_PATHS.includes(path) || UNGUARDED_PREFIXES.some(p => path.startsWith(p));
     if (isUnguarded) {
       // Best-effort populate the store if a session exists, but never redirect.
       fetch("/api/auth/me").then((r) => {
@@ -82,7 +89,7 @@ function App() {
     });
   }, []);
 
-  if (!authChecked && !UNGUARDED_PATHS.includes(window.location.pathname)) return null;
+  if (!authChecked && !UNGUARDED_PATHS.includes(window.location.pathname) && !UNGUARDED_PREFIXES.some(p => window.location.pathname.startsWith(p))) return null;
 
   return (
     <ThemeProvider>
