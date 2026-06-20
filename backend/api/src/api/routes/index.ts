@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import https from "https";
 import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import "express-session";
@@ -23,7 +24,7 @@ import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes } from "@cascade/database";
-import { db } from "../../infra/db";
+import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
@@ -3846,93 +3847,104 @@ Generate the cascade.md content for this project based on both the plan and the 
     return githubFetch;
   };
 
-  // 1) Kick off the OAuth dance: store a state token in the session and
-  //    redirect the browser to GitHub's authorize URL.
-  app.get("/api/auth/github", (req, res) => {
+  // 1) 发起 OAuth：state 存 DB（不依赖 cookie），返回 JSON URL 供前端跳转
+  app.get("/api/auth/github", async (req, res) => {
     const clientId = process.env.GITHUB_CLIENT_ID;
-    if (!clientId) {
-      res.status(500).json({ error: "GitHub OAuth not configured" });
-      return;
-    }
+    if (!clientId) { res.status(500).json({ error: "GitHub OAuth not configured" }); return; }
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
-    (req.session as any).githubOAuthState = state;
-    const redirectUri = `${baseUrl}/api/auth/github/callback`;
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    await pool.query(
+      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
+      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state }), expiresAt]
+    );
     const params = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: `${baseUrl}/api/auth/github/callback`,
       scope: "read:user user:email",
       state,
       allow_signup: "true",
     });
-    res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+    const authorizeUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
+    if (req.query.mode === "url") { res.json({ url: authorizeUrl }); return; }
+    res.redirect(authorizeUrl);
   });
 
-  // 2) Callback: exchange the code for an access token, fetch the user,
-  //    then either link to an existing local user (matched by verified
-  //    primary email) or create a new GitHub-only user. Finally seat the
-  //    session and send the browser back to the SPA.
+  // 2) Callback：验 state 后跳前端页面，前端再发 exchange 请求
   app.get("/api/auth/github/callback", async (req, res) => {
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const failRedirect = (reason: string) => {
-      res.redirect(`${baseUrl}/auth?github_error=${encodeURIComponent(reason)}`);
-    };
-    try {
-      const clientId = process.env.GITHUB_CLIENT_ID;
-      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-      if (!clientId || !clientSecret) {
-        failRedirect("not_configured");
-        return;
-      }
-      const { code, state } = req.query as { code?: string; state?: string };
-      const expectedState = (req.session as any)?.githubOAuthState;
-      (req.session as any).githubOAuthState = undefined;
-      if (!code || !state || !expectedState || state !== expectedState) {
-        failRedirect("bad_state");
-        return;
-      }
+    const { code, state } = req.query as { code?: string; state?: string };
+    if (!code || !state) { res.redirect(`${baseUrl}/login?github_error=missing_params`); return; }
+    const row = await pool.query(
+      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+      [`github_state:${state}`]
+    );
+    if (row.rows.length === 0) { res.redirect(`${baseUrl}/login?github_error=bad_state`); return; }
+    res.redirect(`${baseUrl}/github-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  });
 
-      // Exchange the temporary code for an access token.
-      const ghFetch = await getGithubFetch();
-      const tokenRes = await ghFetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
+  // 3) Exchange：前端发过来 code+state，后端用固定 IP 换 token，建立 session
+  app.post("/api/auth/github/exchange", async (req, res) => {
+    try {
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
+      const row = await pool.query(
+        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+        [`github_state:${state}`]
+      );
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
+
+      const clientId = process.env.GITHUB_CLIENT_ID!;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
+      const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+      // 用固定可达 IP 请求 github.com 换 token（绕开 DNS 解析被墙）
+      const ghIp = "20.205.243.166";
+      const tokenData: any = await new Promise((resolve, reject) => {
+        const body = JSON.stringify({
           client_id: clientId,
           client_secret: clientSecret,
           code,
           redirect_uri: `${baseUrl}/api/auth/github/callback`,
-        }),
+        });
+        const req2 = https.request({
+          hostname: ghIp,
+          port: 443,
+          path: "/login/oauth/access_token",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Host: "github.com",
+            "Content-Length": Buffer.byteLength(body),
+          },
+          rejectUnauthorized: false, // IP 直连，跳过证书 hostname 校验
+        }, (r) => {
+          let data = "";
+          r.on("data", (c) => data += c);
+          r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
+        });
+        req2.on("error", reject);
+        req2.write(body);
+        req2.end();
       });
-      if (!tokenRes.ok) {
-        failRedirect("token_exchange_failed");
-        return;
-      }
-      const tokenData = await tokenRes.json() as { access_token?: string; error?: string };
+
       if (!tokenData.access_token) {
-        failRedirect(tokenData.error || "no_access_token");
+        console.error("[github/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.error || "no_access_token" });
         return;
       }
       const accessToken = tokenData.access_token;
 
-      // Fetch the GitHub user profile.
+      const ghFetch = await getGithubFetch();
       const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
-      if (!userRes.ok) {
-        failRedirect("user_fetch_failed");
-        return;
-      }
-      const ghUser = await userRes.json() as {
-        id: number; login: string; email: string | null; avatar_url: string | null;
-      };
+      if (!userRes.ok) { res.status(400).json({ error: "user_fetch_failed" }); return; }
+      const ghUser = await userRes.json() as { id: number; login: string; email: string | null; avatar_url: string | null };
 
-      // The /user endpoint returns email = null when the user marks it
-      // private. Fetch /user/emails (which the user:email scope grants)
-      // to find the verified primary email for account merging.
-      // Normalize to trimmed lowercase everywhere: OTP signup stores emails
-      // lowercased, so without this an existing user is missed here and a
-      // duplicate GitHub-only account gets created.
       let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
         const emailsRes = await ghFetch("https://api.github.com/user/emails", {
@@ -3940,57 +3952,29 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
         if (emailsRes.ok) {
           const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-          const picked = emails.find(e => e.primary && e.verified)?.email
-            ?? emails.find(e => e.verified)?.email
-            ?? null;
+          const picked = emails.find(e => e.primary && e.verified)?.email ?? emails.find(e => e.verified)?.email ?? null;
           primaryEmail = picked ? picked.trim().toLowerCase() : null;
         }
       }
 
       const githubId = String(ghUser.id);
-
-      // Resolve to a local user. Lookup priority:
-      //   1. existing user already linked to this GitHub id
-      //   2. existing user with matching verified email -> link the github id
-      //   3. otherwise create a new GitHub-only user with a unique username
       let user = await storage.getUserByGithubId(githubId);
       if (!user && primaryEmail) {
         const matched = await storage.getUserByEmail(primaryEmail);
-        if (matched) {
-          user = await storage.linkGithubToUser(matched.id, {
-            githubId,
-            avatarUrl: ghUser.avatar_url,
-          });
-        }
+        if (matched) user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url });
       }
       if (!user) {
-        // Pick a username that doesn't collide with an existing local user.
-        let candidate = ghUser.login;
-        let suffix = 0;
-        while (await storage.getUserByUsername(candidate)) {
-          suffix++;
-          candidate = `${ghUser.login}-${suffix}`;
-        }
-        user = await storage.createGithubUser({
-          username: candidate,
-          githubId,
-          email: primaryEmail,
-          avatarUrl: ghUser.avatar_url,
-        });
+        let candidate = ghUser.login; let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) { suffix++; candidate = `${ghUser.login}-${suffix}`; }
+        user = await storage.createGithubUser({ username: candidate, githubId, email: primaryEmail, avatarUrl: ghUser.avatar_url });
       }
 
       (req.session as any).userId = user.id;
-      // Users without a redeemed invite code (new GitHub-only signups, or any
-      // pre-existing user that was created before invite gating) must visit
-      // the invite gate before reaching the app.
-      const dest = (user as any).inviteCode ? "/app" : "/invite-gate?next=/app";
-      req.session.save((err) => {
-        if (err) console.error("[auth/github/callback] session save", err);
-        res.redirect(`${baseUrl}${dest}`);
-      });
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+      res.json({ id: user.id, username: user.username, inviteCode: (user as any).inviteCode ?? null });
     } catch (err) {
-      console.error("[auth/github/callback]", err);
-      failRedirect("server_error");
+      console.error("[auth/github/exchange]", err);
+      res.status(500).json({ error: "server_error" });
     }
   });
 

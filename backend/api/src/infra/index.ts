@@ -47,8 +47,8 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    sameSite: "lax",
-    // nginx 现在监听 443(HTTPS)，SSL 在本机终止，secure:true 正确。
+    // OAuth callback 是跨站重定向，lax 下浏览器不带 cookie，改 none（配合 secure）
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     secure: process.env.NODE_ENV === "production",
   },
 }));
