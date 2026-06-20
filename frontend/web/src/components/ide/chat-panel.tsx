@@ -90,8 +90,16 @@ export function ChatPanel() {
 
   // Thinking indicator — covers both manager mode (isManagerResponding) and
   // build mode (buildPhase="thinking" before any live content arrives).
+  // mountedRef: 挂载后 800ms 内不显示 TypingIndicator，避免刷新时 store
+  // 状态短暂变化触发动画（手机端刷新出现打字动态的根因）
   const [showThinking, setShowThinking] = useState(false);
+  const mountedRef = useRef(false);
   useEffect(() => {
+    const id = setTimeout(() => { mountedRef.current = true; }, 800);
+    return () => clearTimeout(id);
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
     const shouldShow =
       isManagerResponding ||
       mgrPreparingPlan ||
@@ -172,6 +180,27 @@ export function ChatPanel() {
 
   // ── 自动滚底：实时读 DOM 距底距离，避免 passive scroll 事件与 React commit 的竞态 ──
   const SCROLL_THRESHOLD = 120; // px，距底部多少以内算"在底部"
+
+  // 挂载时滚到底——刷新后恢复到最新消息位置
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const r = requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    });
+    return () => cancelAnimationFrame(r);
+  }, []); // 只在挂载时执行一次
+
+  // 服务器消息加载完成后再滚一次——覆盖 localStorage 恢复后的 race condition
+  useEffect(() => {
+    if (!messagesReady) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const r = requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    });
+    return () => cancelAnimationFrame(r);
+  }, [messagesReady]);
 
   // 内容变化时：直接读当前 scrollTop 判断用户是否在底部，不依赖异步 ref
   useEffect(() => {

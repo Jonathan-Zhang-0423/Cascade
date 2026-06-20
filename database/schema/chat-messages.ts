@@ -2,10 +2,12 @@ import { pgTable, text, varchar, integer, bigint, uniqueIndex, index } from "dri
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { projects } from "./projects";
+import { chatSessions } from "./chat-sessions";
 
 export const chatMessages = pgTable("chat_messages", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  sessionId: varchar("session_id").references(() => chatSessions.id, { onDelete: "cascade" }),
   clientId: varchar("client_id").notNull(),
   kind: text("kind").notNull(),
   role: text("role").notNull(),
@@ -18,6 +20,7 @@ export const chatMessages = pgTable("chat_messages", {
 }, (t) => ({
   clientUnique: uniqueIndex("chat_messages_project_client_unique").on(t.projectId, t.clientId),
   projectKindSeqIdx: index("chat_messages_project_kind_seq_idx").on(t.projectId, t.kind, t.seq),
+  sessionIdx: index("chat_messages_session_idx").on(t.sessionId),
 }));
 
 export const insertChatMessageSchema = createInsertSchema(chatMessages);

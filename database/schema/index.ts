@@ -3,6 +3,7 @@ export * from './projects';
 export * from './files';
 export * from './skills';
 export * from './chat-messages';
+export * from './chat-sessions';
 export * from './waitlist';
 export * from './invite-codes';
 export * from './otp-codes';

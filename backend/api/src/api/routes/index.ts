@@ -22,7 +22,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions } from "@cascade/database";
 import { db } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -2456,10 +2456,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const before = typeof beforeRaw === "string" && beforeRaw.length > 0 ? Number(beforeRaw) : undefined;
       const limitRaw = req.query.limit;
       const limit = typeof limitRaw === "string" && limitRaw.length > 0 ? Number(limitRaw) : 100;
+      // sessionId: 传了就过滤；"null" 字符串 = 主会话（sessionId IS NULL）；不传 = 全部
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string"
+        ? (sessionIdRaw === "null" ? null : sessionIdRaw)
+        : undefined;
       const rows = await storage.listChatMessages(projectId, {
         kind,
         before: Number.isFinite(before) ? (before as number) : undefined,
         limit: Number.isFinite(limit) ? limit : 100,
+        sessionId,
       });
       res.json({ messages: rows });
     } catch (error: any) {
@@ -2500,6 +2506,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           seq: m.seq,
           timestamp: m.timestamp,
           metadata: typeof m.metadata === "string" ? m.metadata : null,
+          sessionId: typeof m.sessionId === "string" ? m.sessionId : null,
         });
       }
       await storage.upsertChatMessages(projectId, sanitized);
@@ -2527,6 +2534,61 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete messages" });
+    }
+  });
+
+  // ── Chat Sessions ─────────────────────────────────────────────────────────
+  // GET  /api/projects/:id/sessions       — list sessions (newest first)
+  // POST /api/projects/:id/sessions       — create new session
+  // DELETE /api/projects/:id/sessions/:sid — delete session + its messages
+
+  app.get("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const rows = await db
+        .select()
+        .from(chatSessions)
+        .where(eq(chatSessions.projectId, projectId))
+        .orderBy(desc(chatSessions.createdAt));
+      res.json({ sessions: rows });
+    } catch (err) {
+      console.error("[sessions/list]", err);
+      res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  app.post("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const name = (req.body as any)?.name ?? "新对话";
+      const id = randomBytes(8).toString("hex");
+      const [row] = await db.insert(chatSessions).values({
+        id,
+        projectId,
+        name: String(name).slice(0, 80),
+      }).returning();
+      res.status(201).json({ session: row });
+    } catch (err) {
+      console.error("[sessions/create]", err);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  app.delete("/api/projects/:id/sessions/:sid", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { sid } = req.params;
+      // cascade delete removes messages via FK
+      await db.delete(chatSessions).where(eq(chatSessions.id, sid));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[sessions/delete]", err);
+      res.status(500).json({ error: "Failed to delete session" });
     }
   });
 
