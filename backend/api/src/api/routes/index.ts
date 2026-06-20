@@ -4402,6 +4402,108 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+
+  // ─── Creator Square ───────────────────────────────────────────────────────────
+
+  app.get("/api/square", async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const offset = Number(req.query.offset) || 0;
+    const framework = typeof req.query.framework === "string" ? req.query.framework : undefined;
+    const apps = await storage.listPublishedApps({ limit, offset, framework });
+    res.json({ apps });
+  });
+
+  app.get("/api/square/my", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const apps = await storage.listUserPublishedApps(userId);
+    res.json({ apps });
+  });
+
+  app.get("/api/square/:id", async (req, res) => {
+    const app = await storage.getPublishedApp(req.params.id);
+    if (!app) { res.status(404).json({ error: "not_found" }); return; }
+    if (app.visibility === "private") {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (app.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+    }
+    const author = await storage.getUser(app.userId);
+    res.json({ app: { ...app, authorUsername: author?.username ?? "anonymous" } });
+  });
+
+  app.post("/api/square", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const bodySchema = z.object({
+      projectId: z.string(),
+      title: z.string().min(1).max(100),
+      description: z.string().max(500).optional(),
+      isOpenSource: z.boolean().default(false),
+      visibility: z.enum(["public", "link_only", "private"]).default("public"),
+      previewScreenshot: z.string().optional(),
+    });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
+    const { projectId, title, description, isOpenSource, visibility, previewScreenshot } = parsed.data;
+    const project = await storage.getProject(projectId);
+    if (!project || project.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+    const existing = await storage.getPublishedAppByProject(projectId);
+    const { randomUUID } = await import("crypto");
+    const id = existing?.id ?? randomUUID();
+    const saved = await storage.upsertPublishedApp({
+      id, projectId, userId, title,
+      description: description ?? null,
+      isOpenSource, visibility,
+      previewScreenshot: previewScreenshot ?? null,
+      framework: project.framework ?? "web",
+    });
+    res.json({ app: saved });
+  });
+
+  app.delete("/api/square/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    await storage.deletePublishedApp(req.params.id, userId);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/square/:id/fork", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const published = await storage.getPublishedApp(req.params.id);
+    if (!published) { res.status(404).json({ error: "not_found" }); return; }
+    if (!published.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+    if (published.visibility === "private") { res.status(403).json({ error: "forbidden" }); return; }
+    const sourceProject = await storage.getProject(published.projectId);
+    if (!sourceProject) { res.status(404).json({ error: "source_project_not_found" }); return; }
+    const { randomUUID } = await import("crypto");
+    const newId = randomUUID();
+    const forkedProject = await storage.createProject({
+      id: newId, userId,
+      name: `${published.title} (Fork)`,
+      emoji: sourceProject.emoji ?? undefined,
+      framework: (sourceProject.framework ?? "web") as any,
+      language: (sourceProject.language ?? "html") as any,
+      targetPlatform: (sourceProject.targetPlatform ?? undefined) as any,
+    });
+    const sourceFiles = await storage.getProjectFiles(published.projectId);
+    if (sourceFiles.length > 0) {
+      await storage.upsertProjectFiles(newId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
+    }
+    res.json({ project: forkedProject });
+  });
+
+  app.get("/api/square/:id/files", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const published = await storage.getPublishedApp(req.params.id);
+    if (!published) { res.status(404).json({ error: "not_found" }); return; }
+    if (!published.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+    if (published.visibility === "private") { res.status(403).json({ error: "forbidden" }); return; }
+    const files = await storage.getProjectFiles(published.projectId);
+    res.json({ files });
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   return httpServer;

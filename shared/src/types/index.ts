@@ -31,3 +31,31 @@ export type Framework =
   | 'wechat';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export type SquareVisibility = 'public' | 'link_only' | 'private';
+
+export interface PublishedApp {
+  id: string;
+  projectId: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  isOpenSource: boolean;
+  visibility: SquareVisibility;
+  previewScreenshot: string | null;
+  framework: string;
+  publishedAt: string;
+  updatedAt: string;
+  authorUsername?: string;
+}
+
+export interface SquareListItem {
+  id: string;
+  title: string;
+  description: string | null;
+  isOpenSource: boolean;
+  framework: string;
+  previewScreenshot: string | null;
+  publishedAt: string;
+  authorUsername: string;
+}
