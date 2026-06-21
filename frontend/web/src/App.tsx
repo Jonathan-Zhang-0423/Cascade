@@ -12,6 +12,7 @@ import SetPasswordPage from "@/pages/set-password";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
+import GitHubCallbackPage from "@/pages/github-callback";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -20,13 +21,15 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/admin", "/invite-gate"];
+const UNGUARDED_PATHS = ["/", "/login", "/auth", "/admin", "/invite-gate", "/github-callback"];
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
+      <Route path="/auth" component={AuthPage} />
+      <Route path="/github-callback" component={GitHubCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
       <Route path="/admin" component={AdminPage} />
@@ -50,7 +53,9 @@ function App() {
 
   useEffect(() => {
     const path = window.location.pathname;
-    const isUnguarded = UNGUARDED_PATHS.includes(path);
+    // API 路径和外部跳转不走守卫
+    if (path.startsWith("/api/")) { setAuthChecked(true); return; }
+    const isUnguarded = UNGUARDED_PATHS.some(p => path === p || path.startsWith(p + "/"));
     if (isUnguarded) {
       // Best-effort populate the store if a session exists, but never redirect.
       fetch("/api/auth/me").then((r) => {

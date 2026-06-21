@@ -260,12 +260,9 @@ export class DatabaseStorage implements IStorage {
     const conditions = [eq(chatMessages.projectId, projectId)];
     if (opts.kind) conditions.push(eq(chatMessages.kind, opts.kind));
     if (typeof opts.before === "number") conditions.push(lt(chatMessages.seq, opts.before));
-    // sessionId 过滤：undefined = 不过滤（主会话兼容旧数据），null = 主会话，string = 指定 session
-    if (opts.sessionId === null) {
-      conditions.push(isNull(chatMessages.sessionId));
-    } else if (typeof opts.sessionId === "string") {
-      conditions.push(eq(chatMessages.sessionId, opts.sessionId));
-    }
+    // sessionId：null/undefined 都归为主会话 "main"；其余按 session id 过滤
+    const sessionId = (opts.sessionId == null || opts.sessionId === "") ? "main" : opts.sessionId;
+    conditions.push(eq(chatMessages.sessionId, sessionId));
     const rows = await db.select().from(chatMessages)
       .where(and(...conditions))
       .orderBy(desc(chatMessages.seq))
@@ -286,11 +283,11 @@ export class DatabaseStorage implements IStorage {
       seq: m.seq,
       timestamp: m.timestamp,
       metadata: m.metadata ?? null,
-      sessionId: m.sessionId ?? null,
+      sessionId: (m.sessionId == null || m.sessionId === "") ? "main" : m.sessionId,
     }));
-    // ON CONFLICT on (project_id, client_id) → update mutable fields.
+    // ON CONFLICT on (project_id, session_id, client_id) → update mutable fields.
     await db.insert(chatMessages).values(rows).onConflictDoUpdate({
-      target: [chatMessages.projectId, chatMessages.clientId],
+      target: [chatMessages.projectId, chatMessages.sessionId, chatMessages.clientId],
       set: {
         content: sql`excluded.content`,
         thinking: sql`excluded.thinking`,

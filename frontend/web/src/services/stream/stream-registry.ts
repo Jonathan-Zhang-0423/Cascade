@@ -11,16 +11,19 @@ import { useIDEStore, flattenFiles, type ManagerMessage } from "@/stores/ide-sto
 import { useProjectStore } from "@/stores/project-store";
 
 /**
- * Create StoreActions bound to a specific projectId.
- * Actions that write UI state are guarded (only execute when projectId is active).
- * Actions that persist data (messages, snapshots) always execute.
+ * Create StoreActions bound to a specific project + session.
+ * Guard: only write UI state when BOTH projectId AND currentSessionId match.
+ * This prevents AI stream responses from bleeding across sessions.
  */
-function createStoreActions(projectId: string): StoreActions {
-  const guard = () => useIDEStore.getState().projectId === projectId;
+function createStoreActions(projectId: string, sessionId: string | null): StoreActions {
+  const guard = () => {
+    const s = useIDEStore.getState();
+    return s.projectId === projectId && s.currentSessionId === sessionId;
+  };
   const store = () => useIDEStore.getState();
 
   return {
-    // Guarded — only write when this project is active
+    // Guarded — only write when this project+session is active
     addChatMessage: (msg) => { if (guard()) store().addChatMessage(msg as any); },
     addManagerMessage: (msg) => { if (guard()) store().addManagerMessage(msg as any); },
     setManagerPlan: (plan) => { if (guard()) store().setManagerPlan(plan); },
@@ -74,39 +77,41 @@ function createStoreActions(projectId: string): StoreActions {
 
 export interface FullProjectStreamSlot {
   projectId: string;
+  sessionId: string | null;
   manager: ManagerStreamInstance;
   build: BuildStreamInstance;
   dispose: () => void;
 }
 
-/**
- * Global registry of per-project stream instances.
- * Not tied to React lifecycle — streams survive component unmounts.
- */
+/** Composite key: "projectId:sessionId" where null sessionId = "__main__" */
+function slotKey(projectId: string, sessionId: string | null): string {
+  return `${projectId}:${sessionId ?? "__main__"}`;
+}
+
 class StreamServiceRegistry {
   private slots = new Map<string, FullProjectStreamSlot>();
 
-  /**
-   * Get or lazily create stream instances for the given project.
-   */
-  get(projectId: string): FullProjectStreamSlot {
+  get(projectId: string, sessionId: string | null = null): FullProjectStreamSlot {
     if (!projectId) {
-      // Return a disposable empty slot — shouldn't happen in practice
-      const actions = createStoreActions("");
+      const actions = createStoreActions("", null);
       return {
         projectId: "",
-        manager: new ManagerStreamInstance("", actions),
-        build: new BuildStreamInstance("", actions),
+        sessionId: null,
+        manager: new ManagerStreamInstance("", actions, "main"),
+        build: new BuildStreamInstance("", actions, "main"),
         dispose: () => {},
       };
     }
-    let slot = this.slots.get(projectId);
+    const key = slotKey(projectId, sessionId);
+    let slot = this.slots.get(key);
     if (!slot) {
-      const actions = createStoreActions(projectId);
-      const manager = new ManagerStreamInstance(projectId, actions);
-      const build = new BuildStreamInstance(projectId, actions);
+      const actions = createStoreActions(projectId, sessionId);
+      const chatSid = sessionId ?? "main";
+      const manager = new ManagerStreamInstance(projectId, actions, chatSid);
+      const build = new BuildStreamInstance(projectId, actions, chatSid);
       slot = {
         projectId,
+        sessionId,
         manager,
         build,
         dispose: () => {
@@ -114,46 +119,45 @@ class StreamServiceRegistry {
           build.dispose();
         },
       };
-      this.slots.set(projectId, slot);
+      this.slots.set(key, slot);
     }
     return slot;
   }
 
-  /**
-   * Check if a slot exists without creating one.
-   */
-  has(projectId: string): boolean {
-    return this.slots.has(projectId);
+  has(projectId: string, sessionId: string | null = null): boolean {
+    return this.slots.has(slotKey(projectId, sessionId));
   }
 
-  /**
-   * Dispose and remove a project's stream slot.
-   * Call when a project is closed/deleted.
-   */
-  dispose(projectId: string): void {
-    const slot = this.slots.get(projectId);
+  dispose(projectId: string, sessionId: string | null = null): void {
+    const key = slotKey(projectId, sessionId);
+    const slot = this.slots.get(key);
     if (slot) {
       slot.dispose();
-      this.slots.delete(projectId);
+      this.slots.delete(key);
     }
   }
 
-  /**
-   * List all active project IDs with stream slots.
-   */
+  disposeProject(projectId: string): void {
+    const prefix = `${projectId}:`;
+    for (const [key, slot] of this.slots) {
+      if (key.startsWith(prefix)) {
+        slot.dispose();
+        this.slots.delete(key);
+      }
+    }
+  }
+
   activeProjectIds(): string[] {
-    return Array.from(this.slots.keys());
+    const ids = new Set<string>();
+    for (const slot of this.slots.values()) ids.add(slot.projectId);
+    return Array.from(ids);
   }
 
-  /**
-   * Dispose all slots. For testing/cleanup.
-   */
   disposeAll(): void {
-    for (const slot of this.slots.values()) {
-      slot.dispose();
-    }
+    for (const slot of this.slots.values()) slot.dispose();
     this.slots.clear();
   }
 }
 
 export const streamRegistry = new StreamServiceRegistry();
+export type { ManagerStreamState, BuildStreamState };

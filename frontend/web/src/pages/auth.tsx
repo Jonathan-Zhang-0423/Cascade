@@ -649,7 +649,15 @@ export default function AuthPage() {
     } finally { setLoading(false); }
   };
 
-  const handleGitHub = () => { window.location.href = "/api/auth/github"; };
+  const handleGitHub = async () => {
+    try {
+      const res = await fetch("/api/auth/github?mode=url");
+      const { url } = await res.json();
+      window.location.replace(url);
+    } catch {
+      window.location.replace("/api/auth/github");
+    }
+  };
 
   const openForgot = () => { setForgot(true); setForgotTarget(""); setForgotCode(""); setForgotSent(false); setForgotResendIn(0); setNewPassword(""); setError(null); };
   const closeForgot = () => { setForgot(false); setError(null); };

@@ -23,15 +23,13 @@ export function ToolsDock() {
 
   const handleNewSession = async () => {
     await createSession();
-    setActiveTool("chat");
   };
 
-  const handleSwitchSession = async (sid: string | null) => {
+  const handleSwitchSession = async (sid: string) => {
     await switchSession(sid);
-    setActiveTool("chat");
   };
 
-  const isMainActive = activeTool === "chat" && currentSessionId === null;
+  const isMainActive = activeTool === "chat" && currentSessionId === "main";
 
   return (
     <aside className="flex flex-col h-full overflow-hidden" style={{ background: "var(--panel-left-bg)" }} data-testid="tools-dock">
@@ -44,7 +42,7 @@ export function ToolsDock() {
             "flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg cursor-pointer transition-colors",
             isMainActive ? "bg-[var(--panel-mid-bg)] shadow-sm" : "hover:bg-[var(--panel-mid-bg)]/60"
           )}
-          onClick={() => handleSwitchSession(null)}
+          onClick={() => handleSwitchSession("main")}
           data-testid="sidebar-main-session"
         >
           <div className={cn(

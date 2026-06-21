@@ -51,7 +51,8 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   // ── Subscribe to live actionLog at the list level (correct slot, single instance) ──
   const projectId = useIDEStore((st) => st.projectId);
-  const slot = projectId ? streamRegistry.get(projectId) : null;
+  const currentSessionId = useIDEStore((st) => st.currentSessionId);
+  const slot = projectId ? streamRegistry.get(projectId, currentSessionId) : null;
   const liveActionLog = useSyncExternalStore<ActionLogEntry[]>(
     slot ? slot.build.state.subscribe : (() => () => {}),
     slot ? () => slot.build.state.getSnapshot().actionLog : () => [],

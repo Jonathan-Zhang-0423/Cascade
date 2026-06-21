@@ -277,7 +277,7 @@ interface IDEState {
   checkpoints: Checkpoint[];
 
   // ── Multi-session ──────────────────────────────────────────────────────────
-  currentSessionId: string | null;   // null = 主会话（默认）
+  currentSessionId: string;   // "main" = 主会话（默认），其余为 session id
   sessions: { id: string; name: string; createdAt: string }[];
   sessionsLoaded: boolean;
   lastBuildFileDiffs: Record<string, { old: string; new: string }>;
@@ -368,7 +368,7 @@ interface IDEState {
   clearManagerPlan: () => void;
   clearConversation: () => void;
   createSession: () => Promise<void>;
-  switchSession: (sessionId: string | null) => Promise<void>;
+  switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   loadSessions: () => Promise<void>;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
@@ -839,7 +839,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setPlanPreview: (open, data) => set({ planPreviewOpen: open, planPreviewData: data ?? null }),
 
   // ── Multi-session initial state ────────────────────────────────────────────
-  currentSessionId: null,
+  currentSessionId: "main",
   sessions: [],
   sessionsLoaded: false,
 
@@ -1138,6 +1138,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     ]).then(([chatRows, mgrRows]) => {
       const cur = get();
       if (cur.projectId !== id) return; // user switched projects
+      // 最优先检查：只要用户已切换到非主会话，立即 return
+      // 不能等到 merge 前才检查，那时已经太晚了（数据已经准备好要写入）
+      if (cur.currentSessionId !== "main") {
+        set({ messagesReady: true });
+        return;
+      }
       const chat = chatRows.map(dbRowToChatMessage);
       const mgr = mgrRows.map(dbRowToManagerMessage);
       // Only adopt server history if we got something. Otherwise keep whatever
@@ -1170,7 +1176,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const mergedMgr = mgr.length > 0 ? mergeById(mgr, cur.managerMessages) : cur.managerMessages;
       // 再次检查：如果用户已切换到非主会话，不覆盖消息
       const cur3 = get();
-      if (cur3.projectId !== id || cur3.currentSessionId !== null) {
+      if (cur3.projectId !== id || cur3.currentSessionId !== "main") {
         if (cur3.projectId === id) set({ messagesReady: true });
         return;
       }
@@ -1723,10 +1729,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   },
 
   createSession: async () => {
-    const { projectId } = get();
-    if (!projectId) return;
+    const state = get();
+    if (!state.projectId) return;
+    // 防重入：正在创建中则不重复执行
+    if ((state as any)._creatingSession) return;
+    set({ _creatingSession: true } as any);
     try {
-      const res = await fetch(`/api/projects/${projectId}/sessions`, {
+      const res = await fetch(`/api/projects/${state.projectId}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1736,13 +1745,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const data = await res.json();
       const newSession = data.session;
       set((s) => ({ sessions: [newSession, ...s.sessions] }));
-      // 先切换 activeTool，再 switchSession，确保 dock 立即高亮新 session
-      set({ activeTool: "chat" });
       await get().switchSession(newSession.id);
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ } finally {
+      set({ _creatingSession: false } as any);
+    }
   },
 
-  switchSession: async (sessionId: string | null) => {
+  switchSession: async (sessionId: string) => {
     const { projectId } = get();
     if (!projectId) return;
     const welcome = {
@@ -1754,6 +1763,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     };
     set({
       currentSessionId: sessionId,
+      activeTool: "chat",
       chatMessages: [welcome],
       managerMessages: [],
       _nextSeq: 1,
@@ -1768,18 +1778,38 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       completionData: null,
       messagesReady: false,
     });
+    // 重置目标 slot 的 live stream state，避免上一次 build 残留显示在本会话。
+    // 仅当该 slot 没有正在进行的活跃流时才 reset（不打断进行中的 build）。
+    // 动态 import 避免与 stream-registry 形成循环依赖。
+    import("@/services/stream").then(({ streamRegistry }) => {
+      const slot = streamRegistry.get(projectId, sessionId);
+      if (!slot.build.isActive) slot.build.resetLive();
+      if (!slot.manager.isActive) slot.manager.resetLive();
+    }).catch(() => {});
     try {
-      // sessionId=null 表示主会话，后端按 IS NULL 过滤；有值则按 sessionId 过滤
-      const sidParam = sessionId !== null ? `&sessionId=${sessionId}` : `&sessionId=null`;
+      // sessionId 始终是字符串（主会话为 "main"），后端按 session_id 精确过滤
+      const sid = sessionId || "main";
+      const sidParam = `&sessionId=${encodeURIComponent(sid)}`;
       const [chatRes, mgrRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/messages?kind=chat&limit=100${sidParam}`, { credentials: "include" }),
         fetch(`/api/projects/${projectId}/messages?kind=manager&limit=100${sidParam}`, { credentials: "include" }),
       ]);
       const chatData = chatRes.ok ? await chatRes.json() : { messages: [] };
       const mgrData = mgrRes.ok ? await mgrRes.json() : { messages: [] };
+      const loadedChat: ChatMessage[] = chatData.messages ?? [];
+      const loadedMgr: ManagerMessage[] = mgrData.messages ?? [];
+      // seq 续接：从该 session 已有消息的 max seq + 1 开始，避免新消息撞号
+      const maxSeq = Math.max(
+        0,
+        ...loadedChat.map((m: any) => m.seq ?? 0),
+        ...loadedMgr.map((m: any) => m.seq ?? 0),
+      );
+      // 切换期间用户可能又切走了，写入前确认仍是当前 session
+      if (get().currentSessionId !== sessionId) return;
       set({
-        chatMessages: chatData.messages?.length > 0 ? chatData.messages : [welcome],
-        managerMessages: mgrData.messages ?? [],
+        chatMessages: loadedChat.length > 0 ? loadedChat : [welcome],
+        managerMessages: loadedMgr,
+        _nextSeq: maxSeq + 1,
         messagesReady: true,
       });
     } catch {
@@ -1795,7 +1825,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         method: "DELETE", credentials: "include",
       });
       set((s) => ({ sessions: s.sessions.filter((s2) => s2.id !== sessionId) }));
-      if (currentSessionId === sessionId) await get().switchSession(null);
+      if (currentSessionId === sessionId) await get().switchSession("main");
     } catch { /* non-fatal */ }
   },
 

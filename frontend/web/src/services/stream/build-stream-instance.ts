@@ -21,6 +21,7 @@ import type { BuildPhase } from "@/components/ide/chat/BuildPhaseIndicator";
  */
 export class BuildStreamInstance {
   readonly projectId: string;
+  readonly chatSessionId: string;   // 对话 session（主会话为 "main"），用于隔离 localStorage key
   readonly state: ObservableState<BuildStreamState>;
 
   private actions: StoreActions;
@@ -40,10 +41,16 @@ export class BuildStreamInstance {
   private thinkingStartTime: number | null = null;
   userConfirmation = "";
 
-  constructor(projectId: string, actions: StoreActions) {
+  constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
     this.projectId = projectId;
+    this.chatSessionId = chatSessionId;
     this.actions = actions;
     this.state = new ObservableState<BuildStreamState>({ ...INITIAL_BUILD_STREAM_STATE });
+  }
+
+  // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
+  private get storageKey(): string {
+    return `cascade-build-session-${this.projectId}-${this.chatSessionId}`;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -81,7 +88,7 @@ export class BuildStreamInstance {
       if (stillActive) return;
       this.sessionId = null;
       this.reader = null;
-      try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
     }
 
     this.clearLiveTimer();
@@ -125,7 +132,7 @@ export class BuildStreamInstance {
     const myGen = ++this.generation;
     this.connectionErrorAdded = false;
 
-    try { localStorage.setItem(`cascade-build-session-${this.projectId}`, sessionId); } catch {}
+    try { localStorage.setItem(this.storageKey, sessionId); } catch {}
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -426,7 +433,7 @@ export class BuildStreamInstance {
               }
             }
             this.actions.setStreamingSnapshot(null);
-            try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+            try { localStorage.removeItem(this.storageKey); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
             // The finalized build is now persisted as a buildResult message; clear
@@ -485,7 +492,7 @@ export class BuildStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
         this.reader = null;
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
       }
       if (isCurrentGen) {
@@ -540,7 +547,7 @@ export class BuildStreamInstance {
       if (!response.ok || !response.body) {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         return;
       }
 
@@ -672,7 +679,7 @@ export class BuildStreamInstance {
               this.refreshFilesAfterBuild();
             }
             this.actions.setStreamingSnapshot(null);
-            try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+            try { localStorage.removeItem(this.storageKey); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
             // Clear live state so the BuildLivePanel doesn't duplicate the
@@ -698,7 +705,7 @@ export class BuildStreamInstance {
         this.state.set({ sessionId: null, isReconnecting: false });
         this.sessionId = null;
         this.reader = null;
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         this.actions.setStreamingSnapshot(null);
         this.state.set({ buildPhase: null });
         this.clearLive();
@@ -731,26 +738,14 @@ export class BuildStreamInstance {
     if (this.disposed || this.sessionId) return;
 
     const savedSessionId = (() => {
-      try { return localStorage.getItem(`cascade-build-session-${this.projectId}`); }
+      try { return localStorage.getItem(this.storageKey); }
       catch { return null; }
     })();
 
     if (!savedSessionId) {
-      // Try active endpoint
-      try {
-        const resp = await fetch(`/api/build-session/active/${this.projectId}`, {
-          cache: "no-store", headers: { "Cache-Control": "no-cache" },
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data?.sessionId && data?.active === true) {
-            this.actions.setExecutingTaskIndex(0);
-            this.actions.setChatMode("build");
-            this.state.set({ buildPhase: "thinking" });
-            await this.connect(data.sessionId, -1);
-          }
-        }
-      } catch {}
+      // 不再 fallback 到 /active/${projectId}：该接口只按 projectId 查活跃 build，
+      // 不区分 chatSessionId，会导致新会话误重连到其他会话的 build 流（session 串流）。
+      // 只通过本会话 localStorage key 保存的 sessionId 重连。
       return;
     }
 
@@ -767,11 +762,11 @@ export class BuildStreamInstance {
         this.state.set({ buildPhase: "thinking" });
         await this.connect(savedSessionId, -1);
       } else {
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         this.state.set({ isReconnecting: false });
       }
     } catch {
-      try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
       this.state.set({ isReconnecting: false });
     }
   }
@@ -786,6 +781,15 @@ export class BuildStreamInstance {
     this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
   }
 
+  /**
+   * Reset live UI state without disposing the instance.
+   * Used when switching INTO this session's slot so stale build output from a
+   * previous run doesn't bleed into the freshly-shown session.
+   */
+  resetLive(): void {
+    this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────
 
   private abort(): void {
@@ -795,7 +799,7 @@ export class BuildStreamInstance {
     }
     this.sessionId = null;
     this.state.set({ sessionId: null });
-    try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+    try { localStorage.removeItem(this.storageKey); } catch {}
   }
 
   private scheduleReconnect(): void {
