@@ -298,6 +298,8 @@ interface IDEState {
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
+  /** Per-session responding state. Key = sessionId. True while that session's manager stream is active. */
+  sessionManagerResponding: Record<string, boolean>;
   /** True once the async DB fetch for managerMessages/chatMessages has completed
    *  (or been skipped). Prevents sending stale cross-project messages to the LLM
    *  during the window between loadProject's synchronous set() and the async
@@ -364,7 +366,7 @@ interface IDEState {
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
-  setManagerResponding: (v: boolean) => void;
+  setManagerResponding: (v: boolean, sessionId?: string) => void;
   clearManagerPlan: () => void;
   clearConversation: () => void;
   createSession: () => Promise<void>;
@@ -567,16 +569,21 @@ type PendingChatMsg = {
 const pendingMsgUploads = new Map<string, Map<string, PendingChatMsg>>();
 let msgUploadTimer: ReturnType<typeof setTimeout> | null = null;
 
-function flushPendingMsgUploads() {
+function flushPendingMsgUploads(keepalive = false) {
   msgUploadTimer = null;
   for (const [pid, byClientId] of pendingMsgUploads) {
     if (byClientId.size === 0) continue;
     const messages = Array.from(byClientId.values());
     byClientId.clear();
+    const body = JSON.stringify({ messages });
+    // keepalive=true 保证 pagehide/visibilitychange 时请求能在页面卸载后继续发出。
+    // 普通调用也用 keepalive，浏览器对 keepalive fetch 有 64KB body 上限，
+    // 消息批量一般远低于此，安全。
     fetch(`/api/projects/${pid}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body,
+      keepalive: keepalive || body.length < 60_000,
     }).catch(() => {});
   }
 }
@@ -590,7 +597,7 @@ function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
   // Latest write per clientId wins (covers updates to the same message).
   byClientId.set(msg.clientId, msg);
   if (msgUploadTimer) clearTimeout(msgUploadTimer);
-  msgUploadTimer = setTimeout(flushPendingMsgUploads, 100);
+  msgUploadTimer = setTimeout(flushPendingMsgUploads, 32);
 }
 
 async function fetchMessagesFromServer(
@@ -598,10 +605,12 @@ async function fetchMessagesFromServer(
   kind: "chat" | "manager",
   before?: number,
   limit = 100,
+  sessionId?: string,
 ): Promise<unknown[]> {
   try {
     const params = new URLSearchParams({ kind, limit: String(limit) });
     if (typeof before === "number") params.set("before", String(before));
+    if (sessionId) params.set("sessionId", sessionId);
     const resp = await fetch(`/api/projects/${projectId}/messages?${params.toString()}`);
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -726,7 +735,7 @@ if (typeof window !== "undefined") {
   // pagehide fires reliably on tab close and bfcache navigation; visibilitychange
   // covers mobile/background where pagehide may not. Both flush UI state AND
   // any pending message uploads so messages aren't lost on rapid refresh.
-  const flushAll = () => { flushPersist(); flushPendingMsgUploads(); };
+  const flushAll = () => { flushPersist(); flushPendingMsgUploads(true); };
   window.addEventListener("pagehide", flushAll);
   window.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAll();
@@ -857,6 +866,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   taskStatuses: {},
   taskFailureReasons: {},
   isManagerResponding: false,
+  sessionManagerResponding: {},
   messagesReady: true,
   verificationResults: {},
   pendingConfirmation: null,
@@ -1133,8 +1143,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     // Pull latest persisted history from server and replace local arrays.
     // Use limit=100 per kind; older messages can be fetched on scroll-up.
     Promise.all([
-      fetchMessagesFromServer(id, "chat", undefined, 100),
-      fetchMessagesFromServer(id, "manager", undefined, 100),
+      fetchMessagesFromServer(id, "chat", undefined, 100, "main"),
+      fetchMessagesFromServer(id, "manager", undefined, 100, "main"),
     ]).then(([chatRows, mgrRows]) => {
       const cur = get();
       if (cur.projectId !== id) return; // user switched projects
@@ -1637,12 +1647,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   loadOlderMessages: async (kind, limit = 50) => {
     const state = get();
     if (!state.projectId) return 0;
+    const sessionId = state.currentSessionId;
     const arr = kind === "chat" ? state.chatMessages : state.managerMessages;
     const earliestSeq = arr.length > 0 ? arr[0].seq : undefined;
-    const rows = await fetchMessagesFromServer(state.projectId, kind, earliestSeq, limit);
+    const rows = await fetchMessagesFromServer(state.projectId, kind, earliestSeq, limit, sessionId);
     if (rows.length === 0) return 0;
     const cur = get();
-    if (cur.projectId !== state.projectId) return 0;
+    if (cur.projectId !== state.projectId || cur.currentSessionId !== sessionId) return 0;
     if (kind === "chat") {
       const newer = rows.map(dbRowToChatMessage);
       const existingIds = new Set(cur.chatMessages.map((m) => m.id));
@@ -1670,7 +1681,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
 
-  setManagerResponding: (v) => set({ isManagerResponding: v }),
+  setManagerResponding: (v, sessionId) => set((state) => {
+    const sid = sessionId ?? state.currentSessionId;
+    return {
+      isManagerResponding: sid === state.currentSessionId ? v : state.isManagerResponding,
+      sessionManagerResponding: { ...state.sessionManagerResponding, [sid]: v },
+    };
+  }),
 
   clearManagerPlan: () =>
     set({
@@ -1741,7 +1758,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         credentials: "include",
         body: JSON.stringify({ name: "新会话" }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // 项目在 DB 里不存在（localStorage 缓存了已删除的 projectId），
+        // 清除本地缓存并跳回项目列表，避免用户永久卡住。
+        if (res.status === 500 || res.status === 404) {
+          try { localStorage.removeItem(`cascade-project-${state.projectId}`); } catch {}
+          window.location.href = "/app";
+        }
+        return;
+      }
       const data = await res.json();
       const newSession = data.session;
       set((s) => ({ sessions: [newSession, ...s.sessions] }));
@@ -1761,7 +1786,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       timestamp: Date.now(),
       seq: 0,
     };
-    set({
+    set((state) => ({
       currentSessionId: sessionId,
       activeTool: "chat",
       chatMessages: [welcome],
@@ -1777,7 +1802,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       fixCycle: 0,
       completionData: null,
       messagesReady: false,
-    });
+      // 切换时从 per-session Map 同步全局 isManagerResponding，
+      // 避免切到正在执行任务的 session 时 loading 状态丢失，
+      // 也避免切走时把其他 session 的 loading 带过来
+      isManagerResponding: state.sessionManagerResponding[sessionId] ?? false,
+    }));
     // 重置目标 slot 的 live stream state，避免上一次 build 残留显示在本会话。
     // 仅当该 slot 没有正在进行的活跃流时才 reset（不打断进行中的 build）。
     // 动态 import 避免与 stream-registry 形成循环依赖。
@@ -1796,8 +1825,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       ]);
       const chatData = chatRes.ok ? await chatRes.json() : { messages: [] };
       const mgrData = mgrRes.ok ? await mgrRes.json() : { messages: [] };
-      const loadedChat: ChatMessage[] = chatData.messages ?? [];
-      const loadedMgr: ManagerMessage[] = mgrData.messages ?? [];
+      const loadedChat: ChatMessage[] = (chatData.messages ?? []).map(dbRowToChatMessage);
+      const loadedMgr: ManagerMessage[] = (mgrData.messages ?? []).map(dbRowToManagerMessage);
       // seq 续接：从该 session 已有消息的 max seq + 1 开始，避免新消息撞号
       const maxSeq = Math.max(
         0,

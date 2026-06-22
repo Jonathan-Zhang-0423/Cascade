@@ -3733,8 +3733,8 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/auth/otp/verify-login", async (req, res) => {
     try {
       if (!(await checkCaptcha(req, res))) return;
-      const { channel, target, code, inviteCode } = req.body as {
-        channel?: string; target?: string; code?: string; inviteCode?: string;
+      const { channel, target, code, inviteCode, referralCode } = req.body as {
+        channel?: string; target?: string; code?: string; inviteCode?: string; referralCode?: string;
       };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
@@ -3779,8 +3779,33 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
       }
 
-      // Auto-register: invite code required
-      if (!inviteCode?.trim()) {
+      // Auto-register: either a manual invite code or a valid referral code is required.
+      // If the request carries a referralCode (from ?ref= link), verify it belongs to a
+      // real user and synthesise a single-use invite code on the spot so the new user
+      // doesn't need to type anything.
+      let resolvedInviteCode = inviteCode;
+      let referrerId: string | null = null;
+      if (!resolvedInviteCode?.trim() && referralCode?.trim()) {
+        const ref = referralCode.trim().toUpperCase();
+        const [referrer] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.referralCode, ref));
+        if (!referrer) {
+          return res.status(400).json({ error: "Invalid invite code" });
+        }
+        referrerId = referrer.id;
+        // Generate a fresh single-use invite code tied to this registration.
+        const autoCode = `REFAUTO${randomSuffix()}`;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await db.insert(inviteCodes).values({
+          code: autoCode,
+          trialDays: 14,
+          expiresAt,
+        });
+        resolvedInviteCode = autoCode;
+      }
+      if (!resolvedInviteCode?.trim()) {
         return res.status(400).json({ error: "Invite code required" });
       }
 
@@ -3812,7 +3837,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(500).json({ error: "Failed to create account" });
       }
 
-      const redeem = await redeemInviteCode(inviteCode, createdUserId);
+      const redeem = await redeemInviteCode(resolvedInviteCode, createdUserId);
       if (!redeem.ok) {
         // Roll back the user so target isn't burned on a bad invite code.
         await db.delete(users).where(eq(users.id, createdUserId));
@@ -3824,7 +3849,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
 
       await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .set({
+          inviteCode: redeem.code,
+          trialExpiresAt: redeem.trialExpiresAt,
+          ...(referrerId ? { referredBy: referrerId } : {}),
+        })
         .where(eq(users.id, createdUserId));
 
       (req.session as any).userId = createdUserId;

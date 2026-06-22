@@ -317,13 +317,13 @@ function ModePills({ mode, onChange, labelPwd, labelOtp }: {
 
 // ── OTP form — standalone component (prevents remount on parent re-render) ────
 function OtpBlock({
-  isSignUp, channel, otpTarget, setOtpTarget, otpCode, setOtpCode,
+  isSignUp, hasRefCode, channel, otpTarget, setOtpTarget, otpCode, setOtpCode,
   inviteCode, setInviteCode, otpSent, resendIn, loading, error,
   onSubmit, onSend,
   labelTarget, placeholderTarget, labelCode, labelInvite, inviteHint,
   labelSend, labelResend, labelWait, labelSubmit, labelInviteCodeHint,
 }: {
-  isSignUp: boolean; channel: "email" | "sms";
+  isSignUp: boolean; hasRefCode: boolean; channel: "email" | "sms";
   otpTarget: string; setOtpTarget: (v: string) => void;
   otpCode: string; setOtpCode: (v: string) => void;
   inviteCode: string; setInviteCode: (v: string) => void;
@@ -365,10 +365,16 @@ function OtpBlock({
       {isSignUp && (
         <div>
           <label className={labelCls}>{labelInvite}</label>
-          <input className={inputCls + " tracking-widest font-mono uppercase"}
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            placeholder="" autoComplete="off" required />
+          {hasRefCode ? (
+            <div className={inputCls + " tracking-widest font-mono uppercase text-gray-400 cursor-default select-none"}>
+              已通过邀请链接自动填充
+            </div>
+          ) : (
+            <input className={inputCls + " tracking-widest font-mono uppercase"}
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+              placeholder="" autoComplete="off" required />
+          )}
           <p className="mt-1.5 text-[11px] text-gray-400">{labelInviteCodeHint}</p>
         </div>
       )}
@@ -446,9 +452,12 @@ export default function AuthPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const resendRef = useRef<number | null>(null);
+  // If URL has ?ref=, the invite code is auto-handled by the backend via referralCode.
+  // We keep inviteCode empty so the user doesn't need to fill it manually.
+  const hasRefCode = Boolean(new URLSearchParams(window.location.search).get("ref"));
   const [inviteCode, setInviteCode] = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    return p.get("ref") ?? "";
+    // Don't pre-fill the invite field with the ref param — backend handles it automatically.
+    return "";
   });
 
   const [forgot, setForgot] = useState(false);
@@ -621,16 +630,22 @@ export default function AuthPage() {
   const handleOtpSignUp = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
     if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
-    if (!inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
+    if (!hasRefCode && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
     const channel = signUpChannel === "email" ? "email" : "sms";
     setLoading(true);
     try {
       const cap = await acquireCaptcha();
       if (!cap) return;
+      const body: Record<string, string> = { channel, target: otpTarget.trim(), code: otpCode, ...cap };
+      if (hasRefCode) {
+        body.referralCode = refCode.trim().toUpperCase();
+      } else {
+        body.inviteCode = inviteCode.trim();
+      }
       const res = await fetch("/api/auth/otp/verify-login", {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode, inviteCode: inviteCode.trim(), ...cap }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
@@ -702,6 +717,7 @@ export default function AuthPage() {
   // ── shared OtpBlock props ─────────────────────────────────────────────────
   const otpBlockProps = (isSignUp: boolean) => ({
     isSignUp,
+    hasRefCode,
     channel: otpChannel,
     otpTarget, setOtpTarget,
     otpCode, setOtpCode,

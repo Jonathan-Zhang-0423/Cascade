@@ -134,7 +134,7 @@ export function Navbar({
   useEffect(() => {
     if (!invitePanelOpen || referralCode) return;
     setInviteLoading(true);
-    fetch("/api/referral/my-code")
+    fetch("/api/referral/my-code", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
         if (d.referralCode) {

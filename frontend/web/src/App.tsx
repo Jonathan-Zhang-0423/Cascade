@@ -21,13 +21,14 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/auth", "/admin", "/invite-gate", "/github-callback"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback"];
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/github-callback" component={GitHubCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
