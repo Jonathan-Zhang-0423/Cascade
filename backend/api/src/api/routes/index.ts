@@ -4016,36 +4016,46 @@ Generate the cascade.md content for this project based on both the plan and the 
       const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
       const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-      // 用固定可达 IP 换 token（绕开服务器 DNS 解析 github.com 被墙）
-      const ghIp = "20.205.243.166";
-      const tokenData: any = await new Promise((resolve, reject) => {
-        const body = JSON.stringify({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          redirect_uri: `${baseUrl}/api/auth/github/callback`,
+      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
+      const GITHUB_IPS = ["140.82.112.4", "140.82.113.4", "140.82.114.4", "140.82.121.4"];
+
+      function tryTokenExchange(ghIp: string, body: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+          const req2 = https.request({
+            hostname: ghIp,
+            port: 443,
+            path: "/login/oauth/access_token",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Host: "github.com",
+              "Content-Length": Buffer.byteLength(body),
+            },
+            rejectUnauthorized: false,
+            timeout: 8000,
+          }, (r) => {
+            let data = "";
+            r.on("data", (c) => data += c);
+            r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
+          });
+          req2.on("error", reject);
+          req2.on("timeout", () => { req2.destroy(); reject(new Error("timeout")); });
+          req2.write(body);
+          req2.end();
         });
-        const req2 = https.request({
-          hostname: ghIp,
-          port: 443,
-          path: "/login/oauth/access_token",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Host: "github.com",
-            "Content-Length": Buffer.byteLength(body),
-          },
-          rejectUnauthorized: false,
-        }, (r) => {
-          let data = "";
-          r.on("data", (c) => data += c);
-          r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
-        });
-        req2.on("error", reject);
-        req2.write(body);
-        req2.end();
+      }
+
+      const tokenBody = JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: `${baseUrl}/api/auth/github/callback`,
       });
+
+      const tokenData: any = await Promise.any(
+        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
+      ).catch(() => { throw new Error("all_ips_failed"); });
 
       if (!tokenData.access_token) {
         console.error("[github/exchange] token error:", tokenData);
