@@ -92,9 +92,9 @@ export async function sendOtp(args: {
   if (channel === "email") {
     await sendEmail({
       to: target,
-      subject: `Your Cascade verification code: ${code}`,
-      text: `Your Cascade verification code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.`,
-      html: `<p>Your Cascade verification code is <strong style="font-size:20px;letter-spacing:4px">${code}</strong>.</p><p>It expires in ${CODE_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
+      subject: `您的 Cascade AI 验证码是：${code}`,
+      text: `您的验证码为：${code}\n\n验证码有效时间为10分钟。若非本人操作，请忽略此邮件！`,
+      html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827"><p style="margin-bottom:16px">您的验证码为：</p><div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px"><span style="font-size:32px;font-weight:800;letter-spacing:8px;color:#111827">${code}</span></div><p style="color:#6b7280;font-size:14px">验证码有效时间为10分钟。若非本人操作，请忽略此邮件！</p></div>`,
     });
   } else {
     await sendSmsOtp({ to: target, code, expiresMinutes: CODE_TTL_MINUTES });

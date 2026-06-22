@@ -465,7 +465,7 @@ function WaitlistForm({
           className="shrink-0 flex items-center justify-center px-3 py-2 sm:px-5 sm:py-3 rounded-[8px] text-[13px] sm:text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
           style={{ backgroundColor: "#000000" }}
         >
-          {submitting ? "…" : "Join Waitlist"}
+          {submitting ? "…" : "Get one month free"}
         </button>
       </div>
       {submitError && (
@@ -534,6 +534,13 @@ export default function LandingPage() {
       >
         <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
           <img src={cascadeLogo} alt="Cascade AI" data-testid="nav-logo" className="h-8 w-auto object-contain" />
+          <a
+            href="/login"
+            className="px-5 py-2 rounded-full text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
+            style={{ backgroundColor: "#000000" }}
+          >
+            Try it now
+          </a>
         </div>
       </header>
 
@@ -575,9 +582,6 @@ export default function LandingPage() {
               </div>
             </motion.div>
 
-            <motion.p variants={fadeUp} custom={3} className="mt-4 text-gray-500 text-[10px] sm:text-[12px]">
-              Join our waitlist today. Be the first to get access.
-            </motion.p>
           </motion.div>
         </motion.div>
       </section>

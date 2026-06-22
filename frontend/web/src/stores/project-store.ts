@@ -305,47 +305,20 @@ export const useProjectStore = create<ProjectStoreState>()(
             ...(p.framework ? { framework: p.framework } : {}),
           }));
 
+          converted.sort((a, b) => a.createdAt - b.createdAt);
+
+          // Server is authoritative. Evict localStorage for any project the
+          // server no longer knows about so stale data cannot resurface.
           const currentState = get();
           const serverIds = new Set(converted.map((p) => p.id));
-
-          const merged = [
-            ...converted,
-            ...currentState.projects.filter((p) => !serverIds.has(p.id)),
-          ];
-
-          merged.sort((a, b) => a.createdAt - b.createdAt);
-
-          set({ projects: merged, serverSynced: true });
-
-          const localOnlyProjects = currentState.projects.filter((p) => !serverIds.has(p.id));
-          for (const p of localOnlyProjects) {
-            await syncProjectToServer(p.id, p.name, p.emoji, p.framework);
-
-            const projectStateRaw = localStorage.getItem(`cascade-project-${p.id}`);
-            if (projectStateRaw) {
-              try {
-                const projectState = JSON.parse(projectStateRaw) as { files?: StoredFileNode[]; state?: { files?: StoredFileNode[] } };
-                const fileNodes: StoredFileNode[] = projectState?.files || projectState?.state?.files || [];
-                const flatFiles: { path: string; content: string }[] = [];
-                function flattenForSync(nodes: StoredFileNode[]) {
-                  for (const n of nodes) {
-                    if (n.type === "file" && n.path) {
-                      flatFiles.push({ path: n.path, content: n.content || "" });
-                    }
-                    if (n.children) flattenForSync(n.children);
-                  }
-                }
-                flattenForSync(fileNodes);
-                if (flatFiles.length > 0) {
-                  fetch(`/api/projects/${p.id}/files`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ files: flatFiles }),
-                  }).catch(() => {});
-                }
-              } catch {}
+          for (const p of currentState.projects) {
+            if (!serverIds.has(p.id)) {
+              localStorage.removeItem(`cascade-project-${p.id}`);
+              localStorage.removeItem(`cascade-checkpoints-${p.id}`);
             }
           }
+
+          set({ projects: converted, serverSynced: true });
         } catch {
           set({ serverSynced: true });
         } finally {

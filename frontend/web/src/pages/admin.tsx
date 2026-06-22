@@ -45,6 +45,7 @@ interface Subscriber {
   expiresAt: string | null;
   batchId: number | null;
   seqNum: number | null;
+  registeredAt: string | null;
 }
 
 interface WaitlistData {
@@ -53,7 +54,7 @@ interface WaitlistData {
 }
 
 type FilterStatus = "all" | "pending" | "invited" | "email_failed";
-type FilterType = "all" | "edu" | "normal";
+type FilterType = "all" | "edu" | "qj" | "normal";
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
@@ -103,6 +104,7 @@ export default function AdminPage() {
   const [feedbackItems, setFeedbackItems] = useState<{id:number;content:string;source:string;createdAt:string;username:string|null;email:string|null;phone:string|null}[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackSourceFilter, setFeedbackSourceFilter] = useState<"all"|"pc"|"mobile"|"qiji">("all");
   const [secSearch, setSecSearch] = useState("");
   const [manualIp, setManualIp] = useState("");
   const [manualReason, setManualReason] = useState("");
@@ -425,7 +427,8 @@ export default function AdminPage() {
   const filtered = (data?.subscribers ?? []).filter((s) => {
     if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (filterType === "edu" && !s.isEdu) return false;
-    if (filterType === "normal" && s.isEdu) return false;
+    if (filterType === "qj" && !s.email.toLowerCase().endsWith("@miracleplus.com")) return false;
+    if (filterType === "normal" && (s.isEdu || s.email.toLowerCase().endsWith("@miracleplus.com"))) return false;
     if (search && !s.email.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -681,6 +684,7 @@ export default function AdminPage() {
                 <option value="all" style={{ fontFamily: FONT }}>All types</option>
                 <option value="normal" style={{ fontFamily: FONT }}>Normal</option>
                 <option value="edu" style={{ fontFamily: FONT }}>EDU</option>
+                <option value="qj" style={{ fontFamily: FONT }}>QJ</option>
               </select>
 
               <div className="ml-auto flex items-center gap-3">
@@ -729,6 +733,7 @@ export default function AdminPage() {
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invite Code</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Joined</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Expires</th>
+                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Registered</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Batch</th>
                     </tr>
                   </thead>
@@ -783,6 +788,11 @@ export default function AdminPage() {
                         <td className="px-5 py-3.5 font-mono text-gray-500 text-[12px]">{s.inviteCode ?? "—"}</td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{formatDate(s.createdAt)}</td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.expiresAt ? formatDate(s.expiresAt) : "—"}</td>
+                        <td className="px-5 py-3.5 text-[12px]">
+                          {s.registeredAt
+                            ? <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>{formatDate(s.registeredAt)}</span>
+                            : <span className="text-gray-400">—</span>}
+                        </td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.batchId ? `#${s.batchId}` : "—"}</td>
                       </tr>
                     ))}
@@ -1155,6 +1165,60 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
+            )}
+
+            {/* ── Feedback tab ─────────────────────────────────────────────── */}
+            {activeTab === "feedback" && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-2 flex-wrap">
+                  <h3 className="text-[14px] font-semibold text-gray-700">用户建议列表</h3>
+                  <select
+                    className="ml-auto text-[12px] rounded-lg px-2 py-1 text-gray-600"
+                    style={{ border: "1px solid rgba(0,0,0,0.10)", background: "white" }}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFeedbackSourceFilter(v as "all" | "pc" | "mobile" | "qiji");
+                    }}
+                  >
+                    <option value="all">全部来源</option>
+                    <option value="pc">PC端</option>
+                    <option value="mobile">移动端</option>
+                    <option value="qiji">奇迹论坛账号</option>
+                  </select>
+                  <button
+                    onClick={fetchFeedback}
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                    style={{ border: "1px solid rgba(0,0,0,0.10)" }}
+                  >刷新</button>
+                </div>
+                {feedbackLoading && <p className="text-[13px] text-gray-400">加载中...</p>}
+                {feedbackError && <p className="text-[12px] text-red-500">{feedbackError}</p>}
+                {!feedbackLoading && feedbackItems.filter(item => {
+                  if (feedbackSourceFilter === "all") return true;
+                  if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
+                  return item.source === feedbackSourceFilter;
+                }).length === 0 && (
+                  <p className="text-[13px] text-gray-400">暂无用户建议</p>
+                )}
+                {feedbackItems.filter(item => {
+                  if (feedbackSourceFilter === "all") return true;
+                  if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
+                  return item.source === feedbackSourceFilter;
+                }).map((item) => (
+                  <div key={item.id} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <span className="text-[12px] font-semibold text-gray-700">{item.username ?? item.email ?? item.phone ?? "匿名"}</span>
+                      {item.email && <span className="text-[11px] text-gray-400">{item.email}</span>}
+                      {item.email?.endsWith("@miracleplus.com") && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(168,85,247,0.08)", color: "#9333ea" }}>奇迹</span>
+                      )}
+                      <span className="ml-auto text-[11px] text-gray-400">{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: item.source === "mobile" ? "rgba(79,130,255,0.10)" : "rgba(0,0,0,0.05)", color: item.source === "mobile" ? "#4f82ff" : "#666" }}>{item.source === "mobile" ? "移动端" : "PC端"}</span>
+                    </div>
+                    <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                  </div>
+                ))}
+              </div>
             )}
           </>
         )}

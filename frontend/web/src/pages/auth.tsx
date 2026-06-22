@@ -855,13 +855,6 @@ export default function AuthPage() {
 
             {/* Method buttons — phone, email, GitHub */}
             <div className="flex flex-col gap-3">
-              <motion.div variants={fadeUp} custom={3}>
-                <MethodBtn
-                  icon={<PhoneIcon />}
-                  label={page === "signin" ? t("auth.methodPhoneBtn") : t("auth.methodPhoneBtnSignUp")}
-                  onClick={() => openMethod("phone")}
-                />
-              </motion.div>
               <motion.div variants={fadeUp} custom={4}>
                 <MethodBtn
                   icon={<MailIcon />}

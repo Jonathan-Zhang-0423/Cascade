@@ -50,6 +50,18 @@ export class BuildStreamInstance {
     this.state = new ObservableState<BuildStreamState>({ ...INITIAL_BUILD_STREAM_STATE });
   }
 
+  /** Send debug trace to server so we can see it in pm2 logs */
+  private _dbg(msg: string): void {
+    const full = `[BuildStream:${this.projectId?.slice(0,8)}] ${msg}`;
+    console.warn(full);
+    fetch("/api/_dbg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msg: full }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
   private get storageKey(): string {
     return `cascade-build-session-${this.projectId}-${this.chatSessionId}`;
@@ -71,8 +83,9 @@ export class BuildStreamInstance {
   async execute(opts?: { userMessage?: string }): Promise<void> {
     if (this.disposed) return;
     // 防止并发 execute()：同一 slot 上第二次点击直接忽略
-    if (this.executing) return;
+    if (this.executing) { this._dbg("execute: already executing, ignoring"); return; }
     this.executing = true;
+    this._dbg("execute() called");
     try {
       await this._executeInner(opts);
     } finally {
@@ -81,11 +94,12 @@ export class BuildStreamInstance {
   }
 
   private async _executeInner(opts?: { userMessage?: string }): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed) { this._dbg("disposed, returning"); return; }
 
     const isDirect = !!opts?.userMessage;
     const existingPlan = this.actions.getManagerPlan();
-    if (!isDirect && !existingPlan) return;
+    if (!isDirect && !existingPlan) { this._dbg("no plan and not direct, returning"); return; }
+    this._dbg("START isDirect=" + isDirect);
 
     // Self-heal stale session
     if (this.sessionId) {
@@ -217,10 +231,12 @@ export class BuildStreamInstance {
       this.reader = reader;
       this.lastActivityTs = Date.now();
 
-      const watchdog = createHeartbeatWatchdog(15000, () => {
+      const watchdog = createHeartbeatWatchdog(45000, () => {
+        this._dbg("WATCHDOG FIRED 45s inactivity gen=" + myGen);
         try { reader.cancel(); } catch {}
       });
 
+      this._dbg("parseSseStream starting gen=" + myGen);
       await parseSseStream<BuildSseEvent>(reader, {
         onHeartbeat: () => {
           this.lastActivityTs = Date.now();
@@ -312,7 +328,7 @@ export class BuildStreamInstance {
             this.state.set({
               narrationText: commAccumulated,
               buildPhase: "working",
-              stepNarrations: { ...prevNarrations, [currentStepNum]: commAccumulated },
+              stepNarrations: { ...prevNarrations, [this.currentStepNum]: commAccumulated },
             });
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
@@ -491,9 +507,11 @@ export class BuildStreamInstance {
       });
 
       watchdog.clear();
+      this._dbg("parseSseStream exited normally gen=" + myGen + " allComplete=" + receivedAllComplete);
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       const stillCurrent = myGen === this.generation;
+      this._dbg("CATCH isAbort=" + isAbort + " stillCurrent=" + stillCurrent + " sessionId=" + this.sessionId + " allComplete=" + receivedAllComplete + " gen=" + myGen + "/" + this.generation + " err=" + (error instanceof Error ? error.message : String(error)));
 
       // If all_complete was already received, the build finished successfully —
       // don't attempt reconnection or show error for the stream closing.
@@ -512,6 +530,7 @@ export class BuildStreamInstance {
         }
       }
     } finally {
+      this._dbg("FINALLY gen=" + myGen + "/" + this.generation + " allComplete=" + receivedAllComplete + " reconnectTimer=" + !!this.reconnectTimer);
       if (this.heartbeatWatchdog) { clearTimeout(this.heartbeatWatchdog); this.heartbeatWatchdog = null; }
       const isCurrentGen = myGen === this.generation;
       if (isCurrentGen) {
@@ -527,6 +546,7 @@ export class BuildStreamInstance {
       // a watchdog timeout BEFORE all_complete, we should attempt reconnection
       // (handled in catch above), not show a false "completed" state.
       if (isCurrentGen && !receivedAllComplete) {
+        this._dbg("FINALLY: clearing build state (no all_complete)");
         this.actions.setStreamingSnapshot(null);
         this.state.set({ buildPhase: null });
         this.clearLive();
@@ -593,7 +613,7 @@ export class BuildStreamInstance {
       this.state.set({ isReconnecting: false });
       this.reconnectRetry = 0;
 
-      const watchdog = createHeartbeatWatchdog(15000, () => {
+      const watchdog = createHeartbeatWatchdog(45000, () => {
         try { reader.cancel(); } catch {}
       });
 
@@ -766,6 +786,7 @@ export class BuildStreamInstance {
    * Stop the current build.
    */
   stop(): void {
+    this._dbg("stop() called sessionId=" + this.sessionId);
     if (this.sessionId) {
       fetch(`/api/build-session/${this.sessionId}`, { method: "DELETE" }).catch(() => {});
     }
@@ -820,6 +841,7 @@ export class BuildStreamInstance {
    * Clean up all resources.
    */
   dispose(): void {
+    this._dbg("dispose()");
     this.disposed = true;
     this.abort();
     this.clearTimers();
@@ -832,12 +854,14 @@ export class BuildStreamInstance {
    * previous run doesn't bleed into the freshly-shown session.
    */
   resetLive(): void {
+    this._dbg("resetLive() isActive=" + this.isActive);
     this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────
 
   private abort(): void {
+    this._dbg("abort() hasReader=" + !!this.reader);
     if (this.reader) {
       this.reader.cancel().catch(() => {});
       this.reader = null;

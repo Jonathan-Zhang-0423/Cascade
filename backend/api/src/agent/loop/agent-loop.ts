@@ -118,7 +118,7 @@ export async function runAgentLoop(
     : isMinimaxModel
       ? { reasoning_split: true }
       : isGLMModel
-        ? { thinking: { type: "enabled" } }
+        ? { thinking: { type: "enabled", budget_tokens: 10000 } }
         : isDeepseekModel
           ? { thinking: { type: "enabled" } }
           : undefined;
@@ -267,6 +267,19 @@ export async function runAgentLoop(
 
     if (toolCalls.length === 0) {
       // ── Step Finish (no tool calls → stop) ──────────────────────
+      console.warn(`[agent-loop] iteration ${iteration + 1} ended with NO tool_calls. assistantText.length=${assistantText.length} reasoningContent.length=${reasoningContent.length} model=${activeModel} sessionId=${sessionId} inputTokens=${totalInputTokens} outputTokens=${totalOutputTokens}`);
+
+      // GLM and some models sometimes fail to emit tool_calls on large contexts.
+      // If we got thinking but no text and no tools, and we haven't exhausted
+      // retries, nudge the model to continue by injecting a reminder.
+      if (assistantText.length === 0 && reasoningContent.length > 0 && iteration < maxIterations - 1 && tools.length > 0) {
+        console.log(`[agent-loop] Empty response with reasoning — nudging model to use tools. iteration=${iteration + 1}`);
+        // Push the empty assistant message and a nudge
+        messages.push({ role: "assistant", content: reasoningContent } as any);
+        messages.push({ role: "user", content: "Please continue with the implementation. Use your tools (write_file, mark_step_complete) to make progress on the plan. Do not just describe what you would do — actually do it by calling the appropriate tool." } as any);
+        continue; // retry this iteration
+      }
+
       finalText = assistantText;
       if (partCtx) {
         const stepFinish = createPart("step-finish", sessionId, messageId, {
