@@ -153,6 +153,7 @@ export class ManagerStreamInstance {
           messages: historyMessages,
           files,
           projectId: this.projectId,
+          chatSessionId: this.chatSessionId,
         }),
         signal: controller.signal,
       });

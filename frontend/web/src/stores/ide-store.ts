@@ -530,6 +530,7 @@ function persistState(state: IDEState) {
     customDeviceHeight: state.customDeviceHeight,
     layoutMode: state.layoutMode,
     codeVisible: state.codeVisible,
+    currentSessionId: state.currentSessionId,
   };
   const key = `cascade-project-${state.projectId}`;
   const isQuotaErr = (e: unknown) =>
@@ -1112,6 +1113,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     };
 
     set(baseState);
+    // 恢复上次所在的 session（持久化的 currentSessionId）
+    const restoredSessionId: string = (saved?.currentSessionId && typeof saved.currentSessionId === "string")
+      ? saved.currentSessionId
+      : "main";
+    // 如果需要恢复非主会话，立即更新 store（不等消息加载）
+    if (restoredSessionId !== "main") {
+      set({ currentSessionId: restoredSessionId });
+    }
 
     // Migrate legacy localStorage messages → DB (one-time per project).
     // Older clients persisted full chatMessages / managerMessages arrays into
@@ -1143,22 +1152,18 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     // Pull latest persisted history from server and replace local arrays.
     // Use limit=100 per kind; older messages can be fetched on scroll-up.
     Promise.all([
-      fetchMessagesFromServer(id, "chat", undefined, 100, "main"),
-      fetchMessagesFromServer(id, "manager", undefined, 100, "main"),
+      fetchMessagesFromServer(id, "chat", undefined, 100, restoredSessionId),
+      fetchMessagesFromServer(id, "manager", undefined, 100, restoredSessionId),
     ]).then(([chatRows, mgrRows]) => {
       const cur = get();
       if (cur.projectId !== id) return; // user switched projects
-      // 最优先检查：只要用户已切换到非主会话，立即 return
-      // 不能等到 merge 前才检查，那时已经太晚了（数据已经准备好要写入）
-      if (cur.currentSessionId !== "main") {
+      // 最优先检查：只要用户已切换到其他 session，立即 return
+      if (cur.currentSessionId !== restoredSessionId) {
         set({ messagesReady: true });
         return;
       }
       const chat = chatRows.map(dbRowToChatMessage);
       const mgr = mgrRows.map(dbRowToManagerMessage);
-      // Only adopt server history if we got something. Otherwise keep whatever
-      // 如果用户已切换到非主会话，不覆盖消息（race condition 防护）
-      // 必须在 chat.length===0 的判断之外，无论服务器返回什么都先检查
       if (chat.length === 0 && mgr.length === 0) {
         const cur2 = get();
         if (cur2.projectId === id) set({ messagesReady: true });
@@ -1184,9 +1189,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       const mergedChat = chat.length > 0 ? mergeById(chat, cur.chatMessages) : cur.chatMessages;
       const mergedMgr = mgr.length > 0 ? mergeById(mgr, cur.managerMessages) : cur.managerMessages;
-      // 再次检查：如果用户已切换到非主会话，不覆盖消息
+      // 再次检查：如果用户已切换到其他 session，不覆盖消息
       const cur3 = get();
-      if (cur3.projectId !== id || cur3.currentSessionId !== "main") {
+      if (cur3.projectId !== id || cur3.currentSessionId !== restoredSessionId) {
         if (cur3.projectId === id) set({ messagesReady: true });
         return;
       }

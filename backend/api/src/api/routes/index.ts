@@ -1209,13 +1209,16 @@ export async function registerRoutes(
         res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, or MINIMAX_API_KEY)" });
         return;
       }
-      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
+      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId, chatSessionId: reqChatSessionId } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
+        chatSessionId?: string;
       };
+      // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
+      const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
       const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
 
@@ -2532,7 +2535,10 @@ Generate the cascade.md content for this project based on both the plan and the 
         res.status(400).json({ error: "afterSeq query param required" });
         return;
       }
-      await storage.deleteChatMessagesAfter(projectId, afterSeq);
+      // sessionId：传了就按 session 删，不传默认删 "main"
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string" ? sessionIdRaw : null;
+      await storage.deleteChatMessagesAfter(projectId, afterSeq, sessionId);
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete messages" });
@@ -3943,10 +3949,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   //    redirect the browser to GitHub's authorize URL.
   app.get("/api/auth/github", async (req, res) => {
     const clientId = process.env.GITHUB_CLIENT_ID;
-    if (!clientId) {
-      res.status(500).json({ error: "GitHub OAuth not configured" });
-      return;
-    }
+    if (!clientId) { res.status(500).json({ error: "GitHub OAuth not configured" }); return; }
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -3958,7 +3961,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     const redirectUri = `${baseUrl}/api/auth/github/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: `${baseUrl}/api/auth/github/callback`,
       scope: "read:user user:email",
       state,
       allow_signup: "true",

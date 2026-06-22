@@ -219,32 +219,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
-    const existing = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
-    const existingPaths = new Set(existing.map((f) => f.path));
-    const incomingPaths = new Set(files.map((f) => f.path));
+    // 用事务包裹，防止并发 build session 写同一 project 时的竞态：
+    // 旧的 read-then-write-then-delete 三步非原子，并发时一个 session 的 DELETE
+    // 可能删掉另一个 session 刚写进来的文件。事务加串行锁消除这个窗口。
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
+      const existingPaths = new Set(existing.map((f) => f.path));
+      const incomingPaths = new Set(files.map((f) => f.path));
 
-    const toDelete: string[] = [];
-    for (const existingPath of existingPaths) {
-      if (!incomingPaths.has(existingPath)) {
-        toDelete.push(existingPath);
+      const toDelete: string[] = [];
+      for (const existingPath of existingPaths) {
+        if (!incomingPaths.has(existingPath)) {
+          toDelete.push(existingPath);
+        }
       }
-    }
 
-    // Atomic per-row upsert keyed on the unique (project_id, path). Idempotent
-    // under concurrency — no duplicate rows, no read-then-write window.
-    if (files.length > 0) {
-      await db.insert(projectFiles)
-        .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
-        .onConflictDoUpdate({
-          target: [projectFiles.projectId, projectFiles.path],
-          set: { content: sql`excluded.content` },
-        });
-    }
+      if (files.length > 0) {
+        await tx.insert(projectFiles)
+          .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
+          .onConflictDoUpdate({
+            target: [projectFiles.projectId, projectFiles.path],
+            set: { content: sql`excluded.content` },
+          });
+      }
 
-    for (const path of toDelete) {
-      await db.delete(projectFiles)
-        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
-    }
+      for (const path of toDelete) {
+        await tx.delete(projectFiles)
+          .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+      }
+    });
   }
 
   async deleteProjectFile(projectId: string, path: string): Promise<void> {
@@ -299,9 +302,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void> {
+  async deleteChatMessagesAfter(projectId: string, afterSeq: number, sessionId?: string | null): Promise<void> {
+    const sid = (sessionId == null || sessionId === "") ? "main" : sessionId;
     await db.delete(chatMessages)
-      .where(and(eq(chatMessages.projectId, projectId), gt(chatMessages.seq, afterSeq)));
+      .where(and(
+        eq(chatMessages.projectId, projectId),
+        eq(chatMessages.sessionId, sid),
+        gt(chatMessages.seq, afterSeq),
+      ));
   }
 
   // ─── Manager Sessions ─────────────────────────────────────────────────
