@@ -56,6 +56,12 @@ export interface AgentLoopOpts {
   /** Session ID for part creation. Required when partCtx is provided. */
   sessionId?: string;
   /**
+   * When true, emit build_error to the client if maxIterations is reached
+   * without a proper exit. Only enable for the main builder loop — sub-agents
+   * (manager, explore) should not surface this as a user-visible error.
+   */
+  emitOnIterationExhausted?: boolean;
+  /**
    * Shared exit signal. A tool handler can set `.exit = true` to force the loop
    * to stop after the current tool round, even if no exitTool was called. Used
    * by the builder so completing the last plan step ends the loop deterministically
@@ -404,10 +410,12 @@ export async function runAgentLoop(
     if (shouldExit) break;
   }
 
-  // 迭代耗尽但没有正常退出 — 记录日志并通知前端
+  // 迭代耗尽但没有正常退出 — 只对 builder 主循环 emit 错误，子 agent 静默退出
   if (!exitTool && !opts.exitSignal?.exit) {
     console.warn(`[agent-loop] maxIterations (${maxIterations}) reached without exit signal. sessionId=${sessionId}`);
-    emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
+    if (opts.emitOnIterationExhausted) {
+      emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
+    }
   }
 
   return {
