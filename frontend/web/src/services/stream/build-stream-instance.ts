@@ -486,7 +486,7 @@ export class BuildStreamInstance {
       const stillCurrent = myGen === this.generation;
 
       if (!isAbort && stillCurrent && this.sessionId) {
-        if (this.reconnectRetry < 3) {
+        if (this.reconnectRetry < 10) {
           this.scheduleReconnect();
           return;
         }
@@ -514,11 +514,11 @@ export class BuildStreamInstance {
         this.state.set({ buildPhase: null });
         this.clearLive();
         if (this.actions.getProjectId() === this.projectId) {
-          normalizedSteps.forEach((step) => {
-            const key = String(step.step);
-            const s = this.actions.getTaskStatuses()[key];
-            if (s === "pending" || s === "running") this.actions.updateTaskStatus(key, "done");
-          });
+          // 不在这里把步骤标记为 done — 如果后端还在跑，步骤尚未完成，
+          // 错误地标记 done 会让 plan card 显示全部完成但实际没完成。
+          // 只有 all_complete 事件到来时才标记完成。
+          // 如果 session 结束时还有 pending/running 步骤，保持原状，
+          // 下次重连后会从后端拉取真实状态。
           this.actions.setExecutingTaskIndex(null);
           this.actions.setAiResponding(false);
         }
