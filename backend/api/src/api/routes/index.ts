@@ -877,6 +877,7 @@ export async function registerRoutes(
 
   app.get("/api/build-session/:sessionId/status", (req, res) => {
     const session = buildSessions.get(req.params.sessionId);
+    console.log(`[build-status] sessionId=${req.params.sessionId} found=${!!session} done=${session?.done} aborted=${(session as any)?.aborted} mapSize=${buildSessions.size}`);
     if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
@@ -886,6 +887,34 @@ export async function registerRoutes(
       eventCount: session.events.length,
       done: session.done,
     });
+  });
+
+  // Pre-register a build session ID so that a page refresh during the main
+  // POST (which carries the full file payload) can still find the session via
+  // the status endpoint. The main POST will overwrite this placeholder with the
+  // real session data.
+  app.post("/api/build-session/pre-register", (req, res) => {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+    if (!buildSessions.has(sessionId)) {
+      buildSessions.set(sessionId, {
+        id: sessionId,
+        aborted: false,
+        files: new Map(),
+        plan: { steps: [] },
+        userRequest: "",
+        userLang: "English",
+        mode: "direct",
+        _startedAt: Date.now(),
+        events: [],
+        nextEventId: 0,
+        done: false,
+        sseWriters: new Set(),
+        parts: [],
+        status: { type: "idle" },
+      } as any);
+    }
+    res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/console-event", (req, res) => {
@@ -4866,11 +4895,15 @@ Generate the cascade.md content for this project based on both the plan and the 
           .set({ status: "invited" })
           .where(eq(waitlistSubscribers.id, sub.id));
         sent++;
+        // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
+        await new Promise(r => setTimeout(r, 600));
       } catch (err) {
         console.error("[invite-email] send failed, marking email_failed", err, sub.email);
         await db.update(waitlistSubscribers)
           .set({ status: "email_failed" })
           .where(eq(waitlistSubscribers.id, sub.id));
+        // 失败后也等一下再继续，避免连续触发限速
+        await new Promise(r => setTimeout(r, 600));
       }
     }
     return sent;

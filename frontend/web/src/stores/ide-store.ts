@@ -268,6 +268,7 @@ interface IDEState {
   isSidebarOpen: boolean;
   isChatOpen: boolean;
   isAiResponding: boolean;
+  idePageMounted: boolean;
   theme: string;
   previewFile: string;
   previewRefreshKey: number;
@@ -589,7 +590,7 @@ function flushPendingMsgUploads(keepalive = false) {
   }
 }
 
-function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
+function queueMessageUpload(projectId: string, msg: PendingChatMsg, immediate = false) {
   let byClientId = pendingMsgUploads.get(projectId);
   if (!byClientId) {
     byClientId = new Map();
@@ -597,8 +598,14 @@ function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
   }
   // Latest write per clientId wins (covers updates to the same message).
   byClientId.set(msg.clientId, msg);
-  if (msgUploadTimer) clearTimeout(msgUploadTimer);
-  msgUploadTimer = setTimeout(flushPendingMsgUploads, 32);
+  if (immediate) {
+    // Flush immediately (e.g. user message that must survive a rapid refresh).
+    if (msgUploadTimer) clearTimeout(msgUploadTimer);
+    flushPendingMsgUploads(true);
+  } else {
+    if (msgUploadTimer) clearTimeout(msgUploadTimer);
+    msgUploadTimer = setTimeout(flushPendingMsgUploads, 32);
+  }
 }
 
 async function fetchMessagesFromServer(
@@ -832,6 +839,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isSidebarOpen: true,
   isChatOpen: false,
   isAiResponding: false,
+  idePageMounted: false,
   theme: "vs-dark",
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
@@ -1483,6 +1491,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setAiResponding: (v) => set({ isAiResponding: v }),
 
+  setIdePageMounted: (v: boolean) => set({ idePageMounted: v }),
+
   addConsoleEntry: (entry) =>
     set((state) => ({
       consoleEntries: [
@@ -1645,7 +1655,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerMessages: [...state.managerMessages, newMsg],
       };
       debouncedPersist(next);
-      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(newMsg, state.projectId, state.currentSessionId));
+      if (state.projectId) queueMessageUpload(
+        state.projectId,
+        managerMessageToDbInput(newMsg, state.projectId, state.currentSessionId),
+        newMsg.role === "user", // immediate flush for user messages to survive rapid refresh
+      );
       return next;
     }),
 

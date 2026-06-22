@@ -102,7 +102,11 @@ export class ManagerStreamInstance {
     this.clearLiveTimer();
     this.actions.addManagerMessage({ role: "user", content: trimmed });
     this.actions.setManagerResponding(true);
+    // Reset connectionErrorAdded only for a brand-new user send so that
+    // reconnect retries within the same session don't re-add the error banner.
+    // It will be set back to true the first time an error message is appended.
     this.connectionErrorAdded = false;
+    this.reconnectRetry = 0;
     this.resetInactivityTimer();
     this.state.set({
       preparingPlan: false,
@@ -380,9 +384,18 @@ export class ManagerStreamInstance {
       const stillCurrent = myGen === this.generation;
 
       if (!isAbort && stillCurrent && this.sessionId) {
-        this.scheduleReconnect();
+        // Only attempt reconnect if under retry limit; otherwise fall through
+        // to handleStreamError so the user sees exactly one error message.
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          // Clear stale live state while waiting for reconnect so old content
+          // doesn't linger in the panel.
+          this.clearLive(0);
+          return false;
+        }
       }
 
+      // No reconnect scheduled — show error once and fully reset state.
       if (!isAbort && !this.connectionErrorAdded && stillCurrent) {
         this.handleStreamError("connect");
       }
@@ -540,7 +553,15 @@ export class ManagerStreamInstance {
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       if (!isAbort && myGen === this.generation && this.sessionId) {
-        this.scheduleReconnect();
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          this.clearLive(0); // clear stale live content while waiting
+          return;
+        }
+        // Exceeded retry limit — fully reset so user can send a new message.
+        if (!this.connectionErrorAdded) {
+          this.handleStreamError("connect");
+        }
       }
     } finally {
       if (myGen === this.generation && !this.reconnectTimer) {
@@ -615,6 +636,7 @@ export class ManagerStreamInstance {
       });
       const data = resp.ok ? await resp.json() : null;
       if (data?.active) {
+        const snapshot = this.actions.getStreamingSnapshot();
         const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
           && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId

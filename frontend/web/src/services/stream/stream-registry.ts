@@ -24,7 +24,7 @@ import { useProjectStore } from "@/stores/project-store";
 function createStoreActions(projectId: string, sessionId: string | null): StoreActions {
   const guard = () => {
     const s = useIDEStore.getState();
-    return s.projectId === projectId && s.currentSessionId === sessionId;
+    return s.idePageMounted && s.projectId === projectId && s.currentSessionId === sessionId;
   };
   const store = () => useIDEStore.getState();
 

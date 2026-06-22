@@ -136,7 +136,6 @@ export class BuildStreamInstance {
     }
     this.actions.setExecutingTaskIndex(0);
     this.actions.setManagerResponding(false);
-    this.state.set({ buildPhase: "thinking" });
     this.actions.setChatMode("build");
     this.actions.setFixCycle(0);
     this.actions.setCompletionData(null);
@@ -168,7 +167,11 @@ export class BuildStreamInstance {
     const myGen = ++this.generation;
     this.connectionErrorAdded = false;
 
+    // Write localStorage key immediately alongside the loading indicator.
+    // A refresh before POST completes leaves a key pointing to a session
+    // that may not exist yet; attemptReconnect handles this with a short retry.
     try { localStorage.setItem(this.storageKey, sessionId); } catch {}
+    this.state.set({ buildPhase: "thinking" });
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -197,6 +200,17 @@ export class BuildStreamInstance {
     };
 
     try {
+      // Pre-register the session so that a page refresh during the main POST
+      // (which can take hundreds of ms for large file payloads) still finds the
+      // session via /status. This is a fire-and-forget with keepalive so it
+      // survives page unload.
+      fetch("/api/build-session/pre-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+        keepalive: true,
+      }).catch(() => {});
+
       const framework = useProjectStore.getState().projects.find((p) => p.id === this.projectId)?.framework;
       const response = await fetch("/api/build-session", {
         method: "POST",
@@ -225,6 +239,12 @@ export class BuildStreamInstance {
         this.actions.setAiResponding(false);
         return;
       }
+
+      // POST succeeded — backend session now exists. Safe to persist the key
+      // and show the loading indicator. A refresh after this point will find
+      // the session via localStorage and can reconnect successfully.
+      try { localStorage.setItem(this.storageKey, sessionId); } catch {}
+      this.state.set({ buildPhase: "thinking" });
 
       const reader = response.body?.getReader();
       if (!reader) return;
@@ -460,6 +480,7 @@ export class BuildStreamInstance {
                     segs[segs.length - 1].actions.push(entry);
                   }
                 }
+                this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
                 this.actions.addManagerMessage({
                   role: "assistant",
                   content: "",
@@ -470,6 +491,9 @@ export class BuildStreamInstance {
                     tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
                   },
                 });
+                this._dbg("all_complete: addManagerMessage called with buildResult");
+              } else {
+                this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
               }
             }
             this.actions.setStreamingSnapshot(null);
@@ -537,7 +561,12 @@ export class BuildStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
         this.reader = null;
-        try { localStorage.removeItem(this.storageKey); } catch {}
+        // Only remove the localStorage key if we are NOT waiting to reconnect.
+        // If reconnectTimer is set, we still need the key for the next attempt
+        // (e.g. page refresh while waiting for reconnect).
+        if (!this.reconnectTimer) {
+          try { localStorage.removeItem(this.storageKey); } catch {}
+        }
         if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
       }
       // Only clear build UI state if all_complete didn't already handle it.
@@ -815,13 +844,32 @@ export class BuildStreamInstance {
       return;
     }
 
-    // Check session status
+    // Check session status — retry once after a short delay in case the page
+    // was refreshed while the POST /api/build-session was still in-flight
+    // (session exists in backend but response hadn't arrived yet).
     this.state.set({ isReconnecting: true });
+    const checkStatus = async (): Promise<{ active: boolean } | null> => {
+      try {
+        const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
+          cache: "no-store", headers: { "Cache-Control": "no-cache" },
+        });
+        return resp.ok ? await resp.json() : null;
+      } catch { return null; }
+    };
+
     try {
-      const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
-        cache: "no-store", headers: { "Cache-Control": "no-cache" },
-      });
-      const data = resp.ok ? await resp.json() : null;
+      let data = await checkStatus();
+
+      // 404 / inactive: the POST may still be in-flight. Wait up to 2s with
+      // 500ms polls before giving up so a fast refresh doesn't miss the session.
+      if (!data?.active) {
+        for (let i = 0; i < 4 && !data?.active; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (this.disposed || this.sessionId) return; // aborted or new send started
+          data = await checkStatus();
+        }
+      }
+
       if (data?.active) {
         this.actions.setExecutingTaskIndex(0);
         this.actions.setChatMode("build");

@@ -54,6 +54,7 @@ export function ChatPanel() {
     clearManagerPlan,
     addManagerMessage,
     messagesReady,
+    activeTool,
   } = useIDEStore();
 
   const tGlobal = useT();
@@ -90,16 +91,21 @@ export function ChatPanel() {
 
   // Thinking indicator — covers both manager mode (isManagerResponding) and
   // build mode (buildPhase="thinking" before any live content arrives).
-  // mountedRef: 挂载后 800ms 内不显示 TypingIndicator，避免刷新时 store
-  // 状态短暂变化触发动画（手机端刷新出现打字动态的根因）
+  // mountedRef: 挂载后 300ms 内忽略来自 store 的残留 responding 状态，
+  // 避免刷新时旧状态短暂触发动画；但用户主动发消息后立即显示 loading。
   const [showThinking, setShowThinking] = useState(false);
   const mountedRef = useRef(false);
+  const userTriggeredRef = useRef(false); // 用户主动发消息，跳过 mountedRef 保护
+  const [mountedTick, setMountedTick] = useState(0); // forces effect re-run after 300ms
   useEffect(() => {
-    const id = setTimeout(() => { mountedRef.current = true; }, 800);
+    const id = setTimeout(() => {
+      mountedRef.current = true;
+      setMountedTick(1); // triggers the showThinking effect to re-evaluate
+    }, 300);
     return () => clearTimeout(id);
   }, []);
   useEffect(() => {
-    if (!mountedRef.current) return;
+    if (!mountedRef.current && !userTriggeredRef.current) return;
     const shouldShow =
       isManagerResponding ||
       mgrPreparingPlan ||
@@ -109,7 +115,17 @@ export function ChatPanel() {
     } else {
       setShowThinking(false);
     }
-  }, [isManagerResponding, mgrPreparingPlan, buildPhase]);
+  }, [isManagerResponding, mgrPreparingPlan, buildPhase, mountedTick]);
+  // When chat panel becomes visible again (e.g. user navigates back),
+  // re-evaluate showThinking immediately from current store state.
+  useEffect(() => {
+    if (activeTool !== "chat") return;
+    const shouldShow =
+      isManagerResponding ||
+      mgrPreparingPlan ||
+      buildPhase === "thinking";
+    setShowThinking(shouldShow);
+  }, [activeTool]);
   // Hide once actual action log entries arrive (not just thinking tokens) — this
   // ensures the TypingIndicator stays visible until BuildLivePanel has real content,
   // eliminating the 1-3s gap between prompt send and first visible live content.
@@ -183,12 +199,33 @@ export function ChatPanel() {
   const RESUME_THRESHOLD = 30;  // px，距底部这么近时恢复自动滚底
   const userScrolledUp = useRef(false);
   const prevChatLen = useRef(0);
+  const userScrolling = useRef(false);
+  const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticScroll = useRef(false); // 程序滚动标记，避免误判为用户行为
+
+  // 封装所有程序性滚底，打标记避免触发 userScrolledUp
+  const scrollToBottom = (el: HTMLElement) => {
+    programmaticScroll.current = true;
+    el.scrollTop = el.scrollHeight;
+    // 下一个 task 清除标记（scroll 事件是同步的，rAF 后已处理完）
+    requestAnimationFrame(() => { programmaticScroll.current = false; });
+  };
 
   // 监听用户主动滚动：上滑时禁止自动滚底，滚回底部时恢复
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onScroll = () => {
+      // 程序自己滚的，不算用户行为
+      if (programmaticScroll.current) return;
+
+      // 用户正在主动滚动，立即锁定，延长到 300ms 覆盖惯性滚动
+      userScrolling.current = true;
+      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+      scrollEndTimer.current = setTimeout(() => {
+        userScrolling.current = false;
+      }, 300);
+
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
       if (dist <= RESUME_THRESHOLD) {
         userScrolledUp.current = false; // 滚回底部，恢复自动滚底
@@ -197,7 +234,10 @@ export function ChatPanel() {
       }
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+    };
   }, []);
 
   // 挂载时滚到底——刷新后恢复到最新消息位置
@@ -205,7 +245,7 @@ export function ChatPanel() {
     const el = scrollRef.current;
     if (!el) return;
     const r = requestAnimationFrame(() => {
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      requestAnimationFrame(() => { scrollToBottom(el); });
     });
     return () => cancelAnimationFrame(r);
   }, []); // 只在挂载时执行一次
@@ -215,31 +255,26 @@ export function ChatPanel() {
     if (!messagesReady) return;
     const el = scrollRef.current;
     if (!el) return;
-    userScrolledUp.current = false; // 加载完消息强制滚底
+    userScrolledUp.current = false;
     const r = requestAnimationFrame(() => {
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      requestAnimationFrame(() => { scrollToBottom(el); });
     });
     return () => cancelAnimationFrame(r);
   }, [messagesReady]);
 
-  // 内容变化时：只有用户没有主动上滑才自动滚底
-  // 特例：有新消息加入时（用户自己发消息）强制清除上滑 flag 并滚底
+  // 内容变化时：只有 AI 正在输出且用户未主动滚动，才跟随滚底
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const curLen = chatMessages.length + managerMessages.length;
-    const newMsgAdded = curLen > prevChatLen.current;
     prevChatLen.current = curLen;
-    if (newMsgAdded) {
-      // 用户发了新消息，强制滚到底并重置 flag
-      userScrolledUp.current = false;
-      el.scrollTop = el.scrollHeight;
-      return;
-    }
-    if (userScrolledUp.current) return; // 用户正在上滑浏览，不打扰
+    // AI 没在输出，不主动触碰滚动位置
+    if (!isAiResponding && !isManagerResponding) return;
+    if (userScrolling.current) return;   // 用户正在滚动，绝不抢底
+    if (userScrolledUp.current) return;  // 用户已上滑浏览，不打扰
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (distFromBottom > SCROLL_THRESHOLD) return;
-    el.scrollTop = el.scrollHeight;
+    scrollToBottom(el);
   }, [
     chatMessages,
     managerMessages,
@@ -403,6 +438,7 @@ export function ChatPanel() {
       }
       const text = input;
       setInput("");
+      userTriggeredRef.current = true;
       handleDirectBuild(text);
       return;
     }
@@ -411,6 +447,7 @@ export function ChatPanel() {
       return;
     }
     setInput("");
+    userTriggeredRef.current = true;
     handleManagerSend(undefined, input);
   }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
