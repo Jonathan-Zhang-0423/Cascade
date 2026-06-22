@@ -88,7 +88,7 @@ function App() {
     });
   }, []);
 
-  if (!authChecked && !UNGUARDED_PATHS.includes(window.location.pathname)) return null;
+  if (!authChecked && !UNGUARDED_PATHS.some(p => window.location.pathname === p || window.location.pathname.startsWith(p + "/"))) return null;
 
   return (
     <ThemeProvider>
