@@ -19,7 +19,7 @@ interface LockedUser {
   remainingSec: number;
 }
 
-type AdminTab = "waitlist" | "users" | "security";
+type AdminTab = "waitlist" | "users" | "security" | "feedback";
 
 interface AppUser {
   id: string;
@@ -98,6 +98,11 @@ export default function AdminPage() {
   const [secMsg, setSecMsg] = useState("");
   const [secError, setSecError] = useState("");
   const [secFilter, setSecFilter] = useState<"all" | "ip" | "user">("all");
+
+  // Feedback panel state
+  const [feedbackItems, setFeedbackItems] = useState<{id:number;content:string;source:string;createdAt:string;username:string|null;email:string|null;phone:string|null}[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
   const [secSearch, setSecSearch] = useState("");
   const [manualIp, setManualIp] = useState("");
   const [manualReason, setManualReason] = useState("");
@@ -165,6 +170,21 @@ export default function AdminPage() {
       setUsersError("加载失败，请重试");
     } finally {
       setUsersLoading(false);
+    }
+  }
+
+  // ── Feedback handlers ─────────────────────────────────────────────────────
+  async function fetchFeedback() {
+    setFeedbackLoading(true); setFeedbackError("");
+    try {
+      const res = await fetch("/api/admin/feedback", { headers: { "x-admin-secret": secret.trim() } });
+      if (!res.ok) throw new Error("加载失败");
+      const json = await res.json();
+      setFeedbackItems(json.feedback ?? []);
+    } catch {
+      setFeedbackError("加载失败，请重试");
+    } finally {
+      setFeedbackLoading(false);
     }
   }
 
@@ -278,6 +298,11 @@ export default function AdminPage() {
   // Load users when switching to users tab
   useEffect(() => {
     if (authed && activeTab === "users") fetchUsers();
+  }, [authed, activeTab]);
+
+  useEffect(() => {
+    if (authed && activeTab === "feedback") fetchFeedback();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, activeTab]);
 
   // 点击页面任意处关闭表头筛选下拉。
@@ -507,7 +532,7 @@ export default function AdminPage() {
           <>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-8 border-b border-black/[0.07]">
-              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"]] as [AdminTab, string][]).map(([tab, label]) => (
+              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"]] as [AdminTab, string][]).map(([tab, label]) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -527,7 +552,7 @@ export default function AdminPage() {
                   className="font-bold text-black leading-tight"
                   style={{ fontSize: "clamp(28px, 4vw, 40px)", fontFamily: FONT }}
                 >
-                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : "安全管理"}
+                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : activeTab === "feedback" ? "用户建议" : "安全管理"}
                 </h1>
                 {activeTab === "waitlist" && (
                   <p className="text-gray-500 text-[14px] mt-1">cascadeai.co · {data.total} subscribers</p>

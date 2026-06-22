@@ -163,6 +163,7 @@ export class BuildStreamInstance {
     // Accumulator state
     let thinkingAccumulated = "";
     let commAccumulated = "";
+    let receivedAllComplete = false;
     this.currentStepNum = 0;
 
     let lastSnapshotFlush = 0;
@@ -408,6 +409,7 @@ export class BuildStreamInstance {
               precedingNarration: commAccumulated || undefined,
             });
           } else if (type === "all_complete") {
+            receivedAllComplete = true;
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
               normalizedSteps.forEach((step) => {
@@ -493,7 +495,9 @@ export class BuildStreamInstance {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       const stillCurrent = myGen === this.generation;
 
-      if (!isAbort && stillCurrent && this.sessionId) {
+      // If all_complete was already received, the build finished successfully —
+      // don't attempt reconnection or show error for the stream closing.
+      if (!receivedAllComplete && !isAbort && stillCurrent && this.sessionId) {
         if (this.reconnectRetry < 10) {
           this.scheduleReconnect();
           return;
@@ -517,7 +521,12 @@ export class BuildStreamInstance {
         try { localStorage.removeItem(this.storageKey); } catch {}
         if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
       }
-      if (isCurrentGen) {
+      // Only clear build UI state if all_complete didn't already handle it.
+      // When all_complete fires, it persists the build result and clears the
+      // live panel. Running this again is redundant — and if we got here via
+      // a watchdog timeout BEFORE all_complete, we should attempt reconnection
+      // (handled in catch above), not show a false "completed" state.
+      if (isCurrentGen && !receivedAllComplete) {
         this.actions.setStreamingSnapshot(null);
         this.state.set({ buildPhase: null });
         this.clearLive();
@@ -528,6 +537,12 @@ export class BuildStreamInstance {
           // 如果 session 结束时还有 pending/running 步骤，保持原状，
           // 下次重连后会从后端拉取真实状态。
           this.actions.setExecutingTaskIndex(null);
+          this.actions.setAiResponding(false);
+        }
+      } else if (isCurrentGen && receivedAllComplete) {
+        // all_complete already cleaned up build state; just ensure
+        // aiResponding is cleared so the input box re-enables.
+        if (this.actions.getProjectId() === this.projectId) {
           this.actions.setAiResponding(false);
         }
       }
@@ -553,8 +568,7 @@ export class BuildStreamInstance {
 
     let thinkingAccumulated = "";
     let commAccumulated = "";
-
-    // Restore from snapshot
+    let receivedAllComplete = false;
     const snapshot = this.actions.getStreamingSnapshot();
     if (snapshot?.type === "build") {
       thinkingAccumulated = snapshot.thinkingText || "";
@@ -658,6 +672,7 @@ export class BuildStreamInstance {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
           } else if (type === "all_complete") {
+            receivedAllComplete = true;
             if (isCurrentProject) {
               nSteps.forEach((step) => {
                 const key = String(step.step);
@@ -719,7 +734,7 @@ export class BuildStreamInstance {
       watchdog.clear();
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
-      if (!isAbort && myGen === this.generation && this.sessionId) {
+      if (!receivedAllComplete && !isAbort && myGen === this.generation && this.sessionId) {
         this.scheduleReconnect();
       }
     } finally {
@@ -728,12 +743,20 @@ export class BuildStreamInstance {
         this.sessionId = null;
         this.reader = null;
         try { localStorage.removeItem(this.storageKey); } catch {}
-        this.actions.setStreamingSnapshot(null);
-        this.state.set({ buildPhase: null });
-        this.clearLive();
-        if (this.actions.getProjectId() === this.projectId) {
-          this.actions.setExecutingTaskIndex(null);
-          this.actions.setAiResponding(false);
+        if (!receivedAllComplete) {
+          this.actions.setStreamingSnapshot(null);
+          this.state.set({ buildPhase: null });
+          this.clearLive();
+          if (this.actions.getProjectId() === this.projectId) {
+            this.actions.setExecutingTaskIndex(null);
+            this.actions.setAiResponding(false);
+          }
+        } else {
+          // all_complete already cleaned up build state; just ensure
+          // aiResponding is cleared so the input box re-enables.
+          if (this.actions.getProjectId() === this.projectId) {
+            this.actions.setAiResponding(false);
+          }
         }
       }
     }

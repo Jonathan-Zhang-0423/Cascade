@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -839,6 +839,10 @@ export async function registerRoutes(
         .finally(() => {
           session.done = true;
           session.doneAt = Date.now();
+          // Send [DONE] frame and close all connected SSE writers so clients
+          // detect end-of-stream cleanly (matching what manager-chat does).
+          const doneLine = "data: [DONE]\n\n";
+          Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
           // Unregister from per-user session tracker
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           // Clean up session directory
@@ -3347,6 +3351,52 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[referral/redeem]", err);
       res.status(500).json({ error: "Failed to redeem referral code" });
+    }
+  });
+
+  // ── User Feedback ─────────────────────────────────────────────────────────
+  // POST /api/feedback — submit user suggestion
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { content, source } = req.body as { content?: string; source?: string };
+      if (!content?.trim()) return res.status(400).json({ error: "Content required" });
+      await db.insert(userFeedback).values({
+        userId,
+        content: content.trim().slice(0, 2000),
+        source: (source === "mobile" ? "mobile" : "pc"),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[feedback]", err);
+      res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
+  // GET /api/admin/feedback — list all feedback (admin only)
+  app.get("/api/admin/feedback", async (req, res) => {
+    try {
+      const secret = req.headers["x-admin-secret"] as string | undefined;
+      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      const rows = await db
+        .select({
+          id: userFeedback.id,
+          content: userFeedback.content,
+          source: userFeedback.source,
+          createdAt: userFeedback.createdAt,
+          username: users.username,
+          email: users.email,
+          phone: users.phone,
+        })
+        .from(userFeedback)
+        .leftJoin(users, eq(userFeedback.userId, users.id))
+        .orderBy(desc(userFeedback.createdAt))
+        .limit(500);
+      res.json({ feedback: rows });
+    } catch (err) {
+      console.error("[admin/feedback]", err);
+      res.status(500).json({ error: "Failed to fetch feedback" });
     }
   });
 

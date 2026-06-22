@@ -10,3 +10,4 @@ export * from './otp-codes';
 export * from './manager-sessions';
 export * from './session';
 export * from './subscription-grants';
+export * from './user-feedback';
