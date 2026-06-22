@@ -40,6 +40,7 @@ export class BuildStreamInstance {
   private actionLog: ActionLogEntry[] = [];
   private thinkingStartTime: number | null = null;
   private currentStepNum = 0;   // 当前执行步骤号，用于给 actionLog entry 打标
+  private executing = false;    // 防止并发 execute() 调用
   userConfirmation = "";
 
   constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
@@ -68,6 +69,18 @@ export class BuildStreamInstance {
    * Execute a build plan (or direct build).
    */
   async execute(opts?: { userMessage?: string }): Promise<void> {
+    if (this.disposed) return;
+    // 防止并发 execute()：同一 slot 上第二次点击直接忽略
+    if (this.executing) return;
+    this.executing = true;
+    try {
+      await this._executeInner(opts);
+    } finally {
+      this.executing = false;
+    }
+  }
+
+  private async _executeInner(opts?: { userMessage?: string }): Promise<void> {
     if (this.disposed) return;
 
     const isDirect = !!opts?.userMessage;
