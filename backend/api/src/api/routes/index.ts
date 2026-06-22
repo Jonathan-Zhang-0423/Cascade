@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import https from "https";
 import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import "express-session";
@@ -3996,34 +3997,65 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.redirect(`${baseUrl}/github-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
   });
 
-  // exchange：前端浏览器换好 token 后发过来，后端查/建用户、建立 session
+  // exchange：前端发来 code+state，后端用固定 IP 换 token，建立 session
   app.post("/api/auth/github/exchange", async (req, res) => {
     try {
-      const { accessToken, state } = req.body as { accessToken?: string; state?: string };
-      if (!accessToken || !state) {
-        res.status(400).json({ error: "missing_params" });
-        return;
-      }
-      // 验证并删除 state
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
       const row = await pool.query(
         `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
         [`github_state:${state}`]
       );
-      if (row.rows.length === 0) {
-        res.status(400).json({ error: "bad_state" });
-        return;
-      }
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
       await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
 
-      // 用 accessToken 获取用户信息（api.github.com 可访问）
+      const clientId = process.env.GITHUB_CLIENT_ID!;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
+      const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+      // 用固定可达 IP 换 token（绕开服务器 DNS 解析 github.com 被墙）
+      const ghIp = "20.205.243.166";
+      const tokenData: any = await new Promise((resolve, reject) => {
+        const body = JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: `${baseUrl}/api/auth/github/callback`,
+        });
+        const req2 = https.request({
+          hostname: ghIp,
+          port: 443,
+          path: "/login/oauth/access_token",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Host: "github.com",
+            "Content-Length": Buffer.byteLength(body),
+          },
+          rejectUnauthorized: false,
+        }, (r) => {
+          let data = "";
+          r.on("data", (c) => data += c);
+          r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
+        });
+        req2.on("error", reject);
+        req2.write(body);
+        req2.end();
+      });
+
+      if (!tokenData.access_token) {
+        console.error("[github/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.error || "no_access_token" });
+        return;
+      }
+      const accessToken = tokenData.access_token;
+
       const ghFetch = await getGithubFetch();
       const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
-      if (!userRes.ok) {
-        res.status(400).json({ error: "user_fetch_failed" });
-        return;
-      }
+      if (!userRes.ok) { res.status(400).json({ error: "user_fetch_failed" }); return; }
       const ghUser = await userRes.json() as {
         id: number; login: string; email: string | null; avatar_url: string | null;
       };
