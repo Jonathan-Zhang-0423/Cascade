@@ -39,6 +39,7 @@ export class BuildStreamInstance {
   private disposed = false;
   private actionLog: ActionLogEntry[] = [];
   private thinkingStartTime: number | null = null;
+  private currentStepNum = 0;   // 当前执行步骤号，用于给 actionLog entry 打标
   userConfirmation = "";
 
   constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
@@ -141,7 +142,7 @@ export class BuildStreamInstance {
     // Accumulator state
     let thinkingAccumulated = "";
     let commAccumulated = "";
-    let currentStepNum = 0;
+    this.currentStepNum = 0;
 
     let lastSnapshotFlush = 0;
     const flushSnapshot = () => {
@@ -241,7 +242,7 @@ export class BuildStreamInstance {
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "", thinkingElapsedSec: null });
             this.thinkingStartTime = null;
             const stepNum = ev.stepNumber ?? 1;
-            currentStepNum = stepNum;
+            this.currentStepNum = stepNum; const currentStepNum = this.currentStepNum;
             this.appendActionLog({ type: "step", label: `Step ${stepNum}/${normalizedSteps.length}: ${ev.stepTitle || ""}`, detail: "", timestamp: Date.now() });
             // Emit plan action on first step — shows plan steps as detail
             if (stepNum === 1 && normalizedSteps.length > 0) {
@@ -815,7 +816,9 @@ export class BuildStreamInstance {
   }
 
   private appendActionLog(entry: ActionLogEntry): void {
-    this.actionLog.push(entry);
+    // 给每个 entry 打上当前步骤号，供前端分段渲染使用
+    const entryWithStep = entry.stepNum !== undefined ? entry : { ...entry, stepNum: this.currentStepNum };
+    this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
   }
 

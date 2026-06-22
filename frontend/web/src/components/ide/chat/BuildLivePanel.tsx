@@ -944,16 +944,41 @@ export function BuildLivePanel({
   const liveSegments = useMemo<NarrationSegment[]>(() => {
     if (isPersisted) return [];
     const segs: NarrationSegment[] = [];
+    // 按 stepNum 分组：每个 entry 上都记录了它属于哪个步骤。
+    // step entry 本身创建 segment，其他 entry 按 stepNum 归入对应 segment。
+    // 这样即使 tool call 在 step entry 之前到达，也能正确归入对应步骤。
+    const segByStep = new Map<number, NarrationSegment>();
+    let maxStepNum = 0;
+
     for (const entry of entries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
-        segs.push({ id: String(segs.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+        const match = entry.label?.match(/Step\s*(\d+)/i);
+        const stepNum = match ? parseInt(match[1], 10) : (maxStepNum + 1);
+        maxStepNum = Math.max(maxStepNum, stepNum);
+        if (!segByStep.has(stepNum)) {
+          const seg: NarrationSegment = { id: String(stepNum), narration: "", actions: [], isLive: false, stepLabel: entry.label };
+          segByStep.set(stepNum, seg);
+        } else {
+          // step entry 到来时补上 stepLabel（可能比 action entries 晚到）
+          segByStep.get(stepNum)!.stepLabel = entry.label;
+        }
       } else {
-        if (segs.length === 0) segs.push({ id: "0", narration: "", actions: [], isLive: false });
-        segs[segs.length - 1].actions.push(entry);
+        const sn = (entry as any).stepNum as number | undefined;
+        const targetStep = (sn != null && sn > 0) ? sn : (maxStepNum > 0 ? maxStepNum : 1);
+        maxStepNum = Math.max(maxStepNum, targetStep);
+        if (!segByStep.has(targetStep)) {
+          segByStep.set(targetStep, { id: String(targetStep), narration: "", actions: [], isLive: false });
+        }
+        segByStep.get(targetStep)!.actions.push(entry);
       }
     }
-    // 每个 step 根据已收集的 actions 生成 narration；live step 实时更新
+
+    // 按步骤号顺序输出
+    const sortedSteps = Array.from(segByStep.keys()).sort((a, b) => a - b);
+    for (const sn of sortedSteps) segs.push(segByStep.get(sn)!);
+
+    // 每个 step 生成 narration
     for (const seg of segs) {
       const summary = summarizeActions(seg.actions);
       seg.narration = summary;
