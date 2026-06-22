@@ -4068,7 +4068,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
-      if (!userRes.ok) { res.status(400).json({ error: "user_fetch_failed" }); return; }
+      if (!userRes.ok) {
+        const errBody = await userRes.text().catch(() => "");
+        console.error("[github/exchange] user fetch failed:", userRes.status, errBody);
+        res.status(400).json({ error: "user_fetch_failed" }); return;
+      }
       const ghUser = await userRes.json() as {
         id: number; login: string; email: string | null; avatar_url: string | null;
       };
