@@ -54,29 +54,23 @@ function AnimatedDots() {
   );
 }
 
-// ── LiveBar — 转圈圈 + 随机动态文字 + 三点动画 ───────────────────────────────
-// 和 TypingIndicator 同款短句，挂载时随机选一句，静态显示 + AnimatedDots
+// ── LiveBar — 转圈圈 + 打字机文字 + 三点（完全复用 TypingIndicator 逻辑）────
 const LIVE_PHRASES_ZH = [
-  "正在把你的想法翻译成代码语言",
-  "AI 大脑正在高速运转",
-  "正在实现功能代码",
-  "正在分析文件结构",
-  "正在规划执行步骤",
-  "正在验证代码逻辑",
-  "正在调整界面样式",
-  "正在处理接口逻辑",
-  "正在思考解决方案",
+  "正在脑洞大开中", "灵感正在路上，请稍候", "AI 正在认真思考，不是在摸鱼",
+  "代码宇宙正在重组中", "正在向平行宇宙借点智慧", "思维发动机预热中",
+  "正在把你的想法翻译成代码语言", "正在解锁最优解", "AI 大脑正在高速运转",
+  "正在召唤代码精灵", "把咖啡因转化为代码中", "正在对齐神经元",
+  "想法正在结晶", "正在量子计算最优解", "大模型正在认真上班",
+  "正在把文字变成魔法", "灵感女神正在降临", "正在高速检索知识库",
 ];
 const LIVE_PHRASES_EN = [
-  "Turning your idea into code",
-  "AI engines running at full speed",
-  "Implementing feature code",
-  "Analyzing file structure",
-  "Planning execution steps",
-  "Verifying code logic",
-  "Adjusting UI styles",
-  "Handling interface logic",
-  "Thinking through the solution",
+  "Brainwaves detected, processing", "Consulting the code oracle",
+  "Firing up the neural engines", "Turning caffeine into code",
+  "Assembling brilliant thoughts", "Summoning the AI muse",
+  "Untangling the idea spaghetti", "Crunching possibilities",
+  "Downloading inspiration", "Aligning neurons, please hold",
+  "Searching all known universes", "Cooking up something great",
+  "Connecting the creative dots", "Spinning up the idea turbine",
 ];
 
 function LiveBar() {
@@ -84,11 +78,27 @@ function LiveBar() {
   const phrases = lang === "zh" ? LIVE_PHRASES_ZH : LIVE_PHRASES_EN;
   const phrase = useRef(phrases[Math.floor(Math.random() * phrases.length)]).current;
 
+  const [charCount, setCharCount] = useState(0);
+  useEffect(() => {
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      if (i < phrase.length) {
+        i++; setCharCount(i);
+        timer = setTimeout(tick, 90);
+      } else {
+        timer = setTimeout(() => { i = 0; setCharCount(0); timer = setTimeout(tick, 90); }, 2400);
+      }
+    };
+    timer = setTimeout(tick, 90);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phrase]);
+
   return (
     <span className="inline-flex items-center gap-1.5 text-muted-foreground/60 font-mono text-[10.5px]">
       <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-      <span>{phrase}</span>
-      <AnimatedDots />
+      <span>{phrase.slice(0, charCount)}<AnimatedDots /></span>
     </span>
   );
 }

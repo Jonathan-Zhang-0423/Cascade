@@ -180,6 +180,25 @@ export function ChatPanel() {
 
   // ── 自动滚底：实时读 DOM 距底距离，避免 passive scroll 事件与 React commit 的竞态 ──
   const SCROLL_THRESHOLD = 120; // px，距底部多少以内算"在底部"
+  const RESUME_THRESHOLD = 30;  // px，距底部这么近时恢复自动滚底
+  const userScrolledUp = useRef(false);
+  const prevChatLen = useRef(0);
+
+  // 监听用户主动滚动：上滑时禁止自动滚底，滚回底部时恢复
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (dist <= RESUME_THRESHOLD) {
+        userScrolledUp.current = false; // 滚回底部，恢复自动滚底
+      } else if (dist > SCROLL_THRESHOLD) {
+        userScrolledUp.current = true;  // 主动上滑，禁止自动滚底
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   // 挂载时滚到底——刷新后恢复到最新消息位置
   useEffect(() => {
@@ -196,16 +215,28 @@ export function ChatPanel() {
     if (!messagesReady) return;
     const el = scrollRef.current;
     if (!el) return;
+    userScrolledUp.current = false; // 加载完消息强制滚底
     const r = requestAnimationFrame(() => {
       requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     });
     return () => cancelAnimationFrame(r);
   }, [messagesReady]);
 
-  // 内容变化时：直接读当前 scrollTop 判断用户是否在底部，不依赖异步 ref
+  // 内容变化时：只有用户没有主动上滑才自动滚底
+  // 特例：有新消息加入时（用户自己发消息）强制清除上滑 flag 并滚底
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const curLen = chatMessages.length + managerMessages.length;
+    const newMsgAdded = curLen > prevChatLen.current;
+    prevChatLen.current = curLen;
+    if (newMsgAdded) {
+      // 用户发了新消息，强制滚到底并重置 flag
+      userScrolledUp.current = false;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (userScrolledUp.current) return; // 用户正在上滑浏览，不打扰
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (distFromBottom > SCROLL_THRESHOLD) return;
     el.scrollTop = el.scrollHeight;

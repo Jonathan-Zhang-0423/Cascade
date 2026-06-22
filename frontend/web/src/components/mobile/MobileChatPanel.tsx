@@ -9,35 +9,56 @@ export function MobileChatPanel() {
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // 两层 MutationObserver + 用户滚动检测：
-  // 仅当用户在底部附近时才自动滚底，避免强制打断手动上滑
+  // 仅当用户在底部附近且未主动上滑时才自动滚底
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
 
     const SCROLL_THRESHOLD = 120;
+    const RESUME_THRESHOLD = 30;
     const SCROLL_SEL = '[data-testid="chat-panel"] > .flex-1';
+
+    let userScrolledUp = false;
 
     const isNearBottom = (el: HTMLElement) =>
       el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
 
     const scrollToBottom = (el: HTMLElement) => {
+      if (userScrolledUp) return; // 用户正在上滑，不打扰
       if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
     };
 
     let contentObserver: MutationObserver | null = null;
+    let scrollListener: (() => void) | null = null;
 
     const attachContentObserver = (el: HTMLElement) => {
       if (contentObserver) return;
-      // 挂载时强制滚一次（用户刚进入，还没手动上滑）
+      // 挂载时强制滚一次
       el.scrollTop = el.scrollHeight;
+
+      // 监听用户滚动方向
+      scrollListener = () => {
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (dist <= RESUME_THRESHOLD) {
+          userScrolledUp = false; // 滚回底部，恢复自动滚底
+        } else if (dist > SCROLL_THRESHOLD) {
+          userScrolledUp = true;  // 主动上滑，禁止自动滚底
+        }
+      };
+      el.addEventListener("scroll", scrollListener, { passive: true });
+
+      // 只监听 childList（新消息节点增减），不监听 characterData（打字机文字变化）
       contentObserver = new MutationObserver(() => scrollToBottom(el));
-      contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
+      contentObserver.observe(el, { childList: true, subtree: true });
     };
 
     const existing = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
     if (existing) {
       attachContentObserver(existing);
-      return () => contentObserver?.disconnect();
+      return () => {
+        contentObserver?.disconnect();
+        if (scrollListener && existing) existing.removeEventListener("scroll", scrollListener);
+      };
     }
 
     const waitObserver = new MutationObserver(() => {
@@ -51,6 +72,10 @@ export function MobileChatPanel() {
     return () => {
       waitObserver.disconnect();
       contentObserver?.disconnect();
+      if (scrollListener) {
+        const el = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
+        if (el) el.removeEventListener("scroll", scrollListener);
+      }
     };
   }, []);
 
