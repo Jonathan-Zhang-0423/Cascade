@@ -53,6 +53,45 @@ function AnimatedDots() {
     </>
   );
 }
+
+// ── LiveBar — 转圈圈 + 随机动态文字 + 三点动画 ───────────────────────────────
+// 和 TypingIndicator 同款短句，挂载时随机选一句，静态显示 + AnimatedDots
+const LIVE_PHRASES_ZH = [
+  "正在把你的想法翻译成代码语言",
+  "AI 大脑正在高速运转",
+  "正在实现功能代码",
+  "正在分析文件结构",
+  "正在规划执行步骤",
+  "正在验证代码逻辑",
+  "正在调整界面样式",
+  "正在处理接口逻辑",
+  "正在思考解决方案",
+];
+const LIVE_PHRASES_EN = [
+  "Turning your idea into code",
+  "AI engines running at full speed",
+  "Implementing feature code",
+  "Analyzing file structure",
+  "Planning execution steps",
+  "Verifying code logic",
+  "Adjusting UI styles",
+  "Handling interface logic",
+  "Thinking through the solution",
+];
+
+function LiveBar() {
+  const { lang } = useLanguageStore();
+  const phrases = lang === "zh" ? LIVE_PHRASES_ZH : LIVE_PHRASES_EN;
+  const phrase = useRef(phrases[Math.floor(Math.random() * phrases.length)]).current;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-muted-foreground/60 font-mono text-[10.5px]">
+      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+      <span>{phrase}</span>
+      <AnimatedDots />
+    </span>
+  );
+}
 import {
   FileText,
   PencilLine,
@@ -452,7 +491,7 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
         <span className="truncate text-muted-foreground/70">
           {isLive ? <>{t("chat.thinkingLive")}<AnimatedDots /></> : t("agent.thinking")}
         </span>
-        {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin ml-1 shrink-0 text-muted-foreground/50" />}
+        {isLive && <LiveBar />}
       </button>
       {open && thinkingSummary && (
         <div className="pl-[34px] pb-1">
@@ -493,7 +532,7 @@ const SegmentView = memo(function SegmentView({
       <div className="mb-0.5 px-3.5" data-testid="segment-view">
         <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
           <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-          {isLive && <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />}
+          {isLive && <LiveBar />}
           {displayText0 && (
             <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
               {displayText0}
@@ -570,7 +609,7 @@ const SegmentView = memo(function SegmentView({
                   })()}
                 </span>
                 {isLive && (
-                  <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
+                  <LiveBar />
                 )}
               </div>
             )}
