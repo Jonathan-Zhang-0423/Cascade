@@ -1840,11 +1840,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       );
       // 切换期间用户可能又切走了，写入前确认仍是当前 session
       if (get().currentSessionId !== sessionId) return;
+      // 从最新的 plan 消息里恢复 plan card 状态，和 loadProject 保持一致
+      const lastPlanMsg = loadedMgr.slice().reverse().find((m: ManagerMessage) => m.plan);
+      const restoredPlan = lastPlanMsg?.plan ?? null;
+      const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? {};
+      const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? {};
       set({
         chatMessages: loadedChat.length > 0 ? loadedChat : [welcome],
         managerMessages: loadedMgr,
         _nextSeq: maxSeq + 1,
         messagesReady: true,
+        managerPlan: restoredPlan,
+        taskStatuses: restoredTaskStatuses,
+        taskFailureReasons: restoredTaskFailureReasons,
       });
     } catch {
       set({ messagesReady: true });
