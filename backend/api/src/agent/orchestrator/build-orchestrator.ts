@@ -494,7 +494,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 100, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }

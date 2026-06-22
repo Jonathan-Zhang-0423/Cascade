@@ -404,6 +404,12 @@ export async function runAgentLoop(
     if (shouldExit) break;
   }
 
+  // 迭代耗尽但没有正常退出 — 记录日志并通知前端
+  if (!exitTool && !opts.exitSignal?.exit) {
+    console.warn(`[agent-loop] maxIterations (${maxIterations}) reached without exit signal. sessionId=${sessionId}`);
+    emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
+  }
+
   return {
     finalText,
     exitTool,
