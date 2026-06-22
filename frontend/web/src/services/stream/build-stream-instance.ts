@@ -99,7 +99,15 @@ export class BuildStreamInstance {
           stillActive = !!data?.active && !data?.done;
         }
       } catch {}
-      if (stillActive) return;
+      if (stillActive) {
+        // Session 还在跑但 SSE 断了（如刷新页面）——重连，不要启动新 session
+        if (!this.reader) {
+          this.actions.setChatMode("build");
+          this.state.set({ buildPhase: "thinking" });
+          await this.connect(this.sessionId, this.lastEventId);
+        }
+        return;
+      }
       this.sessionId = null;
       this.reader = null;
       try { localStorage.removeItem(this.storageKey); } catch {}
