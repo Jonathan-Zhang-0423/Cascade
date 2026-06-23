@@ -5,13 +5,15 @@ import { useIDEStore, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
-import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check } from "lucide-react";
+import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check, Megaphone, Bell, Send } from "lucide-react";
 import { type ThemeId } from "@/lib/themes";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 import { getFirstDeviceForPlatform } from "@/lib/device-specs";
 import { cn } from "@/lib/utils";
+import { ChangelogModal } from "./changelog-modal";
+import { PublishDialog } from "@/components/square/publish-dialog";
 
 // 字体大小档位：value = html font-size 百分比
 export const FONT_SIZES = [
@@ -52,6 +54,7 @@ interface NavbarProps {
   onAddTab: () => void;
   onToggleTools: () => void;
   onFullscreen: () => void;
+  onOpenNotification: (type: "changelog", refId: number) => void;
 }
 
 function findFileContent(nodes: FileNode[], targetPath: string): string | undefined {
@@ -105,6 +108,7 @@ export function Navbar({
   onAddTab,
   onToggleTools,
   onFullscreen,
+  onOpenNotification,
 }: NavbarProps) {
   const {
     activeFile, setPreviewFile, setPreviewOverrideHtml, refreshPreview,
@@ -137,6 +141,74 @@ export function Navbar({
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackDone, setFeedbackDone] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
+
+  // publish dialog
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishedAppId, setPublishedAppId] = useState<string | null>(null);
+
+  // changelog modal
+  const [changelogOpen, setChangelogOpen] = useState(false);
+
+  // notification modal
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<{id:number;type:string;title:string;body:string|null;refId:number|null;isRead:boolean;createdAt:string}[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [selectedNotifId, setSelectedNotifId] = useState<number|null>(null);
+  const [replyOpen, setReplyOpen] = useState<number|null>(null); // refId of feedback being replied to
+  const [replyText, setReplyText] = useState("");
+  const [replySubmitting, setReplySubmitting] = useState(false);
+  const [replyDone, setReplyDone] = useState(false);
+
+  const unreadCount = notifs.filter((n) => !n.isRead).length;
+
+  const fetchNotifs = async () => {
+    setNotifLoading(true);
+    try {
+      const res = await fetch("/api/notifications", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifs(data.notifications ?? []);
+      }
+    } catch { /* non-fatal */ } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const markRead = async (id: number) => {
+    setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n));
+    await fetch(`/api/notifications/${id}/read`, { method: "PATCH", credentials: "include" }).catch(() => {});
+  };
+
+  const markAllRead = async () => {
+    setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    await fetch("/api/notifications/read-all", { method: "PATCH", credentials: "include" }).catch(() => {});
+  };
+
+  const handleReplySubmit = async () => {
+    if (!replyText.trim() || replySubmitting || replyOpen === null) return;
+    setReplySubmitting(true);
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: replyText.trim(), source: "pc" }),
+      });
+      setReplyDone(true);
+      setReplyText("");
+      setTimeout(() => { setReplyDone(false); setReplyOpen(null); }, 1800);
+    } catch { /* non-fatal */ } finally {
+      setReplySubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifs();
+  }, []);
+
+  useEffect(() => {
+    if (notifOpen) fetchNotifs();
+  }, [notifOpen]);
 
   const handleFeedbackSubmit = async () => {
     if (!feedbackText.trim() || feedbackSubmitting) return;
@@ -207,6 +279,7 @@ export function Navbar({
   }, []);
 
   const currentProject = projects.find((p) => p.id === projectId);
+  const currentFramework = (currentProject as any)?.framework ?? "web";
 
   const lightThemeId: ThemeId = "vs-light";
   const darkThemeId: ThemeId = "vs-dark";
@@ -252,7 +325,12 @@ export function Navbar({
     },
     null,
     { icon: <HelpCircle className="w-3.5 h-3.5" />, label: t("navbar.help"), action: () => { setLogoMenuOpen(false); setFeedbackOpen(true); } },
-    { icon: <LogOut className="w-3.5 h-3.5" />, label: t("navbar.logout"), action: () => { navigate("/login"); setLogoMenuOpen(false); } },
+    {
+      icon: <Bell className="w-3.5 h-3.5" />,
+      label: "消息通知",
+      action: () => { setNotifOpen((v) => !v); setLogoMenuOpen(false); },
+      badge: unreadCount,
+    },
   ];
 
   return (
@@ -269,7 +347,7 @@ export function Navbar({
       >
         <div className="relative" ref={menuRef}>
           <button
-            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-accent/20 transition-colors"
+            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-accent/20 transition-colors relative"
             onClick={() => setLogoMenuOpen((v) => !v)}
           >
             <img
@@ -278,6 +356,14 @@ export function Navbar({
               style={{ height: 20, width: "auto" }}
             />
             <ChevronDown className="w-3 h-3 text-muted-foreground" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full text-white font-bold"
+                style={{ minWidth: 14, height: 14, fontSize: 9, background: "#ef4444", padding: "0 3px" }}
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
 
           {logoMenuOpen && (
@@ -300,7 +386,15 @@ export function Navbar({
                     onClick={item.action}
                   >
                     <span className="text-muted-foreground shrink-0">{item.icon}</span>
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge != null && item.badge > 0 && (
+                      <span
+                        className="flex items-center justify-center rounded-full text-white font-bold"
+                        style={{ minWidth: 16, height: 16, fontSize: 9, background: "#ef4444", padding: "0 4px" }}
+                      >
+                        {item.badge > 9 ? "9+" : item.badge}
+                      </span>
+                    )}
                   </button>
                 )
               )}
@@ -455,6 +549,22 @@ export function Navbar({
           </button>
         </div>
 
+        {/* 发布按钮 */}
+        <button
+          className={cn(
+            "flex items-center gap-1 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors border shrink-0 ml-1",
+            publishOpen
+              ? "bg-[#4f82ff]/10 border-[#4f82ff]/30 text-[#4f82ff]"
+              : "text-muted-foreground hover:text-foreground border-[var(--panel-divider)]"
+          )}
+          style={!publishOpen ? { background: "var(--panel-nav-bg)" } : {}}
+          onClick={() => setPublishOpen(true)}
+          title={t("navbar.publish")}
+        >
+          <Send className="w-[12px] h-[12px]" />
+          <span className="hidden sm:inline">{t("navbar.publish")}</span>
+        </button>
+
         {/* 邀请按钮 */}
         <div className="relative shrink-0 ml-1" ref={invitePanelRef}>
           <button
@@ -596,6 +706,209 @@ export function Navbar({
           </div>
         </div>
       </div>
+    )}
+
+    <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+
+    {/* ── 消息通知居中大弹窗 ── */}
+    {notifOpen && (
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
+        onClick={(e) => { if (e.target === e.currentTarget) setNotifOpen(false); }}
+      >
+        <div
+          className="rounded-2xl flex flex-col overflow-hidden"
+          style={{
+            width: "min(780px, 88vw)",
+            height: "min(620px, 85vh)",
+            background: "var(--panel-mid-bg)",
+            border: "1px solid var(--panel-divider)",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.12)",
+          }}
+        >
+          {/* 头部 */}
+          <div className="flex items-center justify-between px-5 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+            <div className="flex items-center gap-2.5">
+              <span className="text-[13px] font-semibold text-foreground tracking-tight">消息通知</span>
+              {unreadCount > 0 && (
+                <span className="flex items-center justify-center rounded-full text-white font-bold text-[10px]"
+                  style={{ minWidth: 17, height: 17, background: "#4f82ff", padding: "0 4px" }}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button onClick={markAllRead} className="text-[11px] transition-opacity hover:opacity-70" style={{ color: "#4f82ff" }}>
+                  全部已读
+                </button>
+              )}
+              <button className="flex items-center justify-center w-5 h-5 rounded transition-colors text-muted-foreground hover:text-foreground" onClick={() => setNotifOpen(false)}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+
+          {/* 双栏内容区 */}
+          <div className="flex flex-1 overflow-hidden">
+
+            {/* 左栏：通知列表 */}
+            <div className="flex flex-col overflow-y-auto shrink-0" style={{ width: 260, borderRight: "1px solid var(--panel-divider)" }}>
+              {notifLoading && (
+                <div className="flex items-center justify-center flex-1 py-12">
+                  <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] border-t-transparent animate-spin" />
+                </div>
+              )}
+              {!notifLoading && notifs.length === 0 && (
+                <div className="flex flex-col items-center justify-center flex-1 gap-2 px-6 py-12">
+                  <Bell className="w-6 h-6 text-muted-foreground opacity-40" />
+                  <p className="text-[12px] text-muted-foreground text-center">暂无通知</p>
+                </div>
+              )}
+              {notifs.map((n, idx) => {
+                const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
+                return (
+                  <div
+                    key={n.id}
+                    className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
+                    style={{
+                      height: 72,
+                      borderBottom: "1px solid var(--panel-divider)",
+                      background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)",
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(79,130,255,0.06)"; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = n.isRead ? "transparent" : "rgba(79,130,255,0.04)"; }}
+                    onClick={() => {
+                      markRead(n.id);
+                      setSelectedNotifId(n.id);
+                    }}
+                  >
+                    {!n.isRead && (
+                      <div className="absolute left-0 top-4 bottom-4 rounded-r-full" style={{ width: 2.5, background: "#4f82ff" }} />
+                    )}
+                    <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg mt-0.5"
+                      style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
+                      <span className="text-[12px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] leading-snug truncate" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>
+                        {n.title}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {new Date(n.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    {isSelected && <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-l-full" style={{ background: "#4f82ff" }} />}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 右栏：详情展示 */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {notifs.length === 0 && !notifLoading ? (
+                <div className="flex flex-col items-center justify-center flex-1 gap-3">
+                  <div className="flex items-center justify-center w-14 h-14 rounded-2xl"
+                    style={{ background: "rgba(79,130,255,0.07)", border: "1px solid rgba(79,130,255,0.12)" }}>
+                    <Bell className="w-6 h-6" style={{ color: "#4f82ff", opacity: 0.6 }} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[13px] font-medium text-foreground">收件箱是空的</p>
+                    <p className="text-[12px] text-muted-foreground mt-1">新消息会出现在这里</p>
+                  </div>
+                </div>
+              ) : (() => {
+                const active = notifs.find(n => n.id === (selectedNotifId ?? notifs[0]?.id)) ?? notifs[0];
+                if (!active) return null;
+                return (
+                  <div className="flex flex-col h-full">
+                    {/* 详情头部 — 固定高度与左栏第一条对齐 */}
+                    <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
+                          {active.type === "changelog" ? "更新公告" : "系统消息"}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Date(active.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{active.title}</h3>
+                    </div>
+                    {/* 详情内容 */}
+                    <div className="flex-1 overflow-y-auto px-6 py-5">
+                      {active.body ? (
+                        <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{active.body}</p>
+                      ) : (
+                        <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── 管理员回复：用户回复弹窗 ── */}
+    {replyOpen !== null && (
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.45)" }}
+        onClick={(e) => { if (e.target === e.currentTarget) { setReplyOpen(null); setReplyText(""); } }}
+      >
+        <div
+          className="w-full max-w-md mx-4 rounded-2xl p-6 flex flex-col gap-4"
+          style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold text-foreground">回复管理员</h2>
+            <button className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => { setReplyOpen(null); setReplyText(""); }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">你的回复将作为新的意见反馈发送给团队。</p>
+          <textarea
+            className="w-full rounded-lg px-3 py-2.5 text-[13px] text-foreground resize-none outline-none focus:ring-1 focus:ring-[#4f82ff]"
+            style={{ background: "var(--panel-left-bg)", border: "1px solid var(--panel-divider)", minHeight: 100 }}
+            placeholder="输入你的回复..."
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            maxLength={2000}
+            autoFocus
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground/60">{replyText.length}/2000</span>
+            <button
+              className="px-4 py-2 rounded-lg text-[13px] font-medium transition-colors"
+              style={{
+                background: replyDone ? "rgba(52,214,138,0.15)" : "#4f82ff",
+                color: replyDone ? "#34d68a" : "white",
+                opacity: replySubmitting ? 0.6 : 1,
+              }}
+              onClick={handleReplySubmit}
+              disabled={replySubmitting || !replyText.trim()}
+            >
+              {replyDone ? "✓ 已发送" : replySubmitting ? "发送中..." : "发送"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {projectId && (
+      <PublishDialog
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        onPublished={(app) => { setPublishedAppId(app.id); setPublishOpen(false); }}
+        onUnpublished={() => { setPublishedAppId(null); }}
+      />
     )}
   </>
   );
