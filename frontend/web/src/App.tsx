@@ -9,10 +9,13 @@ import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import SetPasswordPage from "@/pages/set-password";
+import OnboardingPage from "@/pages/onboarding";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
+import CreateSquarePage from "@/pages/create-square";
+import AppDetailPage from "@/pages/app-detail";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -21,7 +24,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/CreateSquare", "/onboarding", "/set-password"];
 
 function Router() {
   return (
@@ -32,7 +35,10 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/github-callback" component={GitHubCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
+      <Route path="/CreateSquare" component={CreateSquarePage} />
+      <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />
