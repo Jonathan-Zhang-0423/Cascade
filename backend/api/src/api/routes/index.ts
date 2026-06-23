@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -5376,6 +5376,262 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err: unknown) {
       console.error("[video/send-email] failed:", err);
       res.status(500).json({ error: "send_failed" });
+    }
+  });
+
+  // ── Creator Square ────────────────────────────────────────────────────────────
+
+  // GET /api/square — list published apps (public)
+  app.get("/api/square", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const framework = req.query.framework as string | undefined;
+      const sort = (req.query.sort as string) || "latest";
+
+      let query = db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(
+          framework
+            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
+            : eq(publishedApps.visibility, "public"),
+        )
+        .orderBy(sort === "latest" ? desc(publishedApps.publishedAt) : desc(publishedApps.updatedAt))
+        .limit(limit)
+        .offset(offset);
+
+      const rows = await query;
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(publishedApps)
+        .where(
+          framework
+            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
+            : eq(publishedApps.visibility, "public"),
+        );
+
+      res.json({ apps: rows, total });
+    } catch (err) {
+      console.error("[square/list]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id — get single app (public if visibility allows)
+  app.get("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      const [row] = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.id, req.params.id));
+
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      if (row.visibility === "private" && row.userId !== userId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      res.json({ app: row });
+    } catch (err) {
+      console.error("[square/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square — publish or update (auth required)
+  app.post("/api/square", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId, title, description, isOpenSource, visibility, previewScreenshot, framework: fw } = req.body as {
+        projectId?: string; title?: string; description?: string;
+        isOpenSource?: boolean; visibility?: string; previewScreenshot?: string; framework?: string;
+      };
+      if (!projectId || !title?.trim()) { res.status(400).json({ error: "missing_fields" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      const [existing] = await db.select().from(publishedApps).where(eq(publishedApps.projectId, projectId));
+
+      const appId = existing?.id ?? randomBytes(8).toString("hex");
+      const detectedFramework = fw ?? (project as any).framework ?? "web";
+
+      if (existing) {
+        await db.update(publishedApps).set({
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          updatedAt: new Date(),
+        }).where(eq(publishedApps.id, appId));
+      } else {
+        await db.insert(publishedApps).values({
+          id: appId,
+          projectId,
+          userId,
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+        });
+      }
+
+      const [app] = await db.select().from(publishedApps).where(eq(publishedApps.id, appId));
+      res.json({ app });
+    } catch (err) {
+      console.error("[square/publish]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id — unpublish (auth required, owner only)
+  app.delete("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      if (row.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/fork — fork open-source app into user's projects (auth required)
+  app.post("/api/square/:id/fork", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+
+      const sourceFiles = await storage.getProjectFiles(sourceApp.projectId);
+      const newProjectId = randomBytes(8).toString("hex");
+      await storage.createProject({ id: newProjectId, userId, name: `Fork of ${sourceApp.title}`, framework: sourceApp.framework as any });
+      if (sourceFiles.length > 0) {
+        await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
+      }
+      res.json({ projectId: newProjectId });
+    } catch (err) {
+      console.error("[square/fork]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/files — get app source files (open-source only)
+  app.get("/api/square/:id/files", async (req, res) => {
+    try {
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+      const files = await storage.getProjectFiles(sourceApp.projectId);
+      res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
+    } catch (err) {
+      console.error("[square/files]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/my/apps — list current user's published apps
+  app.get("/api/square/my/apps", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const rows = await db.select().from(publishedApps).where(eq(publishedApps.userId, userId)).orderBy(desc(publishedApps.publishedAt));
+      res.json({ apps: rows });
+    } catch (err) {
+      console.error("[square/my]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/screenshot — take a screenshot of the project preview (auth required)
+  app.post("/api/square/screenshot", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId } = req.body as { projectId?: string };
+      if (!projectId) { res.status(400).json({ error: "missing_projectId" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_session_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+
+      const previewUrl = `http://localhost:${PORT}/preview-serve/${token}/`;
+      const pwModule = "playwright";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
+      const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.goto(previewUrl, { waitUntil: "networkidle", timeout: 20_000 });
+        await new Promise<void>((r) => setTimeout(r, 1500));
+        const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 85 });
+        const base64 = buffer.toString("base64");
+        res.json({ screenshot: `data:image/jpeg;base64,${base64}` });
+      } finally {
+        await browser.close();
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[square/screenshot]", err);
+      res.status(500).json({ error: "screenshot_failed" });
     }
   });
 
