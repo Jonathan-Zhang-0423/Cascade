@@ -25,6 +25,7 @@ import { useProjectStore } from "@/stores/project-store";
  */
 export class ManagerStreamInstance {
   readonly projectId: string;
+  readonly chatSessionId: string;   // 对话 session（主会话为 "main"），用于隔离 localStorage key
   readonly state: ObservableState<ManagerStreamState>;
 
   private actions: StoreActions;
@@ -49,10 +50,16 @@ export class ManagerStreamInstance {
   private disposed = false;
   autoExecutePlan = false;
 
-  constructor(projectId: string, actions: StoreActions) {
+  constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
     this.projectId = projectId;
+    this.chatSessionId = chatSessionId;
     this.actions = actions;
     this.state = new ObservableState<ManagerStreamState>({ ...INITIAL_MANAGER_STREAM_STATE });
+  }
+
+  // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
+  private get storageKey(): string {
+    return `cascade-mgr-session-${this.projectId}-${this.chatSessionId}`;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -95,7 +102,11 @@ export class ManagerStreamInstance {
     this.clearLiveTimer();
     this.actions.addManagerMessage({ role: "user", content: trimmed });
     this.actions.setManagerResponding(true);
+    // Reset connectionErrorAdded only for a brand-new user send so that
+    // reconnect retries within the same session don't re-add the error banner.
+    // It will be set back to true the first time an error message is appended.
     this.connectionErrorAdded = false;
+    this.reconnectRetry = 0;
     this.resetInactivityTimer();
     this.state.set({
       preparingPlan: false,
@@ -146,6 +157,7 @@ export class ManagerStreamInstance {
           messages: historyMessages,
           files,
           projectId: this.projectId,
+          chatSessionId: this.chatSessionId,
         }),
         signal: controller.signal,
       });
@@ -175,7 +187,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: this.sessionId });
             this.reconnectRetry = 0;
             if (this.projectId && ev.sessionId) {
-              try { localStorage.setItem(`cascade-mgr-session-${this.projectId}`, ev.sessionId); } catch {}
+              try { localStorage.setItem(this.storageKey, ev.sessionId); } catch {}
             }
             return;
           }
@@ -245,7 +257,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: null });
             this.reconnectRetry = 0;
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
 
             if (isCurrentProject) {
@@ -317,7 +329,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: null });
             this.reconnectRetry = 0;
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
             if (isCurrentProject) {
               this.actions.setManagerResponding(false);
@@ -372,9 +384,18 @@ export class ManagerStreamInstance {
       const stillCurrent = myGen === this.generation;
 
       if (!isAbort && stillCurrent && this.sessionId) {
-        this.scheduleReconnect();
+        // Only attempt reconnect if under retry limit; otherwise fall through
+        // to handleStreamError so the user sees exactly one error message.
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          // Clear stale live state while waiting for reconnect so old content
+          // doesn't linger in the panel.
+          this.clearLive(0);
+          return false;
+        }
       }
 
+      // No reconnect scheduled — show error once and fully reset state.
       if (!isAbort && !this.connectionErrorAdded && stillCurrent) {
         this.handleStreamError("connect");
       }
@@ -388,7 +409,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.clearLive();
         this.actions.setManagerResponding(false);
@@ -421,7 +442,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.actions.setManagerResponding(false);
         return;
@@ -518,7 +539,7 @@ export class ManagerStreamInstance {
             this.sessionId = null;
             this.state.set({ sessionId: null });
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
             if (isCurrentProject) {
               this.actions.setManagerResponding(false);
@@ -532,7 +553,15 @@ export class ManagerStreamInstance {
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       if (!isAbort && myGen === this.generation && this.sessionId) {
-        this.scheduleReconnect();
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          this.clearLive(0); // clear stale live content while waiting
+          return;
+        }
+        // Exceeded retry limit — fully reset so user can send a new message.
+        if (!this.connectionErrorAdded) {
+          this.handleStreamError("connect");
+        }
       }
     } finally {
       if (myGen === this.generation && !this.reconnectTimer) {
@@ -540,7 +569,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.clearLive();
         this.actions.setManagerResponding(false);
@@ -587,37 +616,15 @@ export class ManagerStreamInstance {
   async attemptReconnect(): Promise<void> {
     if (this.disposed) return;
 
-    const savedSessionId = (() => {
-      try { return localStorage.getItem(`cascade-mgr-session-${this.projectId}`); }
+    // 只用本会话 localStorage key 保存的 sessionId 重连。
+    // 不用 streamingSnapshot（全局、不含 chatSessionId，会串会话），
+    // 也不 fallback 到 /active/${projectId}（只按 projectId 查，会串会话）。
+    const sessionIdToReconnect = (() => {
+      try { return localStorage.getItem(this.storageKey); }
       catch { return null; }
     })();
 
-    const snapshot = this.actions.getStreamingSnapshot();
-    const sessionIdToReconnect =
-      (snapshot?.type === "manager" && snapshot.projectId === this.projectId
-        ? snapshot.sessionId
-        : null) || savedSessionId;
-
     if (!sessionIdToReconnect) {
-      // Try the /active endpoint
-      try {
-        const resp = await fetch(`/api/manager-chat/active/${this.projectId}`, {
-          cache: "no-store", headers: { "Cache-Control": "no-cache" },
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          // Only reconnect to a still-active session. A done session would
-          // replay plan_ready/manager_done, and the reconnect handlers would
-          // re-add those assistant messages under fresh UUIDs — duplicating
-          // history on every refresh. Finished sessions are already persisted
-          // and loaded by fetchMessagesFromServer.
-          if (data?.sessionId && data?.active === true) {
-            this.state.set({ isReconnecting: true });
-            await this.connect(data.sessionId, -1);
-            this.state.set({ isReconnecting: false });
-          }
-        }
-      } catch {}
       return;
     }
 
@@ -629,6 +636,7 @@ export class ManagerStreamInstance {
       });
       const data = resp.ok ? await resp.json() : null;
       if (data?.active) {
+        const snapshot = this.actions.getStreamingSnapshot();
         const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
           && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId
@@ -638,10 +646,10 @@ export class ManagerStreamInstance {
       } else {
         // Session is done or not found — no need to reconnect.
         // Messages are already persisted in DB and loaded by fetchMessagesFromServer.
-        try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
       }
     } catch {
-      try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
     } finally {
       this.state.set({ isReconnecting: false });
     }

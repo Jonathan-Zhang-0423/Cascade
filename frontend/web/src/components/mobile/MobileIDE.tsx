@@ -8,6 +8,7 @@ import { CascadeLogo } from "@/assets/CascadeLogo";
 import { applyFontSize, getFontSizeKey, FONT_SIZES } from "@/components/ide/navbar";
 import { cn } from "@/lib/utils";
 import { MobileInvitePanel } from "./MobileInvitePanel";
+import { MobileFeedbackPanel } from "./MobileFeedbackPanel";
 
 type Tab = "chat" | "preview";
 
@@ -147,6 +148,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
               </div>
             )}
             <MobileInvitePanel />
+            <MobileFeedbackPanel />
           </div>
         </div>
       )}

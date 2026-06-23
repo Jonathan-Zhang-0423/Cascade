@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -567,8 +567,9 @@ export async function registerRoutes(
 
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({
-    contentSecurityPolicy: false, // disabled to allow Vite dev inline scripts
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }));
 
   // ── Security: IP blocklist (in-memory) ──────────────────────────────────────
@@ -714,6 +715,13 @@ export async function registerRoutes(
     }
   };
 
+  // Temporary debug endpoint — receives client-side trace from BuildStreamInstance
+  app.post("/api/_dbg", (req, res) => {
+    const msg = req.body?.msg || "";
+    console.log("[client-dbg]", msg);
+    res.status(204).end();
+  });
+
   app.post("/api/build-session", requireInviteCode, async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
@@ -838,6 +846,10 @@ export async function registerRoutes(
         .finally(() => {
           session.done = true;
           session.doneAt = Date.now();
+          // Send [DONE] frame and close all connected SSE writers so clients
+          // detect end-of-stream cleanly (matching what manager-chat does).
+          const doneLine = "data: [DONE]\n\n";
+          Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
           // Unregister from per-user session tracker
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           // Clean up session directory
@@ -865,6 +877,7 @@ export async function registerRoutes(
 
   app.get("/api/build-session/:sessionId/status", (req, res) => {
     const session = buildSessions.get(req.params.sessionId);
+    console.log(`[build-status] sessionId=${req.params.sessionId} found=${!!session} done=${session?.done} aborted=${(session as any)?.aborted} mapSize=${buildSessions.size}`);
     if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
@@ -874,6 +887,34 @@ export async function registerRoutes(
       eventCount: session.events.length,
       done: session.done,
     });
+  });
+
+  // Pre-register a build session ID so that a page refresh during the main
+  // POST (which carries the full file payload) can still find the session via
+  // the status endpoint. The main POST will overwrite this placeholder with the
+  // real session data.
+  app.post("/api/build-session/pre-register", (req, res) => {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+    if (!buildSessions.has(sessionId)) {
+      buildSessions.set(sessionId, {
+        id: sessionId,
+        aborted: false,
+        files: new Map(),
+        plan: { steps: [] },
+        userRequest: "",
+        userLang: "English",
+        mode: "direct",
+        _startedAt: Date.now(),
+        events: [],
+        nextEventId: 0,
+        done: false,
+        sseWriters: new Set(),
+        parts: [],
+        status: { type: "idle" },
+      } as any);
+    }
+    res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/console-event", (req, res) => {
@@ -1208,15 +1249,19 @@ export async function registerRoutes(
         res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, or MINIMAX_API_KEY)" });
         return;
       }
-      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
+      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId, chatSessionId: reqChatSessionId } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
+        chatSessionId?: string;
       };
+      // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
+      const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
+      // Planning always uses deepseek-pro for speed; user provider only affects build (editing)
+      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "deepseek-pro");
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -2335,6 +2380,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.get("/api/projects", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const allProjects = await storage.getProjects(userId);
       res.json({ projects: allProjects });
     } catch (error: any) {
@@ -2457,10 +2503,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const before = typeof beforeRaw === "string" && beforeRaw.length > 0 ? Number(beforeRaw) : undefined;
       const limitRaw = req.query.limit;
       const limit = typeof limitRaw === "string" && limitRaw.length > 0 ? Number(limitRaw) : 100;
+      // sessionId: 传了就过滤；"null" 字符串 = 主会话（sessionId IS NULL）；不传 = 全部
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string"
+        ? (sessionIdRaw === "null" ? null : sessionIdRaw)
+        : undefined;
       const rows = await storage.listChatMessages(projectId, {
         kind,
         before: Number.isFinite(before) ? (before as number) : undefined,
         limit: Number.isFinite(limit) ? limit : 100,
+        sessionId,
       });
       res.json({ messages: rows });
     } catch (error: any) {
@@ -2501,6 +2553,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           seq: m.seq,
           timestamp: m.timestamp,
           metadata: typeof m.metadata === "string" ? m.metadata : null,
+          sessionId: typeof m.sessionId === "string" ? m.sessionId : null,
         });
       }
       await storage.upsertChatMessages(projectId, sanitized);
@@ -2524,10 +2577,68 @@ Generate the cascade.md content for this project based on both the plan and the 
         res.status(400).json({ error: "afterSeq query param required" });
         return;
       }
-      await storage.deleteChatMessagesAfter(projectId, afterSeq);
+      // sessionId：传了就按 session 删，不传默认删 "main"
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string" ? sessionIdRaw : null;
+      await storage.deleteChatMessagesAfter(projectId, afterSeq, sessionId);
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete messages" });
+    }
+  });
+
+  // ── Chat Sessions ─────────────────────────────────────────────────────────
+  // GET  /api/projects/:id/sessions       — list sessions (newest first)
+  // POST /api/projects/:id/sessions       — create new session
+  // DELETE /api/projects/:id/sessions/:sid — delete session + its messages
+
+  app.get("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const rows = await db
+        .select()
+        .from(chatSessions)
+        .where(eq(chatSessions.projectId, projectId))
+        .orderBy(desc(chatSessions.createdAt));
+      res.json({ sessions: rows });
+    } catch (err) {
+      console.error("[sessions/list]", err);
+      res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  app.post("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const name = (req.body as any)?.name ?? "新对话";
+      const id = randomBytes(8).toString("hex");
+      const [row] = await db.insert(chatSessions).values({
+        id,
+        projectId,
+        name: String(name).slice(0, 80),
+      }).returning();
+      res.status(201).json({ session: row });
+    } catch (err) {
+      console.error("[sessions/create]", err);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  app.delete("/api/projects/:id/sessions/:sid", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { sid } = req.params;
+      // cascade delete removes messages via FK
+      await db.delete(chatSessions).where(eq(chatSessions.id, sid));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[sessions/delete]", err);
+      res.status(500).json({ error: "Failed to delete session" });
     }
   });
 
@@ -3281,6 +3392,52 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // ── User Feedback ─────────────────────────────────────────────────────────
+  // POST /api/feedback — submit user suggestion
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { content, source } = req.body as { content?: string; source?: string };
+      if (!content?.trim()) return res.status(400).json({ error: "Content required" });
+      await db.insert(userFeedback).values({
+        userId,
+        content: content.trim().slice(0, 2000),
+        source: (source === "mobile" ? "mobile" : "pc"),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[feedback]", err);
+      res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
+  // GET /api/admin/feedback — list all feedback (admin only)
+  app.get("/api/admin/feedback", async (req, res) => {
+    try {
+      const secret = req.headers["x-admin-secret"] as string | undefined;
+      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      const rows = await db
+        .select({
+          id: userFeedback.id,
+          content: userFeedback.content,
+          source: userFeedback.source,
+          createdAt: userFeedback.createdAt,
+          username: users.username,
+          email: users.email,
+          phone: users.phone,
+        })
+        .from(userFeedback)
+        .leftJoin(users, eq(userFeedback.userId, users.id))
+        .orderBy(desc(userFeedback.createdAt))
+        .limit(500);
+      res.json({ feedback: rows });
+    } catch (err) {
+      console.error("[admin/feedback]", err);
+      res.status(500).json({ error: "Failed to fetch feedback" });
+    }
+  });
+
   // === AUTH ===
 
   // Validate an invite code and atomically mark it redeemed by the given user.
@@ -3671,8 +3828,8 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/auth/otp/verify-login", async (req, res) => {
     try {
       if (!(await checkCaptcha(req, res))) return;
-      const { channel, target, code, inviteCode } = req.body as {
-        channel?: string; target?: string; code?: string; inviteCode?: string;
+      const { channel, target, code, inviteCode, referralCode } = req.body as {
+        channel?: string; target?: string; code?: string; inviteCode?: string; referralCode?: string;
       };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
@@ -3717,8 +3874,33 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
       }
 
-      // Auto-register: invite code required
-      if (!inviteCode?.trim()) {
+      // Auto-register: either a manual invite code or a valid referral code is required.
+      // If the request carries a referralCode (from ?ref= link), verify it belongs to a
+      // real user and synthesise a single-use invite code on the spot so the new user
+      // doesn't need to type anything.
+      let resolvedInviteCode = inviteCode;
+      let referrerId: string | null = null;
+      if (!resolvedInviteCode?.trim() && referralCode?.trim()) {
+        const ref = referralCode.trim().toUpperCase();
+        const [referrer] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.referralCode, ref));
+        if (!referrer) {
+          return res.status(400).json({ error: "Invalid invite code" });
+        }
+        referrerId = referrer.id;
+        // Generate a fresh single-use invite code tied to this registration.
+        const autoCode = `REFAUTO${randomSuffix()}`;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await db.insert(inviteCodes).values({
+          code: autoCode,
+          trialDays: 14,
+          expiresAt,
+        });
+        resolvedInviteCode = autoCode;
+      }
+      if (!resolvedInviteCode?.trim()) {
         return res.status(400).json({ error: "Invite code required" });
       }
 
@@ -3750,7 +3932,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(500).json({ error: "Failed to create account" });
       }
 
-      const redeem = await redeemInviteCode(inviteCode, createdUserId);
+      const redeem = await redeemInviteCode(resolvedInviteCode, createdUserId);
       if (!redeem.ok) {
         // Roll back the user so target isn't burned on a bad invite code.
         await db.delete(users).where(eq(users.id, createdUserId));
@@ -3762,7 +3944,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
 
       await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .set({
+          inviteCode: redeem.code,
+          trialExpiresAt: redeem.trialExpiresAt,
+          ...(referrerId ? { referredBy: referrerId } : {}),
+        })
         .where(eq(users.id, createdUserId));
 
       (req.session as any).userId = createdUserId;
@@ -3847,7 +4033,8 @@ Generate the cascade.md content for this project based on both the plan and the 
     return githubFetch;
   };
 
-  // 1) 发起 OAuth：state 存 DB（不依赖 cookie），返回 JSON URL 供前端跳转
+  // 1) Kick off the OAuth dance: store a state token in the session and
+  //    redirect the browser to GitHub's authorize URL.
   app.get("/api/auth/github", async (req, res) => {
     const clientId = process.env.GITHUB_CLIENT_ID;
     if (!clientId) { res.status(500).json({ error: "GitHub OAuth not configured" }); return; }
@@ -3859,6 +4046,7 @@ Generate the cascade.md content for this project based on both the plan and the 
        ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
       [`github_state:${state}`, JSON.stringify({ githubOAuthState: state }), expiresAt]
     );
+    const redirectUri = `${baseUrl}/api/auth/github/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: `${baseUrl}/api/auth/github/callback`,
@@ -3867,24 +4055,40 @@ Generate the cascade.md content for this project based on both the plan and the 
       allow_signup: "true",
     });
     const authorizeUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
-    if (req.query.mode === "url") { res.json({ url: authorizeUrl }); return; }
+    // ?mode=url — 前端 fetch 模式，返回 JSON 避免 302 被 SPA 路由拦截
+    if (req.query.mode === "url") {
+      res.json({ url: authorizeUrl });
+      return;
+    }
     res.redirect(authorizeUrl);
   });
 
-  // 2) Callback：验 state 后跳前端页面，前端再发 exchange 请求
+  // 2) Callback: exchange the code for an access token, fetch the user,
+  //    then either link to an existing local user (matched by verified
+  //    primary email) or create a new GitHub-only user. Finally seat the
+  //    session and send the browser back to the SPA.
+  // callback：验证 state 后跳前端页面，token 交换由浏览器完成（服务器访问 github.com 被墙）
   app.get("/api/auth/github/callback", async (req, res) => {
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const { code, state } = req.query as { code?: string; state?: string };
-    if (!code || !state) { res.redirect(`${baseUrl}/login?github_error=missing_params`); return; }
+    if (!code || !state) {
+      res.redirect(`${baseUrl}/login?github_error=missing_params`);
+      return;
+    }
+    // 验证 state 有效（防 CSRF），验完保留，让 exchange 接口再验一次后删除
     const row = await pool.query(
       `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
       [`github_state:${state}`]
     );
-    if (row.rows.length === 0) { res.redirect(`${baseUrl}/login?github_error=bad_state`); return; }
+    if (row.rows.length === 0) {
+      res.redirect(`${baseUrl}/login?github_error=bad_state`);
+      return;
+    }
+    // 跳前端 callback 页面，由浏览器完成 token 交换
     res.redirect(`${baseUrl}/github-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
   });
 
-  // 3) Exchange：前端发过来 code+state，后端用固定 IP 换 token，建立 session
+  // exchange：前端发来 code+state，后端用固定 IP 换 token，建立 session
   app.post("/api/auth/github/exchange", async (req, res) => {
     try {
       const { code, state } = req.body as { code?: string; state?: string };
@@ -3900,36 +4104,46 @@ Generate the cascade.md content for this project based on both the plan and the 
       const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
       const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-      // 用固定可达 IP 请求 github.com 换 token（绕开 DNS 解析被墙）
-      const ghIp = "20.205.243.166";
-      const tokenData: any = await new Promise((resolve, reject) => {
-        const body = JSON.stringify({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          redirect_uri: `${baseUrl}/api/auth/github/callback`,
+      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
+      const GITHUB_IPS = ["140.82.112.4", "140.82.113.4", "140.82.114.4", "140.82.121.4"];
+
+      function tryTokenExchange(ghIp: string, body: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+          const req2 = https.request({
+            hostname: ghIp,
+            port: 443,
+            path: "/login/oauth/access_token",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Host: "github.com",
+              "Content-Length": Buffer.byteLength(body),
+            },
+            rejectUnauthorized: false,
+            timeout: 8000,
+          }, (r) => {
+            let data = "";
+            r.on("data", (c) => data += c);
+            r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
+          });
+          req2.on("error", reject);
+          req2.on("timeout", () => { req2.destroy(); reject(new Error("timeout")); });
+          req2.write(body);
+          req2.end();
         });
-        const req2 = https.request({
-          hostname: ghIp,
-          port: 443,
-          path: "/login/oauth/access_token",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Host: "github.com",
-            "Content-Length": Buffer.byteLength(body),
-          },
-          rejectUnauthorized: false, // IP 直连，跳过证书 hostname 校验
-        }, (r) => {
-          let data = "";
-          r.on("data", (c) => data += c);
-          r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
-        });
-        req2.on("error", reject);
-        req2.write(body);
-        req2.end();
+      }
+
+      const tokenBody = JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: `${baseUrl}/api/auth/github/callback`,
       });
+
+      const tokenData: any = await Promise.any(
+        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
+      ).catch(() => { throw new Error("all_ips_failed"); });
 
       if (!tokenData.access_token) {
         console.error("[github/exchange] token error:", tokenData);
@@ -3942,8 +4156,14 @@ Generate the cascade.md content for this project based on both the plan and the 
       const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
-      if (!userRes.ok) { res.status(400).json({ error: "user_fetch_failed" }); return; }
-      const ghUser = await userRes.json() as { id: number; login: string; email: string | null; avatar_url: string | null };
+      if (!userRes.ok) {
+        const errBody = await userRes.text().catch(() => "");
+        console.error("[github/exchange] user fetch failed:", userRes.status, errBody);
+        res.status(400).json({ error: "user_fetch_failed" }); return;
+      }
+      const ghUser = await userRes.json() as {
+        id: number; login: string; email: string | null; avatar_url: string | null;
+      };
 
       let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
@@ -3952,7 +4172,8 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
         if (emailsRes.ok) {
           const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-          const picked = emails.find(e => e.primary && e.verified)?.email ?? emails.find(e => e.verified)?.email ?? null;
+          const picked = emails.find(e => e.primary && e.verified)?.email
+            ?? emails.find(e => e.verified)?.email ?? null;
           primaryEmail = picked ? picked.trim().toLowerCase() : null;
         }
       }
@@ -3961,17 +4182,34 @@ Generate the cascade.md content for this project based on both the plan and the 
       let user = await storage.getUserByGithubId(githubId);
       if (!user && primaryEmail) {
         const matched = await storage.getUserByEmail(primaryEmail);
-        if (matched) user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url });
+        if (matched) {
+          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url });
+        }
       }
       if (!user) {
-        let candidate = ghUser.login; let suffix = 0;
-        while (await storage.getUserByUsername(candidate)) { suffix++; candidate = `${ghUser.login}-${suffix}`; }
-        user = await storage.createGithubUser({ username: candidate, githubId, email: primaryEmail, avatarUrl: ghUser.avatar_url });
+        let candidate = ghUser.login;
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${ghUser.login}-${suffix}`;
+        }
+        user = await storage.createGithubUser({
+          username: candidate,
+          githubId,
+          email: primaryEmail,
+          avatarUrl: ghUser.avatar_url,
+        });
       }
 
       (req.session as any).userId = user.id;
-      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
-      res.json({ id: user.id, username: user.username, inviteCode: (user as any).inviteCode ?? null });
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => err ? reject(err) : resolve())
+      );
+      res.json({
+        id: user.id,
+        username: user.username,
+        inviteCode: (user as any).inviteCode ?? null,
+      });
     } catch (err) {
       console.error("[auth/github/exchange]", err);
       res.status(500).json({ error: "server_error" });
@@ -4269,20 +4507,65 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.json({ queued: true, alreadyOnList: true });
       }
 
-      await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu });
+      const [sub] = await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu }).returning();
 
-      // Fire-and-forget: send confirmation email to the subscriber.
-      sendWaitlistConfirmationEmail(email).catch((err) => console.error("[waitlist/confirm-email]", err));
-
-      // Send batch alert when pending count crosses a multiple of BATCH_SIZE.
-      const [{ pending }] = await db
-        .select({ pending: count() })
-        .from(waitlistSubscribers)
-        .where(eq(waitlistSubscribers.status, "pending"));
-      if (pending > 0 && pending % BATCH_SIZE === 0) {
-        // Fire-and-forget; don't block the request on the email send.
-        notifyAdminOfBatch(pending).catch((err) => console.error("[waitlist/notify]", err));
-      }
+      // Immediately allocate an invite code and send the invite email.
+      (async () => {
+        try {
+          const { trialDays, codeExpiresAt, label: trialLabel } = getTrialInfo(email, isEdu);
+          let code = "";
+          let allocated = false;
+          for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
+            try {
+              await db.transaction(async (tx) => {
+                code = formatInviteCode(email);
+                await tx.insert(inviteCodes).values({
+                  code,
+                  isEdu,
+                  trialDays,
+                  expiresAt: codeExpiresAt,
+                  waitlistSubscriberId: sub.id,
+                });
+              });
+              allocated = true;
+            } catch (err: any) {
+              const msg: string = err?.message ?? "";
+              if (!msg.includes("unique") && !msg.includes("duplicate")) throw err;
+            }
+          }
+          if (!allocated) {
+            console.error(`[waitlist/invite] failed to allocate code for ${email}`);
+            return;
+          }
+          const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+          const html = `
+            <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+              <p style="margin-bottom:24px">您好！</p>
+              <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
+              <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
+                <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
+              </div>
+              <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
+                <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
+                <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
+              </div>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+              <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+            </div>
+          `;
+          await sendEmail({
+            to: email,
+            subject: `您的 Cascade AI 邀请码`,
+            html,
+            text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
+          });
+          await db.update(waitlistSubscribers).set({ status: "invited" }).where(eq(waitlistSubscribers.id, sub.id));
+        } catch (err) {
+          console.error("[waitlist/invite]", err);
+          await db.update(waitlistSubscribers).set({ status: "email_failed" }).where(eq(waitlistSubscribers.id, sub.id));
+        }
+      })();
 
       res.json({ queued: true });
     } catch (err) {
@@ -4320,6 +4603,7 @@ Generate the cascade.md content for this project based on both the plan and the 
             invitedAt: c?.createdAt ?? null,
             expiresAt: c?.expiresAt ?? null,
             seqNum: c?.id ?? null,
+            registeredAt: c?.redeemedAt ?? null,
           };
         }),
       });
@@ -4582,16 +4866,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
       const html = `
         <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:8px">您的 CascadeAI 邀请码</h2>
-          <p style="color:#6b7280;margin-bottom:32px">感谢您申请 CascadeAI，您的专属邀请码如下：</p>
+          <p style="margin-bottom:24px">您好！</p>
+          <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
           <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
             <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
           </div>
+          <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
           <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
             <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
             <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
           </div>
-          <p style="color:#6b7280;font-size:14px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</a> 注册时填写邀请码。</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
           <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
         </div>
@@ -4603,19 +4887,23 @@ Generate the cascade.md content for this project based on both the plan and the 
       try {
         await sendEmail({
           to: sub.email,
-          subject: `您的 CascadeAI 邀请码：${code}`,
+          subject: `您的 Cascade AI 邀请码`,
           html,
-          text: `您的 CascadeAI 邀请码：${code}\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。\n邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。\n\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
+          text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
         });
         await db.update(waitlistSubscribers)
           .set({ status: "invited" })
           .where(eq(waitlistSubscribers.id, sub.id));
         sent++;
+        // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
+        await new Promise(r => setTimeout(r, 600));
       } catch (err) {
         console.error("[invite-email] send failed, marking email_failed", err, sub.email);
         await db.update(waitlistSubscribers)
           .set({ status: "email_failed" })
           .where(eq(waitlistSubscribers.id, sub.id));
+        // 失败后也等一下再继续，避免连续触发限速
+        await new Promise(r => setTimeout(r, 600));
       }
     }
     return sent;

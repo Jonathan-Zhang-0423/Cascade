@@ -18,13 +18,17 @@ import { useIDEStore } from "@/stores/ide-store";
 
 const ABTestPage = lazy(() => import("@/pages/ab-test"));
 
-const UNGUARDED_PATHS = ["/", "/login", "/auth", "/admin", "/invite-gate", "/github-callback"];
+// Paths that don't require an authenticated session. Landing is public; login
+// and onboarding are pre-auth steps; admin has its own admin-secret gate; the
+// invite gate is the redirect target for authed users without a redeemed code.
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback"];
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/github-callback" component={GitHubCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
@@ -50,7 +54,9 @@ function App() {
 
   useEffect(() => {
     const path = window.location.pathname;
-    const isUnguarded = UNGUARDED_PATHS.includes(path);
+    // API 路径和外部跳转不走守卫
+    if (path.startsWith("/api/")) { setAuthChecked(true); return; }
+    const isUnguarded = UNGUARDED_PATHS.some(p => path === p || path.startsWith(p + "/"));
     if (isUnguarded) {
       // Best-effort populate the store if a session exists, but never redirect.
       fetch("/api/auth/me").then((r) => {
@@ -82,7 +88,7 @@ function App() {
     });
   }, []);
 
-  if (!authChecked && !UNGUARDED_PATHS.includes(window.location.pathname)) return null;
+  if (!authChecked && !UNGUARDED_PATHS.some(p => window.location.pathname === p || window.location.pathname.startsWith(p + "/"))) return null;
 
   return (
     <ThemeProvider>

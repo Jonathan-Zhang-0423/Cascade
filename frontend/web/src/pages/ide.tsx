@@ -196,6 +196,12 @@ export default function IDEPage() {
     };
   }, [id, project, projectId, loadProject, navigate]);
 
+  // Track IDE page mount state for stream-registry guard
+  useEffect(() => {
+    useIDEStore.getState().setIdePageMounted(true);
+    return () => { useIDEStore.getState().setIdePageMounted(false); };
+  }, []);
+
   useEffect(() => {
     if (isMobile) return;
     const handler = (e: KeyboardEvent) => {
@@ -308,7 +314,9 @@ export default function IDEPage() {
           {activeTool && (
             <div className="h-full overflow-hidden">
               {activeTool === "files" && <FileTree />}
-              {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
+              <div style={{ display: activeTool === "chat" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+                <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>
+              </div>
               {activeTool === "history" && <CheckpointPanel />}
               {activeTool === "skills" && (
                 <SkillsPanel onEdit={(skill, scope) => setSkillsModal({ skill, scope })} refreshKey={skillsRefreshKey} />

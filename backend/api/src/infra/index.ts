@@ -47,7 +47,9 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    // OAuth callback 是跨站重定向，lax 下浏览器不带 cookie，改 none（配合 secure）
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    // OAuth 回调是跨站重定向，lax 模式下浏览器不带 cookie，导致 githubOAuthState
+    // 读不到、state 校验失败。none 允许跨站携带，必须配合 secure:true。
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     secure: process.env.NODE_ENV === "production",
   },

@@ -11,6 +11,8 @@ module.exports = {
       script: "node_modules/tsx/dist/cli.mjs",
       args: "backend/api/src/infra/index.ts",
       interpreter: "/home/ubuntu/.nvm/versions/node/v20.20.2/bin/node",
+      // 给 Node 堆分配 1.8G，避免 build 期间 JS 对象过多导致 OOM 崩溃
+      interpreter_args: "--max-old-space-size=1800",
       env: {
         NODE_ENV: "production",
         PORT: "5200",
@@ -19,7 +21,8 @@ module.exports = {
       max_restarts: 50,
       exp_backoff_restart_delay: 3000,
       kill_timeout: 12_000,
-      max_memory_restart: "1G",
+      // 提高到 2G，避免 build 期间内存峰值触发 pm2 强制重启打断任务
+      max_memory_restart: "2G",
       out_file: "/home/ubuntu/.pm2/logs/cascadeai-cn-out.log",
       error_file: "/home/ubuntu/.pm2/logs/cascadeai-cn-error.log",
     },

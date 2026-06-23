@@ -20,6 +20,7 @@ export interface ActionLogEntry {
   timestamp: number;
   filePath?: string;
   precedingNarration?: string;
+  stepNum?: number;   // 记录这个 entry 属于哪个步骤，用于分段
 }
 
 export interface NarrationSegment {

@@ -13,6 +13,7 @@ export interface ChatMessageInput {
   seq: number;
   timestamp: number;
   metadata?: string | null;
+  sessionId?: string | null;
 }
 
 /**
@@ -61,7 +62,7 @@ export interface IStorage {
   upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void>;
   deleteProjectFile(projectId: string, path: string): Promise<void>;
 
-  listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number }): Promise<ChatMessageRow[]>;
+  listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number; sessionId?: string | null }): Promise<ChatMessageRow[]>;
   upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void>;
   deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void>;
 }
@@ -133,10 +134,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProjects(userId?: string): Promise<Project[]> {
-    if (userId) {
-      return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(projects.createdAt);
-    }
-    return db.select().from(projects).orderBy(projects.createdAt);
+    if (!userId) return [];
+    return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(projects.createdAt);
   }
 
   async createProject(project: InsertProject): Promise<Project> {
@@ -218,32 +217,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
-    const existing = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
-    const existingPaths = new Set(existing.map((f) => f.path));
-    const incomingPaths = new Set(files.map((f) => f.path));
+    // 用事务包裹，防止并发 build session 写同一 project 时的竞态：
+    // 旧的 read-then-write-then-delete 三步非原子，并发时一个 session 的 DELETE
+    // 可能删掉另一个 session 刚写进来的文件。事务加串行锁消除这个窗口。
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
+      const existingPaths = new Set(existing.map((f) => f.path));
+      const incomingPaths = new Set(files.map((f) => f.path));
 
-    const toDelete: string[] = [];
-    for (const existingPath of existingPaths) {
-      if (!incomingPaths.has(existingPath)) {
-        toDelete.push(existingPath);
+      const toDelete: string[] = [];
+      for (const existingPath of existingPaths) {
+        if (!incomingPaths.has(existingPath)) {
+          toDelete.push(existingPath);
+        }
       }
-    }
 
-    // Atomic per-row upsert keyed on the unique (project_id, path). Idempotent
-    // under concurrency — no duplicate rows, no read-then-write window.
-    if (files.length > 0) {
-      await db.insert(projectFiles)
-        .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
-        .onConflictDoUpdate({
-          target: [projectFiles.projectId, projectFiles.path],
-          set: { content: sql`excluded.content` },
-        });
-    }
+      if (files.length > 0) {
+        await tx.insert(projectFiles)
+          .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
+          .onConflictDoUpdate({
+            target: [projectFiles.projectId, projectFiles.path],
+            set: { content: sql`excluded.content` },
+          });
+      }
 
-    for (const path of toDelete) {
-      await db.delete(projectFiles)
-        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
-    }
+      for (const path of toDelete) {
+        await tx.delete(projectFiles)
+          .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+      }
+    });
   }
 
   async deleteProjectFile(projectId: string, path: string): Promise<void> {
@@ -253,17 +255,19 @@ export class DatabaseStorage implements IStorage {
 
   async listChatMessages(
     projectId: string,
-    opts: { kind?: "chat" | "manager"; before?: number; limit?: number } = {},
+    opts: { kind?: "chat" | "manager"; before?: number; limit?: number; sessionId?: string | null } = {},
   ): Promise<ChatMessageRow[]> {
     const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
     const conditions = [eq(chatMessages.projectId, projectId)];
     if (opts.kind) conditions.push(eq(chatMessages.kind, opts.kind));
     if (typeof opts.before === "number") conditions.push(lt(chatMessages.seq, opts.before));
+    // sessionId：null/undefined 都归为主会话 "main"；其余按 session id 过滤
+    const sessionId = (opts.sessionId == null || opts.sessionId === "") ? "main" : opts.sessionId;
+    conditions.push(eq(chatMessages.sessionId, sessionId));
     const rows = await db.select().from(chatMessages)
       .where(and(...conditions))
       .orderBy(desc(chatMessages.seq))
       .limit(limit);
-    // Return in ascending order so the client can append directly.
     return rows.reverse();
   }
 
@@ -280,10 +284,11 @@ export class DatabaseStorage implements IStorage {
       seq: m.seq,
       timestamp: m.timestamp,
       metadata: m.metadata ?? null,
+      sessionId: (m.sessionId == null || m.sessionId === "") ? "main" : m.sessionId,
     }));
-    // ON CONFLICT on (project_id, client_id) → update mutable fields.
+    // ON CONFLICT on (project_id, session_id, client_id) → update mutable fields.
     await db.insert(chatMessages).values(rows).onConflictDoUpdate({
-      target: [chatMessages.projectId, chatMessages.clientId],
+      target: [chatMessages.projectId, chatMessages.sessionId, chatMessages.clientId],
       set: {
         content: sql`excluded.content`,
         thinking: sql`excluded.thinking`,
@@ -295,9 +300,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void> {
+  async deleteChatMessagesAfter(projectId: string, afterSeq: number, sessionId?: string | null): Promise<void> {
+    const sid = (sessionId == null || sessionId === "") ? "main" : sessionId;
     await db.delete(chatMessages)
-      .where(and(eq(chatMessages.projectId, projectId), gt(chatMessages.seq, afterSeq)));
+      .where(and(
+        eq(chatMessages.projectId, projectId),
+        eq(chatMessages.sessionId, sid),
+        gt(chatMessages.seq, afterSeq),
+      ));
   }
 
   // ─── Manager Sessions ─────────────────────────────────────────────────

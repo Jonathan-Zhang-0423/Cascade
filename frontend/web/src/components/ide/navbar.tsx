@@ -131,10 +131,35 @@ export function Navbar({
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // feedback panel
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackText.trim() || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: feedbackText.trim(), source: "pc" }),
+      });
+      setFeedbackDone(true);
+      setFeedbackText("");
+      setTimeout(() => { setFeedbackDone(false); setFeedbackOpen(false); }, 1800);
+    } catch { /* non-fatal */ } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (!invitePanelOpen || referralCode) return;
     setInviteLoading(true);
-    fetch("/api/referral/my-code")
+    fetch("/api/referral/my-code", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
         if (d.referralCode) {
@@ -226,11 +251,12 @@ export function Navbar({
       action: () => { setLang(lang === "zh" ? "en" : "zh"); setLogoMenuOpen(false); }
     },
     null,
-    { icon: <HelpCircle className="w-3.5 h-3.5" />, label: t("navbar.help"), action: () => setLogoMenuOpen(false) },
+    { icon: <HelpCircle className="w-3.5 h-3.5" />, label: t("navbar.help"), action: () => { setLogoMenuOpen(false); setFeedbackOpen(true); } },
     { icon: <LogOut className="w-3.5 h-3.5" />, label: t("navbar.logout"), action: () => { navigate("/login"); setLogoMenuOpen(false); } },
   ];
 
   return (
+    <>
     <header
       className="flex items-stretch shrink-0"
       style={{ height: 40, background: "var(--panel-nav-bg)", borderBottom: "1px solid var(--panel-divider)" }}
@@ -524,5 +550,53 @@ export function Navbar({
         </button>
       </div>
     </header>
+
+    {/* ── 用户建议弹窗 ── */}
+    {feedbackOpen && (
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.45)" }}
+        onClick={(e) => { if (e.target === e.currentTarget) setFeedbackOpen(false); }}
+      >
+        <div
+          ref={feedbackRef}
+          className="w-full max-w-md mx-4 rounded-2xl p-6 flex flex-col gap-4"
+          style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold text-foreground">{t("navbar.help")}</h2>
+            <button className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setFeedbackOpen(false)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">你的建议将帮助我们改进产品，我们会认真阅读每一条反馈。</p>
+          <textarea
+            className="w-full rounded-lg px-3 py-2.5 text-[13px] text-foreground resize-none outline-none focus:ring-1 focus:ring-[#4f82ff]"
+            style={{ background: "var(--panel-left-bg)", border: "1px solid var(--panel-divider)", minHeight: 120 }}
+            placeholder="请输入你的建议或反馈..."
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            maxLength={2000}
+            autoFocus
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground/60">{feedbackText.length}/2000</span>
+            <button
+              className="px-4 py-2 rounded-lg text-[13px] font-medium transition-colors"
+              style={{
+                background: feedbackDone ? "rgba(52,214,138,0.15)" : "#4f82ff",
+                color: feedbackDone ? "#34d68a" : "white",
+                opacity: feedbackSubmitting ? 0.6 : 1,
+              }}
+              onClick={handleFeedbackSubmit}
+              disabled={feedbackSubmitting || !feedbackText.trim()}
+            >
+              {feedbackDone ? "✓ 已提交" : feedbackSubmitting ? "提交中..." : "提交建议"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }

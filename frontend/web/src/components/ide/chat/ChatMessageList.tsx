@@ -7,7 +7,7 @@ import {
   MessageBubble,
   CheckpointMarker,
 } from "./message-components";
-import { ManagerMessageBubble } from "./plan-components";
+import { ManagerMessageBubble, BuildResultCard } from "./plan-components";
 import { streamRegistry } from "@/services/stream";
 
 interface ChatMessageListProps {
@@ -51,7 +51,8 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   // ── Subscribe to live actionLog at the list level (correct slot, single instance) ──
   const projectId = useIDEStore((st) => st.projectId);
-  const slot = projectId ? streamRegistry.get(projectId) : null;
+  const currentSessionId = useIDEStore((st) => st.currentSessionId);
+  const slot = projectId ? streamRegistry.get(projectId, currentSessionId) : null;
   const liveActionLog = useSyncExternalStore<ActionLogEntry[]>(
     slot ? slot.build.state.subscribe : (() => () => {}),
     slot ? () => slot.build.state.getSnapshot().actionLog : () => [],
@@ -177,6 +178,8 @@ export function ChatMessageList({
                 isLastAssistant ? appliedBlockIndices : undefined
               }
             />
+          ) : (msg as any).buildResult ? (
+            <BuildResultCard key={`c-${msg.id}`} buildResult={(msg as any).buildResult} />
           ) : (
             <MessageBubble
               key={`c-${msg.id}`}
