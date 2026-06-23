@@ -4105,7 +4105,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
       // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
-      const GITHUB_IPS = ["140.82.112.4", "140.82.113.4", "140.82.114.4", "140.82.121.4"];
+      const GITHUB_IPS = ["20.205.243.166", "20.27.177.113", "140.82.112.4", "140.82.113.4", "140.82.114.4"];
 
       function tryTokenExchange(ghIp: string, body: string): Promise<any> {
         return new Promise((resolve, reject) => {
