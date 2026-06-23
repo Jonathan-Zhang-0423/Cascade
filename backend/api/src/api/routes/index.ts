@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -704,6 +704,8 @@ export async function registerRoutes(
       if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
       const user = await storage.getUser(userId);
       if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+      // 手机号注册用户（phone_verified=true）直接放行，无需邀请码
+      if ((user as any).phoneVerified) { next(); return; }
       if (!(user as any).inviteCode) {
         res.status(403).json({ error: "Invite code required" });
         return;
@@ -3582,6 +3584,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
       hasPassword: !!(user as any).password,
       inviteCode: (user as any).inviteCode ?? null,
+      phoneVerified: !!(user as any).phoneVerified,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
@@ -3874,10 +3877,53 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
       }
 
-      // Auto-register: either a manual invite code or a valid referral code is required.
-      // If the request carries a referralCode (from ?ref= link), verify it belongs to a
-      // real user and synthesise a single-use invite code on the spot so the new user
-      // doesn't need to type anything.
+      // Auto-register: phone (SMS) users bypass invite code and get 30-day free trial.
+      // Email users require a manual invite code or a valid referral code.
+      if (channel === "sms") {
+        // Create phone user directly — no invite code needed
+        let username = "";
+        let createdUserId = "";
+        for (let i = 0; i < 5; i++) {
+          const candidate = `user_${randomBytes(4).toString("hex")}`;
+          try {
+            const id = randomBytes(16).toString("hex");
+            const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            const [row] = await db.insert(users).values({
+              id,
+              username: candidate,
+              password: null,
+              phone: normalized,
+              phoneVerified: true,
+              trialExpiresAt,
+            }).returning({ id: users.id, username: users.username });
+            createdUserId = row.id;
+            username = row.username;
+            break;
+          } catch (err: any) {
+            if (!String(err?.message ?? "").includes("users_username")) throw err;
+          }
+        }
+        if (!createdUserId) {
+          return res.status(500).json({ error: "Failed to create account" });
+        }
+        let newReferralCode: string | null = null;
+        try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
+        (req.session as any).userId = createdUserId;
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err) => (err ? reject(err) : resolve()))
+        );
+        return res.status(201).json({
+          id: createdUserId,
+          username,
+          experienceLevel: "intermediate",
+          hasSetExperienceLevel: false,
+          inviteCode: null,
+          trialExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          referralCode: newReferralCode,
+        });
+      }
+
+      // Email registration: either a manual invite code or a valid referral code is required.
       let resolvedInviteCode = inviteCode;
       let referrerId: string | null = null;
       if (!resolvedInviteCode?.trim() && referralCode?.trim()) {
@@ -5330,469 +5376,6 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err: unknown) {
       console.error("[video/send-email] failed:", err);
       res.status(500).json({ error: "send_failed" });
-    }
-  });
-
-  // ── Changelog ─────────────────────────────────────────────────────────────────
-
-  app.get("/api/changelog", async (_req, res) => {
-    try {
-      const entries = await db
-        .select()
-        .from(changelogEntries)
-        .where(eq(changelogEntries.isPublished, true))
-        .orderBy(desc(changelogEntries.publishedAt));
-      res.json({ entries });
-    } catch (err) {
-      console.error("[changelog]", err);
-      res.status(500).json({ error: "Failed to fetch changelog" });
-    }
-  });
-
-  app.get("/api/admin/changelog", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const entries = await db.select().from(changelogEntries).orderBy(desc(changelogEntries.publishedAt));
-      res.json({ entries });
-    } catch (err) {
-      console.error("[admin/changelog]", err);
-      res.status(500).json({ error: "Failed to fetch changelog" });
-    }
-  });
-
-  app.post("/api/admin/changelog", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const { version, title, content, isPublished } = req.body as { version?: string; title?: string; content?: string; isPublished?: boolean };
-      if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: "title and content required" });
-      const [entry] = await db.insert(changelogEntries).values({
-        version: version?.trim() || null,
-        title: title.trim(),
-        content: content.trim(),
-        isPublished: isPublished !== false,
-      }).returning();
-      res.json({ entry });
-    } catch (err) {
-      console.error("[admin/changelog/create]", err);
-      res.status(500).json({ error: "Failed to create entry" });
-    }
-  });
-
-  app.patch("/api/admin/changelog/:id", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "invalid id" });
-      const { version, title, content, isPublished } = req.body as { version?: string | null; title?: string; content?: string; isPublished?: boolean };
-      const patch: Record<string, unknown> = {};
-      if (version !== undefined) patch.version = version?.trim() || null;
-      if (title !== undefined) patch.title = title.trim();
-      if (content !== undefined) patch.content = content.trim();
-      if (isPublished !== undefined) patch.isPublished = isPublished;
-      const [entry] = await db.update(changelogEntries).set(patch).where(eq(changelogEntries.id, id)).returning();
-      res.json({ entry });
-    } catch (err) {
-      console.error("[admin/changelog/update]", err);
-      res.status(500).json({ error: "Failed to update entry" });
-    }
-  });
-
-  app.delete("/api/admin/changelog/:id", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "invalid id" });
-      await db.delete(changelogEntries).where(eq(changelogEntries.id, id));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/changelog/delete]", err);
-      res.status(500).json({ error: "Failed to delete entry" });
-    }
-  });
-
-  // ── Notifications ──────────────────────────────────────────────────────────
-
-  // GET /api/notifications — 拉取当前用户通知列表
-  app.get("/api/notifications", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const rows = await db
-        .select()
-        .from(notifications)
-        .where(eq(notifications.userId, userId))
-        .orderBy(desc(notifications.createdAt))
-        .limit(50);
-      res.json({ notifications: rows });
-    } catch (err) {
-      console.error("[notifications]", err);
-      res.status(500).json({ error: "Failed to fetch notifications" });
-    }
-  });
-
-  // PATCH /api/notifications/:id/read — 标记单条已读
-  app.patch("/api/notifications/:id/read", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "invalid id" });
-      await db.update(notifications).set({ isRead: true }).where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[notifications/read]", err);
-      res.status(500).json({ error: "Failed to mark read" });
-    }
-  });
-
-  // PATCH /api/notifications/read-all — 全部标记已读
-  app.patch("/api/notifications/read-all", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[notifications/read-all]", err);
-      res.status(500).json({ error: "Failed to mark all read" });
-    }
-  });
-
-  // POST /api/admin/feedback/:id/reply — 管理员回复用户意见，自动推送通知
-  app.post("/api/admin/feedback/:id/reply", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const feedbackId = parseInt(req.params.id, 10);
-      if (isNaN(feedbackId)) return res.status(400).json({ error: "invalid id" });
-      const { message } = req.body as { message?: string };
-      if (!message?.trim()) return res.status(400).json({ error: "message required" });
-
-      // 查找原始 feedback 的 userId
-      const [fb] = await db.select({ userId: userFeedback.userId }).from(userFeedback).where(eq(userFeedback.id, feedbackId));
-      if (!fb) return res.status(404).json({ error: "feedback not found" });
-
-      // 插入通知
-      await db.insert(notifications).values({
-        userId: fb.userId,
-        type: "admin_reply",
-        title: "管理员回复了你的建议",
-        body: message.trim().slice(0, 500),
-        refId: feedbackId,
-        isRead: false,
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/feedback/reply]", err);
-      res.status(500).json({ error: "Failed to send reply" });
-    }
-  });
-
-  // POST /api/admin/changelog/:id/notify — 管理员发布更新后推送通知给所有用户
-  app.post("/api/admin/changelog/:id/notify", async (req, res) => {
-    try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
-      const changelogId = parseInt(req.params.id, 10);
-      if (isNaN(changelogId)) return res.status(400).json({ error: "invalid id" });
-
-      const [entry] = await db.select().from(changelogEntries).where(eq(changelogEntries.id, changelogId));
-      if (!entry) return res.status(404).json({ error: "changelog not found" });
-
-      // 拉取所有用户 id
-      const allUsers = await db.select({ id: users.id }).from(users);
-      if (allUsers.length === 0) return res.json({ ok: true, sent: 0 });
-
-      // 批量插入通知（每批 200 条）
-      const BATCH = 200;
-      for (let i = 0; i < allUsers.length; i += BATCH) {
-        const batch = allUsers.slice(i, i + BATCH).map((u) => ({
-          userId: u.id,
-          type: "changelog" as const,
-          title: entry.version ? `${entry.version} · ${entry.title}` : entry.title,
-          body: entry.content.slice(0, 200),
-          refId: entry.id,
-          isRead: false,
-        }));
-        await db.insert(notifications).values(batch);
-      }
-      res.json({ ok: true, sent: allUsers.length });
-    } catch (err) {
-      console.error("[admin/changelog/notify]", err);
-      res.status(500).json({ error: "Failed to send notifications" });
-    }
-  });
-
-  // ── Creator Square ────────────────────────────────────────────────────────────
-
-  // GET /api/square — list published apps (public)
-  app.get("/api/square", async (req, res) => {
-    try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
-      const offset = parseInt(req.query.offset as string) || 0;
-      const framework = req.query.framework as string | undefined;
-      const sort = (req.query.sort as string) || "latest";
-
-      let query = db
-        .select({
-          id: publishedApps.id,
-          projectId: publishedApps.projectId,
-          userId: publishedApps.userId,
-          title: publishedApps.title,
-          description: publishedApps.description,
-          isOpenSource: publishedApps.isOpenSource,
-          visibility: publishedApps.visibility,
-          previewScreenshot: publishedApps.previewScreenshot,
-          framework: publishedApps.framework,
-          publishedAt: publishedApps.publishedAt,
-          updatedAt: publishedApps.updatedAt,
-          authorUsername: users.username,
-        })
-        .from(publishedApps)
-        .innerJoin(users, eq(publishedApps.userId, users.id))
-        .where(
-          framework
-            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
-            : eq(publishedApps.visibility, "public"),
-        )
-        .orderBy(sort === "latest" ? desc(publishedApps.publishedAt) : desc(publishedApps.updatedAt))
-        .limit(limit)
-        .offset(offset);
-
-      const rows = await query;
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(publishedApps)
-        .where(
-          framework
-            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
-            : eq(publishedApps.visibility, "public"),
-        );
-
-      res.json({ apps: rows, total });
-    } catch (err) {
-      console.error("[square/list]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // GET /api/square/:id — get single app (public if visibility allows)
-  app.get("/api/square/:id", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      const [row] = await db
-        .select({
-          id: publishedApps.id,
-          projectId: publishedApps.projectId,
-          userId: publishedApps.userId,
-          title: publishedApps.title,
-          description: publishedApps.description,
-          isOpenSource: publishedApps.isOpenSource,
-          visibility: publishedApps.visibility,
-          previewScreenshot: publishedApps.previewScreenshot,
-          framework: publishedApps.framework,
-          publishedAt: publishedApps.publishedAt,
-          updatedAt: publishedApps.updatedAt,
-          authorUsername: users.username,
-        })
-        .from(publishedApps)
-        .innerJoin(users, eq(publishedApps.userId, users.id))
-        .where(eq(publishedApps.id, req.params.id));
-
-      if (!row) { res.status(404).json({ error: "not_found" }); return; }
-      if (row.visibility === "private" && row.userId !== userId) {
-        res.status(403).json({ error: "forbidden" }); return;
-      }
-      res.json({ app: row });
-    } catch (err) {
-      console.error("[square/get]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // POST /api/square — publish or update (auth required)
-  app.post("/api/square", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
-
-      const { projectId, title, description, isOpenSource, visibility, previewScreenshot, framework: fw } = req.body as {
-        projectId?: string; title?: string; description?: string;
-        isOpenSource?: boolean; visibility?: string; previewScreenshot?: string; framework?: string;
-      };
-      if (!projectId || !title?.trim()) { res.status(400).json({ error: "missing_fields" }); return; }
-
-      // Verify project belongs to user
-      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
-      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
-
-      // Check if already published
-      const [existing] = await db.select().from(publishedApps).where(eq(publishedApps.projectId, projectId));
-
-      const appId = existing?.id ?? randomBytes(8).toString("hex");
-      const detectedFramework = fw ?? (project as any).framework ?? "web";
-
-      if (existing) {
-        await db.update(publishedApps).set({
-          title: title.trim(),
-          description: description?.trim() ?? null,
-          isOpenSource: isOpenSource ?? false,
-          visibility: (visibility ?? "public") as any,
-          previewScreenshot: previewScreenshot ?? null,
-          framework: detectedFramework,
-          updatedAt: new Date(),
-        }).where(eq(publishedApps.id, appId));
-      } else {
-        await db.insert(publishedApps).values({
-          id: appId,
-          projectId,
-          userId,
-          title: title.trim(),
-          description: description?.trim() ?? null,
-          isOpenSource: isOpenSource ?? false,
-          visibility: (visibility ?? "public") as any,
-          previewScreenshot: previewScreenshot ?? null,
-          framework: detectedFramework,
-        });
-      }
-
-      const [app] = await db.select().from(publishedApps).where(eq(publishedApps.id, appId));
-      res.json({ app });
-    } catch (err) {
-      console.error("[square/publish]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // DELETE /api/square/:id — unpublish (auth required, owner only)
-  app.delete("/api/square/:id", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
-      const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
-      if (!row) { res.status(404).json({ error: "not_found" }); return; }
-      if (row.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
-      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[square/delete]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // POST /api/square/:id/fork — fork open-source app into user's projects (auth required)
-  app.post("/api/square/:id/fork", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
-      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
-      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
-      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
-
-      // Copy project files
-      const sourceFiles = await storage.getProjectFiles(sourceApp.projectId);
-      const newProjectId = randomBytes(8).toString("hex");
-      await storage.createProject({ id: newProjectId, userId, name: `Fork of ${sourceApp.title}`, framework: sourceApp.framework as any });
-      if (sourceFiles.length > 0) {
-        await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
-      }
-      res.json({ projectId: newProjectId });
-    } catch (err) {
-      console.error("[square/fork]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // GET /api/square/:id/files — get app source files (open-source only)
-  app.get("/api/square/:id/files", async (req, res) => {
-    try {
-      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
-      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
-      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
-      const files = await storage.getProjectFiles(sourceApp.projectId);
-      res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
-    } catch (err) {
-      console.error("[square/files]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // GET /api/square/my/apps — list current user's published apps
-  app.get("/api/square/my/apps", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
-      const rows = await db.select().from(publishedApps).where(eq(publishedApps.userId, userId)).orderBy(desc(publishedApps.publishedAt));
-      res.json({ apps: rows });
-    } catch (err) {
-      console.error("[square/my]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // POST /api/square/screenshot — take a single screenshot of the project preview (auth required)
-  // Uses the existing /api/preview-server/start → /preview-serve/:token/ pipeline so
-  // Playwright never needs a session cookie — it hits the token-gated static serve route directly.
-  app.post("/api/square/screenshot", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
-
-      const { projectId } = req.body as { projectId?: string };
-      if (!projectId) { res.status(400).json({ error: "missing_projectId" }); return; }
-
-      // Verify ownership
-      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
-      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
-
-      // Load project files from DB
-      const files = await storage.getProjectFiles(projectId);
-      if (!files || files.length === 0) {
-        res.status(422).json({ error: "no_files" }); return;
-      }
-
-      // Create a temporary preview session (same mechanism as the live preview panel)
-      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          files: files.map((f) => ({ path: f.path, content: f.content })),
-        }),
-      });
-      if (!startResp.ok) { res.status(500).json({ error: "preview_session_failed" }); return; }
-      const { token } = await startResp.json() as { token: string };
-
-      // Playwright visits /preview-serve/:token/ — no auth needed
-      const previewUrl = `http://localhost:${PORT}/preview-serve/${token}/`;
-      const pwModule = "playwright";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
-      const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      try {
-        const page = await browser.newPage();
-        await page.setViewportSize({ width: 1280, height: 800 });
-        await page.goto(previewUrl, { waitUntil: "networkidle", timeout: 20_000 });
-        // Wait for animations / JS to settle
-        await new Promise<void>((r) => setTimeout(r, 1500));
-        const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 85 });
-        const base64 = buffer.toString("base64");
-        res.json({ screenshot: `data:image/jpeg;base64,${base64}` });
-      } finally {
-        await browser.close();
-        // Clean up the temporary session (fire-and-forget)
-        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        }).catch(() => {});
-      }
-    } catch (err) {
-      console.error("[square/screenshot]", err);
-      res.status(500).json({ error: "screenshot_failed" });
     }
   });
 

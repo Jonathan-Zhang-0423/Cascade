@@ -13,7 +13,6 @@ import { useLanguageStore } from "@/stores/language-store";
 import { getFirstDeviceForPlatform } from "@/lib/device-specs";
 import { cn } from "@/lib/utils";
 import { ChangelogModal } from "./changelog-modal";
-import { PublishDialog } from "@/components/square/publish-dialog";
 
 // 字体大小档位：value = html font-size 百分比
 export const FONT_SIZES = [
@@ -143,8 +142,6 @@ export function Navbar({
   const feedbackRef = useRef<HTMLDivElement>(null);
 
   // publish dialog
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishedAppId, setPublishedAppId] = useState<string | null>(null);
 
   // changelog modal
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -549,22 +546,6 @@ export function Navbar({
           </button>
         </div>
 
-        {/* 发布按钮 */}
-        <button
-          className={cn(
-            "flex items-center gap-1 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors border shrink-0 ml-1",
-            publishOpen
-              ? "bg-[#4f82ff]/10 border-[#4f82ff]/30 text-[#4f82ff]"
-              : "text-muted-foreground hover:text-foreground border-[var(--panel-divider)]"
-          )}
-          style={!publishOpen ? { background: "var(--panel-nav-bg)" } : {}}
-          onClick={() => setPublishOpen(true)}
-          title={t("navbar.publish")}
-        >
-          <Send className="w-[12px] h-[12px]" />
-          <span className="hidden sm:inline">{t("navbar.publish")}</span>
-        </button>
-
         {/* 邀请按钮 */}
         <div className="relative shrink-0 ml-1" ref={invitePanelRef}>
           <button
@@ -898,17 +879,6 @@ export function Navbar({
           </div>
         </div>
       </div>
-    )}
-
-    {projectId && (
-      <PublishDialog
-        open={publishOpen}
-        onClose={() => setPublishOpen(false)}
-        projectId={projectId}
-        projectName={projectName}
-        onPublished={(app) => { setPublishedAppId(app.id); setPublishOpen(false); }}
-        onUnpublished={() => { setPublishedAppId(null); }}
-      />
     )}
   </>
   );

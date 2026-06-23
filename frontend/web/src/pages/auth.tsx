@@ -362,7 +362,7 @@ function OtpBlock({
           onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
           placeholder="" autoComplete="one-time-code" required />
       </div>
-      {isSignUp && (
+      {isSignUp && channel !== "sms" && (
         <div>
           <label className={labelCls}>{labelInvite}</label>
           {hasRefCode ? (
@@ -447,6 +447,7 @@ export default function AuthPage() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [phoneSignInMode, setPhoneSignInMode] = useState<"password" | "otp">("otp");
   const [otpTarget, setOtpTarget] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -630,14 +631,19 @@ export default function AuthPage() {
   const handleOtpSignUp = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
     if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
-    if (!hasRefCode && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
     const channel = signUpChannel === "email" ? "email" : "sms";
+    // 手机号注册不需要邀请码
+    if (channel !== "sms" && !hasRefCode && !inviteCode.trim()) {
+      setError(t("auth.inviteCodeRequired")); return;
+    }
     setLoading(true);
     try {
       const cap = await acquireCaptcha();
       if (!cap) return;
       const body: Record<string, string> = { channel, target: otpTarget.trim(), code: otpCode, ...cap };
-      if (hasRefCode) {
+      if (channel === "sms") {
+        // 手机号注册：不传邀请码，后端自动授权 30 天 trial
+      } else if (hasRefCode) {
         body.referralCode = refCode.trim().toUpperCase();
       } else {
         body.inviteCode = inviteCode.trim();
@@ -650,7 +656,12 @@ export default function AuthPage() {
       const data = await res.json();
       if (!res.ok) { setError(mapError(data.error)); return; }
       setUserId(data.id); setStoredUsername(data.username);
-      // If the user arrived via a referral link, silently redeem the referral code
+      // 手机号注册：直接进入 app，跳过 invite-gate 和 set-password
+      if (channel === "sms") {
+        setLocation("/app");
+        return;
+      }
+      // 邮件 referral 链接注册：静默兑换推荐码
       if (refCode.trim()) {
         try {
           await fetch("/api/referral/redeem", {
@@ -864,6 +875,13 @@ export default function AuthPage() {
               </motion.div>
               <motion.div variants={fadeUp} custom={5}>
                 <MethodBtn
+                  icon={<PhoneIcon />}
+                  label={page === "signin" ? t("auth.methodPhoneBtn") : t("auth.methodPhoneBtnSignUp")}
+                  onClick={() => openMethod("phone")}
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={6}>
+                <MethodBtn
                   icon={<GitHubIcon />}
                   label={page === "signin" ? t("auth.methodGithubBtn") : t("auth.methodGithubBtnSignUp")}
                   onClick={() => openMethod("github")}
@@ -948,19 +966,62 @@ export default function AuthPage() {
                 initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
 
+                {detailChannel === "phone" ? (
+                  /* 手机号登录：密码 / OTP 两种方式可切换 */
+                  <div className="flex flex-col gap-5">
+                    {/* 切换标签 */}
+                    <div className="flex rounded-xl overflow-hidden border border-gray-200">
+                      <button type="button"
+                        className={`flex-1 py-2 text-[13px] font-semibold transition-colors ${phoneSignInMode === "otp" ? "bg-gray-900 text-white" : "bg-white text-gray-500 hover:text-gray-900"}`}
+                        onClick={() => setPhoneSignInMode("otp")}>
+                        {t("auth.methodPhoneOtp")}
+                      </button>
+                      <button type="button"
+                        className={`flex-1 py-2 text-[13px] font-semibold transition-colors ${phoneSignInMode === "password" ? "bg-gray-900 text-white" : "bg-white text-gray-500 hover:text-gray-900"}`}
+                        onClick={() => setPhoneSignInMode("password")}>
+                        {t("auth.passwordLabel")}
+                      </button>
+                    </div>
+                    {phoneSignInMode === "otp" ? (
+                      <OtpBlock {...otpBlockProps(false)} />
+                    ) : (
+                      <motion.form onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
+                        <div>
+                          <label className={labelCls}>{t("auth.phoneNumber")}</label>
+                          <input type="tel" className={inputCls + " h-12"}
+                            value={identifier} onChange={(e) => setIdentifier(e.target.value)}
+                            placeholder="+86" autoComplete="tel" required />
+                        </div>
+                        <div>
+                          <label className={labelCls}>{t("auth.passwordLabel")}</label>
+                          <div className="relative">
+                            <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"}
+                              value={password} onChange={(e) => setPassword(e.target.value)}
+                              placeholder="" autoComplete="current-password" required />
+                            <button type="button" onClick={() => setShowPassword((s) => !s)}
+                              aria-label="toggle password"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
+                              <EyeIcon open={showPassword} />
+                            </button>
+                          </div>
+                        </div>
+                        <ErrorMsg msg={error} />
+                        <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
+                      </motion.form>
+                    )}
+                  </div>
+                ) : (
                 <motion.form
                   onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
                   <div>
-                    <label className={labelCls}>
-                      {detailChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
-                    </label>
+                    <label className={labelCls}>{t("auth.emailAddr")}</label>
                     <input
-                      type={detailChannel === "email" ? "email" : "tel"}
+                      type="email"
                       className={inputCls + " h-12"}
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
                       placeholder=""
-                      autoComplete={detailChannel === "email" ? "email" : "tel"}
+                      autoComplete="email"
                       required
                     />
                   </div>
@@ -980,6 +1041,7 @@ export default function AuthPage() {
                   <ErrorMsg msg={error} />
                   <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
                 </motion.form>
+                )}
               </motion.div>
             ) : (
               <motion.div key={"signup-" + detailChannel}
