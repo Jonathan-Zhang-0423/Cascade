@@ -79,7 +79,7 @@ function App() {
           setUserId(u.id);
           setUsername(u.username);
           setAuthChecked(true);
-          if (!u.inviteCode) {
+          if (!u.inviteCode && !u.phoneVerified) {
             window.location.href = `/invite-gate?next=${encodeURIComponent(path)}`;
             return;
           }
