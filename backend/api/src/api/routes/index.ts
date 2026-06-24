@@ -4838,6 +4838,95 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
   });
 
+  // ── Admin: Creator Square dashboard ────────────────────────────────────────
+
+  // GET /api/admin/square — aggregate stats + per-user breakdown
+  app.get("/api/admin/square", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      // Total published apps
+      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+
+      // By framework
+      const byFramework = await db
+        .select({ framework: publishedApps.framework, cnt: count() })
+        .from(publishedApps)
+        .groupBy(publishedApps.framework)
+        .orderBy(desc(count()));
+
+      // By visibility
+      const byVisibility = await db
+        .select({ visibility: publishedApps.visibility, cnt: count() })
+        .from(publishedApps)
+        .groupBy(publishedApps.visibility);
+
+      // Top view_count
+      const topViewed = await db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .orderBy(desc(publishedApps.viewCount))
+        .limit(10);
+
+      // Per-user breakdown
+      const perUser = await db
+        .select({
+          userId: publishedApps.userId,
+          authorUsername: users.username,
+          appCount: count(),
+          totalViews: sql<number>`sum(${publishedApps.viewCount})`,
+          totalForks: sql<number>`sum(${publishedApps.forkCount})`,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .groupBy(publishedApps.userId, users.username)
+        .orderBy(desc(count()));
+
+      // Recent 20 published apps
+      const recent = await db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          visibility: publishedApps.visibility,
+          isOpenSource: publishedApps.isOpenSource,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .orderBy(desc(publishedApps.publishedAt))
+        .limit(20);
+
+      res.json({ total, byFramework, byVisibility, topViewed, perUser, recent });
+    } catch (err) {
+      console.error("[admin/square]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/admin/square/:id — admin force-remove a published app
+  app.delete("/api/admin/square/:id", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
   // POST /api/admin/send-invites — manual bulk send by IDs
   app.post("/api/admin/send-invites", async (req, res) => {
     if (!checkAdmin(req, res)) return;
