@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, index, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ export const publishedApps = pgTable("published_apps", {
   isOpenSource: boolean("is_open_source").notNull().default(false),
   visibility: text("visibility").notNull().default("public"),
   previewScreenshot: text("preview_screenshot"),
+  previewVideo: text("preview_video"),
   framework: text("framework").notNull().default("web"),
   publishedAt: timestamp("published_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
@@ -19,6 +20,7 @@ export const publishedApps = pgTable("published_apps", {
   index("published_apps_visibility_published_at_idx").on(table.visibility, table.publishedAt),
   index("published_apps_user_id_idx").on(table.userId),
   index("published_apps_project_id_idx").on(table.projectId),
+  unique("published_apps_project_user_uniq").on(table.projectId, table.userId),
 ]);
 
 export const insertPublishedAppSchema = createInsertSchema(publishedApps).omit({

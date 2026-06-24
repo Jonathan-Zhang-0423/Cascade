@@ -66,6 +66,10 @@ import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } fr
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
 import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
+import { videoStorage } from "../../infra/video-storage";
+import { addVideoWatermark, addImageWatermark } from "../../infra/watermark";
+import { executeDslSequence, validateDslSequence } from "../video/dsl-executor";
+import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -5260,104 +5264,132 @@ Generate the cascade.md content for this project based on both the plan and the 
     jobId: string,
     projectId: string,
     duration: 10 | 20 | 30,
+    videoDbId?: string,
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any = null;
-    let ffmpegAbort: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let context: any = null;
     let aborted = false;
+
+    const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
+      if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
+    };
 
     const timeout = setTimeout(() => {
       aborted = true;
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      if (ffmpegAbort) ffmpegAbort();
       job.status = "error";
       job.error = "timeout";
       job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // dynamic import via variable so tsc does not resolve the module at compile time
       const pwModule = "playwright";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      const page = await browser.newPage();
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, { waitUntil: "networkidle", timeout: 30_000 });
 
+      // page.video() native recording — real browser frames, 30fps
+      context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
+      });
+
+      const page = await context.newPage();
       job.status = "running";
-      const totalFrames = duration * 10;
-      const intervalMs = 100;
+      job.progress = 5;
 
-      for (let i = 0; i < totalFrames; i++) {
-        if (aborted) return;
-        const framePath = join(tmpDir, `frame_${String(i).padStart(4, "0")}.png`);
-        await page.screenshot({ path: framePath });
-        const pct = Math.floor(((i + 1) / totalFrames) * 90);
-        job.progress = pct;
-        await new Promise<void>((r) => setTimeout(r, intervalMs));
+      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, {
+        waitUntil: "networkidle",
+        timeout: 30_000,
+      });
+      job.progress = 15;
+
+      // Execute DSL interaction script from DB — real user-journey simulation
+      const projectRow = await storage.getProject(projectId).catch(() => null);
+      const rawSequence = projectRow?.actionSequence;
+      if (rawSequence) {
+        try {
+          const parsed = JSON.parse(rawSequence);
+          const validation = validateDslSequence(parsed);
+          if (validation.valid && validation.actions) {
+            job.progress = 20;
+            const result = await executeDslSequence(page, validation.actions);
+            if (result.failed > 0) {
+              console.warn(`[video] ${result.failed}/${result.executed + result.failed} DSL actions failed for project ${projectId}`);
+            }
+          }
+        } catch (e) {
+          console.warn("[video] DSL execution error:", e instanceof Error ? e.message : e);
+        }
       }
 
+      job.progress = 60;
+
+      // Wait out remaining duration so video has full length
+      const durationHint = projectRow?.actionSequenceDuration ?? duration;
+      const waitMs = Math.max(2000, (durationHint - 5) * 1000);
+      await new Promise<void>((r) => setTimeout(r, Math.min(waitMs, (duration - 2) * 1000)));
+
+      job.progress = 80;
+
+      // Close context to flush the Playwright video file
+      const videoHandle = await page.video();
+      await context.close();
+      context = null;
       await browser.close();
       browser = null;
 
       if (aborted) return;
 
-      const outputPath = join(tmpDir, "output.mp4");
-      const ffResult = await new Promise<{ exitCode: number; timedOut: boolean }>((resolve) => {
-        const child = spawn("ffmpeg", [
-          "-framerate", "10",
-          "-i", join(tmpDir, "frame_%04d.png"),
-          "-c:v", "libx264",
-          "-pix_fmt", "yuv420p",
-          "-y",
-          outputPath,
-        ], { cwd: tmpDir });
-
-        ffmpegAbort = () => { try { child.kill("SIGKILL"); } catch {} };
-
-        let settled = false;
-        const ffTimer = setTimeout(() => {
-          if (!settled) { settled = true; try { child.kill("SIGKILL"); } catch {} resolve({ exitCode: 1, timedOut: true }); }
-        }, 60_000);
-
-        child.on("close", (code) => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: code ?? 1, timedOut: false }); }
-        });
-        child.on("error", () => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: 1, timedOut: false }); }
-        });
-      });
-
-      // delete frame PNGs, keep only MP4
-      const frames = readdirSync(tmpDir).filter((f) => f.endsWith(".png"));
-      await Promise.all(frames.map((f) => rm(join(tmpDir, f), { force: true })));
-
-      if (aborted) return;
-
-      if (ffResult.exitCode !== 0 || !existsSync(outputPath)) {
-        throw new Error("ffmpeg failed");
+      const rawVideoPath = await videoHandle?.path();
+      if (!rawVideoPath || !existsSync(rawVideoPath)) {
+        throw new Error("Playwright did not produce a video file");
       }
 
-      job.outputPath = outputPath;
+      // Watermark: burn "Cascade AI" text into bottom-right corner
+      const watermarkedPath = rawVideoPath.replace(/\.webm$|\.mp4$/, "-wm.mp4");
+      try {
+        await addVideoWatermark(rawVideoPath, watermarkedPath);
+        rm(rawVideoPath, { force: true }).catch(() => {});
+      } catch (wmErr) {
+        console.warn("[video] watermark failed, using raw file:", wmErr instanceof Error ? wmErr.message : wmErr);
+        // Fall back to raw if watermark fails
+        const { rename } = await import("fs/promises");
+        await rename(rawVideoPath, watermarkedPath);
+      }
+
+      // Persist via storage abstraction
+      const storagePath = await videoStorage.save(jobId, watermarkedPath);
+
+      job.outputPath = storagePath;
       job.progress = 100;
       job.status = "done";
       job.finishedAt = Date.now();
+
+      updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
     } catch (err: unknown) {
       if (!aborted) {
+        const msg = err instanceof Error ? err.message : "unknown";
         job.status = "error";
-        job.error = err instanceof Error ? err.message : "unknown";
+        job.error = msg;
         job.finishedAt = Date.now();
+        updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
       clearTimeout(timeout);
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -5372,6 +5404,13 @@ Generate the cascade.md content for this project based on both the plan and the 
       return;
     }
 
+    // Only Web framework previews are stable enough for recording
+    const project = await storage.getProject(projectId).catch(() => null);
+    if (project && project.framework && project.framework !== "web") {
+      res.status(422).json({ error: "unsupported_framework", framework: project.framework });
+      return;
+    }
+
     const jobId = randomBytes(8).toString("hex");
     videoJobs.set(jobId, {
       status: "pending",
@@ -5383,8 +5422,26 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
     activeVideoJobs++;
 
-    recordPreview(jobId, projectId, duration as 10 | 20 | 30).catch(() => {});
-    res.json({ jobId });
+    // Create persistent DB record
+    const userId = (req.session as any)?.userId as string | undefined;
+    let videoDbId: string | undefined;
+    try {
+      const { randomUUID } = await import("crypto");
+      const dbRecord = await storage.createProjectVideo({
+        id: randomUUID(),
+        projectId,
+        userId: userId ?? null,
+        status: "pending",
+        duration: duration as number,
+        style: "raw",
+      });
+      videoDbId = dbRecord.id;
+    } catch (e) {
+      console.warn("[video/generate] DB record failed:", e);
+    }
+
+    recordPreview(jobId, projectId, duration as 10 | 20 | 30, videoDbId).catch(() => {});
+    res.json({ jobId, videoId: videoDbId });
   });
 
   app.get("/api/video/status/:jobId", (req, res) => {
@@ -5393,23 +5450,27 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.json({ status: job.status, progress: job.progress, error: job.error ?? undefined });
   });
 
+  // Persistent file download by DB videoId
+  app.get("/api/video/file/:videoId", async (req, res) => {
+    const record = await storage.getProjectVideo(req.params.videoId).catch(() => null);
+    if (!record || record.status !== "done") { res.status(404).end(); return; }
+    if (record.cosUrl) { res.redirect(302, record.cosUrl); return; }
+    const localPath = record.localPath;
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="demo.mp4"`);
+    res.sendFile(localPath);
+  });
+
+  // Legacy download by in-memory jobId (kept for compatibility)
   app.get("/api/video/download/:jobId", (req, res) => {
     const job = videoJobs.get(req.params.jobId);
-    if (!job || job.status !== "done" || !job.outputPath || !existsSync(job.outputPath)) {
-      res.status(404).end();
-      return;
-    }
-    const filePath = job.outputPath;
+    if (!job || job.status !== "done" || !job.outputPath) { res.status(404).end(); return; }
+    const localPath = videoStorage.getLocalPath(job.outputPath);
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
-
-    // clean up after response finishes
-    res.on("finish", () => {
-      rm(filePath, { force: true }).catch(() => {});
-      videoJobs.delete(req.params.jobId);
-    });
-
-    res.sendFile(filePath);
+    res.sendFile(localPath);
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
@@ -5559,7 +5620,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
       if (!project) { res.status(403).json({ error: "forbidden" }); return; }
 
-      const [existing] = await db.select().from(publishedApps).where(eq(publishedApps.projectId, projectId));
+      // Scope lookup to (projectId + userId) — prevents cross-user collisions
+      const [existing] = await db.select().from(publishedApps)
+        .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
 
       const appId = existing?.id ?? randomBytes(8).toString("hex");
       const detectedFramework = fw ?? (project as any).framework ?? "web";
@@ -5573,7 +5636,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
           updatedAt: new Date(),
-        }).where(eq(publishedApps.id, appId));
+        }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
       } else {
         await db.insert(publishedApps).values({
           id: appId,
@@ -5711,6 +5774,82 @@ Generate the cascade.md content for this project based on both the plan and the 
       console.error("[square/screenshot]", err);
       res.status(500).json({ error: "screenshot_failed" });
     }
+  });
+
+  // ─── AIGC Agent Session ───────────────────────────────────────────────────
+
+  // POST /api/aigc/session — create a new AIGC session
+  app.post("/api/aigc/session", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
+
+    const { randomUUID } = await import("crypto");
+    const sessionId = randomUUID();
+    const session: AigcSession = {
+      id: sessionId,
+      projectId,
+      userId,
+      messages: [],
+      events: [],
+      nextEventId: 0,
+      done: false,
+      sseWriters: new Set(),
+    };
+    aigcSessions.set(sessionId, session);
+    res.json({ sessionId });
+  });
+
+  // POST /api/aigc/session/:id/message — send a message to the AIGC agent
+  app.post("/api/aigc/session/:id/message", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    const { message } = req.body as { message?: string };
+    if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
+
+    // Fire-and-forget — client polls via SSE
+    runAigcAgent(session, message.trim()).catch((err) => {
+      console.error("[aigc/session] agent error:", err);
+    });
+    res.json({ ok: true });
+  });
+
+  // GET /api/aigc/session/:id/stream — SSE stream of AIGC events
+  app.get("/api/aigc/session/:id/stream", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).end(); return; }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Replay missed events
+    const lastId = parseInt(req.headers["last-event-id"] as string ?? "-1", 10);
+    for (const ev of session.events) {
+      if ((ev.eventId as number) > lastId) {
+        res.write(`id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`);
+      }
+    }
+
+    const writer = (line: string) => { try { res.write(line); } catch {} };
+    session.sseWriters.add(writer);
+    req.on("close", () => session.sseWriters.delete(writer));
+  });
+
+  // GET /api/aigc/session/:id — get session state
+  app.get("/api/aigc/session/:id", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "not_found" }); return; }
+    res.json({
+      id: session.id,
+      projectId: session.projectId,
+      done: session.done,
+      messageCount: session.messages.length,
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

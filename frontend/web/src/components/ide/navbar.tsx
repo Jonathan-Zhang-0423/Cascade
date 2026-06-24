@@ -144,7 +144,23 @@ export function Navbar({
 
   // publish dialog
   const [publishOpen, setPublishOpen] = useState(false);
-  const [publishedAppId, setPublishedAppId] = useState<string | null>(null);
+  const [publishedApp, setPublishedApp] = useState<{
+    id: string; title: string; description: string | null;
+    isOpenSource: boolean; visibility: "public" | "link_only" | "private";
+    previewScreenshot: string | null;
+  } | null>(null);
+
+  // When the publish dialog opens, fetch existing published app for this project
+  useEffect(() => {
+    if (!publishOpen || !projectId) return;
+    fetch(`/api/square/my/apps`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        const match = data?.apps?.find((a: any) => a.projectId === projectId) ?? null;
+        setPublishedApp(match);
+      })
+      .catch(() => {});
+  }, [publishOpen, projectId]);
 
   // changelog modal
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -906,8 +922,9 @@ export function Navbar({
         onClose={() => setPublishOpen(false)}
         projectId={projectId}
         projectName={projectName}
-        onPublished={(app) => { setPublishedAppId(app.id); setPublishOpen(false); }}
-        onUnpublished={() => { setPublishedAppId(null); }}
+        existing={publishedApp}
+        onPublished={(app) => { setPublishedApp((prev) => ({ ...prev, ...app } as any)); setPublishOpen(false); }}
+        onUnpublished={() => { setPublishedApp(null); }}
       />
     )}
   </>
