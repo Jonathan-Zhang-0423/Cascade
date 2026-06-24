@@ -43,9 +43,6 @@ const FRAMEWORKS = [
   { value: "", label: "全部" },
   { value: "web", label: "Web" },
   { value: "rn-expo", label: "React Native" },
-  { value: "flutter", label: "Flutter" },
-  { value: "kotlin", label: "Kotlin" },
-  { value: "wechat", label: "微信小程序" },
 ];
 
 type SortMode = "latest" | "hottest";
