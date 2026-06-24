@@ -11,3 +11,4 @@ export * from './manager-sessions';
 export * from './session';
 export * from './subscription-grants';
 export * from './user-feedback';
+export * from './notifications';
