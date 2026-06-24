@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, notifications } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -590,7 +590,11 @@ export async function registerRoutes(
     return false;
   }
 
+  // IPs that are never auto-blocked (owner / admin access)
+  const IP_WHITELIST = new Set(["36.142.94.105", "127.0.0.1", "::1"]);
+
   function recordIpStrike(ip: string) {
+    if (IP_WHITELIST.has(ip)) return; // 白名单 IP 不计 strike
     const now = Date.now();
     const WINDOW = 10 * 60 * 1000; // 10 min window
     const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
@@ -609,9 +613,10 @@ export async function registerRoutes(
   // Expose blocklist controls on app locals for admin routes
   (app as any)._ipBlocklist = ipBlocklist;
 
-  // Middleware: reject blocked IPs
+  // Middleware: reject blocked IPs (whitelist always passes)
   app.use((req: any, res: any, next: any) => {
     const ip = getClientIp(req);
+    if (IP_WHITELIST.has(ip)) { next(); return; }
     if (isIpBlocked(ip)) {
       return res.status(403).json({ error: "Your IP has been blocked. Contact support." });
     }
@@ -3437,6 +3442,77 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[admin/feedback]", err);
       res.status(500).json({ error: "Failed to fetch feedback" });
+    }
+  });
+
+  // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
+  app.post("/api/admin/feedback/:id/reply", async (req, res) => {
+    try {
+      const secret = req.headers["x-admin-secret"] as string | undefined;
+      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      const feedbackId = parseInt(req.params.id);
+      const { message } = req.body as { message?: string };
+      if (!message?.trim()) return res.status(400).json({ error: "Message required" });
+      const [fb] = await db.select({ userId: userFeedback.userId, content: userFeedback.content })
+        .from(userFeedback).where(eq(userFeedback.id, feedbackId));
+      if (!fb) return res.status(404).json({ error: "Feedback not found" });
+      // 写入 notifications
+      await db.insert(notifications).values({
+        userId: fb.userId,
+        type: "admin_reply",
+        title: "管理员回复了你的建议",
+        body: message.trim(),
+      });
+      // 标记 feedback 已回复
+      await db.update(userFeedback)
+        .set({ repliedAt: new Date(), replyContent: message.trim() })
+        .where(eq(userFeedback.id, feedbackId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/feedback/reply]", err);
+      res.status(500).json({ error: "Failed to send reply" });
+    }
+  });
+
+  // GET /api/notifications — 拉取当前用户通知列表
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const rows = await db.select().from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(50);
+      res.json({ notifications: rows });
+    } catch (err) {
+      console.error("[notifications]", err);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  // PATCH /api/notifications/:id/read — 标记单条已读
+  app.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const id = parseInt(req.params.id);
+      await db.update(notifications).set({ isRead: true })
+        .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to mark read" });
+    }
+  });
+
+  // PATCH /api/notifications/read-all — 全部标记已读
+  app.patch("/api/notifications/read-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to mark all read" });
     }
   });
 

@@ -318,6 +318,8 @@ export const useProjectStore = create<ProjectStoreState>()(
             }
           }
 
+          // 先清空再写入，防止账号切换时短暂显示旧账号项目
+          set({ projects: [], serverSynced: false });
           set({ projects: converted, serverSynced: true });
         } catch {
           set({ serverSynced: true });
@@ -327,7 +329,17 @@ export const useProjectStore = create<ProjectStoreState>()(
       },
     }),
     {
-      name: "cascade-projects",
+      name: (() => {
+        // 每个用户独立的 localStorage key，防止多账号切换时项目列表串数据
+        try {
+          const auth = localStorage.getItem("cascade-auth");
+          if (auth) {
+            const { userId } = JSON.parse(auth);
+            if (userId) return `cascade-projects-${userId}`;
+          }
+        } catch {}
+        return "cascade-projects";
+      })(),
     }
   )
 );
