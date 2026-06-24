@@ -1553,7 +1553,7 @@ This override applies to THIS message only — it does not change behavior for p
           activeHandlers["research"] = async (args, emitFn) => {
             const query = args.query as string;
             if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "tool_call", label: "Research", detail: query.slice(0, 100) });
+            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
             const result = await runResearchAgent(query, capturedMgr, emitFn);
             // Emit research result summary so the UI shows completion
             const wordCount = result ? result.split(/\s+/).length : 0;
@@ -1561,13 +1561,25 @@ This override applies to THIS message only — it does not change behavior for p
             const summaryLine = sourceCount > 0
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "tool_call", label: "Research complete", detail: summaryLine });
+            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
             return result || "(No findings)";
           };
 
           // Add MCP guidance to system prompt
           const mcpToolNames = getMcpToolNames(mgrMcpManager);
-          systemPrompt += `\n\n## External Research Tools (MCP)\n\nYou have access to web research tools. Use the \`research(query)\` tool when you need to look up current information (latest library versions, API docs, best practices) before finalizing your plan. Available tools: ${mcpToolNames.join(", ")}, research`;
+          systemPrompt += `\n\n## External Research Tools (MCP)
+
+You have access to web research tools. **Use them proactively** — do NOT rely solely on your training data for version-specific or time-sensitive information.
+
+Available tools: ${mcpToolNames.join(", ")}, research
+
+### When to call research(query):
+- The user mentions a specific library/framework version (e.g. "Tailwind v4", "Next.js 15")
+- The user asks for "latest" or "newest" anything
+- You need to reference current API syntax, config formats, or install commands
+- You are unsure whether a package/API has changed since your training cutoff
+
+**Your training data has a knowledge cutoff. Today is ${new Date().toISOString().split("T")[0]}.** If the user is asking about recent technology, ALWAYS research first before planning. A wrong plan based on outdated knowledge wastes the entire build cycle.`;
         }
       } catch (err) {
         console.warn("[manager-chat] MCP setup failed:", err instanceof Error ? err.message : err);

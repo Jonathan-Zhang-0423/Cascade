@@ -475,7 +475,28 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     if (mcpManager.getAvailableTools().length > 0) {
       const mcpToolNames = getMcpToolNames(mcpManager);
       // Inject MCP tool guidance into the skill content so the editor knows how to use them
-      const mcpGuidance = `\n\n## External Tools (MCP)\n\nYou have access to external tools that connect to real-time services. These tools are prefixed with \`mcp_\` and provide capabilities beyond the project files (e.g. web search, API calls, database queries). Use them when you need information or actions that the project files alone cannot provide.\n\nAvailable MCP tools: ${mcpToolNames.join(", ")}\n\n- **research(query)** — When you need current information from the web (latest docs, API references, best practices, version compatibility), call this tool with a specific question. A research sub-agent will search the web and return synthesized findings. Prefer this over guessing when you're unsure about current syntax, versions, or APIs.`;
+      const mcpGuidance = `\n\n## External Tools (MCP)
+
+You have access to external tools that connect to real-time services. These tools are prefixed with \`mcp_\` and provide capabilities beyond the project files (e.g. web search, API calls, database queries).
+
+Available MCP tools: ${mcpToolNames.join(", ")}
+
+### research(query) — IMPORTANT: Use Proactively
+
+Call \`research(query)\` whenever ANY of these conditions apply:
+- You are about to use a library, framework, or API and are not 100% certain of the **current** (${new Date().getFullYear()}) syntax or configuration format
+- The task mentions a specific version (e.g. "Tailwind v4", "Next.js 15", "React 19") — your training data may be outdated
+- You need to check if a package/API still exists or has been renamed/deprecated
+- You are writing configuration files (tsconfig, vite.config, tailwind.config, etc.) for a version you haven't seen in your training data
+- The user asks for "latest" or "newest" anything
+
+**DO NOT rely on your training data for version-specific details.** Your knowledge has a cutoff date. When in doubt, research first — it takes seconds and prevents hours of debugging wrong APIs.
+
+Examples of when to call research:
+- "What is the Tailwind CSS v4 configuration format?" (before writing tailwind.config)
+- "React 19 useActionState API" (before using new React APIs)
+- "Vite 6 config changes" (before writing vite.config.ts)
+- "shadcn/ui latest install command" (before running install steps)`;
       session.skillContent = session.skillContent
         ? `${session.skillContent}${mcpGuidance}`
         : mcpGuidance;
@@ -550,7 +571,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
           builderTools.handlers["research"] = async (args, emitFn) => {
             const query = args.query as string;
             if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "tool_call", label: "Research", detail: query.slice(0, 100) });
+            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
             const result = await runResearchAgent(query, capturedMcpManager, emitFn);
             // Emit research result summary so the UI shows completion
             const wordCount = result ? result.split(/\s+/).length : 0;
@@ -558,7 +579,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             const summaryLine = sourceCount > 0
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "tool_call", label: "Research complete", detail: summaryLine });
+            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
             return result || "(No findings)";
           };
         }
