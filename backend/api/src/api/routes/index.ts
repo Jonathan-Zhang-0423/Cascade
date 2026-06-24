@@ -5527,8 +5527,26 @@ Generate the cascade.md content for this project based on both the plan and the 
       const offset = parseInt(req.query.offset as string) || 0;
       const framework = req.query.framework as string | undefined;
       const sort = (req.query.sort as string) || "latest";
+      const q = (req.query.q as string | undefined)?.trim() || "";
 
-      let query = db
+      // Only public apps are visible in the listing (link_only = not listed, private = not listed)
+      const baseWhere = framework
+        ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
+        : eq(publishedApps.visibility, "public");
+
+      const fullWhere = q
+        ? and(baseWhere, or(
+            sql`lower(${publishedApps.title}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${publishedApps.description}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${users.username}) like ${"%" + q.toLowerCase() + "%"}`,
+          ))
+        : baseWhere;
+
+      const orderBy = sort === "hottest"
+        ? desc(publishedApps.viewCount)
+        : desc(publishedApps.publishedAt);
+
+      const rows = await db
         .select({
           id: publishedApps.id,
           projectId: publishedApps.projectId,
@@ -5539,30 +5557,24 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: publishedApps.visibility,
           previewScreenshot: publishedApps.previewScreenshot,
           framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
           publishedAt: publishedApps.publishedAt,
           updatedAt: publishedApps.updatedAt,
           authorUsername: users.username,
         })
         .from(publishedApps)
         .innerJoin(users, eq(publishedApps.userId, users.id))
-        .where(
-          framework
-            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
-            : eq(publishedApps.visibility, "public"),
-        )
-        .orderBy(sort === "latest" ? desc(publishedApps.publishedAt) : desc(publishedApps.updatedAt))
+        .where(fullWhere)
+        .orderBy(orderBy)
         .limit(limit)
         .offset(offset);
 
-      const rows = await query;
       const [{ total }] = await db
         .select({ total: count() })
         .from(publishedApps)
-        .where(
-          framework
-            ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
-            : eq(publishedApps.visibility, "public"),
-        );
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere);
 
       res.json({ apps: rows, total });
     } catch (err) {
@@ -5571,7 +5583,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
-  // GET /api/square/:id — get single app (public if visibility allows)
+  // GET /api/square/:id — get single app (public or link_only allows direct access, private = owner only)
   app.get("/api/square/:id", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId as string | undefined;
@@ -5586,6 +5598,8 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: publishedApps.visibility,
           previewScreenshot: publishedApps.previewScreenshot,
           framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
           publishedAt: publishedApps.publishedAt,
           updatedAt: publishedApps.updatedAt,
           authorUsername: users.username,
@@ -5595,9 +5609,17 @@ Generate the cascade.md content for this project based on both the plan and the 
         .where(eq(publishedApps.id, req.params.id));
 
       if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      // private: only owner can view
+      // link_only: anyone with the link can view (not listed in square, but direct access allowed)
+      // public: anyone can view
       if (row.visibility === "private" && row.userId !== userId) {
         res.status(403).json({ error: "forbidden" }); return;
       }
+      // Increment view count asynchronously (non-blocking, fire-and-forget)
+      db.update(publishedApps)
+        .set({ viewCount: sql`${publishedApps.viewCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
       res.json({ app: row });
     } catch (err) {
       console.error("[square/get]", err);
@@ -5690,6 +5712,11 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (sourceFiles.length > 0) {
         await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
       }
+      // Increment fork count asynchronously
+      db.update(publishedApps)
+        .set({ forkCount: sql`${publishedApps.forkCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
       res.json({ projectId: newProjectId });
     } catch (err) {
       console.error("[square/fork]", err);

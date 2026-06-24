@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills } from "@cascade/database";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 
@@ -52,6 +52,7 @@ export interface IStorage {
   updateProjectName(id: string, name: string): Promise<void>;
   updateProjectPlan(id: string, plan: unknown): Promise<void>;
   updateProjectBuildResult(id: string, result: unknown): Promise<void>;
+  updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void>;
   deleteProject(id: string): Promise<void>;
 
   getProjectMemory(projectId: string): Promise<string>;
@@ -65,6 +66,20 @@ export interface IStorage {
   listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number; sessionId?: string | null }): Promise<ChatMessageRow[]>;
   upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void>;
   deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void>;
+
+  // Project Videos
+  createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo>;
+  getProjectVideo(id: string): Promise<ProjectVideo | undefined>;
+  listProjectVideos(projectId: string): Promise<ProjectVideo[]>;
+  updateProjectVideo(id: string, patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>): Promise<void>;
+
+  // Published Apps (Creator Square)
+  getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined>;
+  getPublishedAppByProject(projectId: string): Promise<(typeof publishedApps.$inferSelect) | undefined>;
+  listPublishedApps(opts: { limit?: number; offset?: number; framework?: string }): Promise<(typeof publishedApps.$inferSelect & { authorUsername: string })[]>;
+  listUserPublishedApps(userId: string): Promise<(typeof publishedApps.$inferSelect)[]>;
+  upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect>;
+  deletePublishedApp(id: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -159,6 +174,13 @@ export class DatabaseStorage implements IStorage {
 
   async updateProjectBuildResult(id: string, result: unknown): Promise<void> {
     await db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id));
+  }
+
+  async updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void> {
+    await db.update(projects).set({
+      actionSequence,
+      ...(durationHint !== undefined ? { actionSequenceDuration: durationHint } : {}),
+    }).where(eq(projects.id, id));
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -363,6 +385,108 @@ export class DatabaseStorage implements IStorage {
     const cutoff = Date.now() - maxAgeMs;
     await db.delete(managerSessions)
       .where(lt(managerSessions.startedAt, cutoff));
+  }
+
+  // ─── Project Videos ──────────────────────────────────────────────────────
+
+  async createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo> {
+    const [row] = await db.insert(projectVideos).values(video).returning();
+    return row;
+  }
+
+  async getProjectVideo(id: string): Promise<ProjectVideo | undefined> {
+    const [row] = await db.select().from(projectVideos).where(eq(projectVideos.id, id));
+    return row;
+  }
+
+  async listProjectVideos(projectId: string): Promise<ProjectVideo[]> {
+    return db.select().from(projectVideos)
+      .where(eq(projectVideos.projectId, projectId))
+      .orderBy(desc(projectVideos.createdAt));
+  }
+
+  async updateProjectVideo(
+    id: string,
+    patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>,
+  ): Promise<void> {
+    await db.update(projectVideos).set(patch).where(eq(projectVideos.id, id));
+  }
+
+  // ─── Published Apps (Creator Square) ─────────────────────────────────────
+
+  async getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined> {
+    const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, id));
+    return row;
+  }
+
+  async getPublishedAppByProject(projectId: string): Promise<(typeof publishedApps.$inferSelect) | undefined> {
+    const [row] = await db.select().from(publishedApps).where(eq(publishedApps.projectId, projectId));
+    return row;
+  }
+
+  async listPublishedApps(opts: { limit?: number; offset?: number; framework?: string }): Promise<(typeof publishedApps.$inferSelect & { authorUsername: string })[]> {
+    const limit = Math.min(opts.limit ?? 20, 50);
+    const offset = opts.offset ?? 0;
+    const rows = await db
+      .select({
+        id: publishedApps.id,
+        projectId: publishedApps.projectId,
+        userId: publishedApps.userId,
+        title: publishedApps.title,
+        description: publishedApps.description,
+        isOpenSource: publishedApps.isOpenSource,
+        visibility: publishedApps.visibility,
+        previewScreenshot: publishedApps.previewScreenshot,
+        previewVideo: publishedApps.previewVideo,
+        framework: publishedApps.framework,
+        viewCount: publishedApps.viewCount,
+        forkCount: publishedApps.forkCount,
+        publishedAt: publishedApps.publishedAt,
+        updatedAt: publishedApps.updatedAt,
+        authorUsername: users.username,
+      })
+      .from(publishedApps)
+      .leftJoin(users, eq(publishedApps.userId, users.id))
+      .where(
+        opts.framework
+          ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, opts.framework))
+          : eq(publishedApps.visibility, "public"),
+      )
+      .orderBy(desc(publishedApps.publishedAt))
+      .limit(limit)
+      .offset(offset);
+    return rows.map((r) => ({ ...r, authorUsername: r.authorUsername ?? "anonymous" }));
+  }
+
+  async listUserPublishedApps(userId: string): Promise<(typeof publishedApps.$inferSelect)[]> {
+    return db.select().from(publishedApps)
+      .where(eq(publishedApps.userId, userId))
+      .orderBy(desc(publishedApps.publishedAt));
+  }
+
+  async upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect> {
+    const now = new Date();
+    const [row] = await db.insert(publishedApps)
+      .values({ ...app, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [publishedApps.projectId],
+        set: {
+          title: sql`excluded.title`,
+          description: sql`excluded.description`,
+          isOpenSource: sql`excluded.is_open_source`,
+          visibility: sql`excluded.visibility`,
+          previewScreenshot: sql`excluded.preview_screenshot`,
+          previewVideo: sql`excluded.preview_video`,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async deletePublishedApp(id: string, userId: string): Promise<void> {
+    await db.delete(publishedApps)
+      .where(and(eq(publishedApps.id, id), eq(publishedApps.userId, userId)));
   }
 }
 

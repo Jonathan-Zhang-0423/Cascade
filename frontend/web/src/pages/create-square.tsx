@@ -58,7 +58,8 @@ export default function CreateSquarePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState(""); // what user types
+  const [search, setSearch] = useState("");            // debounced, sent to API
   const [framework, setFramework] = useState("");
   const [sort, setSort] = useState<SortMode>("latest");
   const [offset, setOffset] = useState(0);
@@ -69,6 +70,12 @@ export default function CreateSquarePage() {
   const offsetRef = useRef(0);
 
   const LIMIT = 20;
+
+  // Debounce search input → 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -86,6 +93,7 @@ export default function CreateSquarePage() {
         offset: String(off),
         sort,
         ...(framework ? { framework } : {}),
+        ...(search ? { q: search } : {}),
       });
       const res = await fetch(`/api/square?${params}`);
       const data = await res.json();
@@ -102,12 +110,12 @@ export default function CreateSquarePage() {
       setHasMore(newApps.length === LIMIT);
     } catch { /* silent */ }
     finally { setLoading(false); setLoadingMore(false); }
-  }, [framework, sort]);
+  }, [framework, sort, search]);
 
   useEffect(() => {
     fetchApps(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [framework, sort]);
+  }, [framework, sort, search]);
 
   async function handleFork(id: string) {
     if (!userId) { navigate("/login"); return; }
@@ -122,14 +130,8 @@ export default function CreateSquarePage() {
     } finally { setForkingId(null); }
   }
 
-  const filtered = search.trim()
-    ? apps.filter(
-        (a) =>
-          a.title.toLowerCase().includes(search.toLowerCase()) ||
-          (a.description ?? "").toLowerCase().includes(search.toLowerCase()) ||
-          a.authorUsername.toLowerCase().includes(search.toLowerCase()),
-      )
-    : apps;
+  // Apps are already filtered server-side; no client-side filter needed
+  const filtered = apps;
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-white" style={{ fontFamily: FONT }}>
@@ -213,8 +215,8 @@ export default function CreateSquarePage() {
               <Search className="w-4 h-4 text-gray-400 shrink-0 mr-2" />
               <input
                 type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="搜索应用名、描述或作者..."
                 className="flex-1 py-2 sm:py-2.5 bg-transparent text-[13px] sm:text-[14px] outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
               />
@@ -327,7 +329,7 @@ export default function CreateSquarePage() {
               </div>
 
               {/* Load more */}
-              {hasMore && !search && (
+              {hasMore && (
                 <div className="flex justify-center mt-16">
                   <button
                     type="button"

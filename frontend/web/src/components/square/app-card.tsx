@@ -12,6 +12,8 @@ export interface AppCardData {
   previewScreenshot: string | null;
   publishedAt: string;
   authorUsername: string;
+  viewCount?: number;
+  forkCount?: number;
 }
 
 interface AppCardProps {
