@@ -103,6 +103,7 @@ export async function runAgentLoop(
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
   const isGLMModel = activeModel.toLowerCase().startsWith("glm");
+  const isGLM52 = activeModel.toLowerCase().includes("glm-5.2");
   const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
   const thinkingParam = opts.disableThinking
     ? {}
@@ -113,15 +114,40 @@ export async function runAgentLoop(
         : isDeepseekModel
           ? { reasoning_effort: "high" }
           : {};
-  const extraBody = opts.disableThinking
-    ? undefined
-    : isMinimaxModel
-      ? { reasoning_split: true }
-      : isGLMModel
-        ? { thinking: { type: "enabled", budget_tokens: 10000 } }
-        : isDeepseekModel
-          ? { thinking: { type: "enabled" } }
-          : undefined;
+
+  // GLM-5.2 dynamic thinking budget: starts generous and shrinks as context
+  // grows, ensuring there's always room for narration + tool calls. The problem:
+  // GLM-5.2's deep thinking can consume the entire output budget, leaving zero
+  // tokens for narration/tool_calls, which triggers an early loop exit.
+  //
+  // Strategy: reserve at least 4096 tokens for non-thinking output. As
+  // totalOutputTokens accumulates, reduce the thinking budget proportionally.
+  const GLM52_MAX_THINKING = 4096;
+  const GLM52_MIN_THINKING = 1024;
+  const GLM52_OUTPUT_CAP = 16384; // max_tokens per request
+  const GLM52_NARRATION_RESERVE = 4096; // always keep this much for narration+tools
+
+  function getGlm52ThinkingBudget(): number {
+    // As output tokens accumulate across iterations, the context grows and
+    // available output budget effectively shrinks. Scale thinking budget down.
+    const pressure = Math.min(totalOutputTokens / (GLM52_OUTPUT_CAP * 3), 1);
+    const budget = Math.round(GLM52_MAX_THINKING - pressure * (GLM52_MAX_THINKING - GLM52_MIN_THINKING));
+    return Math.max(GLM52_MIN_THINKING, Math.min(GLM52_MAX_THINKING, budget));
+  }
+
+  function getGlmExtraBody() {
+    if (opts.disableThinking) return undefined;
+    if (isGLM52) {
+      return { thinking: { type: "enabled", budget_tokens: getGlm52ThinkingBudget() } };
+    }
+    if (isGLMModel) {
+      return { thinking: { type: "enabled", budget_tokens: 2048 } };
+    }
+    if (isMinimaxModel) return { reasoning_split: true };
+    if (isDeepseekModel) return { thinking: { type: "enabled" } };
+    return undefined;
+  }
+
   const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
@@ -137,8 +163,9 @@ export async function runAgentLoop(
     const response = await aiSemaphore.run(
       () => withRetry(
         `runAgentLoop iteration ${iteration + 1}`,
-        () =>
-          activeClient.chat.completions.create(
+        () => {
+          const extraBody = getGlmExtraBody();
+          return activeClient.chat.completions.create(
             {
               model: activeModel,
               messages,
@@ -151,7 +178,8 @@ export async function runAgentLoop(
               max_tokens: 16384,
             } as any,
             { timeout: timeoutMs },
-          ),
+          );
+        },
       ),
       CONCURRENCY_QUEUE_TIMEOUT,
     );

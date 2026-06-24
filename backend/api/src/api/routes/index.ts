@@ -66,6 +66,10 @@ import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } fr
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
 import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
+import { McpManager } from "../../agent/mcp/mcp-client";
+import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
+import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
+import { runResearchAgent } from "../../agent/mcp/research-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -1260,8 +1264,8 @@ export async function registerRoutes(
       // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
       const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
-      // Planning always uses deepseek-pro for speed; user provider only affects build (editing)
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "deepseek-pro");
+      // Planning uses Kimi for stable task decomposition; fallback via getOptimalClient
+      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "kimi");
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -1372,6 +1376,10 @@ export async function registerRoutes(
         : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
 
       let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
+
+      // Inject current date so the model has accurate time awareness
+      const now = new Date();
+      systemPrompt += `\n\n## Current Date\n\nToday is ${now.toISOString().split("T")[0]} (${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}). Use this when making decisions about library versions, API compatibility, or anything time-sensitive.`;
 
       // Per-project self-evolving memory — authoritative context from past sessions.
       if (reqProjectId) {
@@ -1495,6 +1503,70 @@ This override applies to THIS message only — it does not change behavior for p
       const activeHandlers = managerTools.handlers;
       const activeExitTools = ["submit_plan"];
 
+      // MCP: Always start built-in search; merge user config on top.
+      // Gives the planner access to web search and research capabilities.
+      let mgrMcpManager: McpManager | null = null;
+      try {
+        const builtinConfig = getBuiltinMcpConfig();
+        let userConfig: McpConfig | null = null;
+        if (files && files.length > 0) {
+          const filesMap = new Map(files.map(f => [f.path.replace(/^\/project\//, ""), f.content]));
+          userConfig = loadMcpConfig({ files: filesMap });
+        }
+        const mergedConfig: McpConfig = {
+          servers: { ...builtinConfig.servers, ...(userConfig?.servers ?? {}) },
+        };
+
+        mgrMcpManager = new McpManager();
+        await mgrMcpManager.connect(mergedConfig);
+        if (mgrMcpManager.getAvailableTools().length > 0) {
+          const mcpTools = buildMcpTools(mgrMcpManager, emit);
+          activeTools.push(...mcpTools.schemas);
+          Object.assign(activeHandlers, mcpTools.handlers);
+
+          // Register research tool for the manager
+          activeTools.push({
+            type: "function",
+            function: {
+              name: "research",
+              description: "Search the web for current information to inform your planning. Use when you need to look up latest APIs, library versions, best practices, or technical details before creating the plan.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "The research question — be specific.",
+                  },
+                },
+                required: ["query"],
+              },
+            },
+          });
+          const capturedMgr = mgrMcpManager;
+          activeHandlers["research"] = async (args, emitFn) => {
+            const query = args.query as string;
+            if (!query) return "Error: query is required";
+            emitFn({ type: "action_log", actionType: "tool_call", label: "Research", detail: query.slice(0, 100) });
+            const result = await runResearchAgent(query, capturedMgr, emitFn);
+            // Emit research result summary so the UI shows completion
+            const wordCount = result ? result.split(/\s+/).length : 0;
+            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
+            const summaryLine = sourceCount > 0
+              ? `Found ${sourceCount} source(s), ${wordCount} words`
+              : `${wordCount} words`;
+            emitFn({ type: "action_log", actionType: "tool_call", label: "Research complete", detail: summaryLine });
+            return result || "(No findings)";
+          };
+
+          // Add MCP guidance to system prompt
+          const mcpToolNames = getMcpToolNames(mgrMcpManager);
+          systemPrompt += `\n\n## External Research Tools (MCP)\n\nYou have access to web research tools. Use the \`research(query)\` tool when you need to look up current information (latest library versions, API docs, best practices) before finalizing your plan. Available tools: ${mcpToolNames.join(", ")}, research`;
+        }
+      } catch (err) {
+        console.warn("[manager-chat] MCP setup failed:", err instanceof Error ? err.message : err);
+        mgrMcpManager = null;
+      }
+
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
           emit({ type: "raw_token", token: data.token });
@@ -1573,6 +1645,8 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Clean up MCP connections
+        if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
         // Persist final state to DB (events + done flag)
         storage.upsertManagerSession({
           id: mgrSession.id,
@@ -1596,6 +1670,8 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Clean up MCP connections on error
+        if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
         // Persist error state to DB
         storage.upsertManagerSession({
           id: mgrSession.id,
