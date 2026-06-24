@@ -357,6 +357,8 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
       return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
     case "tool_call":
       return { rows: entry.label ? [{ k: "工具", v: entry.label }] : [] };
+    case "research":
+      return { rows: [{ k: "查询", v: entry.detail || entry.label }] };
     case "terminal_command":
       return { rows: [{ k: "命令", v: (entry.detail || entry.label || "").slice(0, 100) }] };
     case "code_review":
@@ -392,6 +394,7 @@ function toDisplayType(raw: string): ActionType {
     case "capabilities":   return "capabilities";
     case "plan":           return "plan";
     case "tool_call":      return "tool";
+    case "research":       return "tool";
     case "terminal_command": return "terminal";
     default:               return "other";
   }
