@@ -129,6 +129,7 @@ export default function DashboardPage() {
   }, [syncFromServer]);
 
   const [ideaText, setIdeaText] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -288,27 +289,32 @@ export default function DashboardPage() {
 
   const handleCreate = async () => {
     const idea = ideaText.trim();
-    if (!idea) return;
-    const emoji = getProjectEmoji(idea);
-    const initialMode = usePlanFirst ? "manager" : "build";
-    const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework, initialMode);
-    setIdeaText("");
-    setSelectedFramework("web");
-    setUsePlanFirst(true);
-    setShowNewDialog(false);
-    navigate(`/project/${id}`);
-    // Auto-name the project based on the idea — fire and forget
-    const framework = selectedFramework;
-    fetch("/api/generate-project-name", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea, framework }),
-    })
-      .then((r) => r.json())
-      .then((data: { name?: string }) => {
-        if (data.name) renameProject(id, data.name, false);
+    if (!idea || isCreating) return;
+    setIsCreating(true);
+    try {
+      const emoji = getProjectEmoji(idea);
+      const initialMode = usePlanFirst ? "manager" : "build";
+      const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework, initialMode);
+      setIdeaText("");
+      setSelectedFramework("web");
+      setUsePlanFirst(true);
+      setShowNewDialog(false);
+      navigate(`/project/${id}`);
+      // Auto-name the project based on the idea — fire and forget
+      const framework = selectedFramework;
+      fetch("/api/generate-project-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea, framework }),
       })
-      .catch(() => {});
+        .then((r) => r.json())
+        .then((data: { name?: string }) => {
+          if (data.name) renameProject(id, data.name, false);
+        })
+        .catch(() => {});
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleDelete = () => {
@@ -768,7 +774,7 @@ export default function DashboardPage() {
             <Button variant="outline" onClick={() => setShowNewDialog(false)} data-testid="button-cancel-new">
               {t("dashboard.cancel")}
             </Button>
-            <Button onClick={handleCreate} disabled={!ideaText.trim()} className="gap-2" data-testid="button-create-project">
+            <Button onClick={handleCreate} disabled={!ideaText.trim() || isCreating} className="gap-2" data-testid="button-create-project">
               <Send className="w-3.5 h-3.5" />
               {t("dashboard.letsGo")}
             </Button>
