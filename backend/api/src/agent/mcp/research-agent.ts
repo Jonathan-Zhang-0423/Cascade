@@ -81,3 +81,35 @@ Use your search tools to find current, accurate information. Synthesize the resu
     return `(Research failed: ${message})`;
   }
 }
+
+/**
+ * Sanitize raw research output before returning it to the main agent.
+ * Strips think tags, URLs, markdown noise, and caps total length.
+ * This is the hard backend filter — no prompt reliance.
+ */
+export function sanitizeResearchResult(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let text = raw
+    // Strip <think>...</think> blocks (some models leak these)
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    // Strip orphan <think> or </think> tags
+    .replace(/<\/?think>/gi, "")
+    // Strip URLs (agent doesn't need them for code generation)
+    .replace(/https?:\/\/[^\s)]+/g, "")
+    // Strip markdown headers (##, ###, etc.) — keep the text content
+    .replace(/^#{1,6}\s+/gm, "")
+    // Strip bullet/list markers that look like section headers
+    .replace(/^[•\-\*]\s*\*\*[^*]+\*\*\s*/gm, "- ")
+    // Collapse bold markers
+    .replace(/\*\*/g, "")
+    // Collapse excessive newlines
+    .replace(/\n{3,}/g, "\n\n")
+    // Trim
+    .trim();
+
+  // Hard cap: 2000 chars — enough for factual data, not enough for a wall of text
+  if (text.length > 2000) {
+    text = text.slice(0, 2000) + "\n...(truncated)";
+  }
+  return text;
+}

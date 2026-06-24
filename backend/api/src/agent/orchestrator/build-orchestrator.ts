@@ -22,7 +22,7 @@ import { loadUserSkills } from "../../skills/user-skill-loader";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../mcp/mcp-config";
 import { McpManager } from "../mcp/mcp-client";
 import { buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
-import { runResearchAgent } from "../mcp/research-agent";
+import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
 
 export interface BuildFile {
   path: string;
@@ -587,13 +587,9 @@ Examples of when to call research:
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
             emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            // Return a condensed version to the agent — strip raw URLs and limit length
-            // to prevent the LLM from regurgitating the full research dump as narration.
-            const condensed = (result || "")
-              .replace(/https?:\/\/[^\s)]+/g, "")  // strip URLs (agent doesn't need them for code)
-              .replace(/\n{3,}/g, "\n\n")           // collapse excessive newlines
-              .slice(0, 3000);                      // hard cap: 3000 chars max
-            return condensed || "(No findings)";
+            // Sanitize: strip think tags, URLs, collapse whitespace, cap length
+            const sanitized = sanitizeResearchResult(result);
+            return sanitized || "(No findings)";
           };
         }
         await withFallback(providerChainEditor, async (client, model) => {
