@@ -227,10 +227,16 @@ export const useProjectStore = create<ProjectStoreState>()(
         const id = generateId();
         const isWeb = !framework || framework === "web";
         const state = getDefaultProjectState(initialPrompt, framework, initialMode);
-        localStorage.setItem(
-          `cascade-project-${id}`,
-          JSON.stringify(state)
-        );
+        try {
+          localStorage.setItem(
+            `cascade-project-${id}`,
+            JSON.stringify(state)
+          );
+        } catch (e) {
+          // localStorage full (likely >5MB with many projects) — non-fatal,
+          // project state lives on the server; local copy is just a cache.
+          console.warn("[ProjectStore] localStorage full, skipping local state cache for project", id);
+        }
 
         set((s) => ({
           projects: [
