@@ -191,6 +191,7 @@ export async function runAgentLoop(
     // Track Parts for this iteration (for in-place updates)
     let textPart: Part | undefined;
     let reasoningPart: Part | undefined;
+    let inThinkTag = false; // Filter <think> blocks from narration stream
 
     for await (const chunk of response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
       const choice = chunk.choices[0];
@@ -253,17 +254,25 @@ export async function runAgentLoop(
         }
         assistantText += delta.content;
 
-        if (partCtx) {
-          if (!textPart) {
-            textPart = createPart("text", sessionId, messageId, { text: assistantText });
-            emitPart(partCtx, emit, textPart, delta.content);
+        // Filter out <think> blocks from narration stream — some models
+        // (DeepSeek, etc.) emit reasoning inside content instead of
+        // reasoning_content, causing raw <think> tags in the UI.
+        // We buffer and suppress content inside <think>...</think>.
+        if (delta.content.includes("<think>")) inThinkTag = true;
+        if (!inThinkTag) {
+          if (partCtx) {
+            if (!textPart) {
+              textPart = createPart("text", sessionId, messageId, { text: assistantText });
+              emitPart(partCtx, emit, textPart, delta.content);
+            } else {
+              (textPart as any).text = assistantText;
+              emit({ type: "narration_token", token: delta.content });
+            }
           } else {
-            (textPart as any).text = assistantText;
             emit({ type: "narration_token", token: delta.content });
           }
-        } else {
-          emit({ type: "narration_token", token: delta.content });
         }
+        if (delta.content.includes("</think>")) inThinkTag = false;
       }
 
       // ── Tool calls (accumulate) ─────────────────────────────────
