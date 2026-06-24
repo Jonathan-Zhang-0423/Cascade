@@ -63,6 +63,8 @@ function getGroupLabel(type: ActionLogEntry["type"], count: number, t: (k: strin
       return count === 1 ? t("action.readFile") : t("action.readFiles", { count: String(count) });
     case "tool_call":
       return count === 1 ? t("action.toolCall") : t("action.toolCalls", { count: String(count) });
+    case "research":
+      return count === 1 ? "Research" : `Research (${count})`;
     case "terminal_command":
       return count === 1 ? t("action.command") : t("action.commands", { count: String(count) });
     default:
@@ -79,7 +81,7 @@ function groupConsecutiveEntries(entries: ActionLogEntry[]): ActionGroup[] {
   const groups: ActionGroup[] = [];
   for (const entry of entries) {
     const last = groups[groups.length - 1];
-    if (last && last.type === entry.type && entry.type !== "step" && entry.type !== "thinking") {
+    if (last && last.type === entry.type && entry.type !== "step" && entry.type !== "thinking" && entry.type !== "research") {
       last.entries.push(entry);
     } else {
       groups.push({ type: entry.type, entries: [entry] });
