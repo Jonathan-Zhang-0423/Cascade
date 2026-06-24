@@ -2,25 +2,13 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Copy, Check, QrCode, Link2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { QRCodeSVG } from "qrcode.react";
 
 interface SharePanelProps {
   open: boolean;
   onClose: () => void;
   url: string;
   title: string;
-}
-
-function QRCodeSvg({ url, size = 160 }: { url: string; size?: number }) {
-  // Simple QR using a public API via img tag — no extra deps needed
-  const src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&margin=8`;
-  return (
-    <div
-      className="rounded-xl overflow-hidden shadow-sm border border-gray-100"
-      style={{ width: size, height: size }}
-    >
-      <img src={src} alt="QR code" width={size} height={size} className="block" />
-    </div>
-  );
 }
 
 type Tab = "link" | "qr";
@@ -35,10 +23,32 @@ export function SharePanel({ open, onClose, url, title }: SharePanelProps) {
   }, [open]);
 
   function handleCopy() {
-    navigator.clipboard.writeText(url).then(() => {
+    // navigator.clipboard 只在 HTTPS/localhost 下可用，fallback 到 execCommand
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => fallbackCopy());
+    } else {
+      fallbackCopy();
+    }
+  }
+
+  function fallbackCopy() {
+    const el = document.createElement("textarea");
+    el.value = url;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    try {
+      document.execCommand("copy");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } catch { /* ignore */ } finally {
+      document.body.removeChild(el);
+    }
   }
 
   return (
@@ -123,8 +133,10 @@ export function SharePanel({ open, onClose, url, title }: SharePanelProps) {
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-3 py-2">
-                  <QRCodeSvg url={url} size={160} />
-                  <p className="text-[12px] text-gray-400 text-center">扫描二维码访问此应用</p>
+                  <div className="rounded-xl overflow-hidden shadow-sm border border-gray-100 p-3 bg-white">
+                    <QRCodeSVG value={url} size={152} level="M" />
+                  </div>
+                  <p className="text-[12px] text-gray-400 text-center">{t("square.shareQrHint")}</p>
                 </div>
               )}
             </div>
