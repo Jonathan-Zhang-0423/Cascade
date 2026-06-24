@@ -934,15 +934,22 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   selectedProvider: (() => {
     try {
-      const saved = localStorage.getItem("cascade-selected-provider");
-      // Migrate old "deepseek" value (pre-pro/flash split) to deepseek-pro.
+      const auth = localStorage.getItem("cascade-auth");
+      const userId = auth ? JSON.parse(auth)?.userId : null;
+      const key = userId ? `cascade-selected-provider-${userId}` : "cascade-selected-provider";
+      const saved = localStorage.getItem(key);
       if (saved === "deepseek") return "deepseek-pro";
       if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm" || saved === "deepseek-pro" || saved === "deepseek-flash") return saved;
     } catch {}
     return "glm";
   })(),
   setSelectedProvider: (provider) => {
-    try { localStorage.setItem("cascade-selected-provider", provider); } catch {}
+    try {
+      const auth = localStorage.getItem("cascade-auth");
+      const userId = auth ? JSON.parse(auth)?.userId : null;
+      const key = userId ? `cascade-selected-provider-${userId}` : "cascade-selected-provider";
+      localStorage.setItem(key, provider);
+    } catch {}
     set({ selectedProvider: provider });
   },
 

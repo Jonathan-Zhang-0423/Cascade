@@ -101,7 +101,7 @@ export default function AdminPage() {
   const [secFilter, setSecFilter] = useState<"all" | "ip" | "user">("all");
 
   // Feedback panel state
-  const [feedbackItems, setFeedbackItems] = useState<{id:number;content:string;source:string;createdAt:string;username:string|null;email:string|null;phone:string|null}[]>([]);
+  const [feedbackItems, setFeedbackItems] = useState<{id:number;content:string;source:string;createdAt:string;username:string|null;email:string|null;phone:string|null;repliedAt:string|null;replyContent:string|null}[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackSourceFilter, setFeedbackSourceFilter] = useState<"all"|"pc"|"mobile"|"qiji">("all");
@@ -1344,17 +1344,26 @@ export default function AdminPage() {
                   if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
                   return item.source === feedbackSourceFilter;
                 }).map((item) => (
-                  <div key={item.id} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div key={item.id} className="rounded-2xl p-4" style={{ background: item.repliedAt ? "rgba(240,253,244,0.9)" : "rgba(255,255,255,0.9)", border: `1px solid ${item.repliedAt ? "rgba(34,197,94,0.2)" : "rgba(0,0,0,0.07)"}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <span className="text-[12px] font-semibold text-gray-700">{item.username ?? item.email ?? item.phone ?? "匿名"}</span>
                       {item.email && <span className="text-[11px] text-gray-400">{item.email}</span>}
                       {item.email?.endsWith("@miracleplus.com") && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(168,85,247,0.08)", color: "#9333ea" }}>奇迹</span>
                       )}
+                      {item.repliedAt && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>✓ 已回复</span>
+                      )}
                       <span className="ml-auto text-[11px] text-gray-400">{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: item.source === "mobile" ? "rgba(79,130,255,0.10)" : "rgba(0,0,0,0.05)", color: item.source === "mobile" ? "#4f82ff" : "#666" }}>{item.source === "mobile" ? "移动端" : "PC端"}</span>
                     </div>
                     <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                    {item.repliedAt && item.replyContent && (
+                      <div className="mt-2 px-3 py-2 rounded-xl text-[12px]" style={{ background: "rgba(34,197,94,0.08)", borderLeft: "3px solid rgba(34,197,94,0.4)" }}>
+                        <span className="text-[10px] text-green-600 font-semibold block mb-0.5">管理员回复 · {new Date(item.repliedAt).toLocaleString("zh-CN")}</span>
+                        <span className="text-gray-700">{item.replyContent}</span>
+                      </div>
+                    )}
                     <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                       {replyTarget === item.id ? (
                         <div className="flex flex-col gap-2">
