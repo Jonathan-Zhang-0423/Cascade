@@ -1562,7 +1562,13 @@ This override applies to THIS message only — it does not change behavior for p
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
             emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            return result || "(No findings)";
+            // Return condensed version — strip URLs and cap length to prevent
+            // the LLM from regurgitating raw research as narration.
+            const condensed = (result || "")
+              .replace(/https?:\/\/[^\s)]+/g, "")
+              .replace(/\n{3,}/g, "\n\n")
+              .slice(0, 3000);
+            return condensed || "(No findings)";
           };
 
           // Add MCP guidance to system prompt

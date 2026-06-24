@@ -150,6 +150,12 @@ export async function runAgentLoop(
 
   const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
 
+  // Track whether the last iteration executed a research tool — used to
+  // hard-cap narration length in the following iteration so the LLM can't
+  // dump raw research content as a long narration to the user.
+  let lastIterationHadResearch = false;
+  const NARRATION_CAP_AFTER_RESEARCH = 300; // chars — roughly 2-3 sentences
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective
     const messageId = generatePartId();
@@ -253,17 +259,24 @@ export async function runAgentLoop(
         }
         assistantText += delta.content;
 
-        if (partCtx) {
-          if (!textPart) {
-            textPart = createPart("text", sessionId, messageId, { text: assistantText });
-            emitPart(partCtx, emit, textPart, delta.content);
+        // Hard cap: after a research tool call, limit narration to prevent
+        // the LLM from dumping research content to the user as prose.
+        const narrationCapped = lastIterationHadResearch && assistantText.length > NARRATION_CAP_AFTER_RESEARCH;
+        if (!narrationCapped) {
+          if (partCtx) {
+            if (!textPart) {
+              textPart = createPart("text", sessionId, messageId, { text: assistantText });
+              emitPart(partCtx, emit, textPart, delta.content);
+            } else {
+              (textPart as any).text = assistantText;
+              emit({ type: "narration_token", token: delta.content });
+            }
           } else {
-            (textPart as any).text = assistantText;
             emit({ type: "narration_token", token: delta.content });
           }
-        } else {
-          emit({ type: "narration_token", token: delta.content });
         }
+        // Note: we still accumulate into assistantText (the LLM sees its own
+        // output in context), we just stop streaming it to the user.
       }
 
       // ── Tool calls (accumulate) ─────────────────────────────────
@@ -440,6 +453,10 @@ export async function runAgentLoop(
     }
 
     // ── Step Finish (tool calls processed) ──────────────────────────
+    // Track if this iteration ran a research tool — next iteration's narration
+    // will be hard-capped to prevent dumping research content to the user.
+    lastIterationHadResearch = toolCalls.some(tc => tc.name === "research");
+
     if (partCtx) {
       const stepFinish = createPart("step-finish", sessionId, messageId, {
         step: iteration + 1,

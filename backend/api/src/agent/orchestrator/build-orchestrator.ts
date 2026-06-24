@@ -587,7 +587,13 @@ Examples of when to call research:
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
             emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            return result || "(No findings)";
+            // Return a condensed version to the agent — strip raw URLs and limit length
+            // to prevent the LLM from regurgitating the full research dump as narration.
+            const condensed = (result || "")
+              .replace(/https?:\/\/[^\s)]+/g, "")  // strip URLs (agent doesn't need them for code)
+              .replace(/\n{3,}/g, "\n\n")           // collapse excessive newlines
+              .slice(0, 3000);                      // hard cap: 3000 chars max
+            return condensed || "(No findings)";
           };
         }
         await withFallback(providerChainEditor, async (client, model) => {
