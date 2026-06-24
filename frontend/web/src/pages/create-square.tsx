@@ -6,6 +6,7 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useToast } from "@/hooks/use-toast";
 import { AppCard, type AppCardData } from "@/components/square/app-card";
+import { SiteBeian } from "@/components/SiteBeian";
 import cascadeLogo from "@/assets/cascade-logo.png";
 
 // Inter font — same injection pattern as landing.tsx
@@ -354,6 +355,7 @@ export default function CreateSquarePage() {
           />
           <p className="text-[13px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
         </div>
+        <SiteBeian className="mt-3" />
       </footer>
     </div>
   );

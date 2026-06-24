@@ -6,6 +6,7 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useToast } from "@/hooks/use-toast";
 import { SharePanel } from "@/components/square/share-panel";
+import { SiteBeian } from "@/components/SiteBeian";
 import cascadeLogo from "@/assets/cascade-logo.png";
 
 // Inter font injection — same pattern as landing.tsx
@@ -322,6 +323,13 @@ export default function AppDetailPage() {
       </div>
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={app.title} />
+
+      <footer className="py-6 px-8 border-t border-black/[0.06]">
+        <div className="max-w-7xl mx-auto flex flex-col items-center gap-2">
+          <p className="text-[12px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
+          <SiteBeian />
+        </div>
+      </footer>
     </div>
   );
 }
