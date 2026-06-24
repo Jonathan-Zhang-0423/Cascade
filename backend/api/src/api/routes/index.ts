@@ -578,11 +578,18 @@ export async function registerRoutes(
   // Track 429 hits per IP to auto-block after 3 strikes
   const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
 
+  // IPs that are permanently exempt from blocking and rate-limit auto-block.
+  // Set IP_WHITELIST="1.2.3.4,5.6.7.8" in .env to configure.
+  const ipWhitelist = new Set<string>(
+    (process.env.IP_WHITELIST ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+  );
+
   function getClientIp(req: any): string {
     return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
   }
 
   function isIpBlocked(ip: string): boolean {
+    if (ipWhitelist.has(ip)) return false;
     const entry = ipBlocklist.get(ip);
     if (!entry) return false;
     if (entry.blockedUntil > Date.now()) return true;
@@ -591,6 +598,7 @@ export async function registerRoutes(
   }
 
   function recordIpStrike(ip: string) {
+    if (ipWhitelist.has(ip)) return;
     const now = Date.now();
     const WINDOW = 10 * 60 * 1000; // 10 min window
     const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
