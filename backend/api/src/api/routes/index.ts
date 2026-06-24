@@ -1579,6 +1579,9 @@ Available tools: ${mcpToolNames.join(", ")}, research
 - You need to reference current API syntax, config formats, or install commands
 - You are unsure whether a package/API has changed since your training cutoff
 
+### CRITICAL: Research results are INTERNAL context only
+The output from research() is raw reference material for YOUR use only. NEVER paste, quote, or dump research results into your reply to the user. Instead, digest the findings silently and use them to produce a better plan. If you need to mention what you learned, summarize it in 1-2 sentences naturally within your response.
+
 **Your training data has a knowledge cutoff. Today is ${new Date().toISOString().split("T")[0]}.** If the user is asking about recent technology, ALWAYS research first before planning. A wrong plan based on outdated knowledge wastes the entire build cycle.`;
         }
       } catch (err) {
