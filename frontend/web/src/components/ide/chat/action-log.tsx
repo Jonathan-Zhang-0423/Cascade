@@ -13,6 +13,7 @@ import {
   GitMerge,
   ShieldCheck,
   Zap,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ActionLogEntry } from "./chat-types";
@@ -32,6 +33,8 @@ function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
       return <FileSearch className={cls} />;
     case "tool_call":
       return <TerminalSquare className={cls} />;
+    case "research":
+      return <Globe className={cls} />;
     case "terminal_command":
       // >_ glyph matches the terminal aesthetic in the screenshots
       return <span className={cn("font-mono font-bold leading-none shrink-0", small ? "text-[8px]" : "text-[10px]")}>&gt;_</span>;
@@ -98,6 +101,7 @@ export function ActionLogLiveRow({
   const isFileEntry = entry.type === "file_write" || entry.type === "file_read";
   const isWrite = entry.type === "file_write";
   const isRead = entry.type === "file_read";
+  const isResearch = entry.type === "research";
 
   // Extract filename from path
   const fileName = entry.filePath
@@ -111,6 +115,11 @@ export function ActionLogLiveRow({
       : entry.label;
 
   const actionType = isWrite ? t("action.written") : isRead ? t("action.read") : null;
+
+  // Research card: special rendering with cyan border and expandable detail
+  if (isResearch) {
+    return <ResearchCard entry={entry} />;
+  }
 
   return (
     <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
@@ -195,6 +204,68 @@ export function ActionLogLiveRow({
             </table>
           </div>
         )}
+    </div>
+  );
+}
+
+/**
+ * Research card: shows a search query in progress or completed results.
+ * - "Research" label with query → searching state (animated dots)
+ * - "Research complete" label with summary → done state (expandable detail)
+ */
+function ResearchCard({ entry }: { entry: ActionLogEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const isComplete = entry.label.toLowerCase().includes("complete");
+  const icon = <Globe className="w-3 h-3 shrink-0" />;
+
+  return (
+    <div className="space-y-0" style={{ animation: "fade-up 150ms ease" }}>
+      <div
+        className={cn(
+          "flex items-center gap-2 py-2 px-2.5 rounded-md text-[12px] border",
+          isComplete
+            ? "border-[rgba(34,211,238,0.25)] bg-[rgba(34,211,238,0.06)]"
+            : "border-[rgba(34,211,238,0.15)] bg-[rgba(34,211,238,0.03)]",
+        )}
+      >
+        <div className="flex items-center justify-center rounded-md p-1.5 shrink-0 bg-[rgba(34,211,238,0.12)]">
+          <div className="text-cyan-400">
+            {icon}
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate leading-tight text-cyan-300">
+            {isComplete ? "Research complete" : `🔍 ${entry.detail || entry.label}`}
+          </div>
+          {isComplete && entry.detail && (
+            <div className="text-[10px] text-cyan-400/60 truncate mt-0.5">
+              {entry.detail}
+            </div>
+          )}
+        </div>
+        {!isComplete && (
+          <div className="flex items-center gap-[3px] shrink-0">
+            <span className="w-[4px] h-[4px] rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: "0ms" }} />
+            <span className="w-[4px] h-[4px] rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: "150ms" }} />
+            <span className="w-[4px] h-[4px] rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: "300ms" }} />
+          </div>
+        )}
+        {isComplete && (
+          <button
+            className="shrink-0 text-cyan-400/60 hover:text-cyan-300 transition-colors p-0.5"
+            onClick={() => setExpanded(e => !e)}
+          >
+            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          </button>
+        )}
+      </div>
+      {expanded && isComplete && entry.detail && (
+        <div className="border border-t-0 border-[rgba(34,211,238,0.15)] rounded-b-md px-3 py-2 bg-[rgba(34,211,238,0.02)]">
+          <p className="text-[11px] leading-relaxed text-muted-foreground/70 whitespace-pre-wrap break-words">
+            {entry.detail}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

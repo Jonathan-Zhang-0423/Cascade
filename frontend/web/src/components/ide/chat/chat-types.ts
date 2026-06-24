@@ -14,7 +14,8 @@ export interface ActionLogEntry {
     | "capabilities"
     | "plan"
     | "step"
-    | "narration";
+    | "narration"
+    | "research";
   label: string;
   detail: string;
   timestamp: number;
