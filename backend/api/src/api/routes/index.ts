@@ -69,7 +69,7 @@ import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
 import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
-import { runResearchAgent } from "../../agent/mcp/research-agent";
+import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -1555,13 +1555,8 @@ This override applies to THIS message only — it does not change behavior for p
               ? `Found ${sourceCount} source(s), ${wordCount} words`
               : `${wordCount} words`;
             emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            // Return condensed version — strip URLs and cap length to prevent
-            // the LLM from regurgitating raw research as narration.
-            const condensed = (result || "")
-              .replace(/https?:\/\/[^\s)]+/g, "")
-              .replace(/\n{3,}/g, "\n\n")
-              .slice(0, 3000);
-            return condensed || "(No findings)";
+            const sanitized = sanitizeResearchResult(result);
+            return sanitized || "(No findings)";
           };
 
           // Add MCP guidance to system prompt
