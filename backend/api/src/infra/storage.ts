@@ -106,6 +106,7 @@ export class DatabaseStorage implements IStorage {
     avatarUrl: string | null;
   }): Promise<User> {
     const id = randomUUID();
+    const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 天
     const [user] = await db.insert(users).values({
       id,
       username: input.username,
@@ -113,6 +114,7 @@ export class DatabaseStorage implements IStorage {
       githubId: input.githubId,
       email: input.email,
       avatarUrl: input.avatarUrl,
+      trialExpiresAt,
     }).returning();
     return user;
   }

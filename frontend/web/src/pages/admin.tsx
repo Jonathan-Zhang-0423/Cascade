@@ -205,13 +205,20 @@ export default function AdminPage() {
   async function sendFeedbackReply(feedbackId: number) {
     if (!replyText.trim()) return;
     setReplySending(true); setReplyMsg("");
+    const msgContent = replyText.trim();
     try {
       const res = await fetch(`/api/admin/feedback/${feedbackId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
-        body: JSON.stringify({ message: replyText.trim() }),
+        body: JSON.stringify({ message: msgContent }),
       });
       if (!res.ok) throw new Error("发送失败");
+      // 立即更新本地状态，不需要刷新页面
+      setFeedbackItems((prev) => prev.map((item) =>
+        item.id === feedbackId
+          ? { ...item, repliedAt: new Date().toISOString(), replyContent: msgContent }
+          : item
+      ));
       setReplyMsg("已发送通知给用户");
       setReplyTarget(null);
       setReplyText("");
@@ -651,17 +658,28 @@ export default function AdminPage() {
           <>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-8 border-b border-black/[0.07]">
-              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"], ["changelog", "更新看板"]] as [AdminTab, string][]).map(([tab, label]) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-all ${
-                    activeTab === tab ? "border-black text-black" : "border-transparent text-gray-400 hover:text-gray-700"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"], ["changelog", "更新看板"]] as [AdminTab, string][]).map(([tab, label]) => {
+                const unrepliedCount = tab === "feedback" ? feedbackItems.filter(f => !f.repliedAt).length : 0;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`relative px-5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-all ${
+                      activeTab === tab ? "border-black text-black" : "border-transparent text-gray-400 hover:text-gray-700"
+                    }`}
+                  >
+                    {label}
+                    {unrepliedCount > 0 && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full text-white font-bold"
+                        style={{ background: "#ef4444", fontSize: 9, minWidth: 14, height: 14, padding: "0 3px" }}
+                      >
+                        {unrepliedCount > 99 ? "99+" : unrepliedCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Page title row */}
@@ -1344,7 +1362,16 @@ export default function AdminPage() {
                   if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
                   return item.source === feedbackSourceFilter;
                 }).map((item) => (
-                  <div key={item.id} className="rounded-2xl p-4" style={{ background: item.repliedAt ? "rgba(240,253,244,0.9)" : "rgba(255,255,255,0.9)", border: `1px solid ${item.repliedAt ? "rgba(34,197,94,0.2)" : "rgba(0,0,0,0.07)"}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div key={item.id} className="relative rounded-2xl p-4" style={{ background: item.repliedAt ? "rgba(240,253,244,0.9)" : "rgba(255,255,255,0.9)", border: `1px solid ${item.repliedAt ? "rgba(34,197,94,0.2)" : "rgba(0,0,0,0.07)"}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                    {/* 未回复红点 */}
+                    {!item.repliedAt && (
+                      <span
+                        className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-white font-bold"
+                        style={{ background: "#ef4444", fontSize: 9, minWidth: 14, height: 14, padding: "0 3px" }}
+                      >
+                        新
+                      </span>
+                    )}
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <span className="text-[12px] font-semibold text-gray-700">{item.username ?? item.email ?? item.phone ?? "匿名"}</span>
                       {item.email && <span className="text-[11px] text-gray-400">{item.email}</span>}
