@@ -1,42 +1,72 @@
 #!/usr/bin/env node
 /**
- * Built-in MCP server for Cascade that provides free web search via DuckDuckGo.
- * No API key required. Runs as a stdio MCP server.
+ * Built-in MCP server for Cascade that provides web search via
+ * 豆包搜索 Custom API (火山引擎联网搜索).
  *
  * Tools provided:
- * - search_web: Search the web via DuckDuckGo (using ddg-search)
+ * - search_web: Search the web via Doubao Search API
  * - fetch_url: Fetch and extract text content from a URL
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { search as ddgSearch } from "ddg-search";
+
+const SEARCH_API_URL = "https://open.feedcoopapi.com/search_api/web_search";
+const SEARCH_API_KEY = process.env.DOUBAO_SEARCH_API_KEY || "";
 
 const server = new McpServer({
   name: "cascade-web-search",
-  version: "1.0.0",
+  version: "2.0.0",
 });
 
 // Tool: search_web
 server.tool(
   "search_web",
-  "Search the web using DuckDuckGo. Returns titles, URLs, and snippets for each result.",
+  "Search the web using Doubao Search API. Returns titles, URLs, snippets and content for each result.",
   {
     query: z.string().describe("The search query"),
     maxResults: z.number().min(1).max(20).default(8).describe("Maximum number of results to return"),
   },
   async ({ query, maxResults }) => {
+    if (!SEARCH_API_KEY) {
+      return { content: [{ type: "text", text: "Search error: DOUBAO_SEARCH_API_KEY not configured" }], isError: true };
+    }
     try {
-      const response = await ddgSearch(query, { maxPages: 1 });
-      const items = (response.results || []).slice(0, maxResults);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
-      if (items.length === 0) {
+      const resp = await fetch(SEARCH_API_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${SEARCH_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Query: query,
+          SearchType: "web",
+          Count: maxResults,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) {
+        return { content: [{ type: "text", text: `Search API error: HTTP ${resp.status}` }], isError: true };
+      }
+
+      const json = await resp.json() as any;
+      const results = json?.Result?.WebResults || [];
+
+      if (results.length === 0) {
         return { content: [{ type: "text", text: "No results found." }] };
       }
 
-      const formatted = items.map((r: any, i: number) =>
-        `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.description || ""}`
-      ).join("\n\n");
+      const formatted = results.map((r: any, i: number) => {
+        const snippet = r.Snippet || r.Summary || "";
+        const content = r.Content ? r.Content.slice(0, 500) : "";
+        const body = content || snippet;
+        return `${i + 1}. ${r.Title}\n   URL: ${r.Url}\n   ${body}`;
+      }).join("\n\n");
 
       return { content: [{ type: "text", text: formatted }] };
     } catch (err: any) {
