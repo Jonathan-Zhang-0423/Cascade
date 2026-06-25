@@ -391,6 +391,7 @@ interface ManagerChatSession {
   done: boolean;
   doneAt?: number;
   startedAt: number;
+  _userId?: string;
   sseWriters: Set<(line: string) => void>;
 }
 
@@ -411,6 +412,8 @@ setInterval(() => {
     }
     if ((session as any)._startedAt && now - (session as any)._startedAt > maxAge) {
       session.aborted = true;
+      // Force-release session slot for stuck sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       buildSessions.delete(id);
     }
   });
@@ -422,6 +425,8 @@ setInterval(() => {
       return;
     }
     if (now - session.startedAt > maxAge) {
+      // Force-release session slot for stuck manager sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       managerChatSessions.delete(id);
     }
   });
@@ -434,6 +439,8 @@ setInterval(() => {
     }
     if (session._startedAt && now - session._startedAt > maxAge) {
       session.aborted = true;
+      // Force-release session slot for stuck review sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       reviewSessions.delete(id);
     }
   });
@@ -734,6 +741,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/build-session", requireInviteCode, async (req, res) => {
+    let _userId: string | undefined;
+    let _sessionId: string | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -760,6 +769,8 @@ export async function registerRoutes(
       };
 
       // Per-user session cap
+      _userId = reqUserId;
+      _sessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
         res.status(429).json({ error: "Too many active sessions. Please wait for a running build to finish." });
         return;
@@ -880,6 +891,8 @@ export async function registerRoutes(
 
     } catch (error: any) {
       console.error("Build session error:", error?.message || error);
+      // Release session slot on setup errors — prevents permanent slot leak
+      if (_userId && _sessionId) userSessions.unregister(_userId, _sessionId);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Build session failed" });
       }
@@ -998,6 +1011,8 @@ export async function registerRoutes(
   // Mirrors /api/build-session but runs the verify→fix→re-verify loop quietly
   // (no needs_input) and reports once. See review-orchestrator.ts.
   app.post("/api/review-session", async (req, res) => {
+    let _reviewUserId: string | undefined;
+    let _reviewSessionId: string | undefined;
     try {
       const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
       if (!hasAnyProvider) {
@@ -1025,6 +1040,8 @@ export async function registerRoutes(
       }
 
       const reqUserId = (req.session as any)?.userId as string | undefined;
+      _reviewUserId = reqUserId;
+      _reviewSessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
         res.status(429).json({ error: "Too many active sessions. Please wait for a running session to finish." });
         return;
@@ -1087,6 +1104,8 @@ export async function registerRoutes(
           shellManager.destroyShell(session.id).catch(() => {});
         });
     } catch (error: any) {
+      // Release session slot on setup errors — prevents permanent slot leak
+      if (_reviewUserId && _reviewSessionId) userSessions.unregister(_reviewUserId, _reviewSessionId);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Review session failed" });
       }
@@ -1294,6 +1313,7 @@ export async function registerRoutes(
         nextEventId: 0,
         done: false,
         startedAt: Date.now(),
+        _userId: reqUserId || undefined,
         sseWriters: new Set(),
       };
       managerChatSessions.set(mgrSessionId, mgrSession);
@@ -1715,6 +1735,8 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
+      // Release session slot on error — prevents permanent slot leak
+      if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
       if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
         const s = managerChatSessions.get(mgrSessionId)!;
         s.done = true;
