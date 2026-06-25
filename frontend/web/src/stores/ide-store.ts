@@ -59,8 +59,15 @@ export interface ManagerPlan {
   narrated_what_and_why?: string;
   narrated_done_looks_like?: string;
   narrated_out_of_scope?: string;
-  /** "direct": plan was synthesized for a direct build (no verifier, slim UI). Default is plan-mode. */
-  mode?: "plan" | "direct";
+  /** "direct": slim build UI. "media": AIGC poster/video task, not a code build. */
+  mode?: "plan" | "direct" | "media";
+  /** Only present when mode === "media" */
+  media_task?: {
+    type: "poster" | "video" | "both";
+    prompt?: string;
+    style?: string;
+    duration?: number;
+  };
 }
 
 export interface VerificationItem {

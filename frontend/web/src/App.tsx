@@ -16,6 +16,7 @@ import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
 import CreateSquarePage from "@/pages/create-square";
 import AppDetailPage from "@/pages/app-detail";
+import AigcPage from "@/pages/aigc";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/invite-gate" component={InviteGatePage} />
       <Route path="/CreateSquare" component={CreateSquarePage} />
       <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
+      <Route path="/aigc" component={AigcPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
       <Route path="/project/:id" component={IDEPage} />

@@ -131,9 +131,11 @@ export default function AdminPage() {
   const [otpError, setOtpError] = useState("");
 
   // Square panel state
-  type SquareApp = { id: string; title: string; framework: string; visibility: string; isOpenSource: boolean; viewCount: number; forkCount: number; authorUsername: string; publishedAt: string };
+  type SquareApp = { id: string; title: string; framework: string; visibility: string; isOpenSource: boolean; viewCount: number; forkCount: number; adminTakenDown: boolean; authorUsername: string; publishedAt: string };
   type SquareStats = {
     total: number;
+    totalActive: number;
+    totalTakenDown: number;
     byFramework: { framework: string; cnt: number }[];
     byVisibility: { visibility: string; cnt: number }[];
     topViewed: SquareApp[];
@@ -143,7 +145,8 @@ export default function AdminPage() {
   const [squareStats, setSquareStats] = useState<SquareStats | null>(null);
   const [squareLoading, setSquareLoading] = useState(false);
   const [squareError, setSquareError] = useState("");
-  const [squareDeleting, setSquareDeleting] = useState<string | null>(null);
+  const [squareActioning, setSquareActioning] = useState<string | null>(null);
+  const [squareFilter, setSquareFilter] = useState<"all" | "active" | "takendown">("all");
 
   const fetchData = useCallback(async (adminSecret: string) => {
     const res = await fetch("/api/waitlist", {
@@ -445,11 +448,11 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, activeTab]);
 
-  async function fetchSquare() {
+  async function fetchSquare(filter: "all" | "active" | "takendown" = "all") {
     setSquareLoading(true);
     setSquareError("");
     try {
-      const res = await fetch("/api/admin/square", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/square?filter=${filter}`, { headers: { "x-admin-secret": secret.trim() } });
       if (!res.ok) throw new Error("获取失败");
       setSquareStats(await res.json());
     } catch {
@@ -459,23 +462,41 @@ export default function AdminPage() {
     }
   }
 
-  async function deleteSquareApp(id: string) {
-    if (!confirm("确认强制下架此应用？")) return;
-    setSquareDeleting(id);
+  async function takedownSquareApp(id: string) {
+    if (!confirm("确认强制下架此应用？下架后记录保留，可随时重新上架。")) return;
+    setSquareActioning(id);
     try {
-      const res = await fetch(`/api/admin/square/${id}`, { method: "DELETE", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/square/${id}/takedown`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
       if (!res.ok) throw new Error();
       setSquareStats((prev) => prev ? {
         ...prev,
-        total: prev.total - 1,
-        recent: prev.recent.filter((a) => a.id !== id),
-        topViewed: prev.topViewed.filter((a) => a.id !== id),
-        perUser: prev.perUser.map((u) => ({ ...u, appCount: u.appCount - (prev.recent.find((a) => a.id === id)?.authorUsername === u.authorUsername ? 1 : 0) })),
+        totalActive: prev.totalActive - 1,
+        totalTakenDown: prev.totalTakenDown + 1,
+        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: true } : a),
       } : null);
     } catch {
-      alert("删除失败，请重试");
+      alert("下架失败，请重试");
     } finally {
-      setSquareDeleting(null);
+      setSquareActioning(null);
+    }
+  }
+
+  async function restoreSquareApp(id: string) {
+    if (!confirm("确认重新上架此应用？")) return;
+    setSquareActioning(id);
+    try {
+      const res = await fetch(`/api/admin/square/${id}/restore`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
+      if (!res.ok) throw new Error();
+      setSquareStats((prev) => prev ? {
+        ...prev,
+        totalActive: prev.totalActive + 1,
+        totalTakenDown: prev.totalTakenDown - 1,
+        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: false } : a),
+      } : null);
+    } catch {
+      alert("上架失败，请重试");
+    } finally {
+      setSquareActioning(null);
     }
   }
 
@@ -758,7 +779,7 @@ export default function AdminPage() {
                   <p className="text-gray-500 text-[14px] mt-1">共 {changelogItems.length} 条 · 已发布 {changelogItems.filter((e) => e.isPublished).length} 条</p>
                 )}
                 {activeTab === "square" && squareStats && (
-                  <p className="text-gray-500 text-[14px] mt-1">共 {squareStats.total} 个应用 · {squareStats.perUser.length} 位创作者</p>
+                  <p className="text-gray-500 text-[14px] mt-1">共 {squareStats.total} 个应用 · 上架 {squareStats.totalActive} · 下架 {squareStats.totalTakenDown} · {squareStats.perUser.length} 位创作者</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -822,7 +843,7 @@ export default function AdminPage() {
                 )}
                 {activeTab === "square" && (
                   <button
-                    onClick={fetchSquare}
+                    onClick={() => fetchSquare(squareFilter)}
                     disabled={squareLoading}
                     className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
                     style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
@@ -1620,14 +1641,14 @@ export default function AdminPage() {
                   {/* ── Top stat cards ── */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
                     {[
-                      { label: "总发布数", value: squareStats.total },
+                      { label: "总记录数", value: squareStats.total },
+                      { label: "当前上架", value: squareStats.totalActive, color: "#16a34a" },
+                      { label: "强制下架", value: squareStats.totalTakenDown, color: squareStats.totalTakenDown > 0 ? "#dc2626" : undefined },
                       { label: "创作者数", value: squareStats.perUser.length },
-                      { label: "总浏览量", value: squareStats.topViewed.reduce((s, a) => s + (a.viewCount ?? 0), 0) },
-                      { label: "总 Fork 数", value: squareStats.topViewed.reduce((s, a) => s + (a.forkCount ?? 0), 0) },
-                    ].map(({ label, value }) => (
+                    ].map(({ label, value, color }) => (
                       <div key={label} className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
                         <p className="text-[12px] text-gray-400 mb-1">{label}</p>
-                        <p className="text-[28px] font-bold text-black leading-none">{value}</p>
+                        <p className="text-[28px] font-bold leading-none" style={{ color: color ?? "#000" }}>{value}</p>
                       </div>
                     ))}
                   </div>
@@ -1636,10 +1657,10 @@ export default function AdminPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                     {/* Framework */}
                     <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">项目类型分布</h3>
+                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">项目类型分布（上架）</h3>
                       <div className="space-y-2">
                         {squareStats.byFramework.map(({ framework, cnt }) => {
-                          const pct = squareStats.total > 0 ? Math.round((cnt / squareStats.total) * 100) : 0;
+                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
                           const labels: Record<string, string> = { web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
                           return (
                             <div key={framework}>
@@ -1658,10 +1679,10 @@ export default function AdminPage() {
 
                     {/* Visibility */}
                     <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">可见性分布</h3>
+                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">可见性分布（上架）</h3>
                       <div className="space-y-2">
                         {squareStats.byVisibility.map(({ visibility, cnt }) => {
-                          const pct = squareStats.total > 0 ? Math.round((cnt / squareStats.total) * 100) : 0;
+                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
                           const labels: Record<string, string> = { public: "公开", link_only: "链接可见", private: "私有" };
                           const colors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#6b7280" };
                           return (
@@ -1708,16 +1729,34 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* ── Recent apps + admin actions ── */}
+                  {/* ── All apps with filter + admin actions ── */}
                   <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                    <div className="px-5 py-4 border-b border-black/[0.05]" style={{ background: "rgba(255,255,255,0.95)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700">最近发布（最多 20 条）</h3>
+                    <div className="px-5 py-4 border-b border-black/[0.05] flex items-center justify-between gap-4" style={{ background: "rgba(255,255,255,0.95)" }}>
+                      <h3 className="text-[13px] font-semibold text-gray-700">全部应用（最多 100 条）</h3>
+                      {/* Filter tabs */}
+                      <div className="flex items-center gap-1">
+                        {([ ["all", "全部"], ["active", "已上架"], ["takendown", "已下架"] ] as ["all" | "active" | "takendown", string][]).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => {
+                              setSquareFilter(val);
+                              fetchSquare(val);
+                            }}
+                            className="px-3 py-1 rounded-full text-[12px] font-medium transition-colors"
+                            style={squareFilter === val
+                              ? { background: "#111", color: "#fff" }
+                              : { background: "transparent", color: "#6b7280", border: "1px solid rgba(0,0,0,0.1)" }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-[13px]" style={{ background: "rgba(255,255,255,0.9)" }}>
                         <thead>
                           <tr className="border-b border-black/[0.05]">
-                            {["应用名", "作者", "类型", "可见性", "开源", "浏览", "Fork", "发布时间", "操作"].map((h) => (
+                            {["应用名", "作者", "类型", "可见性", "状态", "开源", "浏览", "Fork", "发布时间", "操作"].map((h) => (
                               <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -1727,8 +1766,9 @@ export default function AdminPage() {
                             const fwLabels: Record<string, string> = { web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
                             const visLabels: Record<string, string> = { public: "公开", link_only: "链接", private: "私有" };
                             const visColors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#9ca3af" };
+                            const isBusy = squareActioning === app.id;
                             return (
-                              <tr key={app.id} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors">
+                              <tr key={app.id} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors" style={app.adminTakenDown ? { opacity: 0.6 } : {}}>
                                 <td className="px-4 py-3.5 font-medium text-gray-900 max-w-[160px] truncate">{app.title}</td>
                                 <td className="px-4 py-3.5 text-gray-500">{app.authorUsername}</td>
                                 <td className="px-4 py-3.5">
@@ -1737,19 +1777,37 @@ export default function AdminPage() {
                                 <td className="px-4 py-3.5">
                                   <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: `${visColors[app.visibility]}20`, color: visColors[app.visibility] }}>{visLabels[app.visibility] ?? app.visibility}</span>
                                 </td>
+                                <td className="px-4 py-3.5">
+                                  {app.adminTakenDown ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(239,68,68,0.08)", color: "#dc2626" }}>已下架</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>上架中</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-3.5 text-gray-500">{app.isOpenSource ? "✅" : "—"}</td>
                                 <td className="px-4 py-3.5 text-gray-500">{app.viewCount}</td>
                                 <td className="px-4 py-3.5 text-gray-500">{app.forkCount}</td>
                                 <td className="px-4 py-3.5 text-gray-400 whitespace-nowrap">{new Date(app.publishedAt).toLocaleDateString("zh-CN")}</td>
                                 <td className="px-4 py-3.5">
-                                  <button
-                                    onClick={() => deleteSquareApp(app.id)}
-                                    disabled={squareDeleting === app.id}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40"
-                                    style={{ border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)", color: "#dc2626" }}
-                                  >
-                                    {squareDeleting === app.id ? "删除中…" : "下架"}
-                                  </button>
+                                  {app.adminTakenDown ? (
+                                    <button
+                                      onClick={() => restoreSquareApp(app.id)}
+                                      disabled={isBusy}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
+                                      style={{ border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.06)", color: "#16a34a" }}
+                                    >
+                                      {isBusy ? "操作中…" : "重新上架"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => takedownSquareApp(app.id)}
+                                      disabled={isBusy}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
+                                      style={{ border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)", color: "#dc2626" }}
+                                    >
+                                      {isBusy ? "操作中…" : "强制下架"}
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             );

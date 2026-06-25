@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2 } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
@@ -256,6 +256,11 @@ export default function DashboardPage() {
       icon: <Clock className="w-3.5 h-3.5" />,
       label: t("navbar.recentProjects"),
       action: () => { navigate("/app"); setLogoMenuOpen(false); },
+    },
+    {
+      icon: <Wand2 className="w-3.5 h-3.5" />,
+      label: "AIGC 创作",
+      action: () => { navigate("/aigc"); setLogoMenuOpen(false); },
     },
     null,
     {

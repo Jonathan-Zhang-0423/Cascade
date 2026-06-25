@@ -4851,26 +4851,37 @@ Generate the cascade.md content for this project based on both the plan and the 
   // ── Admin: Creator Square dashboard ────────────────────────────────────────
 
   // GET /api/admin/square — aggregate stats + per-user breakdown
+  // Query param: ?filter=all|active|takendown (default: all)
   app.get("/api/admin/square", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     try {
-      // Total published apps
-      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+      const filter = (req.query.filter as string) ?? "all";
+      const filterCond =
+        filter === "active" ? eq(publishedApps.adminTakenDown, false) :
+        filter === "takendown" ? eq(publishedApps.adminTakenDown, true) :
+        undefined;
 
-      // By framework
+      // Total (all records regardless of filter)
+      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+      const [{ totalActive }] = await db.select({ totalActive: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, false));
+      const [{ totalTakenDown }] = await db.select({ totalTakenDown: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, true));
+
+      // By framework (active only for stats)
       const byFramework = await db
         .select({ framework: publishedApps.framework, cnt: count() })
         .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
         .groupBy(publishedApps.framework)
         .orderBy(desc(count()));
 
-      // By visibility
+      // By visibility (active only)
       const byVisibility = await db
         .select({ visibility: publishedApps.visibility, cnt: count() })
         .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
         .groupBy(publishedApps.visibility);
 
-      // Top view_count
+      // Top view_count (active only)
       const topViewed = await db
         .select({
           id: publishedApps.id,
@@ -4883,10 +4894,11 @@ Generate the cascade.md content for this project based on both the plan and the 
         })
         .from(publishedApps)
         .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.adminTakenDown, false))
         .orderBy(desc(publishedApps.viewCount))
         .limit(10);
 
-      // Per-user breakdown
+      // Per-user breakdown (all records)
       const perUser = await db
         .select({
           userId: publishedApps.userId,
@@ -4900,8 +4912,8 @@ Generate the cascade.md content for this project based on both the plan and the 
         .groupBy(publishedApps.userId, users.username)
         .orderBy(desc(count()));
 
-      // Recent 20 published apps
-      const recent = await db
+      // All apps with filter applied, up to 100
+      const recentQuery = db
         .select({
           id: publishedApps.id,
           title: publishedApps.title,
@@ -4910,29 +4922,50 @@ Generate the cascade.md content for this project based on both the plan and the 
           isOpenSource: publishedApps.isOpenSource,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
+          adminTakenDown: publishedApps.adminTakenDown,
           authorUsername: users.username,
           publishedAt: publishedApps.publishedAt,
         })
         .from(publishedApps)
         .innerJoin(users, eq(publishedApps.userId, users.id))
         .orderBy(desc(publishedApps.publishedAt))
-        .limit(20);
+        .limit(100);
 
-      res.json({ total, byFramework, byVisibility, topViewed, perUser, recent });
+      const recent = filterCond
+        ? await recentQuery.where(filterCond)
+        : await recentQuery;
+
+      res.json({ total, totalActive, totalTakenDown, byFramework, byVisibility, topViewed, perUser, recent });
     } catch (err) {
       console.error("[admin/square]", err);
       res.status(500).json({ error: "failed" });
     }
   });
 
-  // DELETE /api/admin/square/:id — admin force-remove a published app
-  app.delete("/api/admin/square/:id", async (req, res) => {
+  // PATCH /api/admin/square/:id/takedown — admin soft takedown
+  app.patch("/api/admin/square/:id/takedown", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     try {
-      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      await db.update(publishedApps)
+        .set({ adminTakenDown: true, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
       res.json({ ok: true });
     } catch (err) {
-      console.error("[admin/square/delete]", err);
+      console.error("[admin/square/takedown]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/restore — admin restore a taken-down app
+  app.patch("/api/admin/square/:id/restore", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: false, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/restore]", err);
       res.status(500).json({ error: "failed" });
     }
   });
@@ -5628,10 +5661,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
 
-      // Only public apps are visible in the listing (link_only = not listed, private = not listed)
+      // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
       const baseWhere = framework
-        ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework))
-        : eq(publishedApps.visibility, "public");
+        ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework), eq(publishedApps.adminTakenDown, false))
+        : and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false));
 
       const fullWhere = q
         ? and(baseWhere, or(

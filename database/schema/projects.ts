@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -13,6 +13,8 @@ export const projects = pgTable("projects", {
   targetPlatform: text("target_platform"),
   lastPlan: text("last_plan"),
   lastBuildResult: text("last_build_result"),
+  actionSequence: text("action_sequence"),   // JSON DSL written by submit_interaction_script
+  actionSequenceDuration: integer("action_sequence_duration"), // hint in seconds
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 

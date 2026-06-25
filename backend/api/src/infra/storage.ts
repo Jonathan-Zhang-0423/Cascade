@@ -443,6 +443,7 @@ export class DatabaseStorage implements IStorage {
         framework: publishedApps.framework,
         viewCount: publishedApps.viewCount,
         forkCount: publishedApps.forkCount,
+        adminTakenDown: publishedApps.adminTakenDown,
         publishedAt: publishedApps.publishedAt,
         updatedAt: publishedApps.updatedAt,
         authorUsername: users.username,

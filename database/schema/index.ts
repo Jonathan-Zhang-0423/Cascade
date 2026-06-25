@@ -14,3 +14,4 @@ export * from './user-feedback';
 export * from './changelog-entries';
 export * from './notifications';
 export * from './published-apps';
+export * from './project-videos';
