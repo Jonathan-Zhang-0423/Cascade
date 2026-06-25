@@ -289,6 +289,7 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       deleteProject: (id: string) => {
         localStorage.removeItem(`cascade-project-${id}`);
+        localStorage.removeItem(`cascade-checkpoints-${id}`);
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
         }));
