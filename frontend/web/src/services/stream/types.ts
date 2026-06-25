@@ -24,6 +24,14 @@ export const INITIAL_MANAGER_STREAM_STATE: ManagerStreamState = {
 
 // ─── Build Stream ──────────────────────────────────────────────────────────
 
+export interface ReviewResult {
+  status: "passed" | "stalled" | "exhausted";
+  rounds: number;
+  summary: string;
+  blocking: Array<{ type: string; severity: string; description: string; file: string }>;
+  advisories: Array<{ type: string; severity: string; description: string; file: string }>;
+}
+
 export interface BuildStreamState {
   thinkingText: string;
   narrationText: string;
@@ -33,6 +41,8 @@ export interface BuildStreamState {
   thinkingElapsedSec: number | null;
   sessionId: string | null;
   stepNarrations: Record<number, string>;
+  reviewPhase: "idle" | "reviewing" | "fixing" | "done" | null;
+  reviewResult: ReviewResult | null;
 }
 
 export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
@@ -44,6 +54,8 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   thinkingElapsedSec: null,
   sessionId: null,
   stepNarrations: {},
+  reviewPhase: null,
+  reviewResult: null,
 };
 
 // ─── Store Actions (injected into stream instances) ────────────────────────

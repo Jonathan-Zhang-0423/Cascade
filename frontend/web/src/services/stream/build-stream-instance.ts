@@ -512,6 +512,11 @@ export class BuildStreamInstance {
             if (isCurrentProject) {
               this.actions.refreshPreview();
               this.refreshFilesAfterBuild();
+              // Auto-trigger post-build review
+              const reviewChangedFiles: string[] = ev.changedFiles || [];
+              if (reviewChangedFiles.length > 0) {
+                this.startAutoReview(userRequest, normalizedSteps, userLang);
+              }
             }
           } else if (type === "done") {
             // Final cleanup handled in finally
@@ -983,5 +988,136 @@ export class BuildStreamInstance {
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.heartbeatWatchdog) { clearTimeout(this.heartbeatWatchdog); this.heartbeatWatchdog = null; }
     if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
+  }
+
+  // ─── Auto Review ──────────────────────────────────────────────────────────
+
+  private reviewAbortController: AbortController | null = null;
+
+  /**
+   * Automatically trigger a review session after build completes.
+   * Connects to /api/review-session SSE and updates reviewPhase/reviewResult.
+   */
+  private async startAutoReview(
+    userRequest: string,
+    steps: NormalizedStep[],
+    userLang: string,
+  ): Promise<void> {
+    this.state.set({ reviewPhase: "reviewing", reviewResult: null });
+
+    const files = this.actions.getFiles().map((f) => ({ path: f.path, content: f.content || "" }));
+    if (files.length === 0) {
+      this.state.set({ reviewPhase: null });
+      return;
+    }
+
+    const planSteps = steps.map((s, i) => ({
+      step: s.step ?? i + 1,
+      title: s.title || "",
+      description: s.description || "",
+      acceptance_criteria: (s as any).acceptance_criteria || undefined,
+    }));
+
+    const sessionId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+    const controller = new AbortController();
+    this.reviewAbortController = controller;
+
+    try {
+      const response = await fetch("/api/review-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          sessionId,
+          files,
+          userRequest,
+          planSteps,
+          userLang,
+          strictness: "balanced",
+          provider: "glm",
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        console.warn("[AutoReview] Failed to start review session:", response.status);
+        this.state.set({ reviewPhase: null });
+        return;
+      }
+
+      await parseSseStream(response.body.getReader(), {
+        onEvent: (ev: any) => {
+          const type = ev.type as string;
+          if (type === "review_started") {
+            this.state.set({ reviewPhase: "reviewing" });
+          } else if (type === "review_round") {
+            this.state.set({ reviewPhase: "reviewing" });
+          } else if (type === "review_fixing") {
+            this.state.set({ reviewPhase: "fixing" });
+          } else if (type === "review_report") {
+            this.state.set({
+              reviewPhase: "done",
+              reviewResult: {
+                status: ev.status || "exhausted",
+                rounds: ev.rounds || 0,
+                summary: ev.summary || "",
+                blocking: ev.remaining?.blocking || [],
+                advisories: ev.remaining?.advisories || [],
+              },
+            });
+          } else if (type === "review_passed") {
+            // If review_report didn't fire (e.g. instant pass), use this
+            const current = this.state.get();
+            if (!current.reviewResult) {
+              this.state.set({
+                reviewPhase: "done",
+                reviewResult: {
+                  status: "passed",
+                  rounds: 0,
+                  summary: ev.summary || "All checks passed.",
+                  blocking: [],
+                  advisories: [],
+                },
+              });
+            }
+          } else if (type === "code_applied") {
+            // Review fixer modified a file — apply to frontend
+            if (ev.filePath && ev.code !== undefined) {
+              this.actions.applyCodeBlock({ filePath: ev.filePath, code: ev.code, language: "" });
+            }
+          } else if (type === "review_done" || type === "done") {
+            const current = this.state.get();
+            if (current.reviewPhase !== "done") {
+              this.state.set({ reviewPhase: "done" });
+            }
+            // Refresh preview after review fixes
+            this.actions.refreshPreview();
+          }
+        },
+      });
+    } catch (err: unknown) {
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      if (!isAbort) {
+        console.warn("[AutoReview] Review stream error:", err instanceof Error ? err.message : err);
+      }
+      const current = this.state.get();
+      if (current.reviewPhase !== "done") {
+        this.state.set({ reviewPhase: null });
+      }
+    } finally {
+      this.reviewAbortController = null;
+    }
+  }
+
+  /** Abort an in-progress review (user clicked "skip") */
+  abortReview(): void {
+    if (this.reviewAbortController) {
+      this.reviewAbortController.abort();
+      this.reviewAbortController = null;
+    }
+    this.state.set({ reviewPhase: "done", reviewResult: null });
   }
 }

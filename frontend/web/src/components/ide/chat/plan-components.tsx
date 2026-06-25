@@ -29,11 +29,13 @@ import {
   LayoutGrid,
   Ban,
   Loader2,
+  SkipForward,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 import { BuildLivePanel } from "./BuildLivePanel";
+import type { ReviewResult } from "@/services/stream/types";
 
 function StepItem({
   task,
@@ -535,8 +537,14 @@ export function RegeneratePlanDialog({
 
 export function BuildResultCard({
   buildResult,
+  reviewPhase,
+  reviewResult,
+  onSkipReview,
 }: {
   buildResult: BuildResultData;
+  reviewPhase?: "idle" | "reviewing" | "fixing" | "done" | null;
+  reviewResult?: ReviewResult | null;
+  onSkipReview?: () => void;
 }) {
   const hasContent =
     (buildResult.segments && buildResult.segments.length > 0) ||
@@ -561,8 +569,136 @@ export function BuildResultCard({
         tokenUsage={(buildResult as any).tokenUsage}
         completionSummary={(buildResult as any).completionData?.summary}
       />
+      {/* Post-build review status */}
+      {reviewPhase && reviewPhase !== "idle" && (
+        <ReviewStatusCard
+          reviewPhase={reviewPhase}
+          reviewResult={reviewResult ?? null}
+          onSkip={onSkipReview}
+        />
+      )}
     </div>
   );
+}
+
+/** Post-build review status card — shows reviewing/fixing/done states */
+function ReviewStatusCard({
+  reviewPhase,
+  reviewResult,
+  onSkip,
+}: {
+  reviewPhase: "reviewing" | "fixing" | "done" | null;
+  reviewResult: ReviewResult | null;
+  onSkip?: () => void;
+}) {
+  if (!reviewPhase) return null;
+
+  // Reviewing / Fixing — in progress
+  if (reviewPhase === "reviewing" || reviewPhase === "fixing") {
+    return (
+      <div className="mt-2 rounded-lg border border-blue-400/20 bg-blue-400/5 p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[12px] text-blue-400/80">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>{reviewPhase === "reviewing" ? "正在审查代码质量..." : "自动修复中..."}</span>
+          </div>
+          {onSkip && (
+            <button
+              onClick={onSkip}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              <SkipForward className="w-3 h-3" />
+              跳过
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Done — show result
+  if (reviewPhase === "done" && !reviewResult) {
+    // Skipped
+    return (
+      <div className="mt-2 rounded-lg border border-border/20 bg-border/5 p-3">
+        <div className="flex items-center gap-2 text-[12px] text-muted-foreground/60">
+          <SkipForward className="w-3.5 h-3.5" />
+          <span>代码审查已跳过</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (reviewPhase === "done" && reviewResult) {
+    const passed = reviewResult.status === "passed" || reviewResult.blocking.length === 0;
+    return (
+      <div className={cn(
+        "mt-2 rounded-lg border p-3",
+        passed
+          ? "border-emerald-400/20 bg-emerald-400/5"
+          : "border-amber-400/20 bg-amber-400/5"
+      )}>
+        <div className="flex items-center gap-2 text-[12px]">
+          {passed ? (
+            <>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-400/90 font-medium">代码审查通过</span>
+              {reviewResult.rounds > 0 && (
+                <span className="text-muted-foreground/50 ml-1">
+                  ({reviewResult.rounds} 轮)
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-amber-400/90 font-medium">
+                发现 {reviewResult.blocking.length} 个问题
+              </span>
+              {reviewResult.rounds > 0 && (
+                <span className="text-muted-foreground/50 ml-1">
+                  (尝试修复 {reviewResult.rounds} 轮)
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {/* Show blocking issues if any */}
+        {!passed && reviewResult.blocking.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {reviewResult.blocking.slice(0, 5).map((issue, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground/70">
+                <XCircle className="w-3 h-3 shrink-0 mt-0.5 text-amber-400/70" />
+                <span>
+                  {issue.file && <span className="text-muted-foreground/50">[{issue.file.split("/").pop()}] </span>}
+                  {issue.description}
+                </span>
+              </div>
+            ))}
+            {reviewResult.blocking.length > 5 && (
+              <div className="text-[11px] text-muted-foreground/50 pl-5">
+                ... 还有 {reviewResult.blocking.length - 5} 个问题
+              </div>
+            )}
+          </div>
+        )}
+        {/* Advisory issues (non-blocking) */}
+        {reviewResult.advisories.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-border/10">
+            <div className="text-[11px] text-muted-foreground/50 mb-1">建议优化:</div>
+            {reviewResult.advisories.slice(0, 3).map((adv, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground/50">
+                <span className="shrink-0">💡</span>
+                <span>{adv.description}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function stripMd(text: string): string {

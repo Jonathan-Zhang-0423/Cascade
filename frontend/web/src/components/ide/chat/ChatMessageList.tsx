@@ -8,6 +8,7 @@ import {
   CheckpointMarker,
 } from "./message-components";
 import { ManagerMessageBubble, BuildResultCard } from "./plan-components";
+import type { ReviewResult } from "@/services/stream/types";
 import { streamRegistry } from "@/services/stream";
 
 interface ChatMessageListProps {
@@ -56,6 +57,16 @@ export function ChatMessageList({
   const liveActionLog = useSyncExternalStore<ActionLogEntry[]>(
     slot ? slot.build.state.subscribe : (() => () => {}),
     slot ? () => slot.build.state.getSnapshot().actionLog : () => [],
+  );
+
+  // Subscribe to live review state
+  const reviewPhase = useSyncExternalStore<string | null>(
+    slot ? slot.build.state.subscribe : (() => () => {}),
+    slot ? () => slot.build.state.getSnapshot().reviewPhase : () => null,
+  );
+  const reviewResult = useSyncExternalStore<ReviewResult | null>(
+    slot ? slot.build.state.subscribe : (() => () => {}),
+    slot ? () => slot.build.state.getSnapshot().reviewResult : () => null,
   );
 
   // Build map: stepNumber (number) → ActionLogEntry[]
@@ -179,7 +190,13 @@ export function ChatMessageList({
               }
             />
           ) : (msg as any).buildResult ? (
-            <BuildResultCard key={`c-${msg.id}`} buildResult={(msg as any).buildResult} />
+            <BuildResultCard
+              key={`c-${msg.id}`}
+              buildResult={(msg as any).buildResult}
+              reviewPhase={reviewPhase as any}
+              reviewResult={reviewResult}
+              onSkipReview={() => slot?.build.abortReview()}
+            />
           ) : (
             <MessageBubble
               key={`c-${msg.id}`}
