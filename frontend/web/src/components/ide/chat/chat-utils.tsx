@@ -733,6 +733,8 @@ export function getActionLogColor(type: ActionLogEntry["type"]): string {
       return "text-amber-400";
     case "tool_call":
       return "text-purple-400";
+    case "research":
+      return "text-cyan-400";
     case "step":
       return "text-primary";
     case "narration":

@@ -193,6 +193,7 @@ async function syncProjectToServer(id: string, name: string, emoji?: string, fra
     await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ id, name, emoji, framework }),
     });
   } catch {}
@@ -203,6 +204,7 @@ async function updateProjectOnServer(id: string, name: string) {
     await fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ name }),
     });
   } catch {}
@@ -212,6 +214,7 @@ async function deleteProjectOnServer(id: string) {
   try {
     await fetch(`/api/projects/${id}`, {
       method: "DELETE",
+      credentials: "include",
     });
   } catch {}
 }
@@ -226,11 +229,28 @@ export const useProjectStore = create<ProjectStoreState>()(
       createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => {
         const id = generateId();
         const isWeb = !framework || framework === "web";
-        const state = getDefaultProjectState(initialPrompt, framework, initialMode);
-        localStorage.setItem(
-          `cascade-project-${id}`,
-          JSON.stringify(state)
-        );
+        // Only persist lightweight UI state to localStorage — files/messages
+        // are persisted server-side. This keeps localStorage usage minimal.
+        const lightState = {
+          openFiles: [getMainEntryFile(framework)],
+          activeFile: getMainEntryFile(framework),
+          previewFile: getMainEntryFile(framework),
+          theme: "vs-dark",
+          pendingPrompt: initialPrompt || null,
+          pendingPromptMode: initialPrompt ? (initialMode ?? "manager") : null,
+          chatMode: initialPrompt ? (initialMode ?? "manager") : "build",
+          _nextSeq: 2,
+        };
+        try {
+          localStorage.setItem(
+            `cascade-project-${id}`,
+            JSON.stringify(lightState)
+          );
+        } catch (e) {
+          // localStorage full — non-fatal. loadProject will use defaults and
+          // the pendingPrompt won't auto-fire, but the project page still loads.
+          console.warn("[ProjectStore] localStorage full, skipping local state cache for project", id);
+        }
 
         set((s) => ({
           projects: [
@@ -259,6 +279,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           fetch(`/api/projects/${id}/files`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
+            credentials: "include",
             body: JSON.stringify({ files: flatFiles }),
           }).catch(() => {});
         }
@@ -268,6 +289,7 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       deleteProject: (id: string) => {
         localStorage.removeItem(`cascade-project-${id}`);
+        localStorage.removeItem(`cascade-checkpoints-${id}`);
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
         }));
@@ -292,7 +314,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         if (get()._syncing) return;
         set({ _syncing: true });
         try {
-          const resp = await fetch("/api/projects");
+          const resp = await fetch("/api/projects", { credentials: "include" });
           if (!resp.ok) return;
           const data = await resp.json();
           const serverProjects: Array<{ id: string; name: string; emoji?: string | null; framework?: string | null; createdAt: string }> = data.projects || [];

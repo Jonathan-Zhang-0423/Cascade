@@ -18,10 +18,10 @@ export type AgentRole = "manager" | "editor" | "verifier" | "fixer";
 export type BuildPhase = "planning" | "editing" | "verifying" | "fixing";
 
 const SYSTEM_FALLBACK_DEFAULTS: Record<AgentRole, AIProvider[]> = {
-  manager:   ["kimi", "deepseek-pro", "doubao", "glm"],
-  editor:    ["doubao", "kimi", "deepseek-flash", "minimax"],
-  verifier:  ["minimax", "doubao", "deepseek-flash", "kimi"],
-  fixer:     ["doubao", "kimi", "deepseek-flash", "minimax"],
+  manager:   ["kimi", "deepseek-pro", "glm", "doubao"],
+  editor:    ["glm", "kimi", "doubao", "deepseek-flash"],
+  verifier:  ["deepseek-flash", "minimax", "doubao", "kimi"],
+  fixer:     ["glm", "kimi", "doubao", "deepseek-flash"],
 };
 
 export function buildFallbackChain(role: AgentRole, userProvider: AIProvider): AIProvider[] {
@@ -104,10 +104,10 @@ export function getFastClient(): { client: OpenAI; model: string } {
   return { client: doubaoClient, model: DOUBAO_LITE_MODEL };
 }
 const PHASE_PROVIDER_PREFERENCE: Record<BuildPhase, AIProvider[]> = {
-  planning:  ["deepseek-pro", "kimi", "glm", "doubao"],
-  editing:   ["doubao", "kimi", "deepseek-flash", "minimax"],
-  verifying: ["minimax", "doubao", "deepseek-flash", "kimi"],
-  fixing:    ["doubao", "kimi", "deepseek-flash", "minimax"],
+  planning:  ["kimi", "deepseek-pro", "glm", "doubao"],
+  editing:   ["glm", "kimi", "doubao", "deepseek-flash"],
+  verifying: ["deepseek-flash", "minimax", "doubao", "kimi"],
+  fixing:    ["glm", "kimi", "doubao", "deepseek-flash"],
 };
 
 /**

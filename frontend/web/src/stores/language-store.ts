@@ -33,7 +33,7 @@ applyLangClass(initialLang);
 export const useLanguageStore = create<LanguageState>((set) => ({
   lang: initialLang,
   setLang: (lang) => {
-    localStorage.setItem(STORAGE_KEY, lang);
+    try { localStorage.setItem(STORAGE_KEY, lang); } catch {}
     applyLangClass(lang);
     set({ lang });
   },

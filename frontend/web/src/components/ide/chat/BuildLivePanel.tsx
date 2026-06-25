@@ -121,6 +121,7 @@ import {
   Zap,
   ListChecks,
   DollarSign,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
@@ -275,6 +276,7 @@ function getActionNarration(entry: ActionLogEntry): string {
     case "file_delete":    return `删除了 ${fileName(entry)}`;
     case "thinking":       return extractThinkingNarration(entry.detail);
     case "tool_call":      return TOOL_NARRATION[entry.label] || `调用了 ${entry.label}`;
+    case "research":       return entry.label.toLowerCase().includes("complete") ? `研究完成 — ${entry.detail}` : `🔍 搜索: ${entry.detail || entry.label}`;
     case "terminal_command": return `执行命令：${entry.label}`;
     case "code_applied":   return `应用了 ${fileName(entry)}`;
     case "code_review":    return entry.label || "代码审查";
@@ -357,6 +359,8 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
       return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
     case "tool_call":
       return { rows: entry.label ? [{ k: "工具", v: entry.label }] : [] };
+    case "research":
+      return { rows: [{ k: "查询", v: entry.detail || entry.label }] };
     case "terminal_command":
       return { rows: [{ k: "命令", v: (entry.detail || entry.label || "").slice(0, 100) }] };
     case "code_review":
@@ -380,7 +384,7 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
 }
 
 // ── H. toDisplayType ──────────────────────────────────────────────────────
-type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "other";
+type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
 
 function toDisplayType(raw: string): ActionType {
   switch (raw) {
@@ -392,6 +396,7 @@ function toDisplayType(raw: string): ActionType {
     case "capabilities":   return "capabilities";
     case "plan":           return "plan";
     case "tool_call":      return "tool";
+    case "research":       return "research";
     case "terminal_command": return "terminal";
     default:               return "other";
   }
@@ -407,6 +412,7 @@ const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
   plan:         { icon: ListChecks,  color: "text-muted-foreground/50" },
   tool:         { icon: Wrench,      color: "text-muted-foreground/50" },
   terminal:     { icon: Terminal,    color: "text-muted-foreground/50" },
+  research:     { icon: Globe,       color: "text-cyan-400/70" },
   other:        { icon: Circle,      color: "text-muted-foreground/50" },
 };
 

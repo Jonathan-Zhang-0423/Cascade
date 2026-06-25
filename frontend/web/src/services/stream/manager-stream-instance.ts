@@ -115,9 +115,30 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
-    const historyMessages = this.actions.getManagerMessages()
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const allMessages = this.actions.getManagerMessages()
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing);
+
+    // Find the last buildResult message — everything before it is a "completed round".
+    // Compress completed rounds into a single summary to prevent the LLM from
+    // fixating on old plan context when the user sends a new request.
+    const lastBuildIdx = allMessages.reduce((acc, m, i) => (m as any).buildResult ? i : acc, -1);
+
+    let historyMessages: Array<{ role: "user" | "assistant"; content: string }>;
+    if (lastBuildIdx >= 0) {
+      // Summarize everything up to and including the buildResult as "previous round done"
+      const afterBuild = allMessages.slice(lastBuildIdx + 1);
+      const previousUserMsgs = allMessages.slice(0, lastBuildIdx + 1).filter(m => m.role === "user");
+      const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
+      const roundSummary = lastPrevUserMsg
+        ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
+        : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
+      historyMessages = [
+        { role: "assistant", content: roundSummary },
+        ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ];
+    } else {
+      historyMessages = allMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    }
 
     const controller = new AbortController();
     this.abortController = controller;
@@ -153,6 +174,7 @@ export class ManagerStreamInstance {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           messages: historyMessages,
           files,

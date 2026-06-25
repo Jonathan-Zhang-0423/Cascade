@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "web-search": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["tsx", "backend/api/src/agent/mcp/builtin-search-server.ts"],
+      "env": {
+        "DOUBAO_SEARCH_API_KEY": "8ANXGR8Ks8SSHWjJqKLbwJzbhYRBsbNY"
+      }
+    }
+  }
+}
