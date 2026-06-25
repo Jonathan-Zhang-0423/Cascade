@@ -9,6 +9,7 @@ import { applyFontSize, getFontSizeKey, FONT_SIZES } from "@/components/ide/navb
 import { cn } from "@/lib/utils";
 import { MobileInvitePanel } from "./MobileInvitePanel";
 import { MobileFeedbackPanel } from "./MobileFeedbackPanel";
+import { MobileNotificationPanel } from "./MobileNotificationPanel";
 
 type Tab = "chat" | "preview";
 
@@ -148,7 +149,7 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
               </div>
             )}
             <MobileInvitePanel />
-            <MobileFeedbackPanel />
+            <MobileNotificationPanel />
           </div>
         </div>
       )}

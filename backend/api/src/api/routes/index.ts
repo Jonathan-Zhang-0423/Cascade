@@ -1579,6 +1579,9 @@ This override applies to THIS message only — it does not change behavior for p
           // silently ending the chat with no plan card and no error.
           console.warn("[manager-chat] submit_plan exit but plan was rejected by handler");
           emit({ type: "manager_error", reason: "empty_plan" });
+          // manager_done must still be emitted so the client's parseSseStream
+          // receives [DONE] and the loading state is released.
+          emit({ type: "manager_done" });
         } else {
           emit({ type: "manager_done" });
         }
@@ -1633,13 +1636,15 @@ This override applies to THIS message only — it does not change behavior for p
       }
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
-      } else if (!clientDisconnected) {
+      } else {
+        // Headers already sent — always write [DONE] so the client's parseSseStream
+        // terminates regardless of whether the browser connection is still open.
         try {
           res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
           (res as any).flush?.();
           res.write("data: [DONE]\n\n");
           (res as any).flush?.();
-          res.end();
+          if (!clientDisconnected) res.end();
         } catch {}
       }
     }
@@ -3436,6 +3441,8 @@ Generate the cascade.md content for this project based on both the plan and the 
           content: userFeedback.content,
           source: userFeedback.source,
           createdAt: userFeedback.createdAt,
+          repliedAt: userFeedback.repliedAt,
+          replyContent: userFeedback.replyContent,
           username: users.username,
           email: users.email,
           phone: users.phone,
@@ -3667,6 +3674,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       hasPassword: !!(user as any).password,
       inviteCode: (user as any).inviteCode ?? null,
       phoneVerified: !!(user as any).phoneVerified,
+      email: (user as any).email ?? null,
+      phone: (user as any).phone ?? null,
+      githubId: (user as any).githubId ?? null,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
