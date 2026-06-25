@@ -153,6 +153,7 @@ export class ManagerStreamInstance {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           messages: historyMessages,
           files,
