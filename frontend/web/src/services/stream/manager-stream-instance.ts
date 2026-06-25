@@ -700,7 +700,7 @@ export class ManagerStreamInstance {
       this.actions.setManagerResponding(false);
       this.state.set({ preparingPlan: false });
       this.clearLive(0);
-    }, 60_000);
+    }, 30_000);
   }
 
   private clearLive(delay?: number): void {

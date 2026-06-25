@@ -96,6 +96,9 @@ export function ChatPanel() {
   const [showThinking, setShowThinking] = useState(false);
   const mountedRef = useRef(false);
   const userTriggeredRef = useRef(false); // 用户主动发消息，跳过 mountedRef 保护
+  // Synchronous in-flight guard — prevents duplicate sends from rapid clicks
+  // before React re-renders with the updated isManagerResponding state.
+  const sendInFlightRef = useRef(false);
   const [mountedTick, setMountedTick] = useState(0); // forces effect re-run after 300ms
   useEffect(() => {
     const id = setTimeout(() => {
@@ -400,6 +403,7 @@ export function ChatPanel() {
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, slot]);
 
   const handleRevisePlan = useCallback((note?: string) => {
+    if (sendInFlightRef.current) return;
     const firstUserMsg = managerMessages.find((m) => m.role === "user");
     const originalPrompt = firstUserMsg?.content?.trim() || "";
     if (!originalPrompt) {
@@ -417,17 +421,26 @@ export function ChatPanel() {
       });
     }
 
-    handleManagerSend(originalPrompt);
+    sendInFlightRef.current = true;
+    handleManagerSend(originalPrompt).finally(() => { sendInFlightRef.current = false; });
   }, [managerMessages, clearManagerPlan, addManagerMessage, handleManagerSend, setChatMode]);
 
   const handleCurrentSend = useCallback(async () => {
+    // sendInFlightRef is a synchronous guard checked BEFORE any async state
+    // update — prevents duplicate submits from rapid double-clicks while React
+    // is still re-rendering with the updated isManagerResponding state.
+    if (sendInFlightRef.current) {
+      if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
+      return;
+    }
     if (pendingConfirmation) {
       const trimmed = input.trim();
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
-      handleExecutePlan();
+      sendInFlightRef.current = true;
+      handleExecutePlan().finally(() => { sendInFlightRef.current = false; });
       return;
     }
     const busy = isAiResponding || isManagerResponding;
@@ -439,16 +452,19 @@ export function ChatPanel() {
       const text = input;
       setInput("");
       userTriggeredRef.current = true;
-      handleDirectBuild(text);
+      sendInFlightRef.current = true;
+      handleDirectBuild(text).finally(() => { sendInFlightRef.current = false; });
       return;
     }
     if (!input.trim() || busy) {
       if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
       return;
     }
+    const text = input;
     setInput("");
     userTriggeredRef.current = true;
-    handleManagerSend(undefined, input);
+    sendInFlightRef.current = true;
+    handleManagerSend(undefined, text).finally(() => { sendInFlightRef.current = false; });
   }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {

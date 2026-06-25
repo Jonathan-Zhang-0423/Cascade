@@ -375,7 +375,12 @@ function OtpBlock({
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
               placeholder="" autoComplete="off" required />
           )}
-          <p className="mt-1.5 text-[11px] text-gray-400">{labelInviteCodeHint}</p>
+          <a
+            href="/"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1.5 text-[11px] text-gray-400 hover:text-gray-600 cursor-pointer block transition-colors"
+          >{labelInviteCodeHint}</a>
         </div>
       )}
       <ErrorMsg msg={error} />
@@ -967,49 +972,8 @@ export default function AuthPage() {
                 exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
 
                 {detailChannel === "phone" ? (
-                  /* 手机号登录：密码 / OTP 两种方式可切换 */
-                  <div className="flex flex-col gap-5">
-                    {/* 切换标签 */}
-                    <div className="flex rounded-xl overflow-hidden border border-gray-200">
-                      <button type="button"
-                        className={`flex-1 py-2 text-[13px] font-semibold transition-colors ${phoneSignInMode === "otp" ? "bg-gray-900 text-white" : "bg-white text-gray-500 hover:text-gray-900"}`}
-                        onClick={() => setPhoneSignInMode("otp")}>
-                        {t("auth.methodPhoneOtp")}
-                      </button>
-                      <button type="button"
-                        className={`flex-1 py-2 text-[13px] font-semibold transition-colors ${phoneSignInMode === "password" ? "bg-gray-900 text-white" : "bg-white text-gray-500 hover:text-gray-900"}`}
-                        onClick={() => setPhoneSignInMode("password")}>
-                        {t("auth.passwordLabel")}
-                      </button>
-                    </div>
-                    {phoneSignInMode === "otp" ? (
-                      <OtpBlock {...otpBlockProps(false)} />
-                    ) : (
-                      <motion.form onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
-                        <div>
-                          <label className={labelCls}>{t("auth.phoneNumber")}</label>
-                          <input type="tel" className={inputCls + " h-12"}
-                            value={identifier} onChange={(e) => setIdentifier(e.target.value)}
-                            placeholder="+86" autoComplete="tel" required />
-                        </div>
-                        <div>
-                          <label className={labelCls}>{t("auth.passwordLabel")}</label>
-                          <div className="relative">
-                            <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"}
-                              value={password} onChange={(e) => setPassword(e.target.value)}
-                              placeholder="" autoComplete="current-password" required />
-                            <button type="button" onClick={() => setShowPassword((s) => !s)}
-                              aria-label="toggle password"
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
-                              <EyeIcon open={showPassword} />
-                            </button>
-                          </div>
-                        </div>
-                        <ErrorMsg msg={error} />
-                        <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
-                      </motion.form>
-                    )}
-                  </div>
+                  /* 手机号登录：只走 OTP，不提供密码选项 */
+                  <OtpBlock {...otpBlockProps(false)} />
                 ) : (
                 <motion.form
                   onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
@@ -1052,12 +1016,14 @@ export default function AuthPage() {
             )}
           </AnimatePresence>
 
-          {/* Bottom links — Forgot password? / New to CascadeAI? Create account */}
+          {/* Bottom links — 邮箱登录时显示"忘记密码"，手机号登录不显示 */}
           <motion.div variants={fadeUp} custom={4} className="mt-8 flex flex-col items-center gap-2.5">
-            <button type="button" onClick={openForgot}
-              className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
-              {t("auth.forgotPassword")}
-            </button>
+            {page === "signin" && detailChannel === "email" && (
+              <button type="button" onClick={openForgot}
+                className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
+                {t("auth.forgotPassword")}
+              </button>
+            )}
             <p className="text-[13px] text-gray-500">
               {page === "signin" ? t("auth.newToCascade") : t("auth.landingHasAccount")}{" "}
               <button type="button"
