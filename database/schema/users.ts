@@ -12,6 +12,8 @@ export const users = pgTable("users", {
   phone: text("phone").unique(),
   phoneVerified: boolean("phone_verified").notNull().default(false),
   githubId: text("github_id").unique(),
+  wechatOpenId: text("wechat_open_id").unique(),
+  wechatUnionId: text("wechat_union_id").unique(),
   avatarUrl: text("avatar_url"),
   experienceLevel: text("experience_level").notNull().default("intermediate"),
   hasSetExperienceLevel: boolean("has_set_experience_level").notNull().default(false),
