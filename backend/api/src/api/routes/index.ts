@@ -4468,6 +4468,140 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // === WeChat OAuth (PC 扫码登录) ===
+
+  // 1) Initiate WeChat OAuth — redirect to WeChat QR code page
+  app.get("/api/auth/wechat", async (req, res) => {
+    const appId = process.env.WECHAT_APP_ID;
+    if (!appId) { res.status(500).json({ error: "WeChat OAuth not configured" }); return; }
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const state = randomBytes(16).toString("hex");
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    await pool.query(
+      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
+      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state }), expiresAt]
+    );
+    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/wechat/callback`);
+    const authorizeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
+    if (req.query.mode === "url") {
+      res.json({ url: authorizeUrl });
+      return;
+    }
+    res.redirect(authorizeUrl);
+  });
+
+  // 2) WeChat callback — redirect to frontend with code
+  app.get("/api/auth/wechat/callback", async (req, res) => {
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const { code, state } = req.query as { code?: string; state?: string };
+    if (!code || !state) {
+      res.redirect(`${baseUrl}/login?wechat_error=missing_params`);
+      return;
+    }
+    const row = await pool.query(
+      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+      [`wechat_state:${state}`]
+    );
+    if (row.rows.length === 0) {
+      res.redirect(`${baseUrl}/login?wechat_error=bad_state`);
+      return;
+    }
+    res.redirect(`${baseUrl}/wechat-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  });
+
+  // 3) Exchange code for access_token + user info, create/link user
+  app.post("/api/auth/wechat/exchange", async (req, res) => {
+    try {
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
+
+      // Verify state
+      const row = await pool.query(
+        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+        [`wechat_state:${state}`]
+      );
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      await pool.query(`DELETE FROM session WHERE sid = $1`, [`wechat_state:${state}`]);
+
+      const appId = process.env.WECHAT_APP_ID!;
+      const appSecret = process.env.WECHAT_APP_SECRET!;
+
+      // Exchange code for access_token
+      const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appId}&secret=${appSecret}&code=${code}&grant_type=authorization_code`;
+      const tokenRes = await fetch(tokenUrl);
+      const tokenData = await tokenRes.json() as {
+        access_token?: string;
+        openid?: string;
+        unionid?: string;
+        errcode?: number;
+        errmsg?: string;
+      };
+
+      if (!tokenData.access_token || !tokenData.openid) {
+        console.error("[wechat/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.errmsg || "no_access_token" });
+        return;
+      }
+
+      // Fetch user info
+      const userInfoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}`;
+      const userInfoRes = await fetch(userInfoUrl);
+      const wxUser = await userInfoRes.json() as {
+        openid: string;
+        nickname: string;
+        headimgurl: string;
+        unionid?: string;
+        errcode?: number;
+      };
+
+      if (wxUser.errcode) {
+        console.error("[wechat/exchange] userinfo error:", wxUser);
+        res.status(400).json({ error: "userinfo_failed" });
+        return;
+      }
+
+      const openId = wxUser.openid;
+      const unionId = wxUser.unionid || tokenData.unionid;
+      const nickname = wxUser.nickname || "微信用户";
+      const avatar = wxUser.headimgurl || null;
+
+      // Find or create user
+      let user = await storage.getUserByWechatOpenId(openId);
+      if (!user) {
+        // Generate unique username from nickname
+        let candidate = nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user";
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user"}_${suffix}`;
+        }
+        user = await storage.createWechatUser({
+          username: candidate,
+          openId,
+          unionId,
+          avatarUrl: avatar,
+        });
+      }
+
+      // Set session
+      (req.session as any).userId = user.id;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => err ? reject(err) : resolve())
+      );
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        inviteCode: (user as any).inviteCode ?? null,
+        avatarUrl: (user as any).avatarUrl ?? null,
+      });
+    } catch (err) {
+      console.error("[auth/wechat/exchange]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // === SKILLS API ===
 
   // User Skills
