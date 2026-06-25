@@ -5660,11 +5660,15 @@ Generate the cascade.md content for this project based on both the plan and the 
       const framework = req.query.framework as string | undefined;
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
+      const author = (req.query.author as string | undefined)?.trim() || ""; // username filter
 
       // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
-      const baseWhere = framework
-        ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, framework), eq(publishedApps.adminTakenDown, false))
-        : and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false));
+      const baseWhere = and(
+        eq(publishedApps.visibility, "public"),
+        eq(publishedApps.adminTakenDown, false),
+        ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
+      );
 
       const fullWhere = q
         ? and(baseWhere, or(
@@ -5866,6 +5870,26 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
     } catch (err) {
       console.error("[square/files]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/authors — list all users who have public published apps
+  app.get("/api/square/authors", async (req, res) => {
+    try {
+      const rows = await db
+        .selectDistinct({
+          username: users.username,
+          appCount: count(),
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false)))
+        .groupBy(users.username)
+        .orderBy(desc(count()));
+      res.json({ authors: rows });
+    } catch (err) {
+      console.error("[square/authors]", err);
       res.status(500).json({ error: "failed" });
     }
   });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
-import { Search } from "lucide-react";
+import { Search, ChevronDown, X } from "lucide-react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +48,11 @@ const FRAMEWORKS = [
 
 type SortMode = "latest" | "hottest";
 
+interface Author {
+  username: string;
+  appCount: number;
+}
+
 export default function CreateSquarePage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -61,10 +66,14 @@ export default function CreateSquarePage() {
   const [searchInput, setSearchInput] = useState(""); // what user types
   const [search, setSearch] = useState("");            // debounced, sent to API
   const [framework, setFramework] = useState("");
+  const [author, setAuthor] = useState("");            // username filter
   const [sort, setSort] = useState<SortMode>("latest");
   const [offset, setOffset] = useState(0);
   const [forkingId, setForkingId] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  const [authors, setAuthors] = useState<Author[]>([]);
+  const [authorDropOpen, setAuthorDropOpen] = useState(false);
+  const authorDropRef = useRef<HTMLDivElement>(null);
 
   // keep offset in a ref so fetchApps closure stays stable when loading more
   const offsetRef = useRef(0);
@@ -83,6 +92,26 @@ export default function CreateSquarePage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Close author dropdown when clicking outside
+  useEffect(() => {
+    if (!authorDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (authorDropRef.current && !authorDropRef.current.contains(e.target as Node)) {
+        setAuthorDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [authorDropOpen]);
+
+  // Fetch authors list on mount
+  useEffect(() => {
+    fetch("/api/square/authors")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.authors) setAuthors(d.authors); })
+      .catch(() => {});
+  }, []);
+
   const fetchApps = useCallback(async (reset = false) => {
     const off = reset ? 0 : offsetRef.current;
     if (!reset) setLoadingMore(true);
@@ -93,6 +122,7 @@ export default function CreateSquarePage() {
         offset: String(off),
         sort,
         ...(framework ? { framework } : {}),
+        ...(author ? { author } : {}),
         ...(search ? { q: search } : {}),
       });
       const res = await fetch(`/api/square?${params}`);
@@ -110,12 +140,12 @@ export default function CreateSquarePage() {
       setHasMore(newApps.length === LIMIT);
     } catch { /* silent */ }
     finally { setLoading(false); setLoadingMore(false); }
-  }, [framework, sort, search]);
+  }, [framework, sort, search, author]);
 
   useEffect(() => {
     fetchApps(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [framework, sort, search]);
+  }, [framework, sort, search, author]);
 
   async function handleFork(id: string) {
     if (!userId) { navigate("/login"); return; }
@@ -228,8 +258,9 @@ export default function CreateSquarePage() {
       {/* ── Horizontal tag filter bar + sort tabs ── */}
       <div className="sticky top-20 z-40 bg-white/90 backdrop-blur-sm py-4 border-b border-black/[0.06]">
         <div className="max-w-5xl mx-auto px-6 sm:px-16 flex items-center justify-between gap-4">
-          {/* Tag pills */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Left: Framework pills + Author dropdown */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Framework pills */}
             {FRAMEWORKS.map((f) => {
               const selected = framework === f.value;
               return (
@@ -247,6 +278,99 @@ export default function CreateSquarePage() {
                 </button>
               );
             })}
+
+            {/* Divider */}
+            {authors.length > 0 && (
+              <span className="text-gray-200 select-none text-[13px]">|</span>
+            )}
+
+            {/* Author dropdown */}
+            {authors.length > 0 && (
+              <div className="relative" ref={authorDropRef}>
+                <button
+                  type="button"
+                  onClick={() => setAuthorDropOpen((v) => !v)}
+                  className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[13px] transition-all duration-150 border ${
+                    author
+                      ? "bg-black text-white border-black font-medium"
+                      : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
+                  }`}
+                >
+                  {author ? (
+                    <>
+                      <span>@{author}</span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setAuthor(""); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setAuthor(""); } }}
+                        className="ml-0.5 opacity-70 hover:opacity-100"
+                      >
+                        <X className="w-3 h-3" />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>创作者</span>
+                      <ChevronDown className="w-3 h-3 opacity-50" />
+                    </>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {authorDropOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                      transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                      className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden"
+                      style={{
+                        minWidth: 180,
+                        maxHeight: 280,
+                        overflowY: "auto",
+                        background: "white",
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                        zIndex: 100,
+                      }}
+                    >
+                      {/* All option */}
+                      <button
+                        type="button"
+                        onClick={() => { setAuthor(""); setAuthorDropOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${
+                          !author ? "font-semibold text-black" : "text-gray-700"
+                        }`}
+                      >
+                        全部创作者
+                      </button>
+                      <div className="h-px bg-gray-100 mx-3" />
+                      {authors.map((a) => (
+                        <button
+                          key={a.username}
+                          type="button"
+                          onClick={() => { setAuthor(a.username); setAuthorDropOpen(false); }}
+                          className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 flex items-center justify-between gap-3 ${
+                            author === a.username ? "font-semibold text-black bg-gray-50" : "text-gray-700"
+                          }`}
+                        >
+                          <span>@{a.username}</span>
+                          <span className="text-[11px] text-gray-400 shrink-0">{a.appCount} 个应用</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Active author tag — also shown as a removable chip in filter bar */}
+            {author && (
+              <span className="text-[12px] text-gray-400">
+                {filtered.length} 个结果
+              </span>
+            )}
           </div>
 
           {/* Sort tabs */}
