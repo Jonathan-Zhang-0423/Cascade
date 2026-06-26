@@ -60,6 +60,44 @@ export function stripProjectNameMarker(text: string): string {
   return text.replace(PROJECT_NAME_REGEX_GLOBAL, "").trim();
 }
 
+/**
+ * Build the message history sent to the manager agent, compressing any
+ * completed build round into a one-line summary so the planner focuses on the
+ * NEW request instead of re-surfacing the previous round's plan/issues.
+ *
+ * A "completed round" = everything up to and including the most recent message
+ * carrying a `buildResult`. Messages after it (the user's new request) are kept
+ * verbatim. Pure function — unit-tested in chat-utils.test.ts.
+ */
+export function buildManagerHistory(
+  messages: Array<{ role: string; content: string; buildResult?: unknown; typing?: boolean }>,
+): Array<{ role: "user" | "assistant"; content: string }> {
+  // Detect the completed-round boundary on the RAW list FIRST. The buildResult
+  // marker message carries empty content, so filtering by `content` before this
+  // step would drop it and silently skip compression — that was the original
+  // bug where the previous round's plan leaked into the next request.
+  const lastBuildIdx = messages.reduce((acc, m, i) => (m.buildResult ? i : acc), -1);
+
+  const keep = (m: { role: string; content: string; typing?: boolean }) =>
+    (m.role === "user" || m.role === "assistant") && !!m.content && !m.typing;
+
+  if (lastBuildIdx < 0) {
+    return messages.filter(keep).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+  }
+
+  const afterBuild = messages.slice(lastBuildIdx + 1).filter(keep);
+  const previousUserMsgs = messages.slice(0, lastBuildIdx + 1).filter((m) => m.role === "user" && !!m.content);
+  const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
+  const roundSummary = lastPrevUserMsg
+    ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
+    : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
+
+  return [
+    { role: "assistant", content: roundSummary },
+    ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+  ];
+}
+
 function stripPlainFences(text: string): string {
   return text.replace(PLAIN_FENCE_RE, "").trim();
 }
