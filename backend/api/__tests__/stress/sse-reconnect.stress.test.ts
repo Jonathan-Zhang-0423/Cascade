@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 import { installAiMock, type AiMock } from "../_helpers/ai-mock";
@@ -21,7 +21,6 @@ describeIntegration("stress: SSE reconnect + replay", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -29,6 +28,7 @@ describeIntegration("stress: SSE reconnect + replay", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    http = await createAuthenticatedClient(appCtx.baseUrl);
     // A long-ish, slow stream so we can reliably interrupt it mid-flight.
     ai = installAiMock({ text: "lorem ipsum ".repeat(60), chunks: 60, perChunkDelayMs: 25 });
   });
