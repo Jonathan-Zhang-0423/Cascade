@@ -687,11 +687,25 @@ export async function registerRoutes(
   }
 
   // All auth endpoints: 30 req / 15 min per IP
-  app.use("/api/auth", makeRateLimiter(30, 15, "Too many requests. Please try again later."));
+  const authLimiter = makeRateLimiter(30, 15, "Too many requests. Please try again later.");
+  const loginLimiter = makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes.");
+  const otpSendLimiter = makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again.");
+  app.use("/api/auth", authLimiter);
   // Login specifically: 10 req / 15 min per IP
-  app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
+  app.use("/api/auth/login", loginLimiter);
   // OTP send: 10 req / 60 min per IP
-  app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
+  app.use("/api/auth/otp/send", otpSendLimiter);
+
+  // Test-only seam: reset the in-memory rate-limiter windows so serialized
+  // integration tests don't accumulate strikes across cases (the limiter store
+  // lives on the module-level app, shared across every test in a file).
+  (app as any)._resetRateLimiters = () => {
+    for (const lim of [authLimiter, loginLimiter, otpSendLimiter]) {
+      try { (lim as any).resetKey?.("::ffff:127.0.0.1"); (lim as any).resetKey?.("127.0.0.1"); } catch {}
+      // express-rate-limit v7 exposes the store on the middleware; clear it wholesale.
+      try { (lim as any).store?.resetAll?.(); } catch {}
+    }
+  };
 
   app.get("/api/providers", (_req, res) => {
     res.json({
