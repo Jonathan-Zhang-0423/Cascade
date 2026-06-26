@@ -129,12 +129,6 @@ export function parseCodeBlocks(content: string): Array<string | CodeBlock> {
   return parts;
 }
 
-export function extractCodeBlocks(content: string): CodeBlock[] {
-  return parseCodeBlocks(content).filter(
-    (part): part is CodeBlock => typeof part !== "string",
-  );
-}
-
 export function parseCompletionSummary(raw: string): ParsedCompletion | null {
   function extractMarker(text: string, marker: string): string | null {
     const idx = text.indexOf(`[${marker}]`);
@@ -780,32 +774,4 @@ export function getActionLogColor(type: ActionLogEntry["type"]): string {
     default:
       return "text-muted-foreground";
   }
-}
-
-export function generateCascade(params: {
-  plan: ManagerPlan | ManagerPlanPayload;
-  userPrompt: string;
-  currentFiles: { path: string; content: string }[];
-}): void {
-  fetch("/api/generate-cascade", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      plan: params.plan,
-      userPrompt: params.userPrompt,
-      projectName: undefined,
-      currentFiles: params.currentFiles,
-    }),
-  })
-    .then(async (r) => {
-      if (!r.ok) return;
-      const d = await r.json();
-      if (d.content) {
-        const { useIDEStore } = await import("@/stores/ide-store");
-        useIDEStore
-          .getState()
-          .updateFileContent("/project/cascade.md", d.content);
-      }
-    })
-    .catch(() => {});
 }
