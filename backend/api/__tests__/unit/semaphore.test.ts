@@ -134,4 +134,69 @@ describe("Semaphore", () => {
       expect(s.pending).toBe(0);
     });
   });
+
+  describe("timeout vs hand-off race (orphan-slot guard)", () => {
+    it("a waiter that times out does not consume a slot when the holder later releases", async () => {
+      vi.useFakeTimers();
+      try {
+        const s = new Semaphore(1);
+        await s.acquire(); // holder owns the only slot
+
+        // Two queued waiters: w1 will time out, w2 should still get the slot.
+        const w1 = s.acquire(1000).catch((e) => e);
+        const w2created = s.acquire(60_000);
+        let w2Acquired = false;
+        const w2 = w2created.then(() => { w2Acquired = true; });
+        expect(s.pending).toBe(2);
+
+        // w1 times out and removes itself from the queue.
+        await vi.advanceTimersByTimeAsync(1001);
+        const err = await w1;
+        expect(err).toBeInstanceOf(Error);
+        expect(s.pending).toBe(1); // only w2 remains
+
+        // Holder releases — the freed slot must hand off to w2, not be orphaned.
+        s.release();
+        await w2;
+        expect(w2Acquired).toBe(true);
+        expect(s.pending).toBe(0);
+        expect(s.running).toBe(1); // w2 holds it now; count is exactly 1, no leak
+
+        // w2 releases — back to empty.
+        s.release();
+        expect(s.running).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("repeated timeout+release churn keeps running count exact (no ratchet)", async () => {
+      vi.useFakeTimers();
+      try {
+        const s = new Semaphore(2);
+        await s.acquire();
+        await s.acquire(); // both slots held
+        expect(s.running).toBe(2);
+
+        // Pile on 10 waiters that all time out.
+        const waiters = Array.from({ length: 10 }, () => s.acquire(500).catch((e) => e));
+        expect(s.pending).toBe(10);
+        await vi.advanceTimersByTimeAsync(501);
+        await Promise.all(waiters);
+        expect(s.pending).toBe(0);
+
+        // Release both holders. running must land exactly at 0, never negative
+        // and never stuck above 0 (the "ratchet" failure mode).
+        s.release();
+        s.release();
+        expect(s.running).toBe(0);
+        // Capacity fully restored.
+        await s.acquire();
+        await s.acquire();
+        expect(s.running).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
