@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, GitFork, Share2, RotateCcw, Unlock, Lock, Globe, Link2 } from "lucide-react";
+import { ArrowLeft, GitFork, Share2, RotateCcw, Unlock, Lock, Globe, Link2, Heart, MessageCircle, Trash2 } from "lucide-react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useToast } from "@/hooks/use-toast";
@@ -50,8 +50,19 @@ interface AppDetail {
   visibility: string;
   previewScreenshot: string | null;
   framework: string;
+  viewCount: number;
+  forkCount: number;
+  likeCount: number;
   publishedAt: string;
   updatedAt: string;
+  authorUsername: string;
+}
+
+interface AppComment {
+  id: string;
+  content: string;
+  createdAt: string;
+  userId: string;
   authorUsername: string;
 }
 
@@ -96,6 +107,17 @@ export default function AppDetailPage() {
   const [iframeKey, setIframeKey] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
+  // Like state
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [liking, setLiking] = useState(false);
+
+  // Comment state
+  const [comments, setComments] = useState<AppComment[]>([]);
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentInput, setCommentInput] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+
   const shareUrl = `${window.location.origin}/CreateSquare/app/${id}`;
 
   // Scroll listener for navbar blur effect
@@ -115,10 +137,24 @@ export default function AppDetailPage() {
         return r.json();
       })
       .then((data) => {
-        if (data) setApp(data.app);
+        if (data) {
+          setApp(data.app);
+          setLikeCount(data.app.likeCount ?? 0);
+        }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
+
+    // Fetch like status and comments in parallel
+    fetch(`/api/square/${id}/like`)
+      .then((r) => r.json())
+      .then((d) => setLiked(d.liked ?? false))
+      .catch(() => {});
+
+    fetch(`/api/square/${id}/comments?limit=20`)
+      .then((r) => r.json())
+      .then((d) => { setComments(d.comments ?? []); setCommentTotal(d.total ?? 0); })
+      .catch(() => {});
   }, [id]);
 
   async function handleFork() {
@@ -135,6 +171,57 @@ export default function AppDetailPage() {
       toast({ title: "Fork 失败，请重试", variant: "destructive" });
     } finally {
       setForking(false);
+    }
+  }
+
+  async function handleLike() {
+    if (!userId) { navigate("/login"); return; }
+    if (!app || liking) return;
+    setLiking(true);
+    try {
+      const res = await fetch(`/api/square/${app.id}/like`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setLiked(data.liked);
+      setLikeCount((c) => data.liked ? c + 1 : Math.max(0, c - 1));
+    } catch {
+      toast({ title: "操作失败，请重试", variant: "destructive" });
+    } finally {
+      setLiking(false);
+    }
+  }
+
+  async function handleComment() {
+    if (!userId) { navigate("/login"); return; }
+    if (!app || !commentInput.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const res = await fetch(`/api/square/${app.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: commentInput.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setComments((prev) => [data.comment, ...prev]);
+      setCommentTotal((t) => t + 1);
+      setCommentInput("");
+    } catch {
+      toast({ title: "评论失败，请重试", variant: "destructive" });
+    } finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!app) return;
+    try {
+      const res = await fetch(`/api/square/${app.id}/comments/${commentId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      setCommentTotal((t) => Math.max(0, t - 1));
+    } catch {
+      toast({ title: "删除失败，请重试", variant: "destructive" });
     }
   }
 
@@ -291,15 +378,39 @@ export default function AppDetailPage() {
                 </button>
               )}
 
-              {/* Share button */}
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                className="w-full py-3 rounded-xl border border-black/[0.12] text-[14px] font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Share2 className="w-4 h-4" />
-                分享
-              </button>
+              {/* Like + Share row */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleLike}
+                  disabled={liking}
+                  className="flex-1 py-3 rounded-xl border text-[14px] font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  style={liked
+                    ? { background: "rgba(239,68,68,0.06)", borderColor: "rgba(239,68,68,0.3)", color: "#dc2626" }
+                    : { borderColor: "rgba(0,0,0,0.12)", color: "#374151" }}
+                >
+                  <Heart className="w-4 h-4" fill={liked ? "currentColor" : "none"} />
+                  {likeCount > 0 ? likeCount : "点赞"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(true)}
+                  className="flex-1 py-3 rounded-xl border border-black/[0.12] text-[14px] font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Share2 className="w-4 h-4" />
+                  分享
+                </button>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-black/[0.07]" />
+
+            {/* Stats row */}
+            <div className="flex items-center gap-4 text-[12px] text-gray-400">
+              <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5" />{likeCount} 点赞</span>
+              <span className="flex items-center gap-1"><GitFork className="w-3.5 h-3.5" />{app.forkCount} Fork</span>
+              <span className="flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" />{commentTotal} 评论</span>
             </div>
 
             {/* Divider */}
@@ -320,6 +431,103 @@ export default function AppDetailPage() {
             </div>
           </motion.div>
         </div>
+
+        {/* ── Comments section ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-14"
+        >
+          <h2 className="text-[18px] font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <MessageCircle className="w-5 h-5" />
+            评论
+            {commentTotal > 0 && (
+              <span className="text-[14px] font-normal text-gray-400">{commentTotal}</span>
+            )}
+          </h2>
+
+          {/* Comment input */}
+          <div className="mb-8">
+            {userId ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleComment();
+                  }}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="写下你的评论…（⌘+Enter 发送）"
+                  className="w-full px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 border border-black/[0.10] rounded-xl outline-none focus:border-black/30 transition-colors resize-none"
+                  style={{ fontFamily: FONT }}
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-gray-400">{commentInput.length}/500</span>
+                  <button
+                    type="button"
+                    onClick={handleComment}
+                    disabled={submittingComment || !commentInput.trim()}
+                    className="px-5 py-2 rounded-xl bg-black text-white text-[13px] font-medium hover:opacity-85 transition-opacity disabled:opacity-40"
+                  >
+                    {submittingComment ? "发送中…" : "发送"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-5 py-4 rounded-xl border border-black/[0.07] bg-gray-50 text-center">
+                <p className="text-[13px] text-gray-500">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/login")}
+                    className="text-black font-medium hover:underline"
+                  >
+                    登录
+                  </button>
+                  {" "}后才能发表评论
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Comment list */}
+          {comments.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-gray-400">
+              <MessageCircle className="w-8 h-8 text-gray-200" />
+              <p className="text-[13px]">还没有评论，来说点什么吧</p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {comments.map((c) => (
+                <div key={c.id} className="flex gap-3">
+                  {/* Avatar */}
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-[12px] font-semibold text-gray-600 select-none">
+                    {c.authorUsername.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-[13px] font-semibold text-gray-900">@{c.authorUsername}</span>
+                      <span className="text-[11px] text-gray-400">{timeAgo(c.createdAt)}</span>
+                    </div>
+                    <p className="text-[14px] text-gray-700 leading-relaxed break-words">{c.content}</p>
+                  </div>
+                  {/* Delete — only own comments */}
+                  {c.userId === userId && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteComment(c.id)}
+                      className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                      title="删除评论"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
       </div>
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={app.title} />

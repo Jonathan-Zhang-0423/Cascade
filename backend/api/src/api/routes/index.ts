@@ -23,7 +23,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -3765,6 +3765,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         experienceLevel: (user as any).experienceLevel,
         hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
         inviteCode: (user as any).inviteCode ?? null,
+        phoneVerified: !!(user as any).phoneVerified,
         trialExpiresAt: (user as any).trialExpiresAt
           ? ((user as any).trialExpiresAt as Date).toISOString()
           : null,
@@ -5943,6 +5944,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           framework: publishedApps.framework,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
           publishedAt: publishedApps.publishedAt,
           updatedAt: publishedApps.updatedAt,
           authorUsername: users.username,
@@ -5984,6 +5986,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           framework: publishedApps.framework,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
           publishedAt: publishedApps.publishedAt,
           updatedAt: publishedApps.updatedAt,
           authorUsername: users.username,
@@ -6207,7 +6210,148 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
-  // ─── AIGC Agent Session ───────────────────────────────────────────────────
+  // ── Likes ────────────────────────────────────────────────────────────────
+
+  // POST /api/square/:id/like — toggle like (auth required)
+  app.post("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const appId = req.params.id;
+    try {
+      const { randomUUID } = await import("crypto");
+      const existing = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // already liked — unlike
+        await db.delete(appLikes).where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)));
+        await db.update(publishedApps)
+          .set({ likeCount: sql`greatest(${publishedApps.likeCount} - 1, 0)` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: false });
+      } else {
+        // not liked — like
+        await db.insert(appLikes).values({ id: randomUUID(), appId, userId });
+        await db.update(publishedApps)
+          .set({ likeCount: sql`${publishedApps.likeCount} + 1` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: true });
+      }
+    } catch (err) {
+      console.error("[square/like]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/like — check if current user liked this app
+  app.get("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.json({ liked: false }); return; }
+    try {
+      const rows = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, req.params.id), eq(appLikes.userId, userId)))
+        .limit(1);
+      res.json({ liked: rows.length > 0 });
+    } catch (err) {
+      console.error("[square/like/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  // GET /api/square/:id/comments — list comments (public)
+  app.get("/api/square/:id/comments", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const offset = parseInt(req.query.offset as string) || 0;
+    try {
+      const rows = await db
+        .select({
+          id: appComments.id,
+          content: appComments.content,
+          createdAt: appComments.createdAt,
+          userId: appComments.userId,
+          authorUsername: users.username,
+        })
+        .from(appComments)
+        .innerJoin(users, eq(appComments.userId, users.id))
+        .where(eq(appComments.appId, req.params.id))
+        .orderBy(desc(appComments.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(appComments)
+        .where(eq(appComments.appId, req.params.id));
+
+      res.json({ comments: rows, total });
+    } catch (err) {
+      console.error("[square/comments/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/comments — add a comment (auth required)
+  app.post("/api/square/:id/comments", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const content = ((req.body as any)?.content ?? "").trim();
+    if (!content || content.length > 500) {
+      res.status(400).json({ error: "invalid_content" }); return;
+    }
+    try {
+      const { randomUUID } = await import("crypto");
+      const id = randomUUID();
+      const now = new Date();
+      await db.insert(appComments).values({
+        id,
+        appId: req.params.id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+      res.json({
+        comment: {
+          id,
+          content,
+          createdAt: now,
+          userId,
+          authorUsername: user[0]?.username ?? "unknown",
+        }
+      });
+    } catch (err) {
+      console.error("[square/comments/post]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id/comments/:commentId — delete comment (owner or admin)
+  app.delete("/api/square/:id/comments/:commentId", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const [comment] = await db
+        .select({ userId: appComments.userId })
+        .from(appComments)
+        .where(eq(appComments.id, req.params.commentId))
+        .limit(1);
+      if (!comment) { res.status(404).json({ error: "not_found" }); return; }
+      if (comment.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(appComments).where(eq(appComments.id, req.params.commentId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/comments/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
 
   // POST /api/aigc/session — create a new AIGC session
   app.post("/api/aigc/session", async (req, res) => {

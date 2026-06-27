@@ -15,3 +15,5 @@ export * from './changelog-entries';
 export * from './notifications';
 export * from './published-apps';
 export * from './project-videos';
+export * from './app-likes';
+export * from './app-comments';
