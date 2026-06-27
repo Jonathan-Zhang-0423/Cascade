@@ -307,8 +307,8 @@ export function Navbar({
   const handleFullscreen = onFullscreen;
 
   const menuItems = [
-    { icon: <Home className="w-3.5 h-3.5" />, label: t("navbar.home"), action: () => { handleBack(); setLogoMenuOpen(false); } },
-    { icon: <Clock className="w-3.5 h-3.5" />, label: t("navbar.recentProjects"), action: () => { navigate("/app"); setLogoMenuOpen(false); } },
+    { icon: <Home className="w-3.5 h-3.5" />, label: t("navbar.home"), testid: "menu-item-home", action: () => { handleBack(); setLogoMenuOpen(false); } },
+    { icon: <Clock className="w-3.5 h-3.5" />, label: t("navbar.recentProjects"), testid: "menu-item-recent", action: () => { navigate("/app"); setLogoMenuOpen(false); } },
     null,
     {
       icon: mode === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />,
@@ -346,6 +346,7 @@ export function Navbar({
           <button
             className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-accent/20 transition-colors relative"
             onClick={() => setLogoMenuOpen((v) => !v)}
+            data-testid="button-logo-menu"
           >
             <img
               src={mode === "dark" ? logoBlack : logoWhite}
@@ -381,6 +382,7 @@ export function Navbar({
                     key={item.label}
                     className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent/20 transition-colors text-left"
                     onClick={item.action}
+                    data-testid={(item as { testid?: string }).testid}
                   >
                     <span className="text-muted-foreground shrink-0">{item.icon}</span>
                     <span className="flex-1">{item.label}</span>
