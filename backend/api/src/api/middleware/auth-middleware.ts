@@ -5,8 +5,11 @@ import { verifyCaptcha } from "../../infra/captcha";
 /**
  * Auth middleware extracted from registerRoutes (Step B of the routes split).
  * Pure dependency-light functions: requireInviteCode reads storage; checkCaptcha
- * reads the captcha verifier + caller IP. Behavior is unchanged.
+ * reads the captcha verifier + caller IP; checkAdmin reads a header secret.
+ * Behavior is unchanged.
  */
+
+const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
 
 /**
  * Gate that requires an authenticated user who has redeemed an invite code.
@@ -43,4 +46,20 @@ export async function checkCaptcha(req: Request, res: Response): Promise<boolean
   const ok = await verifyCaptcha(ticket ?? "", randstr ?? "", ip);
   if (!ok) res.status(403).json({ error: "Captcha verification failed" });
   return ok;
+}
+
+/**
+ * Admin guard via the x-admin-secret header. Returns false (and writes the
+ * error response) when not configured or the secret doesn't match.
+ */
+export function checkAdmin(req: Request, res: Response): boolean {
+  if (!ADMIN_SECRET) {
+    res.status(503).json({ error: "Admin access not configured" });
+    return false;
+  }
+  if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
 }
