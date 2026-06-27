@@ -15,6 +15,7 @@ import { z } from "zod";
 // @ts-ignore
 import helmet from "helmet";
 import { createSecurity } from "../middleware/security";
+import { requireInviteCode, checkCaptcha } from "../middleware/auth-middleware";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
@@ -27,7 +28,7 @@ import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
-import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
+import { isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
@@ -609,25 +610,6 @@ export async function registerRoutes(
   // authenticated AND the user must have redeemed an invite code. Without this,
   // a logged-in but un-gated user (e.g. a brand-new GitHub-only signup) could hit
   // these APIs directly. Returns 401 if unauthenticated, 403 if no invite code.
-  const requireInviteCode = async (req: any, res: any, next: any) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
-      const user = await storage.getUser(userId);
-      if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
-      // 手机号注册用户（phone_verified=true）直接放行，无需邀请码
-      if ((user as any).phoneVerified) { next(); return; }
-      if (!(user as any).inviteCode) {
-        res.status(403).json({ error: "Invite code required" });
-        return;
-      }
-      next();
-    } catch (err) {
-      console.error("[requireInviteCode]", err);
-      res.status(500).json({ error: "Authorization check failed" });
-    }
-  };
-
   // Temporary debug endpoint — receives client-side trace from BuildStreamInstance
   app.post("/api/_dbg", (req, res) => {
     const msg = req.body?.msg || "";
@@ -3783,14 +3765,6 @@ Rules:
   // 人机验证（腾讯云天御）：从请求体取 ticket/randstr，结合真实 IP 验票。
   // 验证失败返回 403。未配置凭证时 verifyCaptcha 内部降级放行。
   // 注意：这不替代 OTP 发送频率限制 / 验证码锁，两者叠加才完整。
-  const checkCaptcha = async (req: any, res: any): Promise<boolean> => {
-    const { ticket, randstr } = req.body as { ticket?: string; randstr?: string };
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
-    const ok = await verifyCaptcha(ticket ?? "", randstr ?? "", ip);
-    if (!ok) res.status(403).json({ error: "Captcha verification failed" });
-    return ok;
-  };
-
   // 前端 TCaptcha 初始化所需的公开 CaptchaAppId。enabled=false 时前端跳过取票。
   app.get("/api/config/captcha", (_req, res) => {
     res.json({ enabled: isCaptchaEnabled(), appId: getCaptchaAppId() });
