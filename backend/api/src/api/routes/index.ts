@@ -17,6 +17,11 @@ import helmet from "helmet";
 import { createSecurity } from "../middleware/security";
 import { requireInviteCode, checkCaptcha } from "../middleware/auth-middleware";
 import { registerNotificationRoutes } from "./notifications";
+import {
+  isEduEmail, isQizhiEmail, getTrialInfo, randomSuffix, inviteCodePrefix,
+  formatInviteCode, redeemInviteCode, ensureReferralCode, extendTrial,
+  QIZHI_FREE_UNTIL, REFERRAL_GRANT_DAYS, REFERRAL_MAX_REWARDED,
+} from "../services/invite-service";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
@@ -24,7 +29,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, notifications } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, projects, chatMessages, otpCodes, chatSessions, userFeedback, notifications } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -3164,65 +3169,8 @@ Rules:
   });
 
   // === REFERRAL ===
-
-  const REFERRAL_GRANT_DAYS = 30;
-  // Anti-abuse: cap how many referrals earn the *inviter* a reward. Without this,
-  // someone can register N throwaway accounts, have each redeem the inviter's
-  // code, and stack unlimited free trial days. Invitees still always get their
-  // one-time reward; only the inviter's payout is bounded.
-  const REFERRAL_MAX_REWARDED = 10;
-
-  // 6-character random suffix from an unambiguous charset, drawn from a CSPRNG.
-  // crypto.randomBytes (not Math.random) so issued codes are unpredictable and
-  // cannot be enumerated/guessed — Math.random is seeded PRNG output and is a
-  // real abuse vector for codes that gate paid trials.
-  // Space: 32^6 = ~1 billion combinations. charset length 32 divides 256, so
-  // `byte % 32` is bias-free.
-  function randomSuffix(): string {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const bytes = randomBytes(6);
-    let s = "";
-    for (let i = 0; i < 6; i++) s += chars[bytes[i] % chars.length];
-    return s;
-  }
-
-  // Determine the referral code prefix for a user based on their email.
-  // CASCQJ = 奇迹创坛, CASCEDU = edu, CASC = standard
-  // Format matches admin-issued invite codes: prefix + 6 random chars, no separator.
-  async function referralCodePrefix(userId: string): Promise<string> {
-    const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
-    const email = row?.email ?? "";
-    if (isQizhiEmail(email)) return "CASCQJ";
-    if (isEduEmail(email)) return "CASCEDU";
-    return "CASC";
-  }
-
-  // Ensure the user has a referral code, generating one if absent.
-  // Retries up to 20 times on unique-constraint collision (probability negligible at scale).
-  async function ensureReferralCode(userId: string): Promise<string> {
-    const [row] = await db.select({ referralCode: users.referralCode }).from(users).where(eq(users.id, userId));
-    if (row?.referralCode) return row.referralCode;
-    const prefix = await referralCodePrefix(userId);
-    for (let i = 0; i < 20; i++) {
-      const code = `${prefix}${randomSuffix()}`;
-      try {
-        await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
-        return code;
-      } catch {
-        // unique constraint violation — retry with a new suffix
-      }
-    }
-    throw new Error("Failed to generate referral code after 20 attempts");
-  }
-
-  // Extend trialExpiresAt by N days (from now or from current expiry, whichever is later)
-  async function extendTrial(userId: string, days: number, reason: string, relatedUserId?: string): Promise<void> {
-    const [row] = await db.select({ trialExpiresAt: users.trialExpiresAt }).from(users).where(eq(users.id, userId));
-    const base = row?.trialExpiresAt && row.trialExpiresAt > new Date() ? row.trialExpiresAt : new Date();
-    const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-    await db.update(users).set({ trialExpiresAt: newExpiry }).where(eq(users.id, userId));
-    await db.insert(subscriptionGrants).values({ userId, grantedDays: days, reason, relatedUserId: relatedUserId ?? null });
-  }
+  // Helpers (randomSuffix / ensureReferralCode / extendTrial / referral consts)
+  // live in services/invite-service.ts.
 
   // GET /api/referral/my-code — return the current user's referral code and stats
   app.get("/api/referral/my-code", async (req, res) => {
@@ -3378,39 +3326,6 @@ Rules:
   // Validate an invite code and atomically mark it redeemed by the given user.
   // Returns the trial expiry to write to users.trialExpiresAt, or an error
   // string for the caller to map to an HTTP 400 response.
-  async function redeemInviteCode(code: string, userId: string): Promise<
-    | { ok: true; trialExpiresAt: Date; code: string }
-    | { ok: false; error: "Invalid invite code" | "Invite code already used" | "Invite code expired" }
-  > {
-    const trimmed = code.trim();
-    if (!trimmed) return { ok: false, error: "Invalid invite code" };
-    const [invite] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, trimmed));
-    if (!invite) return { ok: false, error: "Invalid invite code" };
-    if (invite.redeemedByUserId) return { ok: false, error: "Invite code already used" };
-    if (new Date(invite.expiresAt).getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
-    const now = new Date();
-    // Trial starts from registration time (now).
-    // For 奇绩创坛 codes: look up the subscriber's email to apply the fixed deadline.
-    let trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
-    if (invite.waitlistSubscriberId) {
-      const [sub] = await db.select({ email: waitlistSubscribers.email })
-        .from(waitlistSubscribers)
-        .where(eq(waitlistSubscribers.id, invite.waitlistSubscriberId));
-      if (sub && isQizhiEmail(sub.email)) {
-        trialExpiresAt = QIZHI_FREE_UNTIL < trialExpiresAt ? QIZHI_FREE_UNTIL : trialExpiresAt;
-      }
-    }
-    const updated = await db.update(inviteCodes)
-      .set({ redeemedByUserId: userId, redeemedAt: now })
-      .where(and(eq(inviteCodes.id, invite.id), isNull(inviteCodes.redeemedByUserId)))
-      .returning({ id: inviteCodes.id });
-    if (updated.length === 0) {
-      // Lost the race against another redemption.
-      return { ok: false, error: "Invite code already used" };
-    }
-    return { ok: true, trialExpiresAt, code: trimmed };
-  }
-
   app.post("/api/auth/register", async (req, res) => {
     // Username-based registration is closed. New users must register via
     // email OTP, phone OTP, or GitHub OAuth.
@@ -4400,60 +4315,11 @@ Rules:
 
   const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
   const BATCH_SIZE = 50;
-  const TRIAL_DAYS_NORMAL = 30;
-  const TRIAL_DAYS_EDU = 60;
-  const QIZHI_FREE_UNTIL = new Date("2026-09-30T23:59:59+08:00");
   const WAITLIST_BASE_URL = process.env.BASE_URL ?? process.env.APP_BASE_URL ?? "https://cascadeai.co";
 
-  function isEduEmail(email: string): boolean {
-    const lower = email.toLowerCase();
-    return lower.endsWith(".edu.cn") || lower.endsWith(".edu");
-  }
+  // Trial/email/invite-code helpers (isEduEmail / isQizhiEmail / getTrialInfo /
+  // inviteCodePrefix / formatInviteCode) live in services/invite-service.ts.
 
-  function isQizhiEmail(email: string): boolean {
-    return email.toLowerCase().endsWith("@miracleplus.com");
-  }
-
-  // CODE_EXPIRY_DAYS: how long the invite code itself remains claimable after
-  // being issued. Once the user registers, trial starts from registration time.
-  const CODE_EXPIRY_DAYS = 90;
-
-  function getTrialInfo(email: string, isEdu: boolean): { trialDays: number; codeExpiresAt: Date; label: string } {
-    const codeExpiresAt = new Date(Date.now() + CODE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-    if (isQizhiEmail(email)) {
-      // trialDays calculated at redemption time relative to QIZHI_FREE_UNTIL,
-      // so we store a sentinel value here; redeemInviteCode will recompute.
-      const daysUntilDeadline = Math.ceil((QIZHI_FREE_UNTIL.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-      return {
-        trialDays: daysUntilDeadline,
-        codeExpiresAt,
-        label: "奇绩创坛专属免费期至 2026 年 9 月 30 日（自注册之日起计算）",
-      };
-    }
-    if (isEdu) {
-      return {
-        trialDays: TRIAL_DAYS_EDU,
-        codeExpiresAt,
-        label: `教育优惠免费期 ${TRIAL_DAYS_EDU} 天（自注册之日起计算）`,
-      };
-    }
-    return {
-      trialDays: TRIAL_DAYS_NORMAL,
-      codeExpiresAt,
-      label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天（自注册之日起计算）`,
-    };
-  }
-  // Prefix encodes the user tier; suffix is a 6-char CSPRNG random string.
-  // CASC = standard (30d), CASCEDU = edu (60d), CASCQJ = 奇绩创坛 (until 2026-09-30).
-  // Random (not sequential) so codes can't be guessed/enumerated to claim trials.
-  function inviteCodePrefix(email: string): string {
-    if (isQizhiEmail(email)) return "CASCQJ";
-    if (isEduEmail(email)) return "CASCEDU";
-    return "CASC";
-  }
-  function formatInviteCode(email: string): string {
-    return `${inviteCodePrefix(email)}${randomSuffix()}`;
-  }
   function checkAdmin(req: any, res: any): boolean {
     if (!ADMIN_SECRET) {
       res.status(503).json({ error: "Admin access not configured" });
