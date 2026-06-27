@@ -6279,6 +6279,28 @@ Generate the cascade.md content for this project based on both the plan and the 
           .set({ likeCount: sql`${publishedApps.likeCount} + 1` })
           .where(eq(publishedApps.id, appId));
         res.json({ liked: true });
+
+        // Send notification to app owner (fire-and-forget, don't block response)
+        db.select({
+          appTitle: publishedApps.title,
+          ownerId: publishedApps.userId,
+          likerUsername: users.username,
+        })
+          .from(publishedApps)
+          .innerJoin(users, eq(users.id, userId))
+          .where(eq(publishedApps.id, appId))
+          .limit(1)
+          .then(([row]) => {
+            if (!row || row.ownerId === userId) return; // don't notify self-like
+            return db.insert(notifications).values({
+              userId: row.ownerId,
+              type: "app_like",
+              title: "有人点赞了你的应用",
+              body: `@${row.likerUsername} 点赞了你分享的「${row.appTitle}」`,
+              isRead: false,
+            });
+          })
+          .catch(() => {});
       }
     } catch (err) {
       console.error("[square/like]", err);
@@ -6358,15 +6380,33 @@ Generate the cascade.md content for this project based on both the plan and the 
         updatedAt: now,
       });
       const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+      const authorUsername = user[0]?.username ?? "unknown";
       res.json({
         comment: {
           id,
           content,
           createdAt: now,
           userId,
-          authorUsername: user[0]?.username ?? "unknown",
+          authorUsername,
         }
       });
+
+      // Send notification to app owner (fire-and-forget)
+      db.select({ appTitle: publishedApps.title, ownerId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1)
+        .then(([row]) => {
+          if (!row || row.ownerId === userId) return; // don't notify self-comment
+          return db.insert(notifications).values({
+            userId: row.ownerId,
+            type: "app_comment",
+            title: "有人评论了你的应用",
+            body: `@${authorUsername} 评论了你分享的「${row.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+            isRead: false,
+          });
+        })
+        .catch(() => {});
     } catch (err) {
       console.error("[square/comments/post]", err);
       res.status(500).json({ error: "failed" });
