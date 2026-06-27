@@ -6125,6 +6125,46 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // GET /api/square/:id/preview-session — start a preview session for the app's files (web only)
+  // Returns a short-lived token; the client loads /preview-serve/:token/ in an iframe.
+  app.get("/api/square/:id/preview-session", async (req, res) => {
+    try {
+      const [app] = await db
+        .select({ id: publishedApps.id, projectId: publishedApps.projectId, framework: publishedApps.framework, adminTakenDown: publishedApps.adminTakenDown, visibility: publishedApps.visibility, userId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id));
+      if (!app) { res.status(404).json({ error: "not_found" }); return; }
+      if (app.adminTakenDown) { res.status(403).json({ error: "taken_down" }); return; }
+      // Only private apps restrict access (link_only is fine for direct link)
+      const sessionUserId = (req.session as any)?.userId as string | undefined;
+      if (app.visibility === "private" && app.userId !== sessionUserId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Only web apps can be previewed in an iframe
+      if (app.framework !== "web") {
+        res.status(422).json({ error: "not_web", framework: app.framework }); return;
+      }
+
+      const files = await storage.getProjectFiles(app.projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_start_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+      res.json({ token, previewUrl: `/preview-serve/${token}/` });
+    } catch (err) {
+      console.error("[square/preview-session]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+
   // GET /api/square/authors — list all users who have public published apps
   app.get("/api/square/authors", async (req, res) => {
     try {

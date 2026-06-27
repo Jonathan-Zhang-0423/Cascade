@@ -104,8 +104,12 @@ export default function AppDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [forking, setForking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+
+  // Preview session state (web apps only)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Like state
   const [liked, setLiked] = useState(false);
@@ -140,6 +144,18 @@ export default function AppDetailPage() {
         if (data) {
           setApp(data.app);
           setLikeCount(data.app.likeCount ?? 0);
+          // Kick off preview session for web apps
+          if (data.app.framework === "web") {
+            setPreviewLoading(true);
+            fetch(`/api/square/${id}/preview-session`)
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.previewUrl) setPreviewUrl(d.previewUrl);
+                else setPreviewError("暂无可预览内容");
+              })
+              .catch(() => setPreviewError("预览加载失败"))
+              .finally(() => setPreviewLoading(false));
+          }
         }
       })
       .catch(() => setNotFound(true))
@@ -290,7 +306,7 @@ export default function AppDetailPage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-28 pb-16">
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-12 items-start">
 
-          {/* ── Left column: 55% — iframe preview ── */}
+          {/* ── Left column: 55% — preview ── */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -298,23 +314,71 @@ export default function AppDetailPage() {
             className="w-full lg:w-[55%] order-2 lg:order-1"
           >
             <div className="relative rounded-2xl overflow-hidden border border-black/[0.07] shadow-sm aspect-[16/9] bg-gray-50">
-              <iframe
-                key={iframeKey}
-                src={`/project/${app.projectId}/preview`}
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-                title={app.title}
-              />
-              {/* Reload button */}
-              <button
-                type="button"
-                onClick={() => setIframeKey((k) => k + 1)}
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm hover:bg-gray-50 transition-colors"
-                title="刷新预览"
-                aria-label="刷新预览"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
-              </button>
+              {app.framework !== "web" ? (
+                /* Non-web: show screenshot or placeholder */
+                app.previewScreenshot ? (
+                  <img
+                    src={app.previewScreenshot}
+                    alt={app.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-400">
+                    <span className="text-4xl select-none">
+                      {{ "rn-expo": "📱", flutter: "🐦", kotlin: "⚡", wechat: "💬", swiftui: "🍎" }[app.framework] ?? "✦"}
+                    </span>
+                    <p className="text-[13px]">{FRAMEWORK_LABELS[app.framework] ?? app.framework} · 暂不支持网页预览</p>
+                  </div>
+                )
+              ) : previewLoading ? (
+                /* Loading skeleton */
+                <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-400">
+                  <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                  <p className="text-[13px]">加载预览中…</p>
+                </div>
+              ) : previewError ? (
+                /* Error / no files — fall back to screenshot */
+                app.previewScreenshot ? (
+                  <img
+                    src={app.previewScreenshot}
+                    alt={app.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-gray-400">
+                    <span className="text-3xl select-none">🌐</span>
+                    <p className="text-[13px]">{previewError}</p>
+                  </div>
+                )
+              ) : previewUrl ? (
+                /* Live iframe preview */
+                <>
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-full border-0"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    title={app.title}
+                  />
+                  {/* Reload button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewUrl(null);
+                      setPreviewLoading(true);
+                      fetch(`/api/square/${app.id}/preview-session`)
+                        .then((r) => r.json())
+                        .then((d) => { if (d.previewUrl) setPreviewUrl(d.previewUrl); else setPreviewError("暂无可预览内容"); })
+                        .catch(() => setPreviewError("预览加载失败"))
+                        .finally(() => setPreviewLoading(false));
+                    }}
+                    className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm hover:bg-gray-50 transition-colors"
+                    title="刷新预览"
+                    aria-label="刷新预览"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+                  </button>
+                </>
+              ) : null}
             </div>
           </motion.div>
 
