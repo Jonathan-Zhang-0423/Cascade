@@ -14,8 +14,7 @@ import archiver from "archiver";
 import { z } from "zod";
 // @ts-ignore
 import helmet from "helmet";
-// @ts-ignore
-import rateLimit from "express-rate-limit";
+import { createSecurity } from "../middleware/security";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
@@ -583,129 +582,11 @@ export async function registerRoutes(
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }));
 
-  // ── Security: IP blocklist (in-memory) ──────────────────────────────────────
-  // Map<ip, { blockedUntil: number, reason: string, blockedAt: number }>
-  const ipBlocklist = new Map<string, { blockedUntil: number; reason: string; blockedAt: number }>();
-  // Track 429 hits per IP to auto-block after 3 strikes
-  const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
-
-  function getClientIp(req: any): string {
-    return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
-  }
-
-  function isIpBlocked(ip: string): boolean {
-    const entry = ipBlocklist.get(ip);
-    if (!entry) return false;
-    if (entry.blockedUntil > Date.now()) return true;
-    ipBlocklist.delete(ip);
-    return false;
-  }
-
-  // IPs that are never auto-blocked (owner / admin access)
-  const IP_WHITELIST = new Set(["36.142.94.105", "127.0.0.1", "::1"]);
-
-  function recordIpStrike(ip: string) {
-    if (IP_WHITELIST.has(ip)) return; // 白名单 IP 不计 strike
-    const now = Date.now();
-    const WINDOW = 10 * 60 * 1000; // 10 min window
-    const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
-    if (now - entry.windowStart > WINDOW) {
-      entry.count = 1; entry.windowStart = now;
-    } else {
-      entry.count++;
-    }
-    ipStrikeCount.set(ip, entry);
-    if (entry.count >= 3) {
-      ipBlocklist.set(ip, { blockedUntil: now + 60 * 60 * 1000, reason: "Auto: 3x rate-limit violations", blockedAt: now });
-      ipStrikeCount.delete(ip);
-    }
-  }
-
-  // Expose blocklist controls on app locals for admin routes
-  (app as any)._ipBlocklist = ipBlocklist;
-
-  // Middleware: reject blocked IPs (whitelist always passes)
-  app.use((req: any, res: any, next: any) => {
-    const ip = getClientIp(req);
-    if (IP_WHITELIST.has(ip)) { next(); return; }
-    if (isIpBlocked(ip)) {
-      return res.status(403).json({ error: "Your IP has been blocked. Contact support." });
-    }
-    next();
-  });
-
-  // ── Security: Account lockout (in-memory) ───────────────────────────────────
-  // Map<userId, { failCount: number; lockedUntil: number | null }>
-  const accountLockout = new Map<string, { failCount: number; lockedUntil: number | null; lockedAt: number | null }>();
-  const MAX_FAIL = 5;
-  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-  function recordLoginFail(userId: string) {
-    const entry = accountLockout.get(userId) ?? { failCount: 0, lockedUntil: null, lockedAt: null };
-    entry.failCount++;
-    if (entry.failCount >= MAX_FAIL) {
-      entry.lockedUntil = Date.now() + LOCKOUT_MS;
-      entry.lockedAt = Date.now();
-    }
-    accountLockout.set(userId, entry);
-  }
-
-  function isAccountLocked(userId: string): boolean {
-    const entry = accountLockout.get(userId);
-    if (!entry || !entry.lockedUntil) return false;
-    if (entry.lockedUntil > Date.now()) return true;
-    // Auto-unlock
-    accountLockout.delete(userId);
-    return false;
-  }
-
-  function clearAccountLockout(userId: string) {
-    accountLockout.delete(userId);
-  }
-
-  (app as any)._accountLockout = accountLockout;
-  (app as any)._clearAccountLockout = clearAccountLockout;
-
-  // ── Security: Rate limiters ─────────────────────────────────────────────────
-  function makeRateLimiter(max: number, windowMinutes: number, message: string) {
-    return rateLimit({
-      windowMs: windowMinutes * 60 * 1000,
-      max,
-      standardHeaders: true,
-      legacyHeaders: false,
-      keyGenerator: (req: any) => getClientIp(req),
-      message: { error: message },
-      handler: (req: any, res: any, next: any, options: any) => {
-        recordIpStrike(getClientIp(req));
-        res.status(options.statusCode).json(options.message);
-      },
-      skip: (req: any) => {
-        // Never rate-limit already-blocked IPs (they get 403 earlier)
-        return false;
-      },
-    });
-  }
-
-  // All auth endpoints: 30 req / 15 min per IP
-  const authLimiter = makeRateLimiter(30, 15, "Too many requests. Please try again later.");
-  const loginLimiter = makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes.");
-  const otpSendLimiter = makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again.");
-  app.use("/api/auth", authLimiter);
-  // Login specifically: 10 req / 15 min per IP
-  app.use("/api/auth/login", loginLimiter);
-  // OTP send: 10 req / 60 min per IP
-  app.use("/api/auth/otp/send", otpSendLimiter);
-
-  // Test-only seam: reset the in-memory rate-limiter windows so serialized
-  // integration tests don't accumulate strikes across cases (the limiter store
-  // lives on the module-level app, shared across every test in a file).
-  (app as any)._resetRateLimiters = () => {
-    for (const lim of [authLimiter, loginLimiter, otpSendLimiter]) {
-      try { (lim as any).resetKey?.("::ffff:127.0.0.1"); (lim as any).resetKey?.("127.0.0.1"); } catch {}
-      // express-rate-limit v7 exposes the store on the middleware; clear it wholesale.
-      try { (lim as any).store?.resetAll?.(); } catch {}
-    }
-  };
+  // Security: IP blocklist, account lockout, and rate limiters. Extracted to
+  // middleware/security.ts — createSecurity mounts the IP-block middleware +
+  // /api/auth rate limiters and exposes admin controls on app locals.
+  const security = createSecurity(app);
+  const { recordLoginFail, isAccountLocked, clearAccountLockout, getLockout, MAX_FAIL } = security;
 
   app.get("/api/providers", (_req, res) => {
     res.json({
@@ -3643,7 +3524,7 @@ Rules:
 
       // Account lockout check
       if (isAccountLocked(user.id)) {
-        const entry = accountLockout.get(user.id);
+        const entry = getLockout(user.id);
         const remainingSec = entry?.lockedUntil ? Math.ceil((entry.lockedUntil - Date.now()) / 1000) : 900;
         return res.status(403).json({ error: "Account temporarily locked due to too many failed attempts.", remainingSec });
       }
@@ -3651,7 +3532,7 @@ Rules:
       const match = await bcrypt.compare(password, user.password);
       if (!match) {
         recordLoginFail(user.id);
-        const entry = accountLockout.get(user.id);
+        const entry = getLockout(user.id);
         const remaining = MAX_FAIL - (entry?.failCount ?? 0);
         const msg = remaining <= 0
           ? "Account temporarily locked due to too many failed attempts."
