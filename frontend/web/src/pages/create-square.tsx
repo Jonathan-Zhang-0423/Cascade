@@ -175,22 +175,22 @@ export default function CreateSquarePage() {
           borderBottom: scrolled ? "1px solid rgba(0,0,0,0.07)" : "1px solid transparent",
         }}
       >
-        <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-14 sm:h-20 flex items-center justify-between">
           <button type="button" onClick={() => navigate("/")} className="cursor-pointer">
-            <img src={cascadeLogo} alt="Cascade AI" className="h-8 w-auto object-contain" />
+            <img src={cascadeLogo} alt="Cascade AI" className="h-6 sm:h-8 w-auto object-contain" />
           </button>
           {userId ? (
             <button
               type="button"
               onClick={() => navigate("/app")}
-              className="px-5 py-2 rounded-full text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
+              className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-full text-[13px] sm:text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
             >
               进入工作台
             </button>
           ) : (
             <a
               href="/login"
-              className="px-5 py-2 rounded-full text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
+              className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-full text-[13px] sm:text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
             >
               Try it now
             </a>
@@ -199,7 +199,7 @@ export default function CreateSquarePage() {
       </header>
 
       {/* ── Hero — staggered fadeUp animations, same as landing ── */}
-      <section className="pt-36 pb-12 px-6 text-center">
+      <section className="pt-24 sm:pt-36 pb-8 sm:pb-12 px-4 sm:px-6 text-center">
         <motion.div
           initial="hidden"
           animate="visible"
@@ -209,16 +209,18 @@ export default function CreateSquarePage() {
           <motion.p
             variants={fadeUp}
             custom={0}
-            className="text-[13px] font-semibold tracking-[0.18em] text-gray-400 mb-5 uppercase"
+            className="text-[11px] sm:text-[13px] font-semibold tracking-[0.18em] text-gray-400 mb-4 sm:mb-5 uppercase"
           >
-            COMMUNITY · OPEN SOURCE · AI-BUILT
+            {/* 移动端分三行，桌面端一行 */}
+            <span className="sm:hidden">COMMUNITY<br />OPEN SOURCE<br />AI-BUILT</span>
+            <span className="hidden sm:inline">COMMUNITY · OPEN SOURCE · AI-BUILT</span>
           </motion.p>
 
           <motion.h1
             variants={fadeUp}
             custom={1}
-            className="font-bold text-black leading-[1.15] mb-6 tracking-tight"
-            style={{ fontSize: "clamp(48px, 7vw, 76px)", fontFamily: FONT }}
+            className="font-bold text-black leading-[1.15] mb-4 sm:mb-6 tracking-tight"
+            style={{ fontSize: "clamp(32px, 7vw, 76px)", fontFamily: FONT }}
           >
             <span className="block">创造者广场</span>
           </motion.h1>
@@ -226,15 +228,15 @@ export default function CreateSquarePage() {
           <motion.p
             variants={fadeUp}
             custom={2}
-            className="text-[19px] sm:text-[22px] text-gray-800 mb-10 leading-relaxed"
+            className="text-[15px] sm:text-[19px] md:text-[22px] text-gray-800 mb-7 sm:mb-10 leading-relaxed"
           >
             浏览社区发布的应用，一键 Fork 开源项目，用 Cascade AI 继续创作。
           </motion.p>
 
           {/* Search input */}
-          <motion.div variants={fadeUp} custom={3} className="flex justify-center">
+          <motion.div variants={fadeUp} custom={3} className="flex justify-center px-2 sm:px-0">
             <div
-              className="flex items-center flex-1 rounded-[10px] overflow-hidden w-full sm:w-[480px]"
+              className="flex items-center flex-1 rounded-[10px] overflow-hidden max-w-full sm:max-w-[480px]"
               style={{
                 background: "rgba(255,255,255,0.90)",
                 border: "1px solid rgba(0,0,0,0.12)",
@@ -256,10 +258,10 @@ export default function CreateSquarePage() {
       </section>
 
       {/* ── Horizontal tag filter bar + sort tabs ── */}
-      <div className="sticky top-20 z-40 bg-white/90 backdrop-blur-sm py-4 border-b border-black/[0.06]">
-        <div className="max-w-5xl mx-auto px-6 sm:px-16 flex items-center justify-between gap-4">
-          {/* Left: Framework pills + Author dropdown */}
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="sticky top-14 sm:top-20 z-40 bg-white/90 backdrop-blur-sm border-b border-black/[0.06]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-16">
+          {/* Mobile: one scrollable row for pills + sort together */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-3 sm:py-4">
             {/* Framework pills */}
             {FRAMEWORKS.map((f) => {
               const selected = framework === f.value;
@@ -268,29 +270,29 @@ export default function CreateSquarePage() {
                   key={f.value}
                   type="button"
                   onClick={() => setFramework(f.value)}
-                  className={
+                  className={`shrink-0 rounded-full px-3.5 sm:px-4 py-1.5 text-[12px] sm:text-[13px] font-medium transition-all duration-150 ${
                     selected
-                      ? "bg-black text-white rounded-full px-4 py-1.5 text-[13px] font-medium transition-all duration-150"
-                      : "text-gray-500 hover:text-gray-900 rounded-full px-4 py-1.5 text-[13px] cursor-pointer transition-all duration-150"
-                  }
+                      ? "bg-black text-white"
+                      : "text-gray-500 hover:text-gray-900 border border-gray-200"
+                  }`}
                 >
                   {f.label}
                 </button>
               );
             })}
 
-            {/* Divider */}
+            {/* Divider — hidden on mobile to save space */}
             {authors.length > 0 && (
-              <span className="text-gray-200 select-none text-[13px]">|</span>
+              <span className="hidden sm:inline text-gray-200 select-none text-[13px] shrink-0">|</span>
             )}
 
             {/* Author dropdown */}
             {authors.length > 0 && (
-              <div className="relative" ref={authorDropRef}>
+              <div className="relative shrink-0" ref={authorDropRef}>
                 <button
                   type="button"
                   onClick={() => setAuthorDropOpen((v) => !v)}
-                  className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[13px] transition-all duration-150 border ${
+                  className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] sm:text-[13px] transition-all duration-150 border ${
                     author
                       ? "bg-black text-white border-black font-medium"
                       : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
@@ -335,7 +337,6 @@ export default function CreateSquarePage() {
                         zIndex: 100,
                       }}
                     >
-                      {/* All option */}
                       <button
                         type="button"
                         onClick={() => { setAuthor(""); setAuthorDropOpen(false); }}
@@ -365,49 +366,47 @@ export default function CreateSquarePage() {
               </div>
             )}
 
-            {/* Active author tag — also shown as a removable chip in filter bar */}
             {author && (
-              <span className="text-[12px] text-gray-400">
+              <span className="shrink-0 text-[11px] sm:text-[12px] text-gray-400">
                 {filtered.length} 个结果
               </span>
             )}
-          </div>
 
-          {/* Sort tabs */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setSort("latest")}
-              className={
-                sort === "latest"
-                  ? "text-black font-semibold text-[13px] transition-colors duration-150"
-                  : "text-gray-400 text-[13px] cursor-pointer hover:text-gray-700 transition-colors duration-150"
-              }
-            >
-              最新
-            </button>
-            <span className="text-gray-300 text-[13px] select-none">|</span>
-            <button
-              type="button"
-              onClick={() => setSort("hottest")}
-              className={
-                sort === "hottest"
-                  ? "text-black font-semibold text-[13px] transition-colors duration-150"
-                  : "text-gray-400 text-[13px] cursor-pointer hover:text-gray-700 transition-colors duration-150"
-              }
-            >
-              最热
-            </button>
+            {/* Spacer to push sort to right on desktop, inline on mobile */}
+            <div className="hidden sm:flex flex-1" />
+
+            {/* Sort tabs — always visible, shrink-0 so they don't wrap */}
+            <div className="flex items-center gap-2 shrink-0 ml-2 sm:ml-0">
+              <button
+                type="button"
+                onClick={() => setSort("latest")}
+                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${
+                  sort === "latest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"
+                }`}
+              >
+                最新
+              </button>
+              <span className="text-gray-300 text-[13px] select-none shrink-0">|</span>
+              <button
+                type="button"
+                onClick={() => setSort("hottest")}
+                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${
+                  sort === "hottest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"
+                }`}
+              >
+                最热
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ── Grid ── */}
-      <section className="py-10 sm:py-16 px-6 sm:px-16">
+      <section className="py-8 sm:py-16 px-4 sm:px-16">
         <div className="max-w-5xl mx-auto">
           {loading ? (
             /* Loading skeleton */
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 sm:gap-5">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="rounded-2xl bg-gray-100 animate-pulse flex flex-col gap-2 p-3 overflow-hidden">
                   <div className="aspect-[16/9] rounded-xl bg-gray-200 animate-pulse" />
@@ -422,15 +421,15 @@ export default function CreateSquarePage() {
               initial="hidden"
               animate="visible"
               variants={fadeUp}
-              className="flex flex-col items-center justify-center py-28 gap-4 text-center"
+              className="flex flex-col items-center justify-center py-20 sm:py-28 gap-4 text-center"
             >
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-                <Search className="w-7 h-7 text-gray-300" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <Search className="w-6 h-6 sm:w-7 sm:h-7 text-gray-300" />
               </div>
-              <p className="text-[19px] font-semibold text-gray-800">
+              <p className="text-[16px] sm:text-[19px] font-semibold text-gray-800">
                 {search ? "没有找到相关应用" : "还没有发布的应用"}
               </p>
-              <p className="text-[16px] text-gray-500">
+              <p className="text-[13px] sm:text-[16px] text-gray-500">
                 {search ? "换个关键词试试" : "来做第一个发布应用的创造者吧"}
               </p>
             </motion.div>
@@ -440,7 +439,7 @@ export default function CreateSquarePage() {
               animate="visible"
               variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
             >
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
                 {filtered.map((app, i) => (
                   <AppCard
                     key={app.id}
@@ -454,12 +453,12 @@ export default function CreateSquarePage() {
 
               {/* Load more */}
               {hasMore && (
-                <div className="flex justify-center mt-16">
+                <div className="flex justify-center mt-12 sm:mt-16">
                   <button
                     type="button"
                     onClick={() => fetchApps(false)}
                     disabled={loadingMore}
-                    className="px-8 py-3 rounded-full text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-50"
+                    className="px-7 sm:px-8 py-2.5 sm:py-3 rounded-full text-[13px] sm:text-[14px] font-semibold text-white bg-black transition-all duration-200 hover:opacity-85 active:scale-[0.97] disabled:opacity-50"
                   >
                     {loadingMore ? "加载中…" : "加载更多"}
                   </button>
@@ -471,7 +470,7 @@ export default function CreateSquarePage() {
       </section>
 
       {/* ── Footer — same as landing ── */}
-      <footer className="py-8 px-8 border-t border-black/[0.06]">
+      <footer className="py-6 sm:py-8 px-4 sm:px-8 border-t border-black/[0.06]">
         <div className="max-w-7xl mx-auto flex flex-col items-center gap-3 md:flex-row md:justify-between">
           <img
             src={cascadeLogo}
@@ -479,7 +478,7 @@ export default function CreateSquarePage() {
             className="hidden md:block h-6 w-auto"
             style={{ filter: "brightness(0)" }}
           />
-          <p className="text-[13px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
+          <p className="text-[12px] sm:text-[13px] text-gray-400">© 2026 Cascade AI. All rights reserved.</p>
         </div>
         <SiteBeian className="mt-3" />
       </footer>
