@@ -37,6 +37,7 @@ export interface IStorage {
   getUserByGithubId(githubId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
+  getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   createGithubUser(input: {
     username: string;
@@ -45,6 +46,8 @@ export interface IStorage {
     avatarUrl: string | null;
   }): Promise<User>;
   linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null }): Promise<User>;
+  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
+  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
   getProjects(userId?: string): Promise<Project[]>;
@@ -93,6 +96,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const [user] = await db.insert(users).values({ ...insertUser, id }).returning();
@@ -125,6 +133,37 @@ export class DatabaseStorage implements IStorage {
   ): Promise<User> {
     const [user] = await db.update(users)
       .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
+  }
+
+  async createWechatUser(input: {
+    username: string;
+    openId: string;
+    unionId?: string;
+    avatarUrl: string | null;
+  }): Promise<User> {
+    const id = randomUUID();
+    const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const [user] = await db.insert(users).values({
+      id,
+      username: input.username,
+      password: null,
+      wechatOpenId: input.openId,
+      wechatUnionId: input.unionId || null,
+      avatarUrl: input.avatarUrl,
+      trialExpiresAt,
+    }).returning();
+    return user;
+  }
+
+  async linkWechatToUser(
+    userId: string,
+    input: { openId: string; unionId?: string; avatarUrl: string | null },
+  ): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl })
       .where(eq(users.id, userId))
       .returning();
     return user;

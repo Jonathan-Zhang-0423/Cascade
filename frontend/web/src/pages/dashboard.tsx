@@ -48,6 +48,33 @@ import {
 
 migrateOldState();
 
+type Notif = { id: number; type: string; title: string; body: string | null; isRead: boolean; createdAt: string };
+
+function NotifDetail({ notif }: { notif: Notif | undefined }) {
+  if (!notif) return null;
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
+            {notif.type === "changelog" ? "更新公告" : "系统消息"}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {new Date(notif.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{notif.title}</h3>
+      </div>
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {notif.body
+          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{notif.body}</p>
+          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
+      </div>
+    </div>
+  );
+}
+
 function relativeDate(ms: number): string {
   const diff = Date.now() - ms;
   const mins = Math.floor(diff / 60_000);
@@ -107,7 +134,15 @@ export default function DashboardPage() {
     setNotifLoading(true);
     try {
       const res = await fetch("/api/notifications", { credentials: "include" });
-      if (res.ok) { const d = await res.json(); setNotifs(d.notifications ?? []); }
+      if (res.ok) {
+        const d = await res.json();
+        const list = d.notifications ?? [];
+        setNotifs(list);
+        // 自动选中第一条（如果还没选）
+        if (list.length > 0) {
+          setSelectedNotifId((prev) => prev ?? list[0].id);
+        }
+      }
     } catch { /* non-fatal */ } finally { setNotifLoading(false); }
   };
 
@@ -1015,55 +1050,50 @@ export default function DashboardPage() {
 
             {/* 内容区：手机单列，PC 双栏 */}
             <div className="flex flex-1 overflow-hidden">
-              {/* 列表 */}
-              <div className="flex flex-col overflow-y-auto" style={{ width: "100%", maxWidth: "100%", borderRight: "none" }}
-                /* PC 上加右边框 */
-              >
-                <style>{`@media(min-width:640px){.notif-list{width:260px!important;border-right:1px solid var(--panel-divider)!important}}`}</style>
-                <div className="notif-list flex flex-col overflow-y-auto h-full" style={{ width: "100%" }}>
-                  {notifLoading && (
-                    <div className="flex items-center justify-center flex-1 py-12">
-                      <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] border-t-transparent animate-spin" />
-                    </div>
-                  )}
-                  {!notifLoading && notifs.length === 0 && (
-                    <div className="flex flex-col items-center justify-center flex-1 gap-2 px-6 py-12">
-                      <Bell className="w-6 h-6 text-muted-foreground opacity-40" />
-                      <p className="text-[12px] text-muted-foreground text-center">暂无通知</p>
-                    </div>
-                  )}
-                  {notifs.map((n) => {
-                    const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
-                    return (
-                      <div key={n.id}
-                        className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
-                        style={{ minHeight: 72, borderBottom: "1px solid var(--panel-divider)", background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)", padding: "12px 16px" }}
-                        onClick={() => { markRead(n.id); setSelectedNotifId(n.id); }}
-                      >
-                        {!n.isRead && <div className="absolute left-0 top-4 bottom-4 rounded-r-full" style={{ width: 2.5, background: "#4f82ff" }} />}
-                        <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg"
-                          style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
-                          <span className="text-[13px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] leading-snug" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>{n.title}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {new Date(n.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                          {/* 手机端展开内容（直接内联显示，不需要右栏）*/}
-                          {isSelected && n.body && (
-                            <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed sm:hidden whitespace-pre-wrap">{n.body}</p>
-                          )}
-                        </div>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          className="shrink-0 text-muted-foreground sm:hidden"
-                          style={{ transform: isSelected ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
+              {/* 左栏：手机全宽，PC 固定 260px */}
+              <div className="flex flex-col overflow-y-auto w-full sm:w-[260px] sm:shrink-0" style={{ borderRight: "1px solid var(--panel-divider)" }}>
+                {notifLoading && (
+                  <div className="flex items-center justify-center flex-1 py-12">
+                    <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] border-t-transparent animate-spin" />
+                  </div>
+                )}
+                {!notifLoading && notifs.length === 0 && (
+                  <div className="flex flex-col items-center justify-center flex-1 gap-2 px-6 py-12">
+                    <Bell className="w-6 h-6 text-muted-foreground opacity-40" />
+                    <p className="text-[12px] text-muted-foreground text-center">暂无通知</p>
+                  </div>
+                )}
+                {notifs.map((n) => {
+                  const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
+                  return (
+                    <div key={n.id}
+                      className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
+                      style={{ minHeight: 72, borderBottom: "1px solid var(--panel-divider)", background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)", padding: "12px 16px" }}
+                      onClick={() => { markRead(n.id); setSelectedNotifId(n.id); }}
+                    >
+                      {!n.isRead && <div className="absolute left-0 top-4 bottom-4 rounded-r-full" style={{ width: 2.5, background: "#4f82ff" }} />}
+                      <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg"
+                        style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
+                        <span className="text-[13px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] leading-snug" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>{n.title}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {new Date(n.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                        {/* 手机端内联展开 */}
+                        {isSelected && n.body && (
+                          <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed sm:hidden whitespace-pre-wrap">{n.body}</p>
+                        )}
+                      </div>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                        className="shrink-0 text-muted-foreground sm:hidden"
+                        style={{ transform: isSelected ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* 右栏详情：仅 PC 显示 */}
@@ -1077,31 +1107,9 @@ export default function DashboardPage() {
                     <p className="text-[13px] font-medium text-foreground">收件箱是空的</p>
                     <p className="text-[12px] text-muted-foreground mt-1">新消息会出现在这里</p>
                   </div>
-                ) : (() => {
-                  const active = notifs.find(n => n.id === (selectedNotifId ?? notifs[0]?.id)) ?? notifs[0];
-                  if (!active) return null;
-                  return (
-                    <div className="flex flex-col h-full">
-                      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
-                            {active.type === "changelog" ? "更新公告" : "系统消息"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {new Date(active.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{active.title}</h3>
-                      </div>
-                      <div className="flex-1 overflow-y-auto px-6 py-5">
-                        {active.body
-                          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{active.body}</p>
-                          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
-                      </div>
-                    </div>
-                  );
-                })()}
+                ) : (
+                  <NotifDetail notif={notifs.find(n => n.id === selectedNotifId) ?? notifs[0]} />
+                )}
               </div>
             </div>
           </div>
