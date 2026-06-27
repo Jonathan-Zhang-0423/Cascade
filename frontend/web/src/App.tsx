@@ -13,6 +13,7 @@ import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
+import WechatCallbackPage from "@/pages/wechat-callback";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -21,7 +22,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/wechat-callback"];
 
 function Router() {
   return (
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/register" component={AuthPage} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/github-callback" component={GitHubCallbackPage} />
+      <Route path="/wechat-callback" component={WechatCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
       <Route path="/admin" component={AdminPage} />

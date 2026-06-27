@@ -58,6 +58,15 @@ function GitHubIcon() {
   );
 }
 
+// ── WeChat icon ───────────────────────────────────────────────────────────────
+function WechatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current shrink-0" aria-hidden>
+      <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.045c.133 0 .241-.108.241-.245 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zm-2.18 2.769c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.392 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982z"/>
+    </svg>
+  );
+}
+
 // ── Language toggle ───────────────────────────────────────────────────────────
 function LangPill() {
   const { lang, setLang } = useLanguageStore();
@@ -441,7 +450,7 @@ export default function AuthPage() {
 
   // Replit-style two-step flow: landing (pick a method) → detail (enter creds)
   const [view, setView] = useState<"landing" | "detail">("landing");
-  const [detailMethod, setDetailMethod] = useState<"phone" | "email" | "github">("email");
+  const [detailMethod, setDetailMethod] = useState<"phone" | "email" | "github" | "wechat">("email");
 
   // Pre-fill invite code from ?ref= query param and switch to signup tab
   const [refCode, setRefCode] = useState<string>(() => {
@@ -487,6 +496,12 @@ export default function AuthPage() {
       url.searchParams.delete("github_error");
       window.history.replaceState({}, "", url.toString());
     }
+    if (p.has("wechat_error")) {
+      setError("微信登录失败，请重试");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("wechat_error");
+      window.history.replaceState({}, "", url.toString());
+    }
     if (p.has("passwordSet")) {
       setNotice(t("auth.setPasswordDone"));
       const url = new URL(window.location.href);
@@ -521,10 +536,10 @@ export default function AuthPage() {
   };
 
   // Replit-style: pick a method on the landing card → open its detail form
-  const openMethod = (method: "phone" | "email" | "github") => {
+  const openMethod = (method: "phone" | "email" | "github" | "wechat") => {
     setError(null); resetOtp(); setIdentifier(""); setPassword("");
     setDetailMethod(method);
-    if (method !== "github") {
+    if (method !== "github" && method !== "wechat") {
       const channel = method as SignInChannel;
       if (page === "signin") { setSignInChannel(channel); }
       else { setSignUpChannel(channel); }
@@ -687,6 +702,16 @@ export default function AuthPage() {
       window.location.replace(url);
     } catch {
       window.location.replace("/api/auth/github");
+    }
+  };
+
+  const handleWechat = async () => {
+    try {
+      const res = await fetch("/api/auth/wechat?mode=url");
+      const { url } = await res.json();
+      window.location.replace(url);
+    } catch {
+      window.location.replace("/api/auth/wechat");
     }
   };
 
@@ -892,6 +917,13 @@ export default function AuthPage() {
                   onClick={() => openMethod("github")}
                 />
               </motion.div>
+              <motion.div variants={fadeUp} custom={7}>
+                <MethodBtn
+                  icon={<WechatIcon />}
+                  label={page === "signin" ? "微信登录" : "微信注册"}
+                  onClick={() => openMethod("wechat")}
+                />
+              </motion.div>
             </div>
 
             {/* Switch sign-in / sign-up */}
@@ -964,6 +996,22 @@ export default function AuthPage() {
                   style={{ fontFamily: FONT, letterSpacing: "-0.01em" }}>
                   <GitHubIcon />
                   {page === "signin" ? t("auth.continueWithGithub") : t("auth.signUpWithGithub")}
+                </button>
+              </motion.div>
+            ) : detailMethod === "wechat" ? (
+              /* ── WeChat continue page ── */
+              <motion.div key="wechat"
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}
+                className="flex flex-col gap-5">
+                <p className="text-center text-[13px] text-gray-500 leading-relaxed">
+                  点击下方按钮将跳转到微信扫码页面，使用微信扫描二维码即可完成登录。
+                </p>
+                <button type="button" onClick={handleWechat}
+                  className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl text-white text-[14px] font-semibold transition-all duration-200 hover:opacity-80 active:scale-[0.98]"
+                  style={{ fontFamily: FONT, letterSpacing: "-0.01em", backgroundColor: "#07C160" }}>
+                  <WechatIcon />
+                  {page === "signin" ? "微信登录" : "微信注册"}
                 </button>
               </motion.div>
             ) : page === "signin" ? (

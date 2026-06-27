@@ -48,6 +48,32 @@ import {
 
 migrateOldState();
 
+type Notif = { id: number; type: string; title: string; body: string | null; isRead: boolean; createdAt: string };
+
+function NotifDetail({ notif }: { notif: Notif }) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
+            {notif.type === "changelog" ? "更新公告" : "系统消息"}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {new Date(notif.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{notif.title}</h3>
+      </div>
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {notif.body
+          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{notif.body}</p>
+          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
+      </div>
+    </div>
+  );
+}
+
 function relativeDate(ms: number): string {
   const diff = Date.now() - ms;
   const mins = Math.floor(diff / 60_000);
@@ -1071,31 +1097,9 @@ export default function DashboardPage() {
                     <p className="text-[13px] font-medium text-foreground">收件箱是空的</p>
                     <p className="text-[12px] text-muted-foreground mt-1">新消息会出现在这里</p>
                   </div>
-                ) : (() => {
-                  const active = notifs.find(n => n.id === (selectedNotifId ?? notifs[0]?.id)) ?? notifs[0];
-                  if (!active) return null;
-                  return (
-                    <div className="flex flex-col h-full">
-                      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
-                            {active.type === "changelog" ? "更新公告" : "系统消息"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {new Date(active.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{active.title}</h3>
-                      </div>
-                      <div className="flex-1 overflow-y-auto px-6 py-5">
-                        {active.body
-                          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{active.body}</p>
-                          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
-                      </div>
-                    </div>
-                  );
-                })()}
+                ) : notifs.length > 0 ? (
+                  <NotifDetail notif={notifs.find(n => n.id === selectedNotifId) ?? notifs[0]} />
+                ) : null}
               </div>
             </div>
           </div>

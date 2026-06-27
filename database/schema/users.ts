@@ -20,6 +20,8 @@ export const users = pgTable("users", {
   // Referral system
   referralCode: text("referral_code").unique(),   // this user's shareable code
   referredBy: varchar("referred_by"),             // id of the user who referred them
+  wechatOpenId: text("wechat_open_id").unique(),
+  wechatUnionId: text("wechat_union_id").unique(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
