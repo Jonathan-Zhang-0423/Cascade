@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, GitFork, Share2, RotateCcw, Unlock, Lock, Globe, Link2, Heart, MessageCircle, Trash2, Eye } from "lucide-react";
+import { ArrowLeft, GitFork, Share2, Unlock, Lock, Globe, Link2, Heart, MessageCircle, Trash2, Eye, Maximize2 } from "lucide-react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useToast } from "@/hooks/use-toast";
@@ -113,7 +113,7 @@ export default function AppDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [forking, setForking] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
+  const [iframeKey] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
   const [liked, setLiked] = useState(false);
@@ -270,7 +270,7 @@ export default function AppDetailPage() {
           {/* ══ LEFT COLUMN: preview + comments ══ */}
           <div className="flex-1 min-w-0">
 
-            {/* Browser-chrome preview window */}
+            {/* Preview window — no chrome bar, fullscreen button in corner */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -278,36 +278,6 @@ export default function AppDetailPage() {
               className="w-full rounded-2xl overflow-hidden"
               style={{ border: "1px solid rgba(0,0,0,0.09)", boxShadow: "0 4px 24px rgba(0,0,0,0.07)" }}
             >
-              {/* Chrome bar */}
-              <div
-                className="flex items-center gap-3 px-4 h-10 shrink-0"
-                style={{ background: "#f5f5f5", borderBottom: "1px solid rgba(0,0,0,0.08)" }}
-              >
-                {/* Traffic lights */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="w-3 h-3 rounded-full" style={{ background: "#fc615d" }} />
-                  <div className="w-3 h-3 rounded-full" style={{ background: "#fdbc40" }} />
-                  <div className="w-3 h-3 rounded-full" style={{ background: "#34c84a" }} />
-                </div>
-                {/* Fake URL bar */}
-                <div
-                  className="flex-1 flex items-center gap-1.5 px-3 h-6 rounded-md text-[11px] text-gray-400 min-w-0"
-                  style={{ background: "#ebebeb" }}
-                >
-                  <Globe className="w-3 h-3 shrink-0 text-gray-400" />
-                  <span className="truncate">{app.title.toLowerCase().replace(/\s+/g, "-")}.cascade.app</span>
-                </div>
-                {/* Refresh */}
-                <button
-                  type="button"
-                  onClick={() => setIframeKey((k) => k + 1)}
-                  className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-black/[0.07] transition-colors text-gray-500"
-                  title="刷新"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              </div>
-
               {/* Preview content */}
               <div className="relative w-full bg-gray-50" style={{ aspectRatio: "16/9" }}>
                 {app.previewScreenshot ? (
@@ -325,11 +295,27 @@ export default function AppDetailPage() {
                     <span className="text-[12px] text-gray-400">{fwLabel}</span>
                   </div>
                 )}
+
+                {/* Fullscreen button — top right corner */}
+                <a
+                  href={app.previewScreenshot ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: "rgba(0,0,0,0.45)",
+                    backdropFilter: "blur(6px)",
+                  }}
+                  title="全屏查看"
+                >
+                  <Maximize2 className="w-3.5 h-3.5 text-white" />
+                </a>
               </div>
             </motion.div>
 
             {/* ── Comments ── */}
             <motion.div
+              id="comments-section"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
@@ -427,9 +413,10 @@ export default function AppDetailPage() {
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-20"
+            className="w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-16"
+            style={{ zIndex: 10 }}
           >
-            <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.09)" }}>
+            <div className="rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.09)" }}>
 
               {/* App title block */}
               <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
@@ -499,15 +486,27 @@ export default function AppDetailPage() {
                 </button>
               </div>
 
-              {/* Stats row */}
+              {/* Stats row — comment count is clickable, scrolls to comments */}
               <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
                 {[
-                  { icon: <Eye className="w-3.5 h-3.5" />, value: app.viewCount },
-                  { icon: <Heart className="w-3.5 h-3.5" />, value: likeCount },
-                  { icon: <GitFork className="w-3.5 h-3.5" />, value: app.forkCount },
-                  { icon: <MessageCircle className="w-3.5 h-3.5" />, value: commentTotal },
+                  { icon: <Eye className="w-3.5 h-3.5" />, value: app.viewCount, onClick: undefined },
+                  { icon: <Heart className="w-3.5 h-3.5" />, value: likeCount, onClick: undefined },
+                  { icon: <GitFork className="w-3.5 h-3.5" />, value: app.forkCount, onClick: undefined },
+                  {
+                    icon: <MessageCircle className="w-3.5 h-3.5" />,
+                    value: commentTotal,
+                    onClick: () => {
+                      const el = document.getElementById("comments-section");
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    },
+                  },
                 ].map((s, i) => (
-                  <div key={i} className="flex items-center gap-1 text-[12px] text-gray-400">
+                  <div
+                    key={i}
+                    className={`flex items-center gap-1 text-[12px] text-gray-400 ${s.onClick ? "cursor-pointer hover:text-gray-700 transition-colors" : ""}`}
+                    onClick={s.onClick}
+                    role={s.onClick ? "button" : undefined}
+                  >
                     {s.icon}
                     <span>{s.value}</span>
                   </div>
