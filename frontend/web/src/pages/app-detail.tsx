@@ -115,6 +115,7 @@ export default function AppDetailPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [iframeKey] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -297,19 +298,17 @@ export default function AppDetailPage() {
                 )}
 
                 {/* Fullscreen button — top right corner */}
-                <a
-                  href={app.previewScreenshot ?? "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                  style={{
-                    background: "rgba(0,0,0,0.45)",
-                    backdropFilter: "blur(6px)",
-                  }}
-                  title="全屏查看"
-                >
-                  <Maximize2 className="w-3.5 h-3.5 text-white" />
-                </a>
+                {app.previewScreenshot && (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(true)}
+                    className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                    style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
+                    title="全屏查看"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5 text-white" />
+                  </button>
+                )}
               </div>
             </motion.div>
 
@@ -554,6 +553,35 @@ export default function AppDetailPage() {
       </footer>
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={app.title} />
+
+      {/* ── Lightbox ── */}
+      {lightboxOpen && app.previewScreenshot && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
+          style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)" }}
+          onClick={() => setLightboxOpen(false)}
+        >
+          <div
+            className="relative max-w-6xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={app.previewScreenshot}
+              alt={app.title}
+              className="w-full h-auto rounded-2xl shadow-2xl"
+              style={{ maxHeight: "88vh", objectFit: "contain" }}
+            />
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(false)}
+              className="absolute -top-4 -right-4 w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors text-gray-700 text-[18px] font-light leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
