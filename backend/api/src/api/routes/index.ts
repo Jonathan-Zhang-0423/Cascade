@@ -843,6 +843,16 @@ export async function registerRoutes(
       };
       reviewSessions.set(sessionId, session);
 
+      // Register with unified SessionManager for persistence + restart-survival
+      await sessionManager.create({
+        id: sessionId,
+        type: "review",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        payload: { strictness: resolvedStrictness, framework: resolvedFramework },
+      }).catch(() => {});
+      await sessionManager.transition(sessionId, "running").catch(() => {});
+
       const emit = createSessionEmit(session);
       attachSseWriter(session, res, -1);
 
@@ -851,9 +861,15 @@ export async function registerRoutes(
           emit({ type: "review_error", message: err?.message || "Unknown error" });
           emit({ type: "done" });
         })
-        .finally(() => {
+        .finally(async () => {
           session.done = true;
           session.doneAt = Date.now();
+          // Persist review events + transition via SessionManager
+          const store = new SessionStore();
+          await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          await sessionManager.transition(sessionId, "done").catch(() => {});
+          await sessionManager.cleanup(sessionId).catch(() => {});
+          // Build-specific resource cleanup
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           if (session.sessionDir) {
             rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
