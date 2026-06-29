@@ -21,6 +21,7 @@ import { registerWaitlistRoutes } from "./waitlist";
 import { registerSkillsRoutes } from "./skills";
 import { registerCompileRoutes } from "./compile";
 import { registerProjectsRoutes } from "./projects";
+import { registerMiscRoutes } from "./misc";
 import {
   isEduEmail, isQizhiEmail, getTrialInfo, randomSuffix, inviteCodePrefix,
   formatInviteCode, redeemInviteCode, ensureReferralCode,
@@ -31,14 +32,13 @@ import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
-import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
+import { userSessions } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { userSkills, users, waitlistSubscribers, inviteCodes, projects, chatMessages, otpCodes, userFeedback, notifications } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
-import { isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
 import {
@@ -590,20 +590,9 @@ export async function registerRoutes(
   const security = createSecurity(app);
   const { recordLoginFail, isAccountLocked, clearAccountLockout, getLockout, MAX_FAIL } = security;
 
-  app.get("/api/providers", (_req, res) => {
-    res.json({
-      doubao: !!process.env.DOUBAO_API_KEY,
-      kimi: !!process.env.KIMI_API_KEY,
-      minimax: !!process.env.MINIMAX_API_KEY,
-      glm: !!process.env.GLM_API_KEY,
-      "deepseek-pro": !!process.env.DEEPSEEK_API_KEY,
-      "deepseek-flash": !!process.env.DEEPSEEK_API_KEY,
-    });
-  });
-
-  app.get("/api/concurrency", (_req, res) => {
-    res.json(getConcurrencyMetrics());
-  });
+  // Misc structural routes: /api/providers, /api/concurrency, /api/config/captcha,
+  // POST /api/feedback — see routes/misc.ts.
+  registerMiscRoutes(app);
 
   // ── Security: invite-code gate ──────────────────────────────────────────────
   // Front-end guards the invite gate, but the core endpoints (project creation,
@@ -2475,24 +2464,6 @@ Rules:
 
   // ── User Feedback ─────────────────────────────────────────────────────────
   // POST /api/feedback — submit user suggestion
-  app.post("/api/feedback", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { content, source } = req.body as { content?: string; source?: string };
-      if (!content?.trim()) return res.status(400).json({ error: "Content required" });
-      await db.insert(userFeedback).values({
-        userId,
-        content: content.trim().slice(0, 2000),
-        source: (source === "mobile" ? "mobile" : "pc"),
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[feedback]", err);
-      res.status(500).json({ error: "Failed to submit feedback" });
-    }
-  });
-
   // GET /api/admin/feedback — list all feedback (admin only)
   app.get("/api/admin/feedback", async (req, res) => {
     try {
@@ -2873,10 +2844,6 @@ Rules:
   // 验证失败返回 403。未配置凭证时 verifyCaptcha 内部降级放行。
   // 注意：这不替代 OTP 发送频率限制 / 验证码锁，两者叠加才完整。
   // 前端 TCaptcha 初始化所需的公开 CaptchaAppId。enabled=false 时前端跳过取票。
-  app.get("/api/config/captcha", (_req, res) => {
-    res.json({ enabled: isCaptchaEnabled(), appId: getCaptchaAppId() });
-  });
-
   // === OTP (email + phone) ===
 
   app.post("/api/auth/otp/send", async (req, res) => {
