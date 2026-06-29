@@ -1,7 +1,7 @@
 import { doubaoClient, DOUBAO_MODEL } from "../providers/doubao-client";
 import { withRetry } from "../providers/retry";
 import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency";
-import type { SseEmit } from "../orchestrator/build-orchestrator";
+import type { SseEmit } from "../../infra/sse";
 import type OpenAI from "openai";
 import { createModelAdapter, type ModelAdapter } from "../providers/model-adapter";
 import {

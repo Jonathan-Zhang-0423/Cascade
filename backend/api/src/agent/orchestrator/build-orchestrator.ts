@@ -44,10 +44,8 @@ export interface BuildPlan {
   sub_tasks?: BuildStep[];
 }
 
-export interface BufferedEvent {
-  eventId: number;
-  data: Record<string, unknown>;
-}
+export { type BufferedEvent, type SseEmit } from "../../infra/sse";
+import type { BufferedEvent, SseEmit } from "../../infra/sse";
 
 export interface BuildSessionState {
   id: string;
@@ -84,8 +82,6 @@ export interface BuildSessionState {
   /** "plan": multi-step plan execution. "direct": single-shot. Review is a separate, user-invoked step either way. */
   mode?: "plan" | "direct";
 }
-
-export type SseEmit = (data: Record<string, unknown>) => void;
 
 function normalizeSteps(plan: BuildPlan): BuildStep[] {
   const raw = plan.steps ?? plan.sub_tasks ?? [];

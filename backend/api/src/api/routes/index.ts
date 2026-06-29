@@ -34,6 +34,7 @@ import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { spawnProcess } from "../../infra/process-exec";
+import { createSessionEmit, attachSseWriter, type SseEmit, type SseCapableSession, type BufferedEvent } from "../../infra/sse";
 import { userSessions } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { users, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
@@ -60,7 +61,7 @@ import {
   buildHolisticVerifierMessage,
 } from "../../agent/prompts/verifier-prompt";
 import { AB_TEST_SCENARIOS } from "../ab-test-scenarios";
-import { runBuildSession, type BuildSessionState, type BufferedEvent, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
+import { runBuildSession, type BuildSessionState, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
 import { runReviewSession, type ReviewSessionState } from "../../agent/orchestrator/review-orchestrator";
 import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
 import { lspManager } from "../../agent/tools/lsp-manager";
@@ -397,81 +398,8 @@ setInterval(() => {
   });
 }, 60_000);
 
-interface SseCapableSession {
-  nextEventId: number;
-  events: BufferedEvent[];
-  sseWriters: Set<(data: string) => void>;
-  done: boolean;
-}
-
-function createSessionEmit(session: SseCapableSession): SseEmit {
-  return (data: Record<string, unknown>) => {
-    const eventId = session.nextEventId++;
-    const event: BufferedEvent = { eventId, data: { ...data, eventId } };
-    session.events.push(event);
-    const line = `data: ${JSON.stringify(event.data)}\n\n`;
-    Array.from(session.sseWriters).forEach(writer => {
-      try { writer(line); } catch {}
-    });
-  };
-}
-
-function attachSseWriter(session: SseCapableSession, res: any, lastEventId: number) {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-  res.socket?.setNoDelay?.(true);
-
-  const replayHighWater = session.nextEventId;
-  const sentEventIds = new Set<number>();
-
-  const writer = (line: string) => {
-    try {
-      const match = line.match(/^data: (.+)$/);
-      if (match) {
-        const parsed = JSON.parse(match[1]);
-        if (typeof parsed.eventId === "number" && parsed.eventId < replayHighWater) {
-          return;
-        }
-        if (typeof parsed.eventId === "number") {
-          if (sentEventIds.has(parsed.eventId)) return;
-          sentEventIds.add(parsed.eventId);
-        }
-      }
-      res.write(line); (res as any).flush?.();
-    } catch {}
-  };
-
-  session.sseWriters.add(writer);
-
-  const replayEvents = session.events.filter(e => e.eventId > lastEventId && e.eventId < replayHighWater);
-  for (const event of replayEvents) {
-    sentEventIds.add(event.eventId);
-    try { res.write(`data: ${JSON.stringify({ ...event.data, replay: true })}\n\n`); (res as any).flush?.(); } catch {}
-  }
-  if (replayEvents.length > 0) {
-    try { res.write(`data: ${JSON.stringify({ type: "replay_boundary" })}\n\n`); (res as any).flush?.(); } catch {}
-  }
-
-  const heartbeat = setInterval(() => {
-    try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
-  }, 2000);
-
-  res.on("close", () => {
-    session.sseWriters.delete(writer);
-    clearInterval(heartbeat);
-  });
-
-  if (session.done) {
-    setTimeout(() => {
-      try { res.end(); } catch {}
-    }, 100);
-  }
-}
-
-type SseEmit = (data: Record<string, unknown>) => void;
+// SSE infrastructure — shared across build/manager/review sessions.
+// Extracted to infra/sse.ts; re-imported here for route-level use.
 
 type UserIntent = "build" | "question" | "fix" | "refine";
 
