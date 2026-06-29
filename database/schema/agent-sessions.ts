@@ -1,7 +1,6 @@
 import { pgTable, text, varchar, integer, bigint, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { projects } from "./projects";
 
 /**
  * Unified agent session persistence. Generalizes the existing manager_sessions
@@ -14,11 +13,16 @@ import { projects } from "./projects";
  * - On server restart, running/pending sessions are marked "interrupted"
  * - Milestone events (step_completed, all_complete) trigger immediate flush
  * - Token-level events flush every ~5s (bounded data loss on crash)
+ *
+ * project_id is a SOFT reference (no FK constraint): a session can legitimately
+ * start before the project row is committed (e.g. first build of a new project),
+ * so enforcing a foreign key would crash session creation. It's used only for
+ * lookup/filtering.
  */
 export const agentSessions = pgTable("agent_sessions", {
   id: varchar("id").primaryKey(),
   type: varchar("type", { length: 32 }).notNull(), // 'build' | 'manager' | 'review' | 'aigc'
-  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id"),
   userId: varchar("user_id"),
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),

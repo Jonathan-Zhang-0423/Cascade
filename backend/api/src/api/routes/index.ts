@@ -64,6 +64,8 @@ import { AB_TEST_SCENARIOS } from "../ab-test-scenarios";
 import { runBuildSession, type BuildSessionState, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
 import { runReviewSession, type ReviewSessionState } from "../../agent/orchestrator/review-orchestrator";
 import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
+import { SessionManager } from "../../agent/session/session-manager";
+import { SessionStore } from "../../agent/session/session-store";
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
@@ -314,6 +316,14 @@ function detectUserLanguage(
 
 
 const buildSessions = new Map<string, BuildSessionState>();
+
+// Unified session manager (Postgres-backed, restart-survivable). Currently
+// drives manager-chat sessions; build/review migration follows.
+const sessionManager = new SessionManager(new SessionStore());
+sessionManager.start();
+sessionManager.onStartup().catch((err) =>
+  console.warn("[SessionManager] onStartup failed:", err instanceof Error ? err.message : err),
+);
 
 interface VideoJobState {
   status: "pending" | "running" | "done" | "error";
@@ -1038,27 +1048,30 @@ export async function registerRoutes(
         return;
       }
 
+      // Create session via unified SessionManager (persists to agent_sessions + live cache)
+      const agentSession = await sessionManager.create({
+        id: mgrSessionId,
+        type: "manager",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        payload: { chatSessionId: reqChatSession },
+      });
+      await sessionManager.transition(mgrSessionId, "running");
+
+      // Legacy compat: keep managerChatSessions map for /status /stream /active
+      // endpoints. events + sseWriters are shared references from agentSession.
       const mgrSession: ManagerChatSession = {
         id: mgrSessionId,
         projectId: reqProjectId,
-        events: [],
-        nextEventId: 0,
+        events: agentSession.events,
+        get nextEventId() { return agentSession.nextEventId; },
+        set nextEventId(v: number) { agentSession.nextEventId = v; },
         done: false,
-        startedAt: Date.now(),
+        startedAt: agentSession.createdAt,
         _userId: reqUserId || undefined,
-        sseWriters: new Set(),
-      };
+        sseWriters: agentSession.sseWriters,
+      } as ManagerChatSession;
       managerChatSessions.set(mgrSessionId, mgrSession);
-
-      // Persist session to DB so it survives server restarts
-      storage.upsertManagerSession({
-        id: mgrSession.id,
-        projectId: mgrSession.projectId,
-        done: false,
-        startedAt: mgrSession.startedAt,
-        nextEventId: 0,
-        events: [],
-      }).catch((err) => console.warn("[manager-chat] failed to persist session start:", err));
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -1072,15 +1085,8 @@ export async function registerRoutes(
       };
       mgrSession.sseWriters.add(mgrWriter);
 
-      const emit = (data: Record<string, unknown>) => {
-        const eventId = mgrSession.nextEventId++;
-        const eventData = { ...data, eventId };
-        mgrSession.events.push({ eventId, data: eventData });
-        const line = `data: ${JSON.stringify(eventData)}\n\n`;
-        Array.from(mgrSession.sseWriters).forEach(w => {
-          try { w(line); } catch {}
-        });
-      };
+      // Use SessionManager emit (persists events + marks dirty for periodic flush)
+      const emit = sessionManager.getEmit(mgrSessionId);
 
       emit({ type: "session_id", sessionId: mgrSessionId });
 
@@ -1249,7 +1255,10 @@ This override applies to THIS message only — it does not change behavior for p
         emit({ type: "manager_done" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Unified cleanup: transition + flush + slot release
+        await sessionManager.transition(mgrSessionId, "done").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1422,19 +1431,12 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
 
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         // Clean up MCP connections
         if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
-        // Persist final state to DB (events + done flag)
-        storage.upsertManagerSession({
-          id: mgrSession.id,
-          projectId: mgrSession.projectId,
-          done: true,
-          startedAt: mgrSession.startedAt,
-          doneAt: mgrSession.doneAt,
-          nextEventId: mgrSession.nextEventId,
-          events: mgrSession.events,
-        }).catch((err) => console.warn("[manager-chat] failed to persist session done:", err));
+        // Unified cleanup: transition + flush events + slot release
+        await sessionManager.transition(mgrSessionId, "done").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1447,19 +1449,12 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
         emit({ type: "manager_error" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         // Clean up MCP connections on error
         if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
-        // Persist error state to DB
-        storage.upsertManagerSession({
-          id: mgrSession.id,
-          projectId: mgrSession.projectId,
-          done: true,
-          startedAt: mgrSession.startedAt,
-          doneAt: mgrSession.doneAt,
-          nextEventId: mgrSession.nextEventId,
-          events: mgrSession.events,
-        }).catch((err2) => console.warn("[manager-chat] failed to persist session error:", err2));
+        // Unified cleanup: transition to error + flush + slot release
+        await sessionManager.transition(mgrSessionId, "error").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1467,8 +1462,16 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
-      // Release session slot on error — prevents permanent slot leak
-      if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+      // Release session slot + persist on error — prevents permanent slot leak.
+      // Guard transition: only valid from non-terminal states.
+      if (mgrSessionId) {
+        if (sessionManager.isActive(mgrSessionId)) {
+          await sessionManager.transition(mgrSessionId, "error").catch(() => {});
+        }
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
+      } else if (reqUserId && mgrSessionId) {
+        userSessions.unregister(reqUserId, mgrSessionId);
+      }
       if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
         const s = managerChatSessions.get(mgrSessionId)!;
         s.done = true;
