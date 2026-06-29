@@ -598,6 +598,16 @@ export async function registerRoutes(
       };
       buildSessions.set(sessionId, session);
 
+      // Register with unified SessionManager for persistence + restart-survival
+      await sessionManager.create({
+        id: sessionId,
+        type: "build",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        payload: { mode: resolvedMode, framework: resolvedFramework },
+      }).catch(() => {}); // non-fatal if DB insert fails — build still runs in-memory
+      await sessionManager.transition(sessionId, "running").catch(() => {});
+
       const emit = createSessionEmit(session);
 
       attachSseWriter(session, res, -1);
@@ -607,20 +617,26 @@ export async function registerRoutes(
           emit({ type: "build_error", message: err?.message || "Unknown error" });
           emit({ type: "done" });
         })
-        .finally(() => {
+        .finally(async () => {
           session.done = true;
           session.doneAt = Date.now();
           // Send [DONE] frame and close all connected SSE writers so clients
           // detect end-of-stream cleanly (matching what manager-chat does).
           const doneLine = "data: [DONE]\n\n";
           Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
-          // Unregister from per-user session tracker
+          // Unified cleanup via SessionManager: persist build events + transition + slot release
+          // Note: build events live on the BuildSessionState (not the agentSession),
+          // so we flush them directly to the store.
+          const store = new SessionStore();
+          await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          await sessionManager.transition(sessionId, "done").catch(() => {});
+          await sessionManager.cleanup(sessionId).catch(() => {});
+          // Also clean resources directly (SessionManager.cleanup handles slot;
+          // these are build-specific resources not registered on agentSession yet)
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
-          // Clean up session directory
           if (session.sessionDir) {
             rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
           }
-          // Stop LSP servers and shell session
           lspManager.stop(session.id).catch(() => {});
           shellManager.destroyShell(session.id).catch(() => {});
           // Evict session from memory after 30 minutes to prevent unbounded growth
