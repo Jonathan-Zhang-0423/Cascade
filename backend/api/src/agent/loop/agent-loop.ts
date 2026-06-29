@@ -3,6 +3,7 @@ import { withRetry } from "../providers/retry";
 import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency";
 import type { SseEmit } from "../orchestrator/build-orchestrator";
 import type OpenAI from "openai";
+import { createModelAdapter, type ModelAdapter } from "../providers/model-adapter";
 import {
   createPart,
   emitPart,
@@ -69,6 +70,12 @@ export interface AgentLoopOpts {
    * (which it sometimes only narrates, leaving the loop spinning to maxIterations).
    */
   exitSignal?: { exit: boolean; reason?: string };
+  /**
+   * Model adapter — encapsulates per-model thinking params, timeout, and
+   * reasoning extraction. When provided, replaces the hardcoded model detection.
+   * If omitted, auto-created from client+model via createModelAdapter().
+   */
+  adapter?: ModelAdapter;
 }
 
 export async function runAgentLoop(
@@ -99,56 +106,11 @@ export async function runAgentLoop(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
-  const isKimiModel = activeModel.toLowerCase().includes("kimi");
-  const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
-  const isGLMModel = activeModel.toLowerCase().startsWith("glm");
-  const isGLM52 = activeModel.toLowerCase().includes("glm-5.2");
-  const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
-  const thinkingParam = opts.disableThinking
-    ? {}
-    : isDoubaoModel
-      ? { thinking: { type: "enabled", budget_tokens: 8192 } }
-      : isKimiModel
-        ? { thinking: { type: "enabled" } }
-        : isDeepseekModel
-          ? { reasoning_effort: "high" }
-          : {};
+  // Model adapter: encapsulates per-model thinking params, timeout, and
+  // reasoning extraction. Auto-created from client+model if not provided.
+  const adapter = opts.adapter ?? createModelAdapter(activeClient, activeModel);
 
-  // GLM-5.2 dynamic thinking budget: starts generous and shrinks as context
-  // grows, ensuring there's always room for narration + tool calls. The problem:
-  // GLM-5.2's deep thinking can consume the entire output budget, leaving zero
-  // tokens for narration/tool_calls, which triggers an early loop exit.
-  //
-  // Strategy: reserve at least 4096 tokens for non-thinking output. As
-  // totalOutputTokens accumulates, reduce the thinking budget proportionally.
-  const GLM52_MAX_THINKING = 4096;
-  const GLM52_MIN_THINKING = 1024;
-  const GLM52_OUTPUT_CAP = 16384; // max_tokens per request
-  const GLM52_NARRATION_RESERVE = 4096; // always keep this much for narration+tools
-
-  function getGlm52ThinkingBudget(): number {
-    // As output tokens accumulate across iterations, the context grows and
-    // available output budget effectively shrinks. Scale thinking budget down.
-    const pressure = Math.min(totalOutputTokens / (GLM52_OUTPUT_CAP * 3), 1);
-    const budget = Math.round(GLM52_MAX_THINKING - pressure * (GLM52_MAX_THINKING - GLM52_MIN_THINKING));
-    return Math.max(GLM52_MIN_THINKING, Math.min(GLM52_MAX_THINKING, budget));
-  }
-
-  function getGlmExtraBody() {
-    if (opts.disableThinking) return undefined;
-    if (isGLM52) {
-      return { thinking: { type: "enabled", budget_tokens: getGlm52ThinkingBudget() } };
-    }
-    if (isGLMModel) {
-      return { thinking: { type: "enabled", budget_tokens: 2048 } };
-    }
-    if (isMinimaxModel) return { reasoning_split: true };
-    if (isDeepseekModel) return { thinking: { type: "enabled" } };
-    return undefined;
-  }
-
-  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
+  const timeoutMs = adapter.timeoutMs;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective
@@ -164,7 +126,10 @@ export async function runAgentLoop(
       () => withRetry(
         `runAgentLoop iteration ${iteration + 1}`,
         () => {
-          const extraBody = getGlmExtraBody();
+          const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+            disabled: opts.disableThinking,
+            outputTokensSoFar: totalOutputTokens,
+          });
           return activeClient.chat.completions.create(
             {
               model: activeModel,
@@ -202,48 +167,24 @@ export async function runAgentLoop(
         reasoning_details?: Array<{ type?: string; text?: string }>;
       };
 
-      // ── Reasoning tokens ────────────────────────────────────────
-      if (delta.reasoning_content) {
+      // ── Reasoning tokens (model-agnostic via adapter) ─────────────
+      const reasoningToken = adapter.extractReasoning(delta);
+      if (reasoningToken) {
         if (!reasoningContent) {
           console.log(`[agent-loop] first thinking_token from ${activeModel}, iteration=${iteration + 1}`);
         }
-        reasoningContent += delta.reasoning_content;
+        reasoningContent += reasoningToken;
 
         if (partCtx) {
           if (!reasoningPart) {
             reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
-            emitPart(partCtx, emit, reasoningPart, delta.reasoning_content);
+            emitPart(partCtx, emit, reasoningPart, reasoningToken);
           } else {
             (reasoningPart as any).text = reasoningContent;
-            // Delta-only emit (part already in array)
-            emit({ type: "thinking_token", token: delta.reasoning_content });
+            emit({ type: "thinking_token", token: reasoningToken });
           }
         } else {
-          emit({ type: "thinking_token", token: delta.reasoning_content });
-        }
-      }
-
-      // MiniMax reasoning_details
-      if (delta.reasoning_details && delta.reasoning_details.length > 0) {
-        for (const rd of delta.reasoning_details) {
-          if (rd.text) {
-            if (!reasoningContent) {
-              console.log(`[agent-loop] first thinking_token (minimax) from ${activeModel}, iteration=${iteration + 1}`);
-            }
-            reasoningContent += rd.text;
-
-            if (partCtx) {
-              if (!reasoningPart) {
-                reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
-                emitPart(partCtx, emit, reasoningPart, rd.text);
-              } else {
-                (reasoningPart as any).text = reasoningContent;
-                emit({ type: "thinking_token", token: rd.text });
-              }
-            } else {
-              emit({ type: "thinking_token", token: rd.text });
-            }
-          }
+          emit({ type: "thinking_token", token: reasoningToken });
         }
       }
 
