@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb, seedInviteCode } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 import { installAiMock, type AiMock } from "../_helpers/ai-mock";
@@ -35,12 +35,7 @@ describeIntegration("stress: per-user session cap", () => {
   afterEach(() => ai.restore());
 
   async function authedClient(): Promise<HttpClient> {
-    const http = new HttpClient(appCtx.baseUrl);
-    const code = await seedInviteCode();
-    const username = `cap_${Math.random().toString(36).slice(2, 10)}`;
-    const res = await http.post("/api/auth/register", { username, password: "pw-strong-123", inviteCode: code });
-    expect(res.status).toBe(201);
-    return http;
+    return createAuthenticatedClient(appCtx.baseUrl);
   }
 
   /** Fire a manager-chat start; resolve with its HTTP status without draining. */

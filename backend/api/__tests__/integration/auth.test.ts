@@ -1,15 +1,19 @@
 import { beforeAll, afterAll, beforeEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb, seedInviteCode } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, seedInviteCode, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
+import { db } from "../../src/infra/db";
+import { sql } from "drizzle-orm";
 
 /**
- * /api/auth — password register/login/logout, session cookie flow, /auth/me,
- * invite-gate guards, and credential edge cases. Registration requires a valid
- * invite code, which we seed directly.
+ * /api/auth — the OTP-only auth model. Username register/login was retired
+ * (POST /api/auth/register and /login now 403), so this exercises the live
+ * surface: disabled-endpoint guards, session cookie flow via OTP verify-login,
+ * /auth/me, logout, and the invite-gate.
  */
-describeIntegration("auth (password)", () => {
+describeIntegration("auth", () => {
   let appCtx: TestApp;
+  const bcryptP = import("bcryptjs").then((m) => m.default);
 
   beforeAll(async () => {
     appCtx = await createTestApp();
@@ -20,111 +24,70 @@ describeIntegration("auth (password)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
   });
 
-  const creds = () => ({
-    username: `user_${Math.random().toString(36).slice(2, 10)}`,
-    password: "hunter2-strong",
-  });
+  /** Seed a valid login OTP and drive verify-login, returning the authed client. */
+  async function seedOtpAndVerify(target: string, inviteCode?: string) {
+    const bcrypt = await bcryptP;
+    const { otpCodes } = await import("@cascade/database");
+    const code = "123456";
+    await db.insert(otpCodes).values({
+      channel: "email",
+      target,
+      codeHash: await bcrypt.hash(code, 10),
+      purpose: "login",
+      expiresAt: sql`now() + interval '10 minutes'`,
+    });
+    const http = new HttpClient(appCtx.baseUrl);
+    const res = await http.post("/api/auth/otp/verify-login", {
+      channel: "email", target, code, inviteCode,
+    });
+    return { http, res };
+  }
 
-  describe("register", () => {
-    it("creates a user with a valid invite code and sets a session", async () => {
+  describe("retired username endpoints", () => {
+    it("POST /api/auth/register is disabled (403)", async () => {
       const http = new HttpClient(appCtx.baseUrl);
-      const code = await seedInviteCode();
-      const c = creds();
-      const res = await http.post("/api/auth/register", { ...c, inviteCode: code });
-      expect(res.status).toBe(201);
-      expect(res.body.username).toBe(c.username);
+      const res = await http.post("/api/auth/register", {
+        username: "someone", password: "pw-strong-123", inviteCode: "x",
+      });
+      expect(res.status).toBe(403);
+    });
 
-      // Session cookie should now authenticate /auth/me.
+    it("POST /api/auth/login is disabled (403/401)", async () => {
+      const http = new HttpClient(appCtx.baseUrl);
+      const res = await http.post("/api/auth/login", { username: "someone", password: "pw" });
+      // login route rejects; never establishes a session
+      expect([401, 403, 400]).toContain(res.status);
+      const me = await http.get("/api/auth/me");
+      expect(me.status).toBe(401);
+    });
+  });
+
+  describe("OTP verify-login + session", () => {
+    it("auto-registers a new user with a valid code + invite code (201) and seats a session", async () => {
+      const invite = await seedInviteCode();
+      const { http, res } = await seedOtpAndVerify(`new${Date.now()}@example.com`, invite);
+      expect(res.status).toBe(201);
       const me = await http.get("/api/auth/me");
       expect(me.status).toBe(200);
-      expect(me.body.username).toBe(c.username);
     });
 
-    it("rejects missing username/password (400)", async () => {
-      const http = new HttpClient(appCtx.baseUrl);
-      const res = await http.post("/api/auth/register", { username: "", password: "", inviteCode: "x" });
-      expect(res.status).toBe(400);
-    });
-
-    it("rejects a missing invite code (400)", async () => {
-      const http = new HttpClient(appCtx.baseUrl);
-      const res = await http.post("/api/auth/register", { ...creds() });
-      expect(res.status).toBe(400);
-    });
-
-    it("rejects an invalid invite code and does not persist the user (400)", async () => {
-      const http = new HttpClient(appCtx.baseUrl);
-      const c = creds();
-      const res = await http.post("/api/auth/register", { ...c, inviteCode: "NOPE" });
-      expect(res.status).toBe(400);
-      // The username must be free again (user was rolled back).
-      const code = await seedInviteCode();
-      const retry = await http.post("/api/auth/register", { ...c, inviteCode: code });
-      expect(retry.status).toBe(201);
-    });
-
-    it("rejects a duplicate username (409)", async () => {
-      const http = new HttpClient(appCtx.baseUrl);
-      const c = creds();
-      const code1 = await seedInviteCode();
-      await http.post("/api/auth/register", { ...c, inviteCode: code1 });
-
-      const http2 = new HttpClient(appCtx.baseUrl);
-      const code2 = await seedInviteCode();
-      const dup = await http2.post("/api/auth/register", { ...c, inviteCode: code2 });
-      expect(dup.status).toBe(409);
-    });
-
-    it("a used invite code cannot be redeemed twice (400)", async () => {
-      const code = await seedInviteCode();
-      const h1 = new HttpClient(appCtx.baseUrl);
-      const r1 = await h1.post("/api/auth/register", { ...creds(), inviteCode: code });
-      expect(r1.status).toBe(201);
-
-      const h2 = new HttpClient(appCtx.baseUrl);
-      const r2 = await h2.post("/api/auth/register", { ...creds(), inviteCode: code });
-      expect(r2.status).toBe(400);
-    });
-  });
-
-  describe("login / logout / me", () => {
-    async function registered() {
-      const http = new HttpClient(appCtx.baseUrl);
-      const code = await seedInviteCode();
-      const c = creds();
-      await http.post("/api/auth/register", { ...c, inviteCode: code });
-      return { http, c };
-    }
-
-    it("logs in with correct credentials on a fresh client", async () => {
-      const { c } = await registered();
-      const fresh = new HttpClient(appCtx.baseUrl);
-      const res = await fresh.post("/api/auth/login", c);
-      expect(res.status).toBe(200);
-      expect(res.body.username).toBe(c.username);
-      const me = await fresh.get("/api/auth/me");
+    it("logs an existing user back in without an invite code", async () => {
+      const target = `repeat${Date.now()}@example.com`;
+      const invite = await seedInviteCode();
+      const first = await seedOtpAndVerify(target, invite);
+      expect(first.res.status).toBe(201);
+      // Second login, no invite needed.
+      const second = await seedOtpAndVerify(target);
+      expect(second.res.status).toBe(200);
+      const me = await second.http.get("/api/auth/me");
       expect(me.status).toBe(200);
-    });
-
-    it("rejects wrong password with generic 401", async () => {
-      const { c } = await registered();
-      const fresh = new HttpClient(appCtx.baseUrl);
-      const res = await fresh.post("/api/auth/login", { username: c.username, password: "wrong" });
-      expect(res.status).toBe(401);
-      expect(res.body.error).toBe("Invalid credentials");
-    });
-
-    it("rejects unknown user with the same generic 401 (no user enumeration)", async () => {
-      const fresh = new HttpClient(appCtx.baseUrl);
-      const res = await fresh.post("/api/auth/login", { username: "ghost", password: "whatever" });
-      expect(res.status).toBe(401);
-      expect(res.body.error).toBe("Invalid credentials");
     });
 
     it("logout clears the session (subsequent /me is 401)", async () => {
-      const { http } = await registered();
+      const http = await createAuthenticatedClient(appCtx.baseUrl);
       const out = await http.post("/api/auth/logout");
       expect(out.status).toBe(204);
       const me = await http.get("/api/auth/me");
@@ -146,11 +109,7 @@ describeIntegration("auth (password)", () => {
     });
 
     it("400 with empty invite code when authenticated", async () => {
-      // Register (which authenticates) but the user already redeemed at register;
-      // invite-gate with empty code should still 400 on validation first.
-      const http = new HttpClient(appCtx.baseUrl);
-      const code = await seedInviteCode();
-      await http.post("/api/auth/register", { ...creds(), inviteCode: code });
+      const http = await createAuthenticatedClient(appCtx.baseUrl);
       const res = await http.post("/api/auth/invite-gate", { inviteCode: "  " });
       expect(res.status).toBe(400);
     });

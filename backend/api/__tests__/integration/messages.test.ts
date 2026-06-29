@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 
@@ -14,7 +14,6 @@ describeIntegration("project messages", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -22,6 +21,7 @@ describeIntegration("project messages", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    http = await createAuthenticatedClient(appCtx.baseUrl);
   });
 
   async function makeProject(): Promise<string> {

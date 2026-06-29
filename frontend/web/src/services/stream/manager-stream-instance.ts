@@ -12,7 +12,7 @@ import {
   PROJECT_NAME_REGEX,
   validateManagerEvent,
 } from "@/components/ide/chat/chat-types";
-import { stripProjectNameMarker } from "@/components/ide/chat/chat-utils";
+import { stripProjectNameMarker, buildManagerHistory } from "@/components/ide/chat/chat-utils";
 import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
 import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
@@ -115,30 +115,12 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
-    const allMessages = this.actions.getManagerMessages()
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing);
+    const allMessages = this.actions.getManagerMessages();
 
-    // Find the last buildResult message — everything before it is a "completed round".
-    // Compress completed rounds into a single summary to prevent the LLM from
-    // fixating on old plan context when the user sends a new request.
-    const lastBuildIdx = allMessages.reduce((acc, m, i) => (m as any).buildResult ? i : acc, -1);
-
-    let historyMessages: Array<{ role: "user" | "assistant"; content: string }>;
-    if (lastBuildIdx >= 0) {
-      // Summarize everything up to and including the buildResult as "previous round done"
-      const afterBuild = allMessages.slice(lastBuildIdx + 1);
-      const previousUserMsgs = allMessages.slice(0, lastBuildIdx + 1).filter(m => m.role === "user");
-      const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
-      const roundSummary = lastPrevUserMsg
-        ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
-        : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
-      historyMessages = [
-        { role: "assistant", content: roundSummary },
-        ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      ];
-    } else {
-      historyMessages = allMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-    }
+    // Compress any completed build round into a one-line summary so the planner
+    // focuses on the NEW request, not the previous round's plan. (Pure logic
+    // lives in buildManagerHistory — unit-tested in chat-utils.test.ts.)
+    const historyMessages = buildManagerHistory(allMessages as any);
 
     const controller = new AbortController();
     this.abortController = controller;

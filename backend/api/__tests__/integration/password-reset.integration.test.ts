@@ -49,6 +49,7 @@ describeIntegration("Password set + reset", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
     sentCodes.clear();
   });
 

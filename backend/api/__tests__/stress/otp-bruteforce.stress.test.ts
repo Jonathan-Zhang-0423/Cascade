@@ -37,6 +37,7 @@ describeIntegration("stress: OTP brute-force resistance", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
     sentCodes.clear();
   });
 
@@ -103,8 +104,13 @@ describeIntegration("stress: OTP brute-force resistance", () => {
         }),
       ),
     );
-    expect(storm.every((r) => r.status === 401)).toBe(true);
-    // No login session should have been established.
+    // None may succeed. A guess is rejected either as bad/locked (401) or
+    // throttled by the per-IP auth limiter (429) under the burst — both are
+    // non-success. The security property is "no guess authenticated".
+    expect(storm.every((r) => r.status === 401 || r.status === 429)).toBe(true);
+    // No login session should have been established. Reset the per-IP limiter
+    // first so this check isn't itself throttled by the preceding burst.
+    appCtx.resetRateLimiters();
     const me = await http.get("/api/auth/me");
     expect(me.status).toBe(401);
   });

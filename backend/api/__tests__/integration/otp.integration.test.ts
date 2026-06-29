@@ -48,6 +48,7 @@ describeIntegration("OTP send + verify", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
     sentCodes.clear();
   });
 
