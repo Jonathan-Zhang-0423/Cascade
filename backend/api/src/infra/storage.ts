@@ -482,6 +482,7 @@ export class DatabaseStorage implements IStorage {
         framework: publishedApps.framework,
         viewCount: publishedApps.viewCount,
         forkCount: publishedApps.forkCount,
+        likeCount: publishedApps.likeCount,
         adminTakenDown: publishedApps.adminTakenDown,
         publishedAt: publishedApps.publishedAt,
         updatedAt: publishedApps.updatedAt,

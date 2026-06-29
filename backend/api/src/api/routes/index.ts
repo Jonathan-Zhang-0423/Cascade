@@ -35,6 +35,9 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { spawnProcess } from "../../infra/process-exec";
 import { userSessions } from "../../infra/concurrency";
+import type { ChatMessageInput } from "../../infra/storage";
+import { users, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
+import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail } from "../../infra/email";
@@ -2423,6 +2426,615 @@ Rules:
       res.status(500).json({ error: "send_failed" });
     }
   });
+
+  // ── Creator Square ────────────────────────────────────────────────────────────
+
+  // GET /api/square — list published apps (public)
+  app.get("/api/square", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const framework = req.query.framework as string | undefined;
+      const sort = (req.query.sort as string) || "latest";
+      const q = (req.query.q as string | undefined)?.trim() || "";
+      const author = (req.query.author as string | undefined)?.trim() || ""; // username filter
+
+      // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
+      const baseWhere = and(
+        eq(publishedApps.visibility, "public"),
+        eq(publishedApps.adminTakenDown, false),
+        ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
+      );
+
+      const fullWhere = q
+        ? and(baseWhere, or(
+            sql`lower(${publishedApps.title}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${publishedApps.description}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${users.username}) like ${"%" + q.toLowerCase() + "%"}`,
+          ))
+        : baseWhere;
+
+      const orderBy = sort === "hottest"
+        ? desc(publishedApps.viewCount)
+        : desc(publishedApps.publishedAt);
+
+      const rows = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere);
+
+      res.json({ apps: rows, total });
+    } catch (err) {
+      console.error("[square/list]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id — get single app (public or link_only allows direct access, private = owner only)
+  app.get("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      const [row] = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.id, req.params.id));
+
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      // private: only owner can view
+      // link_only: anyone with the link can view (not listed in square, but direct access allowed)
+      // public: anyone can view
+      if (row.visibility === "private" && row.userId !== userId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Increment view count asynchronously (non-blocking, fire-and-forget)
+      db.update(publishedApps)
+        .set({ viewCount: sql`${publishedApps.viewCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ app: row });
+    } catch (err) {
+      console.error("[square/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square — publish or update (auth required)
+  app.post("/api/square", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId, title, description, isOpenSource, visibility, previewScreenshot, framework: fw } = req.body as {
+        projectId?: string; title?: string; description?: string;
+        isOpenSource?: boolean; visibility?: string; previewScreenshot?: string; framework?: string;
+      };
+      if (!projectId || !title?.trim()) { res.status(400).json({ error: "missing_fields" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      // Scope lookup to (projectId + userId) — prevents cross-user collisions
+      const [existing] = await db.select().from(publishedApps)
+        .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
+
+      const appId = existing?.id ?? randomBytes(8).toString("hex");
+      const detectedFramework = fw ?? (project as any).framework ?? "web";
+
+      if (existing) {
+        await db.update(publishedApps).set({
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          updatedAt: new Date(),
+        }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
+      } else {
+        await db.insert(publishedApps).values({
+          id: appId,
+          projectId,
+          userId,
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+        });
+      }
+
+      const [app] = await db.select().from(publishedApps).where(eq(publishedApps.id, appId));
+      res.json({ app });
+    } catch (err) {
+      console.error("[square/publish]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id — unpublish (auth required, owner only)
+  app.delete("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      if (row.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/fork — fork open-source app into user's projects (auth required)
+  app.post("/api/square/:id/fork", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+
+      const sourceFiles = await storage.getProjectFiles(sourceApp.projectId);
+      const newProjectId = randomBytes(8).toString("hex");
+      await storage.createProject({ id: newProjectId, userId, name: `Fork of ${sourceApp.title}`, framework: sourceApp.framework as any });
+      if (sourceFiles.length > 0) {
+        await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
+      }
+      // Increment fork count asynchronously
+      db.update(publishedApps)
+        .set({ forkCount: sql`${publishedApps.forkCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ projectId: newProjectId });
+    } catch (err) {
+      console.error("[square/fork]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/files — get app source files (open-source only)
+  app.get("/api/square/:id/files", async (req, res) => {
+    try {
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+      const files = await storage.getProjectFiles(sourceApp.projectId);
+      res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
+    } catch (err) {
+      console.error("[square/files]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/preview-session — start a preview session for the app's files (web only)
+  // Returns a short-lived token; the client loads /preview-serve/:token/ in an iframe.
+  app.get("/api/square/:id/preview-session", async (req, res) => {
+    try {
+      const [app] = await db
+        .select({ id: publishedApps.id, projectId: publishedApps.projectId, framework: publishedApps.framework, adminTakenDown: publishedApps.adminTakenDown, visibility: publishedApps.visibility, userId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id));
+      if (!app) { res.status(404).json({ error: "not_found" }); return; }
+      if (app.adminTakenDown) { res.status(403).json({ error: "taken_down" }); return; }
+      // Only private apps restrict access (link_only is fine for direct link)
+      const sessionUserId = (req.session as any)?.userId as string | undefined;
+      if (app.visibility === "private" && app.userId !== sessionUserId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Only web apps can be previewed in an iframe
+      if (app.framework !== "web") {
+        res.status(422).json({ error: "not_web", framework: app.framework }); return;
+      }
+
+      const files = await storage.getProjectFiles(app.projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_start_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+      res.json({ token, previewUrl: `/preview-serve/${token}/` });
+    } catch (err) {
+      console.error("[square/preview-session]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+
+  // GET /api/square/authors — list all users who have public published apps
+  app.get("/api/square/authors", async (req, res) => {
+    try {
+      const rows = await db
+        .selectDistinct({
+          username: users.username,
+          appCount: count(),
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false)))
+        .groupBy(users.username)
+        .orderBy(desc(count()));
+      res.json({ authors: rows });
+    } catch (err) {
+      console.error("[square/authors]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/my/apps — list current user's published apps
+  app.get("/api/square/my/apps", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const rows = await db.select().from(publishedApps).where(eq(publishedApps.userId, userId)).orderBy(desc(publishedApps.publishedAt));
+      res.json({ apps: rows });
+    } catch (err) {
+      console.error("[square/my]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/screenshot — take a screenshot of the project preview (auth required)
+  app.post("/api/square/screenshot", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId } = req.body as { projectId?: string };
+      if (!projectId) { res.status(400).json({ error: "missing_projectId" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_session_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+
+      const previewUrl = `http://localhost:${PORT}/preview-serve/${token}/`;
+      const pwModule = "playwright";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
+      const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.goto(previewUrl, { waitUntil: "networkidle", timeout: 20_000 });
+        await new Promise<void>((r) => setTimeout(r, 1500));
+        const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 85 });
+        const base64 = buffer.toString("base64");
+        res.json({ screenshot: `data:image/jpeg;base64,${base64}` });
+      } finally {
+        await browser.close();
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[square/screenshot]", err);
+      res.status(500).json({ error: "screenshot_failed" });
+    }
+  });
+
+  // ── Likes ────────────────────────────────────────────────────────────────
+
+  // POST /api/square/:id/like — toggle like (auth required)
+  app.post("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const appId = req.params.id;
+    try {
+      const { randomUUID } = await import("crypto");
+      const existing = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // already liked — unlike
+        await db.delete(appLikes).where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)));
+        await db.update(publishedApps)
+          .set({ likeCount: sql`greatest(${publishedApps.likeCount} - 1, 0)` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: false });
+      } else {
+        // not liked — like
+        await db.insert(appLikes).values({ id: randomUUID(), appId, userId });
+        await db.update(publishedApps)
+          .set({ likeCount: sql`${publishedApps.likeCount} + 1` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: true });
+
+        // Send notification to app owner (fire-and-forget, don't block response)
+        db.select({
+          appTitle: publishedApps.title,
+          ownerId: publishedApps.userId,
+          likerUsername: users.username,
+        })
+          .from(publishedApps)
+          .innerJoin(users, eq(users.id, userId))
+          .where(eq(publishedApps.id, appId))
+          .limit(1)
+          .then(([row]) => {
+            if (!row || row.ownerId === userId) return; // don't notify self-like
+            return db.insert(notifications).values({
+              userId: row.ownerId,
+              type: "app_like",
+              title: "有人点赞了你的应用",
+              body: `@${row.likerUsername} 点赞了你分享的「${row.appTitle}」`,
+              isRead: false,
+            });
+          })
+          .catch(() => {});
+      }
+    } catch (err) {
+      console.error("[square/like]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/like — check if current user liked this app
+  app.get("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.json({ liked: false }); return; }
+    try {
+      const rows = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, req.params.id), eq(appLikes.userId, userId)))
+        .limit(1);
+      res.json({ liked: rows.length > 0 });
+    } catch (err) {
+      console.error("[square/like/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  // GET /api/square/:id/comments — list comments (public)
+  app.get("/api/square/:id/comments", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const offset = parseInt(req.query.offset as string) || 0;
+    try {
+      const rows = await db
+        .select({
+          id: appComments.id,
+          content: appComments.content,
+          createdAt: appComments.createdAt,
+          userId: appComments.userId,
+          authorUsername: users.username,
+        })
+        .from(appComments)
+        .innerJoin(users, eq(appComments.userId, users.id))
+        .where(eq(appComments.appId, req.params.id))
+        .orderBy(desc(appComments.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(appComments)
+        .where(eq(appComments.appId, req.params.id));
+
+      res.json({ comments: rows, total });
+    } catch (err) {
+      console.error("[square/comments/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/comments — add a comment (auth required)
+  app.post("/api/square/:id/comments", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const content = ((req.body as any)?.content ?? "").trim();
+    if (!content || content.length > 500) {
+      res.status(400).json({ error: "invalid_content" }); return;
+    }
+    try {
+      const { randomUUID } = await import("crypto");
+      const id = randomUUID();
+      const now = new Date();
+      await db.insert(appComments).values({
+        id,
+        appId: req.params.id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+      const authorUsername = user[0]?.username ?? "unknown";
+      res.json({
+        comment: {
+          id,
+          content,
+          createdAt: now,
+          userId,
+          authorUsername,
+        }
+      });
+
+      // Send notification to app owner (fire-and-forget)
+      db.select({ appTitle: publishedApps.title, ownerId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1)
+        .then(([row]) => {
+          if (!row || row.ownerId === userId) return; // don't notify self-comment
+          return db.insert(notifications).values({
+            userId: row.ownerId,
+            type: "app_comment",
+            title: "有人评论了你的应用",
+            body: `@${authorUsername} 评论了你分享的「${row.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+            isRead: false,
+          });
+        })
+        .catch(() => {});
+    } catch (err) {
+      console.error("[square/comments/post]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id/comments/:commentId — delete comment (owner or admin)
+  app.delete("/api/square/:id/comments/:commentId", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const [comment] = await db
+        .select({ userId: appComments.userId })
+        .from(appComments)
+        .where(eq(appComments.id, req.params.commentId))
+        .limit(1);
+      if (!comment) { res.status(404).json({ error: "not_found" }); return; }
+      if (comment.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(appComments).where(eq(appComments.id, req.params.commentId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/comments/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/aigc/session — create a new AIGC session
+  app.post("/api/aigc/session", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
+
+    const { randomUUID } = await import("crypto");
+    const sessionId = randomUUID();
+    const session: AigcSession = {
+      id: sessionId,
+      projectId,
+      userId,
+      messages: [],
+      events: [],
+      nextEventId: 0,
+      done: false,
+      sseWriters: new Set(),
+    };
+    aigcSessions.set(sessionId, session);
+    res.json({ sessionId });
+  });
+
+  // POST /api/aigc/session/:id/message — send a message to the AIGC agent
+  app.post("/api/aigc/session/:id/message", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    const { message } = req.body as { message?: string };
+    if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
+
+    // Fire-and-forget — client polls via SSE
+    runAigcAgent(session, message.trim()).catch((err) => {
+      console.error("[aigc/session] agent error:", err);
+    });
+    res.json({ ok: true });
+  });
+
+  // GET /api/aigc/session/:id/stream — SSE stream of AIGC events
+  app.get("/api/aigc/session/:id/stream", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).end(); return; }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Replay missed events
+    const lastId = parseInt(req.headers["last-event-id"] as string ?? "-1", 10);
+    for (const ev of session.events) {
+      if ((ev.eventId as number) > lastId) {
+        res.write(`id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`);
+      }
+    }
+
+    const writer = (line: string) => { try { res.write(line); } catch {} };
+    session.sseWriters.add(writer);
+    req.on("close", () => session.sseWriters.delete(writer));
+  });
+
+  // GET /api/aigc/session/:id — get session state
+  app.get("/api/aigc/session/:id", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "not_found" }); return; }
+    res.json({
+      id: session.id,
+      projectId: session.projectId,
+      done: session.done,
+      messageCount: session.messages.length,
+    });
+  });
+
 
   // ─────────────────────────────────────────────────────────────────────────────
 

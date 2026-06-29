@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { GitFork, Share2, Lock, Unlock } from "lucide-react";
+import { GitFork, Share2, Lock, Unlock, Heart } from "lucide-react";
 import { SharePanel } from "./share-panel";
 
 export interface AppCardData {
@@ -14,6 +14,7 @@ export interface AppCardData {
   authorUsername: string;
   viewCount?: number;
   forkCount?: number;
+  likeCount?: number;
 }
 
 interface AppCardProps {
@@ -154,7 +155,21 @@ export function AppCard({ app, onClick, onFork, index = 0 }: AppCardProps) {
           )}
           <div className="mt-2.5 flex items-center justify-between">
             <span className="text-[11px] text-gray-400">@{app.authorUsername}</span>
-            <span className="text-[11px] text-gray-400">{timeAgo(app.publishedAt)}</span>
+            <div className="flex items-center gap-2.5">
+              {(app.likeCount ?? 0) > 0 && (
+                <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                  <Heart className="w-3 h-3" />
+                  {app.likeCount}
+                </span>
+              )}
+              {(app.forkCount ?? 0) > 0 && (
+                <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                  <GitFork className="w-3 h-3" />
+                  {app.forkCount}
+                </span>
+              )}
+              <span className="text-[11px] text-gray-400">{timeAgo(app.publishedAt)}</span>
+            </div>
           </div>
         </div>
       </motion.div>
