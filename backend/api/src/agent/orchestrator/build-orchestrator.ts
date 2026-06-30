@@ -602,6 +602,7 @@ Examples of when to call research:
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[build-session] BUILDER THREW sessionId=${session.id}: ${message}`);
     emit({ type: "build_error", message });
     emit({ type: "done" });
     telemetry.setFinalStatus("error", message);
@@ -610,6 +611,8 @@ Examples of when to call research:
     if (mcpManager) mcpManager.disconnect().catch(() => {});
     return;
   }
+
+  console.log(`[build-session] POST-LOOP sessionId=${session.id} aborted=${session.aborted}`);
 
   if (session.aborted) {
     emit({ type: "done" });
@@ -667,6 +670,7 @@ Examples of when to call research:
     }
 
     emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
+    console.log(`[build-session] EMITTING all_complete sessionId=${session.id} changedFiles=${changedFiles.length}`);
 
     // Persist changed files to the DB BEFORE the client triggers its post-build
     // file refetch. The frontend's syncFilesToServer is debounced (1s), so on a
