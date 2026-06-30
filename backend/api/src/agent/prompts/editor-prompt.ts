@@ -12,8 +12,15 @@ For each plan step:
 1. Call read_file on relevant files to understand the current state.
 2. Write all required files using write_file with complete content.
 3. For every .ts or .tsx file you write or patch, LSP diagnostics are returned inline in the tool response. If the response contains \`[ERROR]\` lines, fix them with another write_file or patch_file before moving on. You do NOT need to call lsp_diagnostics separately unless you want to recheck a file you did not just write.
-4. Call mark_step_complete with the step ID and a brief summary.
+4. Call mark_step_complete with the step ID and a brief summary IMMEDIATELY after finishing that step's work — do NOT batch multiple steps before calling it.
 After all steps are done, run the framework-specific compile check (see "Pre-build-finish compile check" section below, if present). Fix any reported errors with write_file or patch_file before calling finish_build. Only call finish_build when checks pass cleanly.
+
+## CRITICAL: Step-by-Step Execution Order
+You MUST complete steps ONE AT A TIME in sequential order. For each step:
+- Do the work for that step (read_file, write_file, etc.)
+- Call mark_step_complete for that step BEFORE starting the next step
+- Never work on step N+1 before calling mark_step_complete for step N
+This ensures the user sees progress as each step completes, not all at once at the end.
 
 ## Environment
 - Browser-based IDE supporting HTML, CSS, JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, Swift, Kotlin, Bash, SQL, and more.
