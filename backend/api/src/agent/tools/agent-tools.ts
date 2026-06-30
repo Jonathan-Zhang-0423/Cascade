@@ -135,35 +135,48 @@ export function buildBuilderTools(
   startedSteps.add(1); // Step 1's step_starting is emitted by the orchestrator at build start.
 
   /**
-   * Check if a file write/read belongs to a plan step that hasn't started yet.
-   * If so, emit step_starting to advance the frontend's currentStepNum so
-   * action_log entries are attributed to the correct step (instead of all
-   * piling under step 1).
+   * Check if a file write/read belongs to the NEXT plan step (sequential only).
+   * Only advances one step at a time in order — never skips steps. This prevents
+   * shared files (e.g. index.html in steps 1, 2, and 3) from prematurely jumping
+   * to a later step. The rule: advance to step N+1 only when a file EXCLUSIVE to
+   * step N+1 (not listed in any earlier step) is touched.
    */
   function maybeAdvanceStep(filePath: string, emit: SseEmit): void {
     if (!planSteps || totalSteps <= 1) return;
-    // Normalize path for matching (strip leading /project/ if present)
-    const normalized = filePath.replace(/^\/project\//, "").replace(/^\//, "");
-    for (const step of planSteps) {
-      if (!step.required_files || step.required_files.length === 0) continue;
-      if (startedSteps.has(step.step)) continue;
-      // Also skip steps that are already completed
-      if (completedSteps.has(step.step)) continue;
-      const matches = step.required_files.some(rf => {
-        const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
-        return normalized === normRf
-          || normalized.endsWith("/" + normRf)
-          || normRf.endsWith("/" + normalized)
-          || normalized.includes(normRf)
-          || normRf.includes(normalized);
-      });
-      if (matches) {
-        startedSteps.add(step.step);
-        console.log(`[step-advance] file "${filePath}" → starting step ${step.step}: ${step.title}`);
-        emit({ type: "step_starting", stepNumber: step.step, stepTitle: step.title, totalSteps });
-        break; // Only advance one step at a time
-      }
+
+    // Determine the current step (highest started, not completed)
+    let currentStep = 1;
+    for (const s of startedSteps) {
+      if (s > currentStep) currentStep = s;
     }
+    const nextStepNum = currentStep + 1;
+    if (nextStepNum > totalSteps) return;
+
+    const nextStep = planSteps.find(s => s.step === nextStepNum);
+    if (!nextStep || !nextStep.required_files || nextStep.required_files.length === 0) return;
+    if (startedSteps.has(nextStepNum) || completedSteps.has(nextStepNum)) return;
+
+    // Normalize the written file path
+    const normalized = filePath.replace(/^\/project\//, "").replace(/^\//, "");
+
+    // Check if this file is in the NEXT step's required_files
+    const matchesNext = nextStep.required_files.some(rf => {
+      const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
+      return normalized === normRf;
+    });
+    if (!matchesNext) return;
+
+    // Check this file is NOT in the current step's required_files (exclusive to next step)
+    const currentStepObj = planSteps.find(s => s.step === currentStep);
+    const inCurrentStep = currentStepObj?.required_files?.some(rf => {
+      const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
+      return normalized === normRf;
+    });
+    if (inCurrentStep) return; // Shared file — don't advance
+
+    startedSteps.add(nextStepNum);
+    console.log(`[step-advance] file "${filePath}" → starting step ${nextStepNum}: ${nextStep.title}`);
+    emit({ type: "step_starting", stepNumber: nextStepNum, stepTitle: nextStep.title, totalSteps });
   }
 
   const schemas: ToolSchema[] = [
