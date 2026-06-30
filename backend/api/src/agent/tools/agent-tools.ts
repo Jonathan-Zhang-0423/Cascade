@@ -135,7 +135,7 @@ export function buildBuilderTools(
   startedSteps.add(1); // Step 1's step_starting is emitted by the orchestrator at build start.
 
   /**
-   * Check if a file write belongs to a plan step that hasn't started yet.
+   * Check if a file write/read belongs to a plan step that hasn't started yet.
    * If so, emit step_starting to advance the frontend's currentStepNum so
    * action_log entries are attributed to the correct step (instead of all
    * piling under step 1).
@@ -143,16 +143,23 @@ export function buildBuilderTools(
   function maybeAdvanceStep(filePath: string, emit: SseEmit): void {
     if (!planSteps || totalSteps <= 1) return;
     // Normalize path for matching (strip leading /project/ if present)
-    const normalized = filePath.replace(/^\/project\//, "");
+    const normalized = filePath.replace(/^\/project\//, "").replace(/^\//, "");
     for (const step of planSteps) {
       if (!step.required_files || step.required_files.length === 0) continue;
       if (startedSteps.has(step.step)) continue;
+      // Also skip steps that are already completed
+      if (completedSteps.has(step.step)) continue;
       const matches = step.required_files.some(rf => {
-        const normRf = rf.replace(/^\/project\//, "");
-        return normalized === normRf || normalized.endsWith(normRf) || normRf.endsWith(normalized);
+        const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
+        return normalized === normRf
+          || normalized.endsWith("/" + normRf)
+          || normRf.endsWith("/" + normalized)
+          || normalized.includes(normRf)
+          || normRf.includes(normalized);
       });
       if (matches) {
         startedSteps.add(step.step);
+        console.log(`[step-advance] file "${filePath}" → starting step ${step.step}: ${step.title}`);
         emit({ type: "step_starting", stepNumber: step.step, stepTitle: step.title, totalSteps });
         break; // Only advance one step at a time
       }
@@ -573,6 +580,8 @@ export function buildBuilderTools(
     read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
+      // Advance step if this file belongs to a later plan step
+      maybeAdvanceStep(path, emit);
       const fileName = path.split("/").pop() || path;
       const content = session.files.get(path);
       emit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
