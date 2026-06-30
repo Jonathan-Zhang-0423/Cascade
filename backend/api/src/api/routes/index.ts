@@ -4937,49 +4937,55 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // ─── Creator Square ───────────────────────────────────────────────────────────
 
+  // POST /api/square/screenshot — take a screenshot of the project preview (auth required)
   app.post("/api/square/screenshot", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    const { projectId } = req.body as { projectId?: string };
-    if (!projectId) { res.status(400).json({ error: "projectId required" }); return; }
-
     try {
-      const pwModule = "playwright";
-      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
 
-      // Start a local preview-serve session (no login required)
-      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
-      if (!projectFiles.length) { res.status(404).json({ error: "project has no files" }); return; }
+      const { projectId } = req.body as { projectId?: string };
+      if (!projectId) { res.status(400).json({ error: "missing_projectId" }); return; }
 
-      const startRes = await fetch(`http://localhost:${process.env.PORT || 5100}/api/preview-server/start`, {
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: projectFiles.map((f) => ({ path: f.path, content: f.content })) }),
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
       });
-      if (!startRes.ok) { res.status(500).json({ error: "preview-server unavailable" }); return; }
-      const { token, url } = await startRes.json() as { token: string; url: string };
-      const previewUrl = url.replace(/^https?:\/\/[^/]+/, `http://localhost:${process.env.PORT || 5100}`);
+      if (!startResp.ok) { res.status(500).json({ error: "preview_session_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
 
+      const previewUrl = `http://localhost:${PORT}/preview-serve/${token}/`;
+      const pwModule = "playwright";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
       try {
         const page = await browser.newPage();
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.goto(previewUrl, { waitUntil: "load", timeout: 20_000 });
-        await new Promise<void>((r) => setTimeout(r, 2000));
-        const screenshotBuf = await page.screenshot({ type: "jpeg", quality: 85 });
-        const screenshot = `data:image/jpeg;base64,${screenshotBuf.toString("base64")}`;
-        res.json({ screenshot });
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.goto(previewUrl, { waitUntil: "networkidle", timeout: 20_000 });
+        await new Promise<void>((r) => setTimeout(r, 1500));
+        const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 85 });
+        const base64 = buffer.toString("base64");
+        res.json({ screenshot: `data:image/jpeg;base64,${base64}` });
       } finally {
         await browser.close();
-        fetch(`http://localhost:${process.env.PORT || 5100}/api/preview-server/stop`, {
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
         }).catch(() => {});
       }
     } catch (err) {
-      console.error("[square/screenshot]", err instanceof Error ? err.message : err);
-      res.status(500).json({ error: "screenshot failed" });
+      console.error("[square/screenshot]", err);
+      res.status(500).json({ error: "screenshot_failed" });
     }
   });
 
