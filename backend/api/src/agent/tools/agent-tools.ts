@@ -332,12 +332,17 @@ export function buildBuilderTools(
       persistFileToDb(session, path_, content);
       emit({ type: "code_applied", filePath: path_, code: content });
 
-      // Mirror to disk
+      // Mirror to disk (with path traversal protection)
       if (session.sessionDir) {
         try {
           const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, content, "utf-8");
+          // Guard: ensure the resolved path is inside sessionDir (prevent ../../ escape)
+          if (!abs.startsWith(session.sessionDir)) {
+            console.warn(`[agent-tools] path traversal blocked: ${path_} resolved to ${abs}`);
+          } else {
+            await mkdir(path.dirname(abs), { recursive: true });
+            await writeFile(abs, content, "utf-8");
+          }
         } catch (err) {
           console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
         }
@@ -403,8 +408,12 @@ export function buildBuilderTools(
       if (session.sessionDir) {
         try {
           const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, patched, "utf-8");
+          if (!abs.startsWith(session.sessionDir)) {
+            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
+          } else {
+            await mkdir(path.dirname(abs), { recursive: true });
+            await writeFile(abs, patched, "utf-8");
+          }
         } catch (err) {
           console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
         }
@@ -476,8 +485,12 @@ export function buildBuilderTools(
       if (session.sessionDir) {
         try {
           const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, patched, "utf-8");
+          if (!abs.startsWith(session.sessionDir)) {
+            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
+          } else {
+            await mkdir(path.dirname(abs), { recursive: true });
+            await writeFile(abs, patched, "utf-8");
+          }
         } catch (err) {
           console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
         }
@@ -528,7 +541,11 @@ export function buildBuilderTools(
       if (session.sessionDir) {
         try {
           const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          await rm(abs, { force: true });
+          if (!abs.startsWith(session.sessionDir)) {
+            console.warn(`[agent-tools] path traversal blocked on delete: ${path_}`);
+          } else {
+            await rm(abs, { force: true });
+          }
         } catch (err) {
           console.warn("[agent-tools] disk delete failed for", path_, err instanceof Error ? err.message : err);
         }

@@ -245,11 +245,14 @@ export class SessionManager {
 
   /**
    * Guaranteed cleanup: dispose all resources + release user slot + persist final state.
-   * Safe to call multiple times (idempotent).
+   * Safe to call multiple times (idempotent — guarded by _cleaningUp flag).
    */
   async cleanup(id: string): Promise<void> {
     const session = this.live.get(id);
     if (!session) return;
+    // Prevent concurrent cleanup (GC + normal completion racing)
+    if ((session as any)._cleaningUp) return;
+    (session as any)._cleaningUp = true;
 
     // Dispose all registered resources
     for (const r of session.resources) {
