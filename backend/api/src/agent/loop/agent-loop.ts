@@ -122,32 +122,44 @@ export async function runAgentLoop(
       emitPart(partCtx, emit, stepStart);
     }
 
-    const response = await aiSemaphore.run(
-      () => withRetry(
-        `runAgentLoop iteration ${iteration + 1}`,
-        () => {
-          const { thinkingParam, extraBody } = adapter.getThinkingConfig({
-            disabled: opts.disableThinking,
-            outputTokensSoFar: totalOutputTokens,
-          });
-          return activeClient.chat.completions.create(
-            {
-              model: activeModel,
-              messages,
-              ...thinkingParam,
-              ...(extraBody ? { extra_body: extraBody } : {}),
-              tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
-              tool_choice: tools.length > 0 ? "auto" : undefined,
-              stream: true,
-              stream_options: { include_usage: true },
-              max_tokens: 16384,
-            } as any,
-            { timeout: timeoutMs },
-          );
-        },
-      ),
-      CONCURRENCY_QUEUE_TIMEOUT,
-    );
+    let response: any;
+    try {
+      response = await aiSemaphore.run(
+        () => withRetry(
+          `runAgentLoop iteration ${iteration + 1}`,
+          () => {
+            const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+              disabled: opts.disableThinking,
+              outputTokensSoFar: totalOutputTokens,
+            });
+            return activeClient.chat.completions.create(
+              {
+                model: activeModel,
+                messages,
+                ...thinkingParam,
+                ...(extraBody ? { extra_body: extraBody } : {}),
+                tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
+                tool_choice: tools.length > 0 ? "auto" : undefined,
+                stream: true,
+                stream_options: { include_usage: true },
+                max_tokens: 16384,
+              } as any,
+              { timeout: timeoutMs },
+            );
+          },
+        ),
+        CONCURRENCY_QUEUE_TIMEOUT,
+      );
+    } catch (err: unknown) {
+      // If create itself fails with a transient error, retry this iteration
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/terminated|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR/i.test(msg) && iteration < maxIterations - 1) {
+        console.warn(`[agent-loop] transient error on create (iteration ${iteration + 1}): ${msg}. Retrying iteration...`);
+        iteration--; // will be incremented by the for-loop, effectively retrying
+        continue;
+      }
+      throw err;
+    }
 
     let assistantText = "";
     let reasoningContent = "";
@@ -158,6 +170,9 @@ export async function runAgentLoop(
     let reasoningPart: Part | undefined;
     let inThinkTag = false; // Filter <think> blocks from narration stream
 
+    // Wrap streaming in try/catch to handle mid-stream disconnects (terminated)
+    let streamTerminated = false;
+    try {
     for await (const chunk of response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
       const choice = chunk.choices[0];
       if (!choice) continue;
@@ -239,6 +254,17 @@ export async function runAgentLoop(
         totalInputTokens += u.prompt_tokens ?? 0;
         totalOutputTokens += u.completion_tokens ?? 0;
       }
+    }
+    } catch (streamErr: unknown) {
+      // Mid-stream disconnect (terminated/ECONNRESET) — retry this iteration
+      const msg = streamErr instanceof Error ? streamErr.message : String(streamErr);
+      if (/terminated|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR/i.test(msg) && iteration < maxIterations - 1) {
+        console.warn(`[agent-loop] stream terminated mid-iteration ${iteration + 1}: ${msg}. Retrying...`);
+        streamTerminated = true;
+        iteration--; // will be incremented by the for-loop, effectively retrying
+        continue;
+      }
+      throw streamErr;
     }
 
     const toolCalls = Object.values(toolCallsMap);
