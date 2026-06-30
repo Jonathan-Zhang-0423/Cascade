@@ -579,6 +579,13 @@ export function buildBuilderTools(
         if (matched) resolvedNum = matched.step;
       }
 
+      // Guard: if this step was already completed, acknowledge but don't re-emit
+      // events or re-trigger the completion check. Prevents the LLM from looping
+      // back to redo finished steps or double-triggering all_steps_complete.
+      if (completedSteps.has(resolvedNum)) {
+        return `Step ${stepId} was already completed — skipping. Move on to the next incomplete step.`;
+      }
+
       emit({ type: "step_completed", stepNumber: resolvedNum, summary });
       completedSteps.add(resolvedNum);
 

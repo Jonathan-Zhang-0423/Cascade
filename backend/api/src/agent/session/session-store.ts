@@ -118,11 +118,20 @@ export class SessionStore {
   /**
    * Server startup recovery: mark all pending/running sessions as interrupted.
    * These were in-flight when the server crashed — the LLM call cannot be resumed.
+   *
+   * Safety guard: only marks sessions created MORE than 10 seconds ago. This
+   * prevents a race where a session created during the startup sequence (between
+   * server boot and this call) gets incorrectly marked as interrupted.
    */
   async markInterruptedOnStartup(): Promise<number> {
+    const safetyWindowMs = 10_000; // 10 seconds
+    const cutoff = Date.now() - safetyWindowMs;
     const result = await db.update(agentSessions)
       .set({ status: "interrupted", doneAt: Date.now() })
-      .where(inArray(agentSessions.status, ["pending", "running"]))
+      .where(and(
+        inArray(agentSessions.status, ["pending", "running"]),
+        lt(agentSessions.createdAt, cutoff),
+      ))
       .returning({ id: agentSessions.id });
     return result.length;
   }
