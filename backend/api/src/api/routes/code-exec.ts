@@ -21,6 +21,7 @@ export function registerCodeExecRoutes(app: Express): void {
         res.status(400).json({ error: "idea is required" });
         return;
       }
+      console.log(`[generate-project-name] idea="${idea.slice(0, 50)}" framework=${framework || "web"}`);
       const { client: nameClient } = getOptimalClient("planning", "doubao");
       const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
       // Name the project in the same language as the idea (Chinese vs English),
