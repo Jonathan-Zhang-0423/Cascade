@@ -612,6 +612,13 @@ export async function registerRoutes(
 
       attachSseWriter(session, res, -1);
 
+      // Diagnostic: detect when the SSE response closes unexpectedly
+      res.on("close", () => {
+        if (!session.done) {
+          console.warn(`[build-session] RES CLOSED WHILE RUNNING sessionId=${sessionId} aborted=${session.aborted}`);
+        }
+      });
+
       const buildPromise = runBuildSession(session, emit)
         .catch((err: any) => {
           console.error(`[build-session] CAUGHT ERROR sessionId=${sessionId}:`, err?.message || err);
