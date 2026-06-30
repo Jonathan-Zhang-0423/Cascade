@@ -585,7 +585,7 @@ export async function registerRoutes(
         userLang: userLang || "English",
         taskStatuses: taskStatuses || undefined,
         userConfirmation: userConfirmation || undefined,
-        provider: provider || "deepseek-pro",
+        provider: provider || "glm",
         framework: resolvedFramework,
         mode: resolvedMode,
         _startedAt: Date.now(),
@@ -839,7 +839,7 @@ export async function registerRoutes(
         userRequest: userRequest || "",
         planSteps: Array.isArray(planSteps) && planSteps.length > 0 ? planSteps : undefined,
         userLang: userLang || "English",
-        provider: provider || "deepseek-pro",
+        provider: provider || "glm",
         framework: resolvedFramework,
         strictness: resolvedStrictness,
         events: [],
@@ -1072,7 +1072,7 @@ export async function registerRoutes(
       };
       // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
       const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
-      const activeProvider: AIProvider = provider || "deepseek-pro";
+      const activeProvider: AIProvider = provider || "glm";
       // Planning uses Kimi for stable task decomposition; fallback via getOptimalClient
       const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "kimi");
 

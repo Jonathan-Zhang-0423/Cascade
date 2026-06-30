@@ -118,7 +118,9 @@ export class MiniMaxAdapter implements ModelAdapter {
 }
 
 /**
- * GLM-5 — reasoning via `thinking.budget_tokens: 2048` in extra_body.
+ * GLM-5 — reasoning via `thinking.budget_tokens` in extra_body.
+ * Adaptive: first iteration uses 2048 for plan comprehension,
+ * subsequent iterations use 1024 for faster mechanical execution.
  * Reasoning emitted as delta.reasoning_content.
  */
 export class GlmAdapter implements ModelAdapter {
@@ -127,11 +129,13 @@ export class GlmAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean }): ThinkingConfig {
+  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
+    // Adaptive: 2048 for first iteration, 1024 for subsequent (faster)
+    const budget = (opts.outputTokensSoFar ?? 0) > 0 ? 1024 : 2048;
     return {
       thinkingParam: {},
-      extraBody: { thinking: { type: "enabled", budget_tokens: 2048 } },
+      extraBody: { thinking: { type: "enabled", budget_tokens: budget } },
     };
   }
 
