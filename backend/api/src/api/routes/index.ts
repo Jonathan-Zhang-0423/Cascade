@@ -61,6 +61,11 @@ import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } fr
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
 import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
+import { validateDslSequence, executeDslSequence } from "../../api/video/dsl-executor";
+import { videoStorage } from "../../infra/video-storage";
+import { addVideoWatermark } from "../../infra/watermark";
+import { projectVideos } from "@cascade/database";
+import { PROJECT_MEMORY_NAME, PROJECT_MEMORY_MAX } from "../../infra/storage";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -4678,104 +4683,144 @@ Generate the cascade.md content for this project based on both the plan and the 
     jobId: string,
     projectId: string,
     duration: 10 | 20 | 30,
+    videoDbId?: string,
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let browser: any = null;
-    let ffmpegAbort: (() => void) | null = null;
+    let browser: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+    let context: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+    let previewToken: string | null = null;
     let aborted = false;
+
+    const updateDb = (patch: Partial<{ status: string; localPath: string; errorMessage: string; finishedAt: Date }>) => {
+      if (videoDbId) db.update(projectVideos).set(patch).where(eq(projectVideos.id, videoDbId)).catch(() => {});
+    };
+
+    const stopPreview = () => {
+      if (previewToken) {
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: previewToken }),
+        }).catch(() => {});
+        previewToken = null;
+      }
+    };
 
     const timeout = setTimeout(() => {
       aborted = true;
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      if (ffmpegAbort) ffmpegAbort();
-      job.status = "error";
-      job.error = "timeout";
-      job.finishedAt = Date.now();
+      job.status = "error"; job.error = "timeout"; job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
+      stopPreview();
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // dynamic import via variable so tsc does not resolve the module at compile time
-      const pwModule = "playwright";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
-      browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      const page = await browser.newPage();
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, { waitUntil: "networkidle", timeout: 30_000 });
+      // ── Step 1: Start preview-serve (no login required, guaranteed) ──
+      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
+      if (projectFiles.length === 0) throw new Error("Project has no files to preview");
 
-      job.status = "running";
-      const totalFrames = duration * 10;
-      const intervalMs = 100;
-
-      for (let i = 0; i < totalFrames; i++) {
-        if (aborted) return;
-        const framePath = join(tmpDir, `frame_${String(i).padStart(4, "0")}.png`);
-        await page.screenshot({ path: framePath });
-        const pct = Math.floor(((i + 1) / totalFrames) * 90);
-        job.progress = pct;
-        await new Promise<void>((r) => setTimeout(r, intervalMs));
-      }
-
-      await browser.close();
-      browser = null;
-
-      if (aborted) return;
-
-      const outputPath = join(tmpDir, "output.mp4");
-      const ffResult = await new Promise<{ exitCode: number; timedOut: boolean }>((resolve) => {
-        const child = spawn("ffmpeg", [
-          "-framerate", "10",
-          "-i", join(tmpDir, "frame_%04d.png"),
-          "-c:v", "libx264",
-          "-pix_fmt", "yuv420p",
-          "-y",
-          outputPath,
-        ], { cwd: tmpDir });
-
-        ffmpegAbort = () => { try { child.kill("SIGKILL"); } catch {} };
-
-        let settled = false;
-        const ffTimer = setTimeout(() => {
-          if (!settled) { settled = true; try { child.kill("SIGKILL"); } catch {} resolve({ exitCode: 1, timedOut: true }); }
-        }, 60_000);
-
-        child.on("close", (code) => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: code ?? 1, timedOut: false }); }
-        });
-        child.on("error", () => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: 1, timedOut: false }); }
-        });
+      const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
       });
+      if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
+      const startData = await startRes.json() as { token: string; url: string };
+      previewToken = startData.token;
+      const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
 
-      // delete frame PNGs, keep only MP4
-      const frames = readdirSync(tmpDir).filter((f) => f.endsWith(".png"));
-      await Promise.all(frames.map((f) => rm(join(tmpDir, f), { force: true })));
+      // ── Step 2: Launch Playwright with native video recording ──
+      const pwModule = "playwright";
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
+      });
+      const page = await context.newPage();
+      job.status = "running"; job.progress = 5;
 
-      if (aborted) return;
+      // ── Step 3: Load App (use "load" not "networkidle" for reliability) ──
+      await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
+      await new Promise<void>((r) => setTimeout(r, 3000)); // wait for JS frameworks
+      job.progress = 15;
 
-      if (ffResult.exitCode !== 0 || !existsSync(outputPath)) {
-        throw new Error("ffmpeg failed");
+      // ── Step 4: Interactions ──
+      const projectRow = await storage.getProject(projectId).catch(() => null);
+      const rawSequence = projectRow?.actionSequence;
+      if (rawSequence) {
+        try {
+          const parsed = JSON.parse(rawSequence);
+          const validation = validateDslSequence(parsed);
+          if (validation.valid && validation.actions) {
+            job.progress = 20;
+            const result = await executeDslSequence(page, validation.actions);
+            if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
+          }
+        } catch (e) { console.warn("[video] DSL error:", e instanceof Error ? e.message : e); }
+      } else {
+        // Generic fallback: scroll + click visible buttons
+        try {
+          await page.mouse.wheel(0, 300); await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300); await new Promise<void>((r) => setTimeout(r, 1000));
+          const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
+          for (const btn of (buttons as any[]).slice(0, 3)) {
+            try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
+          }
+          await page.mouse.wheel(0, -600); await new Promise<void>((r) => setTimeout(r, 1000));
+        } catch (e) { console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e); }
       }
 
-      job.outputPath = outputPath;
-      job.progress = 100;
-      job.status = "done";
-      job.finishedAt = Date.now();
+      job.progress = 60;
+
+      // ── Step 5: Fill remaining time precisely ──
+      const usedMs = 3000 + (rawSequence ? 15000 : 8000);
+      await new Promise<void>((r) => setTimeout(r, Math.max(2000, duration * 1000 - usedMs)));
+      job.progress = 80;
+
+      // ── Step 6: Flush video ──
+      const videoHandle = await page.video();
+      await context.close(); context = null;
+      await browser.close(); browser = null;
+      stopPreview();
+
+      if (aborted) return;
+      const rawVideoPath = await videoHandle?.path();
+      if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
+
+      // ── Step 7: Watermark ──
+      const watermarkedPath = rawVideoPath.replace(/\.\w+$/, "-wm.mp4");
+      try {
+        await addVideoWatermark(rawVideoPath, watermarkedPath);
+        rm(rawVideoPath, { force: true }).catch(() => {});
+      } catch (wmErr) {
+        console.warn("[video] watermark failed:", wmErr instanceof Error ? wmErr.message : wmErr);
+        const { rename } = await import("fs/promises");
+        await rename(rawVideoPath, watermarkedPath);
+      }
+
+      // ── Step 8: Persist ──
+      // videoStorage singleton already imported
+      const storagePath = await videoStorage.save(jobId, watermarkedPath);
+      job.outputPath = storagePath; job.progress = 100; job.status = "done"; job.finishedAt = Date.now();
+      updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
+
     } catch (err: unknown) {
       if (!aborted) {
-        job.status = "error";
-        job.error = err instanceof Error ? err.message : "unknown";
-        job.finishedAt = Date.now();
+        const msg = err instanceof Error ? err.message : "unknown";
+        job.status = "error"; job.error = msg; job.finishedAt = Date.now();
+        updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
       clearTimeout(timeout);
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      stopPreview();
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -4828,6 +4873,17 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
 
     res.sendFile(filePath);
+  });
+
+  // Serve video file by DB record ID (persistent, survives job cleanup)
+  app.get("/api/video/file/:videoId", async (req, res) => {
+    try {
+      const row = await db.select().from(projectVideos).where(eq(projectVideos.id, req.params.videoId)).limit(1);
+      if (!row.length || !row[0].localPath || !existsSync(row[0].localPath)) { res.status(404).end(); return; }
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="demo-${row[0].duration}s.mp4"`);
+      res.sendFile(row[0].localPath);
+    } catch { res.status(500).end(); }
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
