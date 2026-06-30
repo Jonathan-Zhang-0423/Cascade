@@ -18,6 +18,7 @@ import CreateSquarePage from "@/pages/create-square";
 import AppDetailPage from "@/pages/app-detail";
 import AigcPage from "@/pages/aigc";
 import WechatCallbackPage from "@/pages/wechat-callback";
+import ProfileSettingsPage from "@/pages/profile-settings";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/aigc" component={AigcPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
+      <Route path="/profile" component={ProfileSettingsPage} />
       <Route path="/project/:id" component={IDEPage} />
       {import.meta.env.DEV && (
         <Route path="/ab-test">

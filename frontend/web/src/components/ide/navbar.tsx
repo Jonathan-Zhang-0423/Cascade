@@ -147,7 +147,7 @@ export function Navbar({
   const [publishedApp, setPublishedApp] = useState<{
     id: string; title: string; description: string | null;
     isOpenSource: boolean; visibility: "public" | "link_only" | "private";
-    previewScreenshot: string | null;
+    previewScreenshot: string | null; framework?: string;
   } | null>(null);
 
   // When the publish dialog opens, fetch existing published app for this project
@@ -218,8 +218,13 @@ export function Navbar({
     }
   };
 
+  // 初始拉取 + 每 30s 轮询 + 切回标签时刷新
   useEffect(() => {
     fetchNotifs();
+    const timer = setInterval(fetchNotifs, 30_000);
+    const onFocus = () => fetchNotifs();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, []);
 
   useEffect(() => {
@@ -805,7 +810,7 @@ export function Navbar({
                     )}
                     <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg mt-0.5"
                       style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
-                      <span className="text-[12px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
+                      <span className="text-[12px]">{n.type === "changelog" ? "🎉" : n.type === "app_like" ? "❤️" : n.type === "app_comment" ? "💬" : "📢"}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] leading-snug truncate" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>
@@ -844,7 +849,7 @@ export function Navbar({
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
                           style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
-                          {active.type === "changelog" ? "更新公告" : "系统消息"}
+                          {active.type === "changelog" ? "更新公告" : active.type === "app_like" ? "点赞通知" : active.type === "app_comment" ? "评论通知" : "系统消息"}
                         </span>
                         <span className="text-[11px] text-muted-foreground">
                           {new Date(active.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}

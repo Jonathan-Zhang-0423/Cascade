@@ -1661,7 +1661,7 @@ export default function AdminPage() {
                       <div className="space-y-2">
                         {squareStats.byFramework.map(({ framework, cnt }) => {
                           const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
-                          const labels: Record<string, string> = { web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
+                          const labels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
                           return (
                             <div key={framework}>
                               <div className="flex justify-between text-[12px] mb-1">
@@ -1763,7 +1763,7 @@ export default function AdminPage() {
                         </thead>
                         <tbody>
                           {squareStats.recent.map((app) => {
-                            const fwLabels: Record<string, string> = { web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
+                            const fwLabels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
                             const visLabels: Record<string, string> = { public: "公开", link_only: "链接", private: "私有" };
                             const visColors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#9ca3af" };
                             const isBusy = squareActioning === app.id;

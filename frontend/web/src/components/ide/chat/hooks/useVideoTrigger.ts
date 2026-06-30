@@ -35,7 +35,7 @@ export function useVideoTrigger({ projectId, onStatus }: UseVideoTriggerOptions)
     onStatus?.(s);
   }, [onStatus]);
 
-  const triggerVideo = useCallback(async (duration: 10 | 20 | 30 = 20) => {
+  const triggerVideo = useCallback(async (duration: 10 | 20 | 30 = 30) => {
     if (!projectId) {
       update({ phase: "error", message: "No active project" });
       return;

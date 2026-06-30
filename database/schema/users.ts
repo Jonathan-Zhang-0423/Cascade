@@ -22,7 +22,7 @@ export const users = pgTable("users", {
   // Referral system
   referralCode: text("referral_code").unique(),   // this user's shareable code
   referredBy: varchar("referred_by"),             // id of the user who referred them
-  // Profile
+  // Profile fields
   firstName: text("first_name"),
   lastName: text("last_name"),
   bio: text("bio"),

@@ -595,7 +595,7 @@ export async function registerRoutes(
   const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
 
   // IPs that are never auto-blocked (owner / admin access)
-  const IP_WHITELIST = new Set(["36.142.94.105", "127.0.0.1", "::1"]);
+  const IP_WHITELIST = new Set(["36.142.94.105", "113.87.160.120", "127.0.0.1", "::1"]);
 
   function getClientIp(req: any): string {
     return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
@@ -3793,12 +3793,12 @@ Generate the cascade.md content for this project based on both the plan and the 
       email: (user as any).email ?? null,
       phone: (user as any).phone ?? null,
       githubId: (user as any).githubId ?? null,
-      trialExpiresAt: (user as any).trialExpiresAt
-        ? ((user as any).trialExpiresAt as Date).toISOString()
-        : null,
       firstName: (user as any).firstName ?? null,
       lastName: (user as any).lastName ?? null,
       bio: (user as any).bio ?? null,
+      trialExpiresAt: (user as any).trialExpiresAt
+        ? ((user as any).trialExpiresAt as Date).toISOString()
+        : null,
       avatarUrl: (user as any).avatarUrl ?? null,
     });
   });
@@ -5754,10 +5754,21 @@ Generate the cascade.md content for this project based on both the plan and the 
     let browser: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let context: any = null;
+    let previewToken: string | null = null;
     let aborted = false;
 
     const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
       if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
+    };
+
+    const stopPreview = () => {
+      if (previewToken) {
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: previewToken }),
+        }).catch(() => {});
+        previewToken = null;
+      }
     };
 
     const timeout = setTimeout(() => {
@@ -5769,95 +5780,119 @@ Generate the cascade.md content for this project based on both the plan and the 
       job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
       updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
+      stopPreview();
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
+      // ── Step 1: Start preview-serve (NO login required, 100% reliable) ──
+      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
+      if (projectFiles.length === 0) {
+        throw new Error("Project has no files to preview");
+      }
+      const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
+      const startData = await startRes.json() as { token: string; url: string };
+      previewToken = startData.token;
+      const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
+
+      // ── Step 2: Launch Playwright ──
       const pwModule = "playwright";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-
-      // page.video() native recording — real browser frames, 30fps
       context = await browser.newContext({
         viewport: { width: 390, height: 844 },
         recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
       });
-
       const page = await context.newPage();
       job.status = "running";
       job.progress = 5;
 
-      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, {
-        waitUntil: "networkidle",
-        timeout: 30_000,
-      });
+      // ── Step 3: Load App — use "load" not "networkidle" for reliability ──
+      await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
+      // Extra wait for JS frameworks to finish rendering
+      await new Promise<void>((r) => setTimeout(r, 3000));
       job.progress = 15;
 
-      // Execute DSL interaction script from DB — real user-journey simulation
+      // ── Step 4: Interactions ──
       const projectRow = await storage.getProject(projectId).catch(() => null);
       const rawSequence = projectRow?.actionSequence;
+
       if (rawSequence) {
+        // Use Builder-generated DSL script (precise, app-specific)
         try {
           const parsed = JSON.parse(rawSequence);
           const validation = validateDslSequence(parsed);
           if (validation.valid && validation.actions) {
             job.progress = 20;
             const result = await executeDslSequence(page, validation.actions);
-            if (result.failed > 0) {
-              console.warn(`[video] ${result.failed}/${result.executed + result.failed} DSL actions failed for project ${projectId}`);
-            }
+            if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
           }
         } catch (e) {
-          console.warn("[video] DSL execution error:", e instanceof Error ? e.message : e);
+          console.warn("[video] DSL error:", e instanceof Error ? e.message : e);
+        }
+      } else {
+        // Generic fallback: scroll + click visible buttons
+        try {
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
+          for (const btn of buttons.slice(0, 3)) {
+            try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
+          }
+          await page.mouse.wheel(0, -600);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+        } catch (e) {
+          console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e);
         }
       }
 
       job.progress = 60;
 
-      // Wait out remaining duration so video has full length
-      const durationHint = projectRow?.actionSequenceDuration ?? duration;
-      const waitMs = Math.max(2000, (durationHint - 5) * 1000);
-      await new Promise<void>((r) => setTimeout(r, Math.min(waitMs, (duration - 2) * 1000)));
-
+      // ── Step 5: Fill remaining time precisely ──
+      const usedMs = 3000 + (rawSequence ? 15000 : 8000);
+      const remainingMs = Math.max(2000, duration * 1000 - usedMs);
+      await new Promise<void>((r) => setTimeout(r, remainingMs));
       job.progress = 80;
 
-      // Close context to flush the Playwright video file
+      // ── Step 6: Flush video file ──
       const videoHandle = await page.video();
-      await context.close();
-      context = null;
-      await browser.close();
-      browser = null;
+      await context.close(); context = null;
+      await browser.close(); browser = null;
+      stopPreview();
 
       if (aborted) return;
 
       const rawVideoPath = await videoHandle?.path();
-      if (!rawVideoPath || !existsSync(rawVideoPath)) {
-        throw new Error("Playwright did not produce a video file");
-      }
+      if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
 
-      // Watermark: burn "Cascade AI" text into bottom-right corner
-      const watermarkedPath = rawVideoPath.replace(/\.webm$|\.mp4$/, "-wm.mp4");
+      // ── Step 7: Watermark ──
+      const watermarkedPath = rawVideoPath.replace(/\.\w+$/, "-wm.mp4");
       try {
         await addVideoWatermark(rawVideoPath, watermarkedPath);
         rm(rawVideoPath, { force: true }).catch(() => {});
       } catch (wmErr) {
-        console.warn("[video] watermark failed, using raw file:", wmErr instanceof Error ? wmErr.message : wmErr);
-        // Fall back to raw if watermark fails
+        console.warn("[video] watermark failed:", wmErr instanceof Error ? wmErr.message : wmErr);
         const { rename } = await import("fs/promises");
         await rename(rawVideoPath, watermarkedPath);
       }
 
-      // Persist via storage abstraction
+      // ── Step 8: Persist ──
       const storagePath = await videoStorage.save(jobId, watermarkedPath);
-
       job.outputPath = storagePath;
       job.progress = 100;
       job.status = "done";
       job.finishedAt = Date.now();
-
       updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
+
     } catch (err: unknown) {
       if (!aborted) {
         const msg = err instanceof Error ? err.message : "unknown";
@@ -5871,14 +5906,17 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
       try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      stopPreview();
       rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   app.post("/api/video/generate", async (req, res) => {
-    const { projectId, duration } = req.body as { projectId?: string; duration?: number };
-    if (!projectId || !duration || !ALLOWED_DURATIONS.has(duration)) {
-      res.status(400).json({ error: "invalid_duration" });
+    const { projectId, duration: rawDuration } = req.body as { projectId?: string; duration?: number };
+    // Default to 30s if not specified or invalid
+    const duration = (!rawDuration || !ALLOWED_DURATIONS.has(rawDuration)) ? 30 : rawDuration;
+    if (!projectId) {
+      res.status(400).json({ error: "projectId required" });
       return;
     }
     if (activeVideoJobs >= MAX_VIDEO_JOBS) {
@@ -6002,7 +6040,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // ── Creator Square ────────────────────────────────────────────────────────────
 
-  // GET /api/square — list published apps (public)
+  // GET /api/square — list published apps
   app.get("/api/square", async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
@@ -6010,11 +6048,19 @@ Generate the cascade.md content for this project based on both the plan and the 
       const framework = req.query.framework as string | undefined;
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
-      const author = (req.query.author as string | undefined)?.trim() || ""; // username filter
+      const author = (req.query.author as string | undefined)?.trim() || "";
+      const currentUserId = (req.session as any)?.userId as string | undefined;
 
-      // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
+      // Visibility rule:
+      //   - public: visible to everyone
+      //   - link_only: NOT listed publicly, BUT always visible to the owner regardless of filter
+      //   - private: never listed
+      const visibilityWhere = currentUserId
+        ? sql`(${publishedApps.visibility} = 'public' OR (${publishedApps.userId} = ${currentUserId} AND ${publishedApps.visibility} = 'link_only'))`
+        : eq(publishedApps.visibility, "public");
+
       const baseWhere = and(
-        eq(publishedApps.visibility, "public"),
+        visibilityWhere,
         eq(publishedApps.adminTakenDown, false),
         ...(framework ? [eq(publishedApps.framework, framework)] : []),
         ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
@@ -6401,7 +6447,7 @@ Generate the cascade.md content for this project based on both the plan and the 
               isRead: false,
             });
           })
-          .catch(() => {});
+          .catch((err) => { console.error("[square/like/notif]", err); });
       }
     } catch (err) {
       console.error("[square/like]", err);
@@ -6480,34 +6526,34 @@ Generate the cascade.md content for this project based on both the plan and the 
         createdAt: now,
         updatedAt: now,
       });
-      const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
-      const authorUsername = user[0]?.username ?? "unknown";
+
+      // Fetch author username and app owner in one join
+      const [notifRow] = await db.select({
+        appTitle: publishedApps.title,
+        ownerId: publishedApps.userId,
+        authorUsername: users.username,
+      })
+        .from(publishedApps)
+        .innerJoin(users, eq(users.id, userId))
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1);
+
+      const authorUsername = notifRow?.authorUsername ?? "unknown";
+
       res.json({
-        comment: {
-          id,
-          content,
-          createdAt: now,
-          userId,
-          authorUsername,
-        }
+        comment: { id, content, createdAt: now, userId, authorUsername }
       });
 
-      // Send notification to app owner (fire-and-forget)
-      db.select({ appTitle: publishedApps.title, ownerId: publishedApps.userId })
-        .from(publishedApps)
-        .where(eq(publishedApps.id, req.params.id))
-        .limit(1)
-        .then(([row]) => {
-          if (!row || row.ownerId === userId) return; // don't notify self-comment
-          return db.insert(notifications).values({
-            userId: row.ownerId,
-            type: "app_comment",
-            title: "有人评论了你的应用",
-            body: `@${authorUsername} 评论了你分享的「${row.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
-            isRead: false,
-          });
-        })
-        .catch(() => {});
+      // Send notification to app owner (fire-and-forget, after response)
+      if (notifRow && notifRow.ownerId !== userId) {
+        db.insert(notifications).values({
+          userId: notifRow.ownerId,
+          type: "app_comment",
+          title: "有人评论了你的应用",
+          body: `@${authorUsername} 评论了你分享的「${notifRow.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+          isRead: false,
+        }).catch((err) => { console.error("[square/comment/notif]", err); });
+      }
     } catch (err) {
       console.error("[square/comments/post]", err);
       res.status(500).json({ error: "failed" });
