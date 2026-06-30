@@ -1,113 +1,159 @@
-// AIGC provider: image-to-image (poster) and text-to-video via Doubao API.
+// AIGC provider abstraction — image and video generation.
+// Default implementation calls Doubao's image generation API.
+// Swap the provider by setting AIGC_PROVIDER env var or implementing a new class.
 
-export interface AigcPosterRequest {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AigcImageRequest {
   prompt: string;
-  referenceImageB64: string;   // base64 JPEG/PNG from App screenshot
-  style?: string;
+  negativePrompt?: string;
+  style?: string;       // e.g. "anime", "photorealistic", "oil-painting"
+  width?: number;
+  height?: number;
+  n?: number;           // number of images, default 1
 }
 
-export interface AigcPosterResult {
-  imageB64: string;   // base64 PNG with watermark applied later
+export interface AigcImageResult {
+  images: Array<{
+    url?: string;
+    b64?: string;        // base64 data URL when no CDN
+  }>;
   provider: string;
 }
 
 export interface AigcVideoRequest {
   prompt: string;
+  negativePrompt?: string;
+  duration?: number;    // seconds, default 5
   style?: string;
-  duration?: number;
+  referenceImageUrl?: string;
 }
 
 export interface AigcVideoResult {
+  // Async providers return a taskId; poll /api/aigc/video/status/:taskId
   taskId?: string;
+  // Sync providers return the video URL directly
   videoUrl?: string;
   provider: string;
 }
 
-export interface AigcVideoStatus {
-  status: "pending" | "running" | "done" | "failed";
-  videoUrl?: string;
-  progress?: number;
-}
-
 export interface IAigcProvider {
-  readonly name: string;
-  generatePoster(req: AigcPosterRequest): Promise<AigcPosterResult>;
+  generateImage(req: AigcImageRequest): Promise<AigcImageResult>;
   generateVideo(req: AigcVideoRequest): Promise<AigcVideoResult>;
-  getVideoStatus(taskId: string): Promise<AigcVideoStatus>;
+  /** For async video providers: poll task status */
+  getVideoStatus?(taskId: string): Promise<{ status: "pending" | "running" | "done" | "failed"; videoUrl?: string; progress?: number }>;
+  readonly name: string;
 }
 
-// ── Doubao implementation ────────────────────────────────────────────────────
-
-const BASE = "https://ark.cn-beijing.volces.com/api/v3";
+// ─── Doubao image generation ──────────────────────────────────────────────────
+// Uses the Doubao/Ark image generation endpoint (OpenAI-compatible images.generate)
 
 class DoubaoAigcProvider implements IAigcProvider {
   readonly name = "doubao";
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  async generateImage(req: AigcImageRequest): Promise<AigcImageResult> {
     const apiKey = process.env.DOUBAO_API_KEY;
     if (!apiKey) throw new Error("DOUBAO_API_KEY not configured");
-    const res = await fetch(`${BASE}${path}`, {
+
+    // Doubao image generation model — configurable via env
+    const model = process.env.DOUBAO_IMAGE_MODEL || "doubao-seedream-3-0-t2i-250415";
+    const size = req.width && req.height ? `${req.width}x${req.height}` : "1024x1024";
+
+    const response = await fetch("https://ark.cn-beijing.volces.com/api/v3/images/generations", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Doubao API ${path} error ${res.status}: ${text.slice(0, 300)}`);
-    }
-    return res.json() as Promise<T>;
-  }
-
-  async generatePoster(req: AigcPosterRequest): Promise<AigcPosterResult> {
-    const model = process.env.DOUBAO_IMAGE_I2I_MODEL ?? "doubao-seedream-3-0-i2i-250415";
-
-    const data = await this.post<{ data: Array<{ b64_json?: string; url?: string }> }>(
-      "/images/generations",
-      {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
         model,
         prompt: req.prompt,
-        n: 1,
-        size: "1024x1024",
-        response_format: "b64_json",
-        // Image reference passed as extra param — Doubao i2i API
-        image: `data:image/jpeg;base64,${req.referenceImageB64}`,
-      },
-    );
+        n: req.n ?? 1,
+        size,
+        response_format: "url",
+      }),
+    });
 
-    const b64 = data.data?.[0]?.b64_json;
-    if (!b64) throw new Error("Doubao i2i returned no image data");
-    return { imageB64: b64, provider: this.name };
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Doubao image API error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json() as { data: Array<{ url?: string; b64_json?: string }> };
+    return {
+      provider: this.name,
+      images: (data.data ?? []).map((d) => ({
+        url: d.url,
+        b64: d.b64_json ? `data:image/png;base64,${d.b64_json}` : undefined,
+      })),
+    };
   }
 
   async generateVideo(req: AigcVideoRequest): Promise<AigcVideoResult> {
-    const model = process.env.DOUBAO_VIDEO_MODEL ?? "doubao-seedance-1-0-lite-t2v-250428";
-    const data = await this.post<{ id?: string; video_url?: string }>(
-      "/contents/generations/tasks",
-      { model, content: [{ type: "text", text: req.prompt }] },
-    );
-    return { provider: this.name, taskId: data.id, videoUrl: data.video_url };
+    // Doubao video generation — uses the async task API
+    const apiKey = process.env.DOUBAO_API_KEY;
+    if (!apiKey) throw new Error("DOUBAO_API_KEY not configured");
+
+    const model = process.env.DOUBAO_VIDEO_MODEL || "doubao-seedance-1-0-lite-t2v-250428";
+
+    const response = await fetch("https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        content: [{ type: "text", text: req.prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Doubao video API error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json() as { id?: string };
+    return {
+      provider: this.name,
+      taskId: data.id,
+    };
   }
 
-  async getVideoStatus(taskId: string): Promise<AigcVideoStatus> {
+  async getVideoStatus(taskId: string): Promise<{ status: "pending" | "running" | "done" | "failed"; videoUrl?: string; progress?: number }> {
     const apiKey = process.env.DOUBAO_API_KEY;
-    if (!apiKey) return { status: "failed" };
-    const res = await fetch(`${BASE}/contents/generations/tasks/${taskId}`, {
+    if (!apiKey) throw new Error("DOUBAO_API_KEY not configured");
+
+    const response = await fetch(`https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    if (!res.ok) return { status: "failed" };
-    const data = await res.json() as {
+
+    if (!response.ok) {
+      return { status: "failed" };
+    }
+
+    const data = await response.json() as {
       status?: string;
       content?: Array<{ type: string; video_url?: { url: string } }>;
     };
-    const map: Record<string, AigcVideoStatus["status"]> = {
-      queued: "pending", running: "running", succeeded: "done", failed: "failed",
+
+    const statusMap: Record<string, "pending" | "running" | "done" | "failed"> = {
+      queued: "pending",
+      running: "running",
+      succeeded: "done",
+      failed: "failed",
     };
+
+    const normalized = statusMap[data.status ?? ""] ?? "pending";
     const videoItem = data.content?.find((c) => c.type === "video");
+
     return {
-      status: map[data.status ?? ""] ?? "pending",
+      status: normalized,
       videoUrl: videoItem?.video_url?.url,
     };
   }
 }
+
+// ─── Singleton ────────────────────────────────────────────────────────────────
 
 export const aigcProvider: IAigcProvider = new DoubaoAigcProvider();
