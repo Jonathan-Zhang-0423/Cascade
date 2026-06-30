@@ -353,7 +353,7 @@ const reviewSessions = new Map<string, ReviewSessionState>();
 
 setInterval(() => {
   const now = Date.now();
-  const maxAge = 30 * 60 * 1000;
+  const maxAge = 60 * 60 * 1000; // 60 min — complex builds can take 30-45 min
   const doneRetention = 30 * 60 * 1000;
   Array.from(buildSessions.entries()).forEach(([id, session]) => {
     if (session.done) {

@@ -77,7 +77,7 @@ export class SessionManager {
 
   private readonly FLUSH_INTERVAL_MS = 5000;
   private readonly GC_INTERVAL_MS = 60_000;
-  private readonly MAX_AGE_MS = 30 * 60 * 1000; // 30 min active sessions
+  private readonly MAX_AGE_MS = 60 * 60 * 1000; // 60 min (complex builds can take 30-45 min)
   private readonly DONE_RETENTION_MS = 30 * 60 * 1000; // 30 min post-done
 
   constructor(private readonly store: SessionStore) {}
