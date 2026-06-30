@@ -173,8 +173,10 @@ export class Glm52Adapter implements ModelAdapter {
 }
 
 /**
- * DeepSeek (Pro/Flash) — reasoning via `reasoning_effort: "high"` (top-level)
+ * DeepSeek (Pro/Flash) — reasoning via `reasoning_effort` (top-level)
  * + `thinking.type: "enabled"` in extra_body.
+ * Adaptive: first iteration uses "high" effort for deep understanding,
+ * subsequent iterations drop to "medium" for faster mechanical execution.
  * Reasoning emitted as delta.reasoning_content.
  */
 export class DeepSeekAdapter implements ModelAdapter {
@@ -183,10 +185,13 @@ export class DeepSeekAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean }): ThinkingConfig {
+  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
+    // Adaptive effort: high for first iteration (outputTokensSoFar=0),
+    // medium for subsequent iterations (mechanical file writes).
+    const effort = (opts.outputTokensSoFar ?? 0) > 0 ? "medium" : "high";
     return {
-      thinkingParam: { reasoning_effort: "high" },
+      thinkingParam: { reasoning_effort: effort },
       extraBody: { thinking: { type: "enabled" } },
     };
   }
