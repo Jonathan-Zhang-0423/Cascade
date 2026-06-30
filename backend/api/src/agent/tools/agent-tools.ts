@@ -129,6 +129,35 @@ export function buildBuilderTools(
   // deterministically once the final step is done — without depending on the
   // model to emit a separate request_review tool call.
   const completedSteps = new Set<number | string>();
+  // Track which steps have had step_starting emitted — for intelligent
+  // step-advancement based on write_file file→step matching.
+  const startedSteps = new Set<number>();
+  startedSteps.add(1); // Step 1's step_starting is emitted by the orchestrator at build start.
+
+  /**
+   * Check if a file write belongs to a plan step that hasn't started yet.
+   * If so, emit step_starting to advance the frontend's currentStepNum so
+   * action_log entries are attributed to the correct step (instead of all
+   * piling under step 1).
+   */
+  function maybeAdvanceStep(filePath: string, emit: SseEmit): void {
+    if (!planSteps || totalSteps <= 1) return;
+    // Normalize path for matching (strip leading /project/ if present)
+    const normalized = filePath.replace(/^\/project\//, "");
+    for (const step of planSteps) {
+      if (!step.required_files || step.required_files.length === 0) continue;
+      if (startedSteps.has(step.step)) continue;
+      const matches = step.required_files.some(rf => {
+        const normRf = rf.replace(/^\/project\//, "");
+        return normalized === normRf || normalized.endsWith(normRf) || normRf.endsWith(normalized);
+      });
+      if (matches) {
+        startedSteps.add(step.step);
+        emit({ type: "step_starting", stepNumber: step.step, stepTitle: step.title, totalSteps });
+        break; // Only advance one step at a time
+      }
+    }
+  }
 
   const schemas: ToolSchema[] = [
     {
@@ -326,6 +355,8 @@ export function buildBuilderTools(
       if (!path_ || typeof content !== "string") {
         return "Error: path and content are required";
       }
+      // Advance step if this file belongs to a later plan step (intelligent progression)
+      maybeAdvanceStep(path_, emit);
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path_ });
       session.files.set(path_, content);
@@ -589,11 +620,12 @@ export function buildBuilderTools(
       emit({ type: "step_completed", stepNumber: resolvedNum, summary });
       completedSteps.add(resolvedNum);
 
-      // Advance to the next step
+      // Advance to the next step (only if not already started by write_file matching)
       const numericCompleted = typeof resolvedNum === "number" ? resolvedNum : NaN;
       if (!isNaN(numericCompleted) && totalSteps > 0) {
         const nextStep = stepByNum.get(numericCompleted + 1);
-        if (nextStep) {
+        if (nextStep && !startedSteps.has(nextStep.step)) {
+          startedSteps.add(nextStep.step);
           emit({ type: "step_starting", stepNumber: nextStep.step, stepTitle: nextStep.title, totalSteps });
         }
       }
