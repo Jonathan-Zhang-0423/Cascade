@@ -614,10 +614,12 @@ export async function registerRoutes(
 
       const buildPromise = runBuildSession(session, emit)
         .catch((err: any) => {
+          console.error(`[build-session] CAUGHT ERROR sessionId=${sessionId}:`, err?.message || err);
           emit({ type: "build_error", message: err?.message || "Unknown error" });
           emit({ type: "done" });
         })
         .finally(async () => {
+          console.log(`[build-session] FINALLY sessionId=${sessionId} aborted=${session.aborted}`);
           session.done = true;
           session.doneAt = Date.now();
           // Send [DONE] frame and close all connected SSE writers so clients
