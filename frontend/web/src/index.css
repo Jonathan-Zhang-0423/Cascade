@@ -490,3 +490,10 @@ html * {
 .dark .scrollbar-auto:focus-within::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.18);
 }
+
+/* ── app-detail: on desktop, preview card fills right-card height ── */
+@media (min-width: 1024px) {
+  .preview-inner {
+    aspect-ratio: unset !important;
+  }
+}

@@ -9,14 +9,16 @@ import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import SetPasswordPage from "@/pages/set-password";
+import OnboardingPage from "@/pages/onboarding";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
-import WechatCallbackPage from "@/pages/wechat-callback";
 import CreateSquarePage from "@/pages/create-square";
 import AppDetailPage from "@/pages/app-detail";
 import AigcPage from "@/pages/aigc";
+import WechatCallbackPage from "@/pages/wechat-callback";
+import ProfileSettingsPage from "@/pages/profile-settings";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -25,7 +27,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/wechat-callback"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/wechat-callback", "/CreateSquare", "/onboarding", "/set-password"];
 
 function Router() {
   return (
@@ -37,13 +39,15 @@ function Router() {
       <Route path="/github-callback" component={GitHubCallbackPage} />
       <Route path="/wechat-callback" component={WechatCallbackPage} />
       <Route path="/set-password" component={SetPasswordPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
-      <Route path="/admin" component={AdminPage} />
-      <Route path="/app" component={DashboardPage} />
-      <Route path="/project/:id" component={IDEPage} />
       <Route path="/CreateSquare" component={CreateSquarePage} />
       <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
       <Route path="/aigc" component={AigcPage} />
+      <Route path="/admin" component={AdminPage} />
+      <Route path="/app" component={DashboardPage} />
+      <Route path="/profile" component={ProfileSettingsPage} />
+      <Route path="/project/:id" component={IDEPage} />
       {import.meta.env.DEV && (
         <Route path="/ab-test">
           <Suspense fallback={<div className="p-8 text-muted-foreground">Loading…</div>}>
