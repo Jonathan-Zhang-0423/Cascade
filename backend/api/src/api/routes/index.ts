@@ -4934,7 +4934,54 @@ Generate the cascade.md content for this project based on both the plan and the 
   });
 
 
+
   // ─── Creator Square ───────────────────────────────────────────────────────────
+
+  app.post("/api/square/screenshot", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) { res.status(400).json({ error: "projectId required" }); return; }
+
+    try {
+      const pwModule = "playwright";
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
+
+      // Start a local preview-serve session (no login required)
+      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
+      if (!projectFiles.length) { res.status(404).json({ error: "project has no files" }); return; }
+
+      const startRes = await fetch(`http://localhost:${process.env.PORT || 5100}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: projectFiles.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startRes.ok) { res.status(500).json({ error: "preview-server unavailable" }); return; }
+      const { token, url } = await startRes.json() as { token: string; url: string };
+      const previewUrl = url.replace(/^https?:\/\/[^/]+/, `http://localhost:${process.env.PORT || 5100}`);
+
+      const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto(previewUrl, { waitUntil: "load", timeout: 20_000 });
+        await new Promise<void>((r) => setTimeout(r, 2000));
+        const screenshotBuf = await page.screenshot({ type: "jpeg", quality: 85 });
+        const screenshot = `data:image/jpeg;base64,${screenshotBuf.toString("base64")}`;
+        res.json({ screenshot });
+      } finally {
+        await browser.close();
+        fetch(`http://localhost:${process.env.PORT || 5100}/api/preview-server/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[square/screenshot]", err instanceof Error ? err.message : err);
+      res.status(500).json({ error: "screenshot failed" });
+    }
+  });
 
   app.get("/api/square", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 20, 50);
