@@ -12,7 +12,7 @@ import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { requireInviteCode } from "../middleware/auth-middleware";
 import { getOptimalClient } from "../../agent/providers/kimi-client";
-import { DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
+import { doubaoClient, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 
 /**
  * Projects routes (Step C). CRUD, files, messages, sessions, export.
@@ -83,13 +83,12 @@ export function registerProjectsRoutes(app: Express): void {
       if (initialPrompt && initialPrompt.trim()) {
         (async () => {
           try {
-            const { client: nameClient } = getOptimalClient("planning", "doubao");
             const isChinese = /[一-鿿]/.test(initialPrompt);
             const langInstruction = isChinese
               ? "用中文起名（2-4 个字或词），不要使用英文。"
               : "Use English (2-4 words, title case).";
             const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
-            const completion = await nameClient.chat.completions.create({
+            const completion = await doubaoClient.chat.completions.create({
               model: DOUBAO_LITE_MODEL,
               messages: [{
                 role: "user",
