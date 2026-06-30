@@ -693,12 +693,14 @@ export async function registerRoutes(
     });
   }
 
-  // All auth endpoints: 30 req / 15 min per IP
-  app.use("/api/auth", makeRateLimiter(30, 15, "Too many requests. Please try again later."));
-  // Login specifically: 10 req / 15 min per IP
+  // 只对敏感认证操作限速，/api/auth/me 等轮询接口不受限
   app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
-  // OTP send: 10 req / 60 min per IP
+  app.use("/api/auth/register", makeRateLimiter(5, 60, "Too many registration attempts. Please wait before trying again."));
   app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
+  app.use("/api/auth/otp/verify-login", makeRateLimiter(10, 15, "Too many attempts. Please wait 15 minutes."));
+  app.use("/api/auth/github", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/wechat", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/reset-password", makeRateLimiter(5, 60, "Too many attempts. Please wait before trying again."));
 
   app.get("/api/providers", (_req, res) => {
     res.json({
