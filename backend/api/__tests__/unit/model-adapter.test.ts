@@ -77,19 +77,18 @@ describe("MiniMaxAdapter", () => {
 describe("Glm52Adapter", () => {
   const adapter = new Glm52Adapter({} as any, "glm-5.2");
 
-  it("starts with max thinking budget when no output yet", () => {
+  it("uses 'max' reasoning_effort on first iteration (no output yet)", () => {
     const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 0 });
-    expect((extraBody as any).thinking.budget_tokens).toBe(4096);
+    expect((extraBody as any).reasoning_effort).toBe("max");
+    expect((extraBody as any).thinking.type).toBe("enabled");
   });
-  it("shrinks thinking budget under output pressure", () => {
-    const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 40000 });
-    const budget = (extraBody as any).thinking.budget_tokens;
-    expect(budget).toBeLessThan(4096);
-    expect(budget).toBeGreaterThanOrEqual(1024);
+  it("drops to 'high' reasoning_effort on subsequent iterations", () => {
+    const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 5000 });
+    expect((extraBody as any).reasoning_effort).toBe("high");
   });
-  it("clamps to min under extreme pressure", () => {
-    const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 200000 });
-    expect((extraBody as any).thinking.budget_tokens).toBe(1024);
+  it("returns disabled when opts.disabled is true", () => {
+    const { extraBody } = adapter.getThinkingConfig({ disabled: true });
+    expect((extraBody as any).thinking.type).toBe("disabled");
   });
 });
 

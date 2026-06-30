@@ -118,9 +118,9 @@ export class MiniMaxAdapter implements ModelAdapter {
 }
 
 /**
- * GLM-5 — reasoning via `thinking.budget_tokens` in extra_body.
- * Adaptive: first iteration uses 2048 for plan comprehension,
- * subsequent iterations use 1024 for faster mechanical execution.
+ * GLM-5 — reasoning via `thinking.type: "enabled"` in extra_body.
+ * GLM-5 uses dynamic auto-thinking (model decides when to think).
+ * No budget_tokens needed — the model manages its own thinking budget.
  * Reasoning emitted as delta.reasoning_content.
  */
 export class GlmAdapter implements ModelAdapter {
@@ -130,12 +130,10 @@ export class GlmAdapter implements ModelAdapter {
   constructor(readonly client: OpenAI, readonly model: string) {}
 
   getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
-    if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
-    // Adaptive: 2048 for first iteration, 1024 for subsequent (faster)
-    const budget = (opts.outputTokensSoFar ?? 0) > 0 ? 1024 : 2048;
+    if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
     return {
       thinkingParam: {},
-      extraBody: { thinking: { type: "enabled", budget_tokens: budget } },
+      extraBody: { thinking: { type: "enabled" } },
     };
   }
 
@@ -145,29 +143,25 @@ export class GlmAdapter implements ModelAdapter {
 }
 
 /**
- * GLM-5.2 — dynamic thinking budget that shrinks as context grows, ensuring
- * there's always room for narration + tool calls. Same reasoning extraction.
+ * GLM-5.2 — supports reasoning_effort parameter (max/high/medium/low/none).
+ * Adaptive: first iteration uses "high" for deep plan comprehension,
+ * subsequent iterations use "medium" for faster mechanical execution.
+ * Per docs: reasoning_effort is only supported on GLM-5.2+.
  */
 export class Glm52Adapter implements ModelAdapter {
   readonly name = "glm-5.2";
   readonly supportsThinking = true;
   readonly timeoutMs = 90_000;
 
-  private readonly MAX_THINKING = 4096;
-  private readonly MIN_THINKING = 1024;
-  private readonly OUTPUT_CAP = 16384;
-
   constructor(readonly client: OpenAI, readonly model: string) {}
 
   getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
-    if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
-    const outputSoFar = opts.outputTokensSoFar ?? 0;
-    const pressure = Math.min(outputSoFar / (this.OUTPUT_CAP * 3), 1);
-    const budget = Math.round(this.MAX_THINKING - pressure * (this.MAX_THINKING - this.MIN_THINKING));
-    const clamped = Math.max(this.MIN_THINKING, Math.min(this.MAX_THINKING, budget));
+    if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
+    // Adaptive: high for first iteration, medium for subsequent (faster)
+    const effort = (opts.outputTokensSoFar ?? 0) > 0 ? "high" : "max";
     return {
       thinkingParam: {},
-      extraBody: { thinking: { type: "enabled", budget_tokens: clamped } },
+      extraBody: { thinking: { type: "enabled" }, reasoning_effort: effort },
     };
   }
 
