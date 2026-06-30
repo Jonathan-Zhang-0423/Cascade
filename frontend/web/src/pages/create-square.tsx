@@ -40,10 +40,16 @@ const fadeUp = {
   }),
 };
 
-const FRAMEWORKS = [
+const CATEGORIES = [
   { value: "", label: "全部" },
-  { value: "web", label: "Web" },
-  { value: "rn-expo", label: "React Native" },
+  { value: "tool", label: "工具效率" },
+  { value: "game", label: "游戏娱乐" },
+  { value: "ai", label: "AI 应用" },
+  { value: "education", label: "教育学习" },
+  { value: "content", label: "内容创作" },
+  { value: "data", label: "数据可视化" },
+  { value: "life", label: "生活服务" },
+  { value: "other", label: "其他" },
 ];
 
 type SortMode = "latest" | "hottest";
@@ -57,6 +63,7 @@ export default function CreateSquarePage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const userId = useIDEStore((s) => s.userId);
+  const currentUsername = useIDEStore((s) => s.username);
   const syncFromServer = useProjectStore((s) => s.syncFromServer);
 
   const [apps, setApps] = useState<AppCardData[]>([]);
@@ -65,8 +72,8 @@ export default function CreateSquarePage() {
   const [hasMore, setHasMore] = useState(true);
   const [searchInput, setSearchInput] = useState(""); // what user types
   const [search, setSearch] = useState("");            // debounced, sent to API
-  const [framework, setFramework] = useState("");
-  const [author, setAuthor] = useState("");            // username filter
+  const [framework, setFramework] = useState("");  // category slug
+  const [author, setAuthor] = useState("");
   const [sort, setSort] = useState<SortMode>("latest");
   const [offset, setOffset] = useState(0);
   const [forkingId, setForkingId] = useState<string | null>(null);
@@ -74,6 +81,8 @@ export default function CreateSquarePage() {
   const [authors, setAuthors] = useState<Author[]>([]);
   const [authorDropOpen, setAuthorDropOpen] = useState(false);
   const authorDropRef = useRef<HTMLDivElement>(null);
+  const [categoryDropOpen, setCategoryDropOpen] = useState(false);
+  const categoryDropRef = useRef<HTMLDivElement>(null);
 
   // keep offset in a ref so fetchApps closure stays stable when loading more
   const offsetRef = useRef(0);
@@ -103,6 +112,18 @@ export default function CreateSquarePage() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [authorDropOpen]);
+
+  // Close category dropdown when clicking outside
+  useEffect(() => {
+    if (!categoryDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (categoryDropRef.current && !categoryDropRef.current.contains(e.target as Node)) {
+        setCategoryDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [categoryDropOpen]);
 
   // Fetch authors list on mount
   useEffect(() => {
@@ -206,19 +227,9 @@ export default function CreateSquarePage() {
           variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
           className="max-w-3xl mx-auto"
         >
-          <motion.p
-            variants={fadeUp}
-            custom={0}
-            className="text-[11px] sm:text-[13px] font-semibold tracking-[0.18em] text-gray-400 mb-4 sm:mb-5 uppercase"
-          >
-            {/* 移动端分三行，桌面端一行 */}
-            <span className="sm:hidden">COMMUNITY<br />OPEN SOURCE<br />AI-BUILT</span>
-            <span className="hidden sm:inline">COMMUNITY · OPEN SOURCE · AI-BUILT</span>
-          </motion.p>
-
           <motion.h1
             variants={fadeUp}
-            custom={1}
+            custom={0}
             className="font-bold text-black leading-[1.15] mb-4 sm:mb-6 tracking-tight"
             style={{ fontSize: "clamp(32px, 7vw, 76px)", fontFamily: FONT }}
           >
@@ -227,14 +238,14 @@ export default function CreateSquarePage() {
 
           <motion.p
             variants={fadeUp}
-            custom={2}
+            custom={1}
             className="text-[15px] sm:text-[19px] md:text-[22px] text-gray-800 mb-7 sm:mb-10 leading-relaxed"
           >
             浏览社区发布的应用，一键 Fork 开源项目，用 Cascade AI 继续创作。
           </motion.p>
 
           {/* Search input */}
-          <motion.div variants={fadeUp} custom={3} className="flex justify-center px-2 sm:px-0">
+          <motion.div variants={fadeUp} custom={2} className="flex justify-center px-2 sm:px-0">
             <div
               className="flex items-center flex-1 rounded-[10px] overflow-hidden max-w-full sm:max-w-[480px]"
               style={{
@@ -257,57 +268,78 @@ export default function CreateSquarePage() {
         </motion.div>
       </section>
 
-      {/* ── Horizontal tag filter bar + sort tabs ── */}
-      <div className="sticky top-14 sm:top-20 z-40 bg-white/90 backdrop-blur-sm border-b border-black/[0.06]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-16">
-          {/* Mobile: one scrollable row for pills + sort together */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-3 sm:py-4">
-            {/* Framework pills */}
-            {FRAMEWORKS.map((f) => {
-              const selected = framework === f.value;
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setFramework(f.value)}
-                  className={`shrink-0 rounded-full px-3.5 sm:px-4 py-1.5 text-[12px] sm:text-[13px] font-medium transition-all duration-150 ${
-                    selected
-                      ? "bg-black text-white"
-                      : "text-gray-500 hover:text-gray-900 border border-gray-200"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
 
-            {/* Divider — hidden on mobile to save space */}
-            {authors.length > 0 && (
-              <span className="hidden sm:inline text-gray-200 select-none text-[13px] shrink-0">|</span>
-            )}
+      {/* ── Filter bar ── */}
+      <div className="sticky top-14 sm:top-20 z-40 bg-white/90 backdrop-blur-sm border-b border-black/[0.06]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8">
+          <div className="flex items-center gap-2 py-3 sm:py-4 -ml-1">
+
+            {/* Category dropdown */}
+            <div className="relative shrink-0" ref={categoryDropRef}>
+              <button
+                type="button"
+                onClick={() => setCategoryDropOpen(v => !v)}
+                className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] sm:text-[13px] transition-all duration-150 border ${
+                  framework ? "bg-black text-white border-black font-medium" : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                <span>{framework ? CATEGORIES.find(c => c.value === framework)?.label : "分类"}</span>
+                {framework ? (
+                  <span role="button" tabIndex={0}
+                    onClick={e => { e.stopPropagation(); setFramework(""); }}
+                    onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); setFramework(""); } }}
+                    className="ml-0.5 opacity-70 hover:opacity-100">
+                    <X className="w-3 h-3" />
+                  </span>
+                ) : (
+                  <ChevronDown className="w-3 h-3 opacity-50" />
+                )}
+              </button>
+              <AnimatePresence>
+                {categoryDropOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                    transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden"
+                    style={{ minWidth: 160, background: "white", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 100 }}
+                  >
+                    <button type="button"
+                      onClick={() => { setFramework(""); setCategoryDropOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${!framework ? "font-semibold text-black" : "text-gray-700"}`}>
+                      全部分类
+                    </button>
+                    <div className="h-px bg-gray-100 mx-3" />
+                    {CATEGORIES.filter(c => c.value !== "").map(c => (
+                      <button key={c.value} type="button"
+                        onClick={() => { setFramework(c.value); setCategoryDropOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${framework === c.value ? "font-semibold text-black bg-gray-50" : "text-gray-700"}`}>
+                        {c.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Author dropdown */}
             {authors.length > 0 && (
               <div className="relative shrink-0" ref={authorDropRef}>
                 <button
                   type="button"
-                  onClick={() => setAuthorDropOpen((v) => !v)}
+                  onClick={() => setAuthorDropOpen(v => !v)}
                   className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] sm:text-[13px] transition-all duration-150 border ${
-                    author
-                      ? "bg-black text-white border-black font-medium"
-                      : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
+                    author ? "bg-black text-white border-black font-medium" : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
                   }`}
                 >
                   {author ? (
                     <>
                       <span>@{author}</span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); setAuthor(""); }}
-                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setAuthor(""); } }}
-                        className="ml-0.5 opacity-70 hover:opacity-100"
-                      >
+                      <span role="button" tabIndex={0}
+                        onClick={e => { e.stopPropagation(); setAuthor(""); }}
+                        onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); setAuthor(""); } }}
+                        className="ml-0.5 opacity-70 hover:opacity-100">
                         <X className="w-3 h-3" />
                       </span>
                     </>
@@ -318,7 +350,6 @@ export default function CreateSquarePage() {
                     </>
                   )}
                 </button>
-
                 <AnimatePresence>
                   {authorDropOpen && (
                     <motion.div
@@ -327,35 +358,17 @@ export default function CreateSquarePage() {
                       exit={{ opacity: 0, y: 4, scale: 0.97 }}
                       transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
                       className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden"
-                      style={{
-                        minWidth: 180,
-                        maxHeight: 280,
-                        overflowY: "auto",
-                        background: "white",
-                        border: "1px solid rgba(0,0,0,0.1)",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                        zIndex: 100,
-                      }}
+                      style={{ minWidth: 180, maxHeight: 280, overflowY: "auto", background: "white", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 100 }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => { setAuthor(""); setAuthorDropOpen(false); }}
-                        className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${
-                          !author ? "font-semibold text-black" : "text-gray-700"
-                        }`}
-                      >
+                      <button type="button" onClick={() => { setAuthor(""); setAuthorDropOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${!author ? "font-semibold text-black" : "text-gray-700"}`}>
                         全部创作者
                       </button>
                       <div className="h-px bg-gray-100 mx-3" />
-                      {authors.map((a) => (
-                        <button
-                          key={a.username}
-                          type="button"
+                      {authors.map(a => (
+                        <button key={a.username} type="button"
                           onClick={() => { setAuthor(a.username); setAuthorDropOpen(false); }}
-                          className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 flex items-center justify-between gap-3 ${
-                            author === a.username ? "font-semibold text-black bg-gray-50" : "text-gray-700"
-                          }`}
-                        >
+                          className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 flex items-center justify-between gap-3 ${author === a.username ? "font-semibold text-black bg-gray-50" : "text-gray-700"}`}>
                           <span>@{a.username}</span>
                           <span className="text-[11px] text-gray-400 shrink-0">{a.appCount} 个应用</span>
                         </button>
@@ -366,34 +379,28 @@ export default function CreateSquarePage() {
               </div>
             )}
 
-            {author && (
-              <span className="shrink-0 text-[11px] sm:text-[12px] text-gray-400">
-                {filtered.length} 个结果
-              </span>
+            {/* 我的发布 */}
+            {userId && currentUsername && (
+              <button type="button"
+                onClick={() => setAuthor(a => a === currentUsername ? "" : currentUsername!)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] sm:text-[13px] font-medium transition-all duration-150 border ${
+                  author === currentUsername ? "bg-black text-white border-black" : "text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-400"
+                }`}>
+                我的发布
+              </button>
             )}
 
-            {/* Spacer to push sort to right on desktop, inline on mobile */}
             <div className="hidden sm:flex flex-1" />
 
-            {/* Sort tabs — always visible, shrink-0 so they don't wrap */}
+            {/* Sort tabs */}
             <div className="flex items-center gap-2 shrink-0 ml-2 sm:ml-0">
-              <button
-                type="button"
-                onClick={() => setSort("latest")}
-                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${
-                  sort === "latest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"
-                }`}
-              >
+              <button type="button" onClick={() => setSort("latest")}
+                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${sort === "latest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"}`}>
                 最新
               </button>
               <span className="text-gray-300 text-[13px] select-none shrink-0">|</span>
-              <button
-                type="button"
-                onClick={() => setSort("hottest")}
-                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${
-                  sort === "hottest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"
-                }`}
-              >
+              <button type="button" onClick={() => setSort("hottest")}
+                className={`shrink-0 text-[12px] sm:text-[13px] transition-colors duration-150 ${sort === "hottest" ? "text-black font-semibold" : "text-gray-400 hover:text-gray-700"}`}>
                 最热
               </button>
             </div>
@@ -401,8 +408,9 @@ export default function CreateSquarePage() {
         </div>
       </div>
 
+
       {/* ── Grid ── */}
-      <section className="py-8 sm:py-16 px-4 sm:px-16">
+      <section className="py-8 sm:py-16 px-4 sm:px-8">
         <div className="max-w-5xl mx-auto">
           {loading ? (
             /* Loading skeleton */

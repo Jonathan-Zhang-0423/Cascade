@@ -31,21 +31,39 @@ if (typeof document !== "undefined") {
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
 const FRAMEWORK_LABELS: Record<string, string> = {
-  web: "Web",
+  tool:      "工具效率",
+  game:      "游戏娱乐",
+  ai:        "AI 应用",
+  education: "教育学习",
+  content:   "内容创作",
+  data:      "数据可视化",
+  life:      "生活服务",
+  other:     "其他",
+  // legacy
+  web:       "Web",
   "rn-expo": "React Native",
-  flutter: "Flutter",
-  kotlin: "Kotlin",
-  wechat: "微信小程序",
-  swiftui: "SwiftUI",
+  flutter:   "Flutter",
+  kotlin:    "Kotlin",
+  wechat:    "微信小程序",
+  swiftui:   "SwiftUI",
 };
 
 const FRAMEWORK_EMOJI: Record<string, string> = {
-  web: "🌐",
+  tool:      "🔧",
+  game:      "🎮",
+  ai:        "🤖",
+  education: "📚",
+  content:   "✍️",
+  data:      "📊",
+  life:      "🌟",
+  other:     "✦",
+  // legacy
+  web:       "🌐",
   "rn-expo": "📱",
-  flutter: "🐦",
-  kotlin: "⚡",
-  wechat: "💬",
-  swiftui: "🍎",
+  flutter:   "🐦",
+  kotlin:    "⚡",
+  wechat:    "💬",
+  swiftui:   "🍎",
 };
 
 interface AppDetail {
@@ -150,11 +168,20 @@ export default function AppDetailPage() {
   }, [id]);
 
   async function handleFork() {
-    if (!userId) { navigate("/login"); return; }
+    if (!userId) {
+      toast({ title: "请先登录后再 Fork", description: "点击前往登录页面" });
+      setTimeout(() => navigate("/login"), 1200);
+      return;
+    }
     if (!app) return;
     setForking(true);
     try {
       const res = await fetch(`/api/square/${app.id}/fork`, { method: "POST" });
+      if (res.status === 401) {
+        toast({ title: "请先登录后再 Fork", description: "点击前往登录页面" });
+        setTimeout(() => navigate("/login"), 1200);
+        return;
+      }
       if (!res.ok) throw new Error();
       await syncFromServer();
       toast({ title: "Fork 成功，已添加到你的项目" });
@@ -165,11 +192,20 @@ export default function AppDetailPage() {
   }
 
   async function handleLike() {
-    if (!userId) { navigate("/login"); return; }
+    if (!userId) {
+      toast({ title: "请先登录后再点赞", description: "点击前往登录页面" });
+      setTimeout(() => navigate("/login"), 1200);
+      return;
+    }
     if (!app || liking) return;
     setLiking(true);
     try {
       const res = await fetch(`/api/square/${app.id}/like`, { method: "POST" });
+      if (res.status === 401) {
+        toast({ title: "请先登录后再点赞", description: "点击前往登录页面" });
+        setTimeout(() => navigate("/login"), 1200);
+        return;
+      }
       if (!res.ok) throw new Error();
       const data = await res.json();
       setLiked(data.liked);
@@ -180,7 +216,11 @@ export default function AppDetailPage() {
   }
 
   async function handleComment() {
-    if (!userId) { navigate("/login"); return; }
+    if (!userId) {
+      toast({ title: "请先登录后再评论", description: "点击前往登录页面" });
+      setTimeout(() => navigate("/login"), 1200);
+      return;
+    }
     if (!app || !commentInput.trim() || submittingComment) return;
     setSubmittingComment(true);
     try {
@@ -189,6 +229,11 @@ export default function AppDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: commentInput.trim() }),
       });
+      if (res.status === 401) {
+        toast({ title: "请先登录后再评论", description: "点击前往登录页面" });
+        setTimeout(() => navigate("/login"), 1200);
+        return;
+      }
       if (!res.ok) throw new Error();
       const data = await res.json();
       setComments((prev) => [data.comment, ...prev]);
@@ -266,21 +311,24 @@ export default function AppDetailPage() {
 
       {/* ── Page body ── */}
       <div className="pt-14 max-w-7xl mx-auto px-4 sm:px-8">
-        <div className="flex flex-col lg:flex-row gap-8 xl:gap-10 py-6 sm:py-8 lg:items-start">
+        {/* On mobile: column order is preview(1) → info card(2) → comments(3)
+            On desktop (lg): two-column flex-row with stretch so preview = right card height */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 xl:gap-10 py-6 sm:py-8 lg:items-start">
 
           {/* ══ LEFT COLUMN: preview + comments ══ */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex flex-col order-1 lg:order-none">
 
-            {/* Preview window — no chrome bar, fullscreen button in corner */}
+            {/* Preview window — on desktop stretches to match right card height */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full rounded-2xl overflow-hidden"
+              className="w-full rounded-2xl overflow-hidden lg:flex-1"
               style={{ border: "1px solid rgba(0,0,0,0.09)", boxShadow: "0 4px 24px rgba(0,0,0,0.07)" }}
             >
-              {/* Preview content */}
-              <div className="relative w-full bg-gray-50" style={{ aspectRatio: "16/9" }}>
+              {/* Mobile: 16/9 aspect ratio; Desktop: h-full driven by flex-1 parent */}
+              <div className="preview-inner relative w-full h-full bg-gray-50" style={{ aspectRatio: "16/9" }}>
+
                 {app.previewScreenshot ? (
                   <img
                     key={iframeKey}
@@ -296,14 +344,12 @@ export default function AppDetailPage() {
                     <span className="text-[12px] text-gray-400">{fwLabel}</span>
                   </div>
                 )}
-
-                {/* Fullscreen button — top right corner */}
                 {app.previewScreenshot && (
                   <button
                     type="button"
                     onClick={() => setLightboxOpen(true)}
                     className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                    style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
+                    style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", zIndex: 1 }}
                     title="全屏查看"
                   >
                     <Maximize2 className="w-3.5 h-3.5 text-white" />
@@ -312,13 +358,13 @@ export default function AppDetailPage() {
               </div>
             </motion.div>
 
-            {/* ── Comments ── */}
+            {/* ── Comments — order-3 on mobile so info card shows first ── */}
             <motion.div
               id="comments-section"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-8"
+              className="mt-8 order-3 lg:order-none"
             >
               <div className="flex items-center gap-2 mb-5">
                 <MessageCircle className="w-4 h-4 text-gray-400" />
@@ -407,13 +453,14 @@ export default function AppDetailPage() {
             </motion.div>
           </div>
 
-          {/* ══ RIGHT COLUMN: sticky info + actions ══ */}
+          {/* ══ RIGHT COLUMN: info + actions ══
+               Mobile: order-2 → shows between preview and comments */}
           <motion.div
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-16"
-            style={{ zIndex: 10 }}
+            className="w-full lg:w-72 xl:w-80 shrink-0 order-2 lg:order-none"
+            style={{ zIndex: 20 }}
           >
             <div className="rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.09)" }}>
 

@@ -25,21 +25,39 @@ interface AppCardProps {
 }
 
 const FRAMEWORK_LABELS: Record<string, string> = {
-  web: "Web",
+  tool:      "工具效率",
+  game:      "游戏娱乐",
+  ai:        "AI 应用",
+  education: "教育学习",
+  content:   "内容创作",
+  data:      "数据可视化",
+  life:      "生活服务",
+  other:     "其他",
+  // legacy
+  web:       "Web",
   "rn-expo": "React Native",
-  flutter: "Flutter",
-  kotlin: "Kotlin",
-  wechat: "小程序",
-  swiftui: "SwiftUI",
+  flutter:   "Flutter",
+  kotlin:    "Kotlin",
+  wechat:    "小程序",
+  swiftui:   "SwiftUI",
 };
 
 const FRAMEWORK_EMOJI: Record<string, string> = {
-  web: "🌐",
+  tool:      "🔧",
+  game:      "🎮",
+  ai:        "🤖",
+  education: "📚",
+  content:   "✍️",
+  data:      "📊",
+  life:      "🌟",
+  other:     "✦",
+  // legacy
+  web:       "🌐",
   "rn-expo": "📱",
-  flutter: "🐦",
-  kotlin: "⚡",
-  wechat: "💬",
-  swiftui: "🍎",
+  flutter:   "🐦",
+  kotlin:    "⚡",
+  wechat:    "💬",
+  swiftui:   "🍎",
 };
 
 function timeAgo(dateStr: string): string {

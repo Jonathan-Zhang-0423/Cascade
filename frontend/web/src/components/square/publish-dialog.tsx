@@ -7,6 +7,17 @@ const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
 type Visibility = "public" | "link_only" | "private";
 
+const CATEGORY_OPTIONS = [
+  { value: "tool",      label: "工具效率" },
+  { value: "game",      label: "游戏娱乐" },
+  { value: "ai",        label: "AI 应用" },
+  { value: "education", label: "教育学习" },
+  { value: "content",   label: "内容创作" },
+  { value: "data",      label: "数据可视化" },
+  { value: "life",      label: "生活服务" },
+  { value: "other",     label: "其他" },
+];
+
 interface PublishDialogProps {
   open: boolean;
   onClose: () => void;
@@ -19,6 +30,7 @@ interface PublishDialogProps {
     isOpenSource: boolean;
     visibility: Visibility;
     previewScreenshot: string | null;
+    framework?: string;
   } | null;
   onPublished?: (app: { id: string }) => void;
   onUnpublished?: () => void;
@@ -80,6 +92,7 @@ export function PublishDialog({
   const [title, setTitle] = useState(existing?.title ?? projectName);
   const [description, setDescription] = useState(existing?.description ?? "");
   const [isOpenSource, setIsOpenSource] = useState(existing?.isOpenSource ?? false);
+  const [category, setCategory] = useState<string>(existing?.framework ?? "other");
 
   // Step 3 — visibility & publish
   const [visibility, setVisibility] = useState<Visibility>(existing?.visibility ?? "public");
@@ -94,6 +107,7 @@ export function PublishDialog({
       setTitle(existing?.title ?? projectName);
       setDescription(existing?.description ?? "");
       setIsOpenSource(existing?.isOpenSource ?? false);
+      setCategory(existing?.framework ?? "other");
       setVisibility(existing?.visibility ?? "public");
       setError("");
       setSubmitting(false);
@@ -134,6 +148,7 @@ export function PublishDialog({
           isOpenSource,
           visibility,
           previewScreenshot: screenshot ?? undefined,
+          framework: category,
         }),
       });
       if (!res.ok) throw new Error("failed");
@@ -279,6 +294,28 @@ export function PublishDialog({
                 className="w-full px-3 py-2.5 text-[14px] text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl outline-none focus:border-gray-400 transition-colors resize-none"
               />
               <p className="text-[11px] text-gray-400 text-right">{description.length}/300</p>
+            </div>
+
+            {/* Category */}
+            <div className="space-y-2">
+              <label className="text-[13px] font-medium text-gray-700">应用分类</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setCategory(opt.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all duration-150",
+                      category === opt.value
+                        ? "bg-black text-white border-black"
+                        : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Open source toggle */}
