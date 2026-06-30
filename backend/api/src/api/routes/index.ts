@@ -10,6 +10,7 @@ import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, cl
 import { tmpdir } from "os";
 import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
+import multer from "multer";
 import archiver from "archiver";
 import { z } from "zod";
 // @ts-ignore
@@ -3795,6 +3796,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
+      firstName: (user as any).firstName ?? null,
+      lastName: (user as any).lastName ?? null,
+      bio: (user as any).bio ?? null,
+      avatarUrl: (user as any).avatarUrl ?? null,
     });
   });
 
@@ -3817,11 +3822,75 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (existing && existing.id !== userId) {
         return res.status(409).json({ error: "Username already taken" });
       }
-      await db.update(users).set({ username: trimmed }).where(eq(users.id, userId));
+      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
       res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[auth/me/username]", err);
       res.status(500).json({ error: "Failed to update username" });
+    }
+  });
+
+  app.get("/api/auth/me/username-cooldown", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
+      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const elapsed = Date.now() - lastChanged.getTime();
+      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
+      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.json({ canChange: false, remainingDays });
+    } catch (err) {
+      console.error("[auth/me/username-cooldown]", err);
+      res.status(500).json({ error: "Failed to check cooldown" });
+    }
+  });
+
+  app.put("/api/auth/me/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
+      const updates: Record<string, string> = {};
+      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
+      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
+      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
+      await db.update(users).set(updates as any).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/me/profile]", err);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Avatar upload
+  const avatarDir = join(resolve("."), "dist", "public", "avatars");
+  const avatarUpload = multer({
+    storage: multer.diskStorage({
+      destination: async (_req, _file, cb) => { await mkdir(avatarDir, { recursive: true }); cb(null, avatarDir); },
+      filename: (req, _file, cb) => { const userId = (req.session as any)?.userId ?? "unknown"; cb(null, `${userId}-${Date.now()}.jpg`); },
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only image files are allowed"));
+    },
+  });
+
+  app.post("/api/auth/me/avatar", avatarUpload.single("avatar"), async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const avatarUrl = `/avatars/${req.file.filename}`;
+      await db.update(users).set({ avatarUrl } as any).where(eq(users.id, userId));
+      res.json({ ok: true, avatarUrl });
+    } catch (err) {
+      console.error("[auth/me/avatar]", err);
+      res.status(500).json({ error: "Failed to upload avatar" });
     }
   });
 
@@ -4023,7 +4092,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const purpose = rawPurpose === "bind_email" ? "bind_email" : "login";
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : rawPurpose === "bind_phone" ? "bind_phone" : "login";
       const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
@@ -4253,6 +4322,38 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ ok: true });
     } catch (err) {
       console.error("[auth/bind-email]", err);
+      res.status(500).json({ error: "Bind failed" });
+    }
+  });
+
+  app.post("/api/auth/bind-phone", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+
+      const { target, code } = req.body as { target?: string; code?: string };
+      const normalized = normalizeTarget("sms", target ?? "");
+      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
+      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
+
+      const existing = await storage.getUserByPhone(normalized);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ error: "Phone already in use" });
+      }
+
+      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" as any });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      await db.update(users)
+        .set({ phone: normalized, phoneVerified: true })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/bind-phone]", err);
       res.status(500).json({ error: "Bind failed" });
     }
   });
