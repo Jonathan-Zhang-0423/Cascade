@@ -129,55 +129,6 @@ export function buildBuilderTools(
   // deterministically once the final step is done — without depending on the
   // model to emit a separate request_review tool call.
   const completedSteps = new Set<number | string>();
-  // Track which steps have had step_starting emitted — for intelligent
-  // step-advancement based on write_file file→step matching.
-  const startedSteps = new Set<number>();
-  startedSteps.add(1); // Step 1's step_starting is emitted by the orchestrator at build start.
-
-  /**
-   * Check if a file write/read belongs to the NEXT plan step (sequential only).
-   * Only advances one step at a time in order — never skips steps. This prevents
-   * shared files (e.g. index.html in steps 1, 2, and 3) from prematurely jumping
-   * to a later step. The rule: advance to step N+1 only when a file EXCLUSIVE to
-   * step N+1 (not listed in any earlier step) is touched.
-   */
-  function maybeAdvanceStep(filePath: string, emit: SseEmit): void {
-    if (!planSteps || totalSteps <= 1) return;
-
-    // Determine the current step (highest started, not completed)
-    let currentStep = 1;
-    for (const s of startedSteps) {
-      if (s > currentStep) currentStep = s;
-    }
-    const nextStepNum = currentStep + 1;
-    if (nextStepNum > totalSteps) return;
-
-    const nextStep = planSteps.find(s => s.step === nextStepNum);
-    if (!nextStep || !nextStep.required_files || nextStep.required_files.length === 0) return;
-    if (startedSteps.has(nextStepNum) || completedSteps.has(nextStepNum)) return;
-
-    // Normalize the written file path
-    const normalized = filePath.replace(/^\/project\//, "").replace(/^\//, "");
-
-    // Check if this file is in the NEXT step's required_files
-    const matchesNext = nextStep.required_files.some(rf => {
-      const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
-      return normalized === normRf;
-    });
-    if (!matchesNext) return;
-
-    // Check this file is NOT in the current step's required_files (exclusive to next step)
-    const currentStepObj = planSteps.find(s => s.step === currentStep);
-    const inCurrentStep = currentStepObj?.required_files?.some(rf => {
-      const normRf = rf.replace(/^\/project\//, "").replace(/^\//, "");
-      return normalized === normRf;
-    });
-    if (inCurrentStep) return; // Shared file — don't advance
-
-    startedSteps.add(nextStepNum);
-    console.log(`[step-advance] file "${filePath}" → starting step ${nextStepNum}: ${nextStep.title}`);
-    emit({ type: "step_starting", stepNumber: nextStepNum, stepTitle: nextStep.title, totalSteps });
-  }
 
   const schemas: ToolSchema[] = [
     {
@@ -375,8 +326,6 @@ export function buildBuilderTools(
       if (!path_ || typeof content !== "string") {
         return "Error: path and content are required";
       }
-      // Advance step if this file belongs to a later plan step (intelligent progression)
-      maybeAdvanceStep(path_, emit);
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path_ });
       session.files.set(path_, content);
@@ -593,8 +542,6 @@ export function buildBuilderTools(
     read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
-      // Advance step if this file belongs to a later plan step
-      maybeAdvanceStep(path, emit);
       const fileName = path.split("/").pop() || path;
       const content = session.files.get(path);
       emit({ type: "action_log", actionType: "file_read", label: fileName, detail: content ?? "", filePath: path });
@@ -642,12 +589,11 @@ export function buildBuilderTools(
       emit({ type: "step_completed", stepNumber: resolvedNum, summary });
       completedSteps.add(resolvedNum);
 
-      // Advance to the next step (only if not already started by write_file matching)
+      // Advance to the next step
       const numericCompleted = typeof resolvedNum === "number" ? resolvedNum : NaN;
       if (!isNaN(numericCompleted) && totalSteps > 0) {
         const nextStep = stepByNum.get(numericCompleted + 1);
-        if (nextStep && !startedSteps.has(nextStep.step)) {
-          startedSteps.add(nextStep.step);
+        if (nextStep) {
           emit({ type: "step_starting", stepNumber: nextStep.step, stepTitle: nextStep.title, totalSteps });
         }
       }
