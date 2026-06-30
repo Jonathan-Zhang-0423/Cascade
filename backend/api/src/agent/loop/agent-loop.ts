@@ -295,7 +295,11 @@ export async function runAgentLoop(
       break;
     }
 
-    // Push assistant message with tool calls to context
+    // Push assistant message with tool calls to context.
+    // IMPORTANT: Truncate large tool_call arguments (e.g. write_file content)
+    // to prevent messages array from exploding. The LLM can re-read files via
+    // read_file if needed — it doesn't need 50KB of prior write content in context.
+    const MAX_ARGS_IN_CONTEXT = 500; // chars — enough for the function name + path, not full content
     const assistantMsg = {
       role: "assistant" as const,
       content: assistantText || null,
@@ -303,7 +307,12 @@ export async function runAgentLoop(
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: "function" as const,
-        function: { name: tc.name, arguments: tc.argsRaw },
+        function: {
+          name: tc.name,
+          arguments: tc.argsRaw.length > MAX_ARGS_IN_CONTEXT
+            ? tc.argsRaw.slice(0, MAX_ARGS_IN_CONTEXT) + '..."}'
+            : tc.argsRaw,
+        },
       })),
     };
     messages.push(assistantMsg as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam);
