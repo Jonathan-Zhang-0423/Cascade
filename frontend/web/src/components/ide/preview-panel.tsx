@@ -44,48 +44,6 @@ const FILE_TYPES = [
   { ext: "sh",   label: "Shell (.sh)" },
 ];
 
-function ChangelogTabContent({ tabId }: { tabId: string }) {
-  const refId = parseInt(tabId.replace("changelog-", ""), 10);
-  const [entry, setEntry] = useState<{id:number;version:string|null;title:string;content:string;publishedAt:string}|null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/changelog")
-      .then((r) => r.json())
-      .then((data) => {
-        const found = (data.entries ?? []).find((e: {id:number}) => e.id === refId);
-        setEntry(found ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [refId]);
-
-  return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {loading && <p className="text-[13px] text-muted-foreground">加载中…</p>}
-        {!loading && !entry && <p className="text-[13px] text-muted-foreground">未找到更新内容</p>}
-        {entry && (
-          <div className="max-w-xl space-y-4">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {entry.version && (
-                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full font-semibold" style={{ background: "rgba(79,130,255,0.12)", color: "#4f82ff" }}>
-                  {entry.version}
-                </span>
-              )}
-              <span className="text-[12px] text-muted-foreground">
-                {new Date(entry.publishedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
-              </span>
-            </div>
-            <h1 className="text-[20px] font-bold text-foreground leading-snug">{entry.title}</h1>
-            <div className="text-[13px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{entry.content}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function NewFilePanel({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
   const { addFile } = useIDEStore();
   const t = useT();
@@ -622,11 +580,6 @@ export function PreviewPanel({
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg)" }}>
           <CheckpointPanel />
         </div>
-      )}
-
-      {/* ── Changelog 视图（从通知点击进入） ── */}
-      {activePreviewTabState.startsWith("changelog-") && (
-        <ChangelogTabContent tabId={activePreviewTabState} />
       )}
 
       {/* ── Plan Preview 视图（任务计划详情全页展示） ── */}

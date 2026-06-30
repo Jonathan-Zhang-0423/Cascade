@@ -1,13 +1,5 @@
 import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
-import { useLanguageStore } from "@/stores/language-store";
-
-function getWelcomeMessage(): string {
-  const lang = useLanguageStore.getState().lang;
-  return lang === "en"
-    ? "Hi! I'm your AI coding assistant. Tell me what you'd like to build, and I'll help you plan, code, and ship it."
-    : "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。";
-}
 
 export interface FileNode {
   name: string;
@@ -59,15 +51,8 @@ export interface ManagerPlan {
   narrated_what_and_why?: string;
   narrated_done_looks_like?: string;
   narrated_out_of_scope?: string;
-  /** "direct": slim build UI. "media": AIGC poster/video task, not a code build. */
-  mode?: "plan" | "direct" | "media";
-  /** Only present when mode === "media" */
-  media_task?: {
-    type: "poster" | "video" | "both";
-    prompt?: string;
-    style?: string;
-    duration?: number;
-  };
+  /** "direct": plan was synthesized for a direct build (no verifier, slim UI). Default is plan-mode. */
+  mode?: "plan" | "direct";
 }
 
 export interface VerificationItem {
@@ -85,16 +70,50 @@ export interface VerificationResult {
   suggestion: string;
 }
 
+export interface HolisticReviewBug {
+  id: string;
+  severity: "critical" | "major" | "minor" | "nit";
+  file: string;
+  description: string;
+  expected: string;
+  actual: string;
+}
+
+export interface HolisticReviewAdvisory {
+  id: string;
+  severity: "critical" | "major" | "minor" | "nit";
+  file: string;
+  description: string;
+}
+
+export interface HolisticReviewResult {
+  overall_status: "pass" | "fail";
+  requirement_match_percent: number;
+  bugs: HolisticReviewBug[];
+  /** Non-blocking issues surfaced by the standalone review step (minor/nit
+   * under the active strictness). Always informational — never block. */
+  advisories?: HolisticReviewAdvisory[];
+  missing_features: Array<{ id: string; description: string; related_step: number }>;
+  regressions: Array<{ id: string; file: string; description: string }>;
+  user_confirmation_needed: string[];
+  summary: string;
+  suggestion: string;
+}
+
+export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
+
+/** Strictness threshold for the standalone review step. Controls which
+ * severities trigger an automatic fix round. */
+export type ReviewStrictness = "lenient" | "balanced" | "strict";
+
 export interface BuildResultData {
   actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
   segments?: {
     id: string;
     narration: string;
     actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
-    isLive: boolean;
   }[];
-  completionData?: { changedFiles: string[]; userLang?: string; summary?: string };
-  tokenUsage?: { input: number; output: number; total: number };
+  completionData: { changedFiles: string[]; userLang?: string; summary?: string };
   nextStepSuggestion?: string;
   sessionId?: string;
 }
@@ -119,6 +138,10 @@ export interface ManagerMessage {
   // to all-pending once a newer plan takes over the live `taskStatuses`.
   frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   frozenTaskFailureReasons?: Record<string, string>;
+  // Snapshot of reviewPhase captured when this plan's build finished. Without
+  // it, returning to the project resets reviewPhase to "idle" and a completed
+  // PlanCard loses its "已审查/完成" state (isFullyComplete needs review_passed).
+  frozenReviewPhase?: ReviewPhase;
 }
 
 interface FlatFile {
@@ -275,7 +298,6 @@ interface IDEState {
   isSidebarOpen: boolean;
   isChatOpen: boolean;
   isAiResponding: boolean;
-  idePageMounted: boolean;
   theme: string;
   previewFile: string;
   previewRefreshKey: number;
@@ -285,7 +307,7 @@ interface IDEState {
   checkpoints: Checkpoint[];
 
   // ── Multi-session ──────────────────────────────────────────────────────────
-  currentSessionId: string;   // "main" = 主会话（默认），其余为 session id
+  currentSessionId: string | null;   // null = 主会话（默认）
   sessions: { id: string; name: string; createdAt: string }[];
   sessionsLoaded: boolean;
   lastBuildFileDiffs: Record<string, { old: string; new: string }>;
@@ -306,8 +328,6 @@ interface IDEState {
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
-  /** Per-session responding state. Key = sessionId. True while that session's manager stream is active. */
-  sessionManagerResponding: Record<string, boolean>;
   /** True once the async DB fetch for managerMessages/chatMessages has completed
    *  (or been skipped). Prevents sending stale cross-project messages to the LLM
    *  during the window between loadProject's synchronous set() and the async
@@ -316,7 +336,11 @@ interface IDEState {
   verificationResults: Record<string, VerificationResult>;
   pendingConfirmation: { stepKey: string; items: string[] } | null;
   userConfirmationInput: string;
+  reviewPhase: ReviewPhase;
+  holisticReview: HolisticReviewResult | null;
   fixCycle: number;
+  reviewStrictness: ReviewStrictness;
+  setReviewStrictness: (s: ReviewStrictness) => void;
   completionData: { changedFiles: string[]; summary: string } | null;
 
   isLLMMonitorOpen: boolean;
@@ -364,8 +388,6 @@ interface IDEState {
   refreshPreview: () => void;
   createCheckpoint: (label: string, options?: { includeManagerThread?: boolean }) => void;
   restoreCheckpoint: (id: string) => void;
-  historyTabRequest: number;
-  requestHistoryTab: () => void;
 
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
@@ -374,23 +396,20 @@ interface IDEState {
   updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
-  setManagerResponding: (v: boolean, sessionId?: string) => void;
+  setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
   clearConversation: () => void;
   createSession: () => Promise<void>;
-  switchSession: (sessionId: string) => Promise<void>;
+  switchSession: (sessionId: string | null) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   loadSessions: () => Promise<void>;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setUserConfirmationInput: (input: string) => void;
+  setReviewPhase: (phase: ReviewPhase) => void;
+  setHolisticReview: (review: HolisticReviewResult | null) => void;
   setFixCycle: (cycle: number) => void;
   setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
-
-  // Plan preview panel（右内容区左侧并列显示）
-  planPreviewOpen: boolean;
-  planPreviewData: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null;
-  setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
   freezeLatestPlanStatuses: () => void;
@@ -530,8 +549,6 @@ function persistState(state: IDEState) {
     _nextSeq: state._nextSeq,
     streamingSnapshot: truncateSnapshot(state.streamingSnapshot),
     managerPlan: state.managerPlan,
-    taskStatuses: state.taskStatuses,
-    taskFailureReasons: state.taskFailureReasons,
     selectedDevice: state.selectedDevice,
     deviceOrientation: state.deviceOrientation,
     devicePlatform: state.devicePlatform,
@@ -540,7 +557,6 @@ function persistState(state: IDEState) {
     customDeviceHeight: state.customDeviceHeight,
     layoutMode: state.layoutMode,
     codeVisible: state.codeVisible,
-    currentSessionId: state.currentSessionId,
   };
   const key = `cascade-project-${state.projectId}`;
   const isQuotaErr = (e: unknown) =>
@@ -580,26 +596,21 @@ type PendingChatMsg = {
 const pendingMsgUploads = new Map<string, Map<string, PendingChatMsg>>();
 let msgUploadTimer: ReturnType<typeof setTimeout> | null = null;
 
-function flushPendingMsgUploads(keepalive = false) {
+function flushPendingMsgUploads() {
   msgUploadTimer = null;
   for (const [pid, byClientId] of pendingMsgUploads) {
     if (byClientId.size === 0) continue;
     const messages = Array.from(byClientId.values());
     byClientId.clear();
-    const body = JSON.stringify({ messages });
-    // keepalive=true 保证 pagehide/visibilitychange 时请求能在页面卸载后继续发出。
-    // 普通调用也用 keepalive，浏览器对 keepalive fetch 有 64KB body 上限，
-    // 消息批量一般远低于此，安全。
     fetch(`/api/projects/${pid}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: keepalive || body.length < 60_000,
+      body: JSON.stringify({ messages }),
     }).catch(() => {});
   }
 }
 
-function queueMessageUpload(projectId: string, msg: PendingChatMsg, immediate = false) {
+function queueMessageUpload(projectId: string, msg: PendingChatMsg) {
   let byClientId = pendingMsgUploads.get(projectId);
   if (!byClientId) {
     byClientId = new Map();
@@ -607,14 +618,8 @@ function queueMessageUpload(projectId: string, msg: PendingChatMsg, immediate = 
   }
   // Latest write per clientId wins (covers updates to the same message).
   byClientId.set(msg.clientId, msg);
-  if (immediate) {
-    // Flush immediately (e.g. user message that must survive a rapid refresh).
-    if (msgUploadTimer) clearTimeout(msgUploadTimer);
-    flushPendingMsgUploads(true);
-  } else {
-    if (msgUploadTimer) clearTimeout(msgUploadTimer);
-    msgUploadTimer = setTimeout(flushPendingMsgUploads, 32);
-  }
+  if (msgUploadTimer) clearTimeout(msgUploadTimer);
+  msgUploadTimer = setTimeout(flushPendingMsgUploads, 500);
 }
 
 async function fetchMessagesFromServer(
@@ -622,12 +627,10 @@ async function fetchMessagesFromServer(
   kind: "chat" | "manager",
   before?: number,
   limit = 100,
-  sessionId?: string,
 ): Promise<unknown[]> {
   try {
     const params = new URLSearchParams({ kind, limit: String(limit) });
     if (typeof before === "number") params.set("before", String(before));
-    if (sessionId) params.set("sessionId", sessionId);
     const resp = await fetch(`/api/projects/${projectId}/messages?${params.toString()}`);
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -675,6 +678,7 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     errorCode: metadata?.errorCode,
     frozenTaskStatuses: metadata?.frozenTaskStatuses,
     frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
+    frozenReviewPhase: metadata?.frozenReviewPhase,
   };
 }
 
@@ -707,6 +711,7 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string, sessionId
   if (m.errorCode) metadata.errorCode = m.errorCode;
   if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
   if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;
+  if (m.frozenReviewPhase) metadata.frozenReviewPhase = m.frozenReviewPhase;
   return {
     clientId: m.id,
     kind: "manager",
@@ -750,12 +755,10 @@ function flushPersist() {
 
 if (typeof window !== "undefined") {
   // pagehide fires reliably on tab close and bfcache navigation; visibilitychange
-  // covers mobile/background where pagehide may not. Both flush UI state AND
-  // any pending message uploads so messages aren't lost on rapid refresh.
-  const flushAll = () => { flushPersist(); flushPendingMsgUploads(true); };
-  window.addEventListener("pagehide", flushAll);
+  // covers mobile/background where pagehide may not. Both just flush.
+  window.addEventListener("pagehide", flushPersist);
   window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushAll();
+    if (document.visibilityState === "hidden") flushPersist();
   });
 }
 
@@ -837,7 +840,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     {
       id: "welcome",
       role: "assistant",
-      content: getWelcomeMessage(),
+      content:
+        "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
       timestamp: Date.now(),
       seq: 0,
     },
@@ -848,7 +852,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   isSidebarOpen: true,
   isChatOpen: false,
   isAiResponding: false,
-  idePageMounted: false,
   theme: "vs-dark",
   previewFile: "/project/index.html",
   previewRefreshKey: 0,
@@ -856,17 +859,13 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   pendingPrompt: null,
   pendingPromptMode: null,
   checkpoints: [],
-  historyTabRequest: 0,
   lastBuildFileDiffs: {},
   setLastBuildFileDiff: (filePath, old, newContent) =>
     set((s) => ({ lastBuildFileDiffs: { ...s.lastBuildFileDiffs, [filePath]: { old, new: newContent } } })),
   clearLastBuildFileDiffs: () => set({ lastBuildFileDiffs: {} }),
-  planPreviewOpen: false,
-  planPreviewData: null,
-  setPlanPreview: (open, data) => set({ planPreviewOpen: open, planPreviewData: data ?? null }),
 
   // ── Multi-session initial state ────────────────────────────────────────────
-  currentSessionId: "main",
+  currentSessionId: null,
   sessions: [],
   sessionsLoaded: false,
 
@@ -884,12 +883,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   taskStatuses: {},
   taskFailureReasons: {},
   isManagerResponding: false,
-  sessionManagerResponding: {},
   messagesReady: true,
   verificationResults: {},
   pendingConfirmation: null,
   userConfirmationInput: "",
+  reviewPhase: "idle",
+  holisticReview: null,
   fixCycle: 0,
+  reviewStrictness: "balanced",
   completionData: null,
 
   isLLMMonitorOpen: false,
@@ -943,22 +944,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   selectedProvider: (() => {
     try {
-      const auth = localStorage.getItem("cascade-auth");
-      const userId = auth ? JSON.parse(auth)?.userId : null;
-      const key = userId ? `cascade-selected-provider-${userId}` : "cascade-selected-provider";
-      const saved = localStorage.getItem(key);
+      const saved = localStorage.getItem("cascade-selected-provider");
+      // Migrate old "deepseek" value (pre-pro/flash split) to deepseek-pro.
       if (saved === "deepseek") return "deepseek-pro";
       if (saved === "doubao" || saved === "kimi" || saved === "minimax" || saved === "glm" || saved === "deepseek-pro" || saved === "deepseek-flash") return saved;
     } catch {}
     return "glm";
   })(),
   setSelectedProvider: (provider) => {
-    try {
-      const auth = localStorage.getItem("cascade-auth");
-      const userId = auth ? JSON.parse(auth)?.userId : null;
-      const key = userId ? `cascade-selected-provider-${userId}` : "cascade-selected-provider";
-      localStorage.setItem(key, provider);
-    } catch {}
+    try { localStorage.setItem("cascade-selected-provider", provider); } catch {}
     set({ selectedProvider: provider });
   },
 
@@ -999,7 +993,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       {
         id: "welcome",
         role: "assistant" as const,
-        content: getWelcomeMessage(),
+        content:
+          "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
         seq: 1,
         timestamp: Date.now(),
       },
@@ -1079,13 +1074,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       })(),
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
-      taskStatuses: saved.taskStatuses || (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
-      taskFailureReasons: saved.taskFailureReasons || (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskFailureReasons)?.frozenTaskFailureReasons || {},
+      taskStatuses: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
+      taskFailureReasons: (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskFailureReasons)?.frozenTaskFailureReasons || {},
       isManagerResponding: false,
       messagesReady: false,
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
+      // Restore the last plan's frozen reviewPhase so a completed PlanCard keeps
+      // its "已审查/完成" state on return; default to idle when none was frozen.
+      reviewPhase: ((mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenReviewPhase)?.frozenReviewPhase || "idle") as ReviewPhase,
+      holisticReview: null,
       fixCycle: 0,
       selectedDevice: saved.selectedDevice || "iphone-16-pro",
       deviceOrientation: (saved.deviceOrientation || "portrait") as "portrait" | "landscape",
@@ -1125,6 +1124,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
+      reviewPhase: "idle" as ReviewPhase,
+      holisticReview: null,
       fixCycle: 0,
       selectedDevice: "iphone-16-pro",
       deviceOrientation: "portrait" as "portrait" | "landscape",
@@ -1137,14 +1138,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     };
 
     set(baseState);
-    // 恢复上次所在的 session（持久化的 currentSessionId）
-    const restoredSessionId: string = (saved?.currentSessionId && typeof saved.currentSessionId === "string")
-      ? saved.currentSessionId
-      : "main";
-    // 如果需要恢复非主会话，立即更新 store（不等消息加载）
-    if (restoredSessionId !== "main") {
-      set({ currentSessionId: restoredSessionId });
-    }
 
     // Migrate legacy localStorage messages → DB (one-time per project).
     // Older clients persisted full chatMessages / managerMessages arrays into
@@ -1176,18 +1169,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     // Pull latest persisted history from server and replace local arrays.
     // Use limit=100 per kind; older messages can be fetched on scroll-up.
     Promise.all([
-      fetchMessagesFromServer(id, "chat", undefined, 100, restoredSessionId),
-      fetchMessagesFromServer(id, "manager", undefined, 100, restoredSessionId),
+      fetchMessagesFromServer(id, "chat", undefined, 100),
+      fetchMessagesFromServer(id, "manager", undefined, 100),
     ]).then(([chatRows, mgrRows]) => {
       const cur = get();
       if (cur.projectId !== id) return; // user switched projects
-      // 最优先检查：只要用户已切换到其他 session，立即 return
-      if (cur.currentSessionId !== restoredSessionId) {
-        set({ messagesReady: true });
-        return;
-      }
       const chat = chatRows.map(dbRowToChatMessage);
       const mgr = mgrRows.map(dbRowToManagerMessage);
+      // Only adopt server history if we got something. Otherwise keep whatever
+      // 如果用户已切换到非主会话，不覆盖消息（race condition 防护）
+      // 必须在 chat.length===0 的判断之外，无论服务器返回什么都先检查
       if (chat.length === 0 && mgr.length === 0) {
         const cur2 = get();
         if (cur2.projectId === id) set({ messagesReady: true });
@@ -1198,6 +1189,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...chat.map((m) => m.seq + 1),
         ...mgr.map((m) => m.seq + 1),
       );
+      const lastPlan = mgr.slice().reverse().find((m) => m.plan)?.plan ?? cur.managerPlan;
+      // Restore taskStatuses from the latest plan message's frozen snapshot
+      const lastPlanMsg = mgr.slice().reverse().find((m) => m.plan);
       // Merge, do NOT replace. This fetch was started at loadProject time against
       // a DB snapshot taken THEN. On a freshly created project the user's first
       // prompt — and the in-flight manager stream's messages/plan — can land
@@ -1213,16 +1207,12 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       const mergedChat = chat.length > 0 ? mergeById(chat, cur.chatMessages) : cur.chatMessages;
       const mergedMgr = mgr.length > 0 ? mergeById(mgr, cur.managerMessages) : cur.managerMessages;
-      // 再次检查：如果用户已切换到其他 session，不覆盖消息
+      // 再次检查：如果用户已切换到非主会话，不覆盖消息
       const cur3 = get();
-      if (cur3.projectId !== id || cur3.currentSessionId !== restoredSessionId) {
+      if (cur3.projectId !== id || cur3.currentSessionId !== null) {
         if (cur3.projectId === id) set({ messagesReady: true });
         return;
       }
-      const lastPlanMsg = mergedMgr.slice().reverse().find((m) => m.plan);
-      // Prefer a live plan if one exists (an in-flight stream may have just set
-      // it); otherwise fall back to the newest plan from the merged history.
-      const lastPlan = cur.managerPlan ?? lastPlanMsg?.plan;
       const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? cur.taskStatuses;
       const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? cur.taskFailureReasons;
       set({
@@ -1301,15 +1291,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   clearPendingPrompt: () => {
     set({ pendingPrompt: null, pendingPromptMode: null });
-    // Persist synchronously, NOT debounced: loadProject restores pendingPrompt
-    // from localStorage, so if the write hasn't landed yet and the project
-    // re-loads (remount / refresh / StrictMode), the stale prompt would be
-    // restored and auto-sent again — producing duplicate messages and repeated
-    // manager-chat calls. Cancel any pending debounced write, then write the
-    // cleared state immediately to close that window.
-    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
-    pendingPersistState = null;
-    persistState(get());
+    const state = get();
+    debouncedPersist(state);
   },
 
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => {
@@ -1507,8 +1490,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setAiResponding: (v) => set({ isAiResponding: v }),
 
-  setIdePageMounted: (v: boolean) => set({ idePageMounted: v }),
-
   addConsoleEntry: (entry) =>
     set((state) => ({
       consoleEntries: [
@@ -1627,8 +1608,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   refreshPreview: () => set((state) => ({ previewRefreshKey: state.previewRefreshKey + 1 })),
 
-  requestHistoryTab: () => set((state) => ({ historyTabRequest: state.historyTabRequest + 1 })),
-
   setChatMode: (mode) =>
     set((state) => {
       const next = { ...state, chatMode: mode };
@@ -1650,6 +1629,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       taskFailureReasons: {},
       verificationResults: {},
       executingTaskIndex: null,
+      reviewPhase: "idle",
+      holisticReview: null,
       fixCycle: 0,
       completionData: null,
       pendingConfirmation: null,
@@ -1671,24 +1652,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerMessages: [...state.managerMessages, newMsg],
       };
       debouncedPersist(next);
-      if (state.projectId) queueMessageUpload(
-        state.projectId,
-        managerMessageToDbInput(newMsg, state.projectId, state.currentSessionId),
-        newMsg.role === "user", // immediate flush for user messages to survive rapid refresh
-      );
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(newMsg, state.projectId, state.currentSessionId));
       return next;
     }),
 
   loadOlderMessages: async (kind, limit = 50) => {
     const state = get();
     if (!state.projectId) return 0;
-    const sessionId = state.currentSessionId;
     const arr = kind === "chat" ? state.chatMessages : state.managerMessages;
     const earliestSeq = arr.length > 0 ? arr[0].seq : undefined;
-    const rows = await fetchMessagesFromServer(state.projectId, kind, earliestSeq, limit, sessionId);
+    const rows = await fetchMessagesFromServer(state.projectId, kind, earliestSeq, limit);
     if (rows.length === 0) return 0;
     const cur = get();
-    if (cur.projectId !== state.projectId || cur.currentSessionId !== sessionId) return 0;
+    if (cur.projectId !== state.projectId) return 0;
     if (kind === "chat") {
       const newer = rows.map(dbRowToChatMessage);
       const existingIds = new Set(cur.chatMessages.map((m) => m.id));
@@ -1716,13 +1692,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
 
-  setManagerResponding: (v, sessionId) => set((state) => {
-    const sid = sessionId ?? state.currentSessionId;
-    return {
-      isManagerResponding: sid === state.currentSessionId ? v : state.isManagerResponding,
-      sessionManagerResponding: { ...state.sessionManagerResponding, [sid]: v },
-    };
-  }),
+  setManagerResponding: (v) => set({ isManagerResponding: v }),
 
   clearManagerPlan: () =>
     set({
@@ -1733,6 +1703,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
+      reviewPhase: "idle",
+      holisticReview: null,
       fixCycle: 0,
       completionData: null,
     }),
@@ -1741,7 +1713,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     const welcome = {
       id: "welcome-" + Date.now(),
       role: "assistant" as const,
-      content: getWelcomeMessage(),
+      content: "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
       timestamp: Date.now(),
       seq: 0,
     };
@@ -1756,6 +1728,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       verificationResults: {},
       pendingConfirmation: null,
       userConfirmationInput: "",
+      reviewPhase: "idle",
+      holisticReview: null,
       fixCycle: 0,
       completionData: null,
     });
@@ -1781,37 +1755,26 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   },
 
   createSession: async () => {
-    const state = get();
-    if (!state.projectId) return;
-    // 防重入：正在创建中则不重复执行
-    if ((state as any)._creatingSession) return;
-    set({ _creatingSession: true } as any);
+    const { projectId } = get();
+    if (!projectId) return;
     try {
-      const res = await fetch(`/api/projects/${state.projectId}/sessions`, {
+      const res = await fetch(`/api/projects/${projectId}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ name: "新会话" }),
       });
-      if (!res.ok) {
-        // 项目在 DB 里不存在（localStorage 缓存了已删除的 projectId），
-        // 清除本地缓存并跳回项目列表，避免用户永久卡住。
-        if (res.status === 500 || res.status === 404) {
-          try { localStorage.removeItem(`cascade-project-${state.projectId}`); } catch {}
-          window.location.href = "/app";
-        }
-        return;
-      }
+      if (!res.ok) return;
       const data = await res.json();
       const newSession = data.session;
       set((s) => ({ sessions: [newSession, ...s.sessions] }));
+      // 先切换 activeTool，再 switchSession，确保 dock 立即高亮新 session
+      set({ activeTool: "chat" });
       await get().switchSession(newSession.id);
-    } catch { /* non-fatal */ } finally {
-      set({ _creatingSession: false } as any);
-    }
+    } catch { /* non-fatal */ }
   },
 
-  switchSession: async (sessionId: string) => {
+  switchSession: async (sessionId: string | null) => {
     const { projectId } = get();
     if (!projectId) return;
     const welcome = {
@@ -1821,9 +1784,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       timestamp: Date.now(),
       seq: 0,
     };
-    set((state) => ({
+    set({
       currentSessionId: sessionId,
-      activeTool: "chat",
       chatMessages: [welcome],
       managerMessages: [],
       _nextSeq: 1,
@@ -1837,52 +1799,20 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       fixCycle: 0,
       completionData: null,
       messagesReady: false,
-      // 切换时从 per-session Map 同步全局 isManagerResponding，
-      // 避免切到正在执行任务的 session 时 loading 状态丢失，
-      // 也避免切走时把其他 session 的 loading 带过来
-      isManagerResponding: state.sessionManagerResponding[sessionId] ?? false,
-    }));
-    // 重置目标 slot 的 live stream state，避免上一次 build 残留显示在本会话。
-    // 仅当该 slot 没有正在进行的活跃流时才 reset（不打断进行中的 build）。
-    // 动态 import 避免与 stream-registry 形成循环依赖。
-    import("@/services/stream").then(({ streamRegistry }) => {
-      const slot = streamRegistry.get(projectId, sessionId);
-      if (!slot.build.isActive) slot.build.resetLive();
-      if (!slot.manager.isActive) slot.manager.resetLive();
-    }).catch(() => {});
+    });
     try {
-      // sessionId 始终是字符串（主会话为 "main"），后端按 session_id 精确过滤
-      const sid = sessionId || "main";
-      const sidParam = `&sessionId=${encodeURIComponent(sid)}`;
+      // sessionId=null 表示主会话，后端按 IS NULL 过滤；有值则按 sessionId 过滤
+      const sidParam = sessionId !== null ? `&sessionId=${sessionId}` : `&sessionId=null`;
       const [chatRes, mgrRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/messages?kind=chat&limit=100${sidParam}`, { credentials: "include" }),
         fetch(`/api/projects/${projectId}/messages?kind=manager&limit=100${sidParam}`, { credentials: "include" }),
       ]);
       const chatData = chatRes.ok ? await chatRes.json() : { messages: [] };
       const mgrData = mgrRes.ok ? await mgrRes.json() : { messages: [] };
-      const loadedChat: ChatMessage[] = (chatData.messages ?? []).map(dbRowToChatMessage);
-      const loadedMgr: ManagerMessage[] = (mgrData.messages ?? []).map(dbRowToManagerMessage);
-      // seq 续接：从该 session 已有消息的 max seq + 1 开始，避免新消息撞号
-      const maxSeq = Math.max(
-        0,
-        ...loadedChat.map((m: any) => m.seq ?? 0),
-        ...loadedMgr.map((m: any) => m.seq ?? 0),
-      );
-      // 切换期间用户可能又切走了，写入前确认仍是当前 session
-      if (get().currentSessionId !== sessionId) return;
-      // 从最新的 plan 消息里恢复 plan card 状态，和 loadProject 保持一致
-      const lastPlanMsg = loadedMgr.slice().reverse().find((m: ManagerMessage) => m.plan);
-      const restoredPlan = lastPlanMsg?.plan ?? null;
-      const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? {};
-      const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? {};
       set({
-        chatMessages: loadedChat.length > 0 ? loadedChat : [welcome],
-        managerMessages: loadedMgr,
-        _nextSeq: maxSeq + 1,
+        chatMessages: chatData.messages?.length > 0 ? chatData.messages : [welcome],
+        managerMessages: mgrData.messages ?? [],
         messagesReady: true,
-        managerPlan: restoredPlan,
-        taskStatuses: restoredTaskStatuses,
-        taskFailureReasons: restoredTaskFailureReasons,
       });
     } catch {
       set({ messagesReady: true });
@@ -1897,7 +1827,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         method: "DELETE", credentials: "include",
       });
       set((s) => ({ sessions: s.sessions.filter((s2) => s2.id !== sessionId) }));
-      if (currentSessionId === sessionId) await get().switchSession("main");
+      if (currentSessionId === sessionId) await get().switchSession(null);
     } catch { /* non-fatal */ }
   },
 
@@ -1911,6 +1841,15 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   setUserConfirmationInput: (input) =>
     set({ userConfirmationInput: input }),
+
+  setReviewPhase: (phase) =>
+    set({ reviewPhase: phase }),
+
+  setReviewStrictness: (s) =>
+    set({ reviewStrictness: s }),
+
+  setHolisticReview: (review) =>
+    set({ holisticReview: review }),
 
   setFixCycle: (cycle) =>
     set({ fixCycle: cycle }),
@@ -1945,6 +1884,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...target,
         frozenTaskStatuses: { ...state.taskStatuses },
         frozenTaskFailureReasons: { ...state.taskFailureReasons },
+        frozenReviewPhase: state.reviewPhase,
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);

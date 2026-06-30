@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { X, Video, Download, Loader2 } from "lucide-react";
+import { X } from "lucide-react";
 
 import { normalizeSteps } from "./chat/chat-utils";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
@@ -14,7 +14,6 @@ import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { usePolishPrompt } from "./chat/hooks/usePolishPrompt";
 import { useActiveStream } from "./chat/hooks/useActiveStream";
 import { PolishPreview } from "./chat/PolishPreview";
-import { useVideoTrigger, type VideoTriggerStatus } from "./chat/hooks/useVideoTrigger";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -50,24 +49,21 @@ export function ChatPanel() {
     setPendingConfirmation,
     userConfirmationInput,
     setUserConfirmationInput,
+    reviewPhase,
+    holisticReview,
     fixCycle,
+    reviewStrictness,
+    setReviewStrictness,
     completionData,
     clearManagerPlan,
     addManagerMessage,
     messagesReady,
-    activeTool,
   } = useIDEStore();
 
   const tGlobal = useT();
   const { toast } = useToast();
 
-  const [videoStatus, setVideoStatus] = useState<VideoTriggerStatus>({ phase: "idle" });
-  const { tryIntercept, reset: resetVideo } = useVideoTrigger({
-    projectId: projectId ?? undefined,
-    onStatus: setVideoStatus,
-  });
-
-  const { manager, build, slot } = useActiveStream();
+  const { manager, build, review, slot } = useActiveStream();
   const {
     handleManagerSend,
     mgrPreparingPlan,
@@ -83,7 +79,6 @@ export function ChatPanel() {
     liveActionLog,
     liveThinkingText,
     liveNarrationText,
-    liveStepNarrations,
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
@@ -92,30 +87,31 @@ export function ChatPanel() {
     resetLiveState: resetBuildLiveState,
   } = build;
 
+  const {
+    phase: reviewStreamPhase,
+    round: reviewRound,
+    maxRounds: reviewMaxRounds,
+    liveNarrationText: reviewLiveNarration,
+    handleStartReview,
+    handleStopReview,
+  } = review;
+
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
   const [polishResult, setPolishResult] = useState<{ original: string; polished: string } | null>(null);
 
   // Thinking indicator — covers both manager mode (isManagerResponding) and
   // build mode (buildPhase="thinking" before any live content arrives).
-  // mountedRef: 挂载后 300ms 内忽略来自 store 的残留 responding 状态，
-  // 避免刷新时旧状态短暂触发动画；但用户主动发消息后立即显示 loading。
+  // mountedRef: 挂载后 800ms 内不显示 TypingIndicator，避免刷新时 store
+  // 状态短暂变化触发动画（手机端刷新出现打字动态的根因）
   const [showThinking, setShowThinking] = useState(false);
   const mountedRef = useRef(false);
-  const userTriggeredRef = useRef(false); // 用户主动发消息，跳过 mountedRef 保护
-  // Synchronous in-flight guard — prevents duplicate sends from rapid clicks
-  // before React re-renders with the updated isManagerResponding state.
-  const sendInFlightRef = useRef(false);
-  const [mountedTick, setMountedTick] = useState(0); // forces effect re-run after 300ms
   useEffect(() => {
-    const id = setTimeout(() => {
-      mountedRef.current = true;
-      setMountedTick(1); // triggers the showThinking effect to re-evaluate
-    }, 300);
+    const id = setTimeout(() => { mountedRef.current = true; }, 800);
     return () => clearTimeout(id);
   }, []);
   useEffect(() => {
-    if (!mountedRef.current && !userTriggeredRef.current) return;
+    if (!mountedRef.current) return;
     const shouldShow =
       isManagerResponding ||
       mgrPreparingPlan ||
@@ -125,17 +121,7 @@ export function ChatPanel() {
     } else {
       setShowThinking(false);
     }
-  }, [isManagerResponding, mgrPreparingPlan, buildPhase, mountedTick]);
-  // When chat panel becomes visible again (e.g. user navigates back),
-  // re-evaluate showThinking immediately from current store state.
-  useEffect(() => {
-    if (activeTool !== "chat") return;
-    const shouldShow =
-      isManagerResponding ||
-      mgrPreparingPlan ||
-      buildPhase === "thinking";
-    setShowThinking(shouldShow);
-  }, [activeTool]);
+  }, [isManagerResponding, mgrPreparingPlan, buildPhase]);
   // Hide once actual action log entries arrive (not just thinking tokens) — this
   // ensures the TypingIndicator stays visible until BuildLivePanel has real content,
   // eliminating the 1-3s gap between prompt send and first visible live content.
@@ -206,56 +192,13 @@ export function ChatPanel() {
 
   // ── 自动滚底：实时读 DOM 距底距离，避免 passive scroll 事件与 React commit 的竞态 ──
   const SCROLL_THRESHOLD = 120; // px，距底部多少以内算"在底部"
-  const RESUME_THRESHOLD = 30;  // px，距底部这么近时恢复自动滚底
-  const userScrolledUp = useRef(false);
-  const prevChatLen = useRef(0);
-  const userScrolling = useRef(false);
-  const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const programmaticScroll = useRef(false); // 程序滚动标记，避免误判为用户行为
-
-  // 封装所有程序性滚底，打标记避免触发 userScrolledUp
-  const scrollToBottom = (el: HTMLElement) => {
-    programmaticScroll.current = true;
-    el.scrollTop = el.scrollHeight;
-    // 下一个 task 清除标记（scroll 事件是同步的，rAF 后已处理完）
-    requestAnimationFrame(() => { programmaticScroll.current = false; });
-  };
-
-  // 监听用户主动滚动：上滑时禁止自动滚底，滚回底部时恢复
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      // 程序自己滚的，不算用户行为
-      if (programmaticScroll.current) return;
-
-      // 用户正在主动滚动，立即锁定，延长到 300ms 覆盖惯性滚动
-      userScrolling.current = true;
-      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
-      scrollEndTimer.current = setTimeout(() => {
-        userScrolling.current = false;
-      }, 300);
-
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (dist <= RESUME_THRESHOLD) {
-        userScrolledUp.current = false; // 滚回底部，恢复自动滚底
-      } else if (dist > SCROLL_THRESHOLD) {
-        userScrolledUp.current = true;  // 主动上滑，禁止自动滚底
-      }
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
-    };
-  }, []);
 
   // 挂载时滚到底——刷新后恢复到最新消息位置
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const r = requestAnimationFrame(() => {
-      requestAnimationFrame(() => { scrollToBottom(el); });
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     });
     return () => cancelAnimationFrame(r);
   }, []); // 只在挂载时执行一次
@@ -265,26 +208,19 @@ export function ChatPanel() {
     if (!messagesReady) return;
     const el = scrollRef.current;
     if (!el) return;
-    userScrolledUp.current = false;
     const r = requestAnimationFrame(() => {
-      requestAnimationFrame(() => { scrollToBottom(el); });
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     });
     return () => cancelAnimationFrame(r);
   }, [messagesReady]);
 
-  // 内容变化时：只有 AI 正在输出且用户未主动滚动，才跟随滚底
+  // 内容变化时：直接读当前 scrollTop 判断用户是否在底部，不依赖异步 ref
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const curLen = chatMessages.length + managerMessages.length;
-    prevChatLen.current = curLen;
-    // AI 没在输出，不主动触碰滚动位置
-    if (!isAiResponding && !isManagerResponding) return;
-    if (userScrolling.current) return;   // 用户正在滚动，绝不抢底
-    if (userScrolledUp.current) return;  // 用户已上滑浏览，不打扰
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (distFromBottom > SCROLL_THRESHOLD) return;
-    scrollToBottom(el);
+    el.scrollTop = el.scrollHeight;
   }, [
     chatMessages,
     managerMessages,
@@ -359,26 +295,17 @@ export function ChatPanel() {
 
   useEffect(() => {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {
-      // Guard: ensure the stream slot has already switched to the current project.
-      // useMemo for slot updates in the same render cycle as projectId, but
-      // handleManagerSend/handleDirectBuild close over the previous render's slot
-      // when pendingPrompt fires on first mount. Verify slot.projectId matches
-      // before proceeding to avoid sending on a stale (old-project) instance.
-      if (slot.manager.projectId !== projectId || slot.build.projectId !== projectId) return;
       pendingHandled.current = true;
       const prompt = pendingPrompt;
       const mode = pendingPromptMode;
+      clearPendingPrompt();
       if (mode === "build") {
-        setChatMode("build");
-        clearPendingPrompt();
         handleDirectBuild(prompt);
       } else {
-        setChatMode("manager");
-        clearPendingPrompt();
         handleManagerSend(prompt);
       }
     }
-  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, projectId, slot, clearPendingPrompt, handleManagerSend, handleDirectBuild, setChatMode]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, clearPendingPrompt, handleManagerSend, handleDirectBuild]);
 
   useEffect(() => {
     if (!isManagerResponding && autoExecutePlanRef.current) {
@@ -410,7 +337,6 @@ export function ChatPanel() {
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, slot]);
 
   const handleRevisePlan = useCallback((note?: string) => {
-    if (sendInFlightRef.current) return;
     const firstUserMsg = managerMessages.find((m) => m.role === "user");
     const originalPrompt = firstUserMsg?.content?.trim() || "";
     if (!originalPrompt) {
@@ -428,32 +354,17 @@ export function ChatPanel() {
       });
     }
 
-    sendInFlightRef.current = true;
-    handleManagerSend(originalPrompt).finally(() => { sendInFlightRef.current = false; });
+    handleManagerSend(originalPrompt);
   }, [managerMessages, clearManagerPlan, addManagerMessage, handleManagerSend, setChatMode]);
 
   const handleCurrentSend = useCallback(async () => {
-    // sendInFlightRef is a synchronous guard checked BEFORE any async state
-    // update — prevents duplicate submits from rapid double-clicks while React
-    // is still re-rendering with the updated isManagerResponding state.
-    if (sendInFlightRef.current) {
-      if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
-      return;
-    }
     if (pendingConfirmation) {
       const trimmed = input.trim();
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
-    // ── Video keyword intercept ──────────────────────────────────────────────
-    if (input.trim() && tryIntercept(input.trim())) {
-      setInput("");
-      return;
-    }
-    // ────────────────────────────────────────────────────────────────────────
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
-      sendInFlightRef.current = true;
-      handleExecutePlan().finally(() => { sendInFlightRef.current = false; });
+      handleExecutePlan();
       return;
     }
     const busy = isAiResponding || isManagerResponding;
@@ -464,20 +375,15 @@ export function ChatPanel() {
       }
       const text = input;
       setInput("");
-      userTriggeredRef.current = true;
-      sendInFlightRef.current = true;
-      handleDirectBuild(text).finally(() => { sendInFlightRef.current = false; });
+      handleDirectBuild(text);
       return;
     }
     if (!input.trim() || busy) {
       if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
       return;
     }
-    const text = input;
     setInput("");
-    userTriggeredRef.current = true;
-    sendInFlightRef.current = true;
-    handleManagerSend(undefined, text).finally(() => { sendInFlightRef.current = false; });
+    handleManagerSend(undefined, input);
   }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {
@@ -499,6 +405,8 @@ export function ChatPanel() {
           isExecuting={isExecuting}
           pendingConfirmation={pendingConfirmation}
           userConfirmationInput={userConfirmationInput}
+          reviewPhase={reviewPhase}
+          holisticReview={holisticReview}
           fixCycle={fixCycle}
           liveNarrationText={liveNarrationText}
           completionData={completionData}
@@ -507,11 +415,15 @@ export function ChatPanel() {
           handleStopExecution={handleStopExecution}
           handleContinueExecution={handleContinueExecution}
           setUserConfirmationInput={setUserConfirmationInput}
+          handleStartReview={handleStartReview}
+          handleStopReview={handleStopReview}
+          reviewStrictness={reviewStrictness}
+          onReviewStrictnessChange={setReviewStrictness}
+          reviewLiveNarration={reviewStreamPhase !== "idle" ? reviewLiveNarration : undefined}
+          reviewRound={reviewRound}
+          reviewMaxRounds={reviewMaxRounds}
         />
         {isAiResponding && chatMessages[chatMessages.length - 1]?.content === "" && chatMode !== "manager" && (
-          <TypingIndicator />
-        )}
-        {showThinking && (
           <TypingIndicator />
         )}
         {(isManagerResponding || mgrPreparingPlan) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
@@ -528,58 +440,7 @@ export function ChatPanel() {
             narrationText={liveNarrationText || undefined}
             thinkingElapsedSec={thinkingElapsedSec}
             isCompleted={!isExecuting && buildPhase === null}
-            completionSummary={completionData?.summary || undefined}
-            stepNarrations={liveStepNarrations}
           />
-        )}
-
-        {/* Video generation status card */}
-        {videoStatus.phase !== "idle" && (
-          <div className="mx-3 my-2 rounded-md px-3 py-2.5 text-[12px] flex items-start gap-2.5"
-            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)" }}
-          >
-            <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
-            <div className="flex-1 min-w-0">
-              {videoStatus.phase === "generating" && (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
-                  <span className="text-muted-foreground/80">正在录制演示视频… {videoStatus.progress > 0 ? `${videoStatus.progress}%` : ""}</span>
-                </div>
-              )}
-              {videoStatus.phase === "done" && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#34d68a]">演示视频已生成</span>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={videoStatus.downloadUrl}
-                      download
-                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      下载
-                    </a>
-                    <button
-                      onClick={resetVideo}
-                      className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              {videoStatus.phase === "error" && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#ef4444] truncate">{videoStatus.message}</span>
-                  <button
-                    onClick={resetVideo}
-                    className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
         )}
       </div>
       <div className="relative shrink-0">

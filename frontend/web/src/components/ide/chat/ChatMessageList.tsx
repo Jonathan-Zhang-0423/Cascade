@@ -7,7 +7,7 @@ import {
   MessageBubble,
   CheckpointMarker,
 } from "./message-components";
-import { ManagerMessageBubble, BuildResultCard } from "./plan-components";
+import { ManagerMessageBubble } from "./plan-components";
 import { streamRegistry } from "@/services/stream";
 
 interface ChatMessageListProps {
@@ -178,8 +178,6 @@ export function ChatMessageList({
                 isLastAssistant ? appliedBlockIndices : undefined
               }
             />
-          ) : (msg as any).buildResult ? (
-            <BuildResultCard key={`c-${msg.id}`} buildResult={(msg as any).buildResult} />
           ) : (
             <MessageBubble
               key={`c-${msg.id}`}

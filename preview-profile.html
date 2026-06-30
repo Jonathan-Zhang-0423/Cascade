@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile Preview</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  background:#d0d0d0;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:40px;
+}
+
+.card{
+  display:flex;
+  width:760px;
+  min-height:500px;
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 4px 24px rgba(0,0,0,.13);
+  overflow:hidden;
+  border:1px solid #e0e0e0;
+}
+
+/* ---- sidebar ---- */
+.sidebar{
+  width:140px;
+  flex-shrink:0;
+  border-right:1px solid #e0e0e0;
+  background:#f7f7f7;
+  display:flex;
+  flex-direction:column;
+  padding:20px 0 16px;
+}
+.nav{
+  padding:10px 20px;
+  font-size:13px;
+  color:#666;
+  cursor:pointer;
+  transition:background .12s;
+  border:none;
+  background:none;
+  text-align:left;
+  width:100%;
+}
+.nav:hover{background:#efefef;}
+.nav.on{font-weight:700;color:#111;}
+.spacer{flex:1;}
+.signout-btn{
+  margin:0 14px;
+  padding:8px 0;
+  background:#111;
+  color:#fff;
+  font-size:12px;
+  font-weight:600;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  text-align:center;
+}
+.signout-btn:hover{background:#333;}
+
+/* ---- main ---- */
+.main{
+  flex:1;
+  padding:24px 28px 28px;
+}
+.page-title{
+  font-size:15px;
+  font-weight:700;
+  color:#111;
+  margin-bottom:20px;
+}
+
+/* tab panels */
+.tab-panel{display:none;}
+.tab-panel.on{display:block;}
+
+/* ======== 个人主页 tab ======== */
+.profile-body{
+  display:flex;
+  gap:20px;
+  align-items:flex-start;
+}
+.av-col{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  flex-shrink:0;
+  width:88px;
+}
+.av{
+  width:78px;height:78px;
+  border-radius:50%;
+  background:#3a6ea8;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:28px;font-weight:700;
+  cursor:pointer;position:relative;overflow:hidden;
+}
+.av-overlay{
+  position:absolute;inset:0;border-radius:50%;
+  background:rgba(0,0,0,.42);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .15s;
+  font-size:10px;color:#fff;font-weight:600;letter-spacing:.3px;
+}
+.av:hover .av-overlay{opacity:1;}
+.upload-btn{
+  font-size:11px;color:#444;background:#fff;
+  border:1px solid #c0c0c0;border-radius:5px;
+  padding:3px 10px;cursor:pointer;
+}
+.upload-btn:hover{background:#f0f0f0;}
+.form-col{
+  flex:1;display:flex;flex-direction:column;gap:11px;
+}
+.field-lbl{font-size:13px;color:#333;white-space:nowrap;flex-shrink:0;}
+
+/* username view */
+.uname-view{display:flex;align-items:center;gap:8px;}
+.uname-readonly{
+  flex:1;height:28px;padding:0 9px;
+  border:1px solid #d0d0d0;border-radius:6px;
+  font-size:12px;color:#999;background:#f7f7f7;outline:none;
+}
+.edit-link{
+  display:flex;align-items:center;gap:4px;
+  font-size:12px;color:#444;cursor:pointer;
+  white-space:nowrap;flex-shrink:0;background:none;border:none;
+}
+.edit-link:hover{color:#3a6ea8;}
+.ic{width:11px;height:11px;flex-shrink:0;}
+
+/* username edit */
+.uname-edit{display:none;flex-direction:column;gap:5px;}
+.uname-edit-row{display:flex;align-items:center;gap:8px;}
+.uname-input{
+  flex:1;height:28px;padding:0 9px;
+  border:1px solid #3a6ea8;border-radius:6px;
+  font-size:12px;color:#111;outline:none;background:#fff;
+}
+.uname-hint{font-size:11px;color:#d05000;margin-left:2px;}
+.uname-actions{display:flex;gap:6px;margin-left:2px;}
+.btn-sm{
+  padding:0 12px;height:26px;font-size:12px;font-weight:600;
+  border-radius:5px;cursor:pointer;
+}
+.btn-sm.dark{background:#111;color:#fff;border:none;}
+.btn-sm.dark:hover{background:#333;}
+.btn-sm.ghost{background:#fff;color:#555;border:1px solid #ccc;}
+.btn-sm.ghost:hover{background:#f5f5f5;}
+
+/* name row */
+.name-row{display:flex;align-items:center;gap:16px;}
+.name-field{display:flex;align-items:center;gap:6px;}
+.n-input{
+  width:126px;height:28px;padding:0 9px;
+  border:1px solid #d0d0d0;border-radius:6px;
+  font-size:12px;color:#111;outline:none;background:#fff;
+}
+.n-input:focus{border-color:#3a6ea8;}
+
+/* bio */
+.bio-wrap{display:flex;flex-direction:column;gap:5px;}
+.bio-ta{
+  width:100%;height:78px;padding:8px 10px;
+  border:1px solid #d0d0d0;border-radius:7px;
+  font-size:12px;font-family:inherit;color:#111;
+  resize:none;outline:none;line-height:1.55;
+}
+.bio-ta:focus{border-color:#3a6ea8;}
+
+.save-btn{
+  align-self:flex-start;padding:0 18px;height:30px;
+  background:#111;color:#fff;font-size:12px;font-weight:600;
+  border:none;border-radius:6px;cursor:pointer;
+}
+.save-btn:hover{background:#333;}
+.save-btn:disabled{background:#bbb;cursor:not-allowed;}
+
+/* ======== 账户信息 tab ======== */
+.acct-list{display:flex;flex-direction:column;}
+.acct-row{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 0;
+  border-bottom:1px solid #f0f0f0;
+}
+.acct-row:last-child{border-bottom:none;}
+.acct-key{
+  width:68px;flex-shrink:0;
+  font-size:13px;color:#555;
+}
+.acct-val{flex:1;font-size:13px;color:#111;}
+.acct-val.dots{letter-spacing:3px;font-size:10px;color:#777;}
+.acct-val.empty{color:#bbb;}
+.acct-val.blue{color:#3a6ea8;}
+.acct-val.green{color:#2e7d32;}
+.acct-action{
+  display:flex;align-items:center;gap:3px;
+  font-size:12px;color:#444;cursor:pointer;
+  background:none;border:none;flex-shrink:0;white-space:nowrap;
+}
+.acct-action:hover{color:#3a6ea8;}
+.acct-action.primary{
+  padding:3px 12px;background:#3a6ea8;color:#fff;
+  border:none;border-radius:5px;font-size:12px;cursor:pointer;
+}
+.acct-action.primary:hover{background:#2d5a8a;}
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- 左侧导航 -->
+  <div class="sidebar">
+    <button class="nav on" onclick="switchTab('profile',this)">&#20491;&#20154;&#20027;&#39029;</button>
+    <button class="nav" onclick="switchTab('account',this)">&#36134;&#25143;&#20449;&#24687;</button>
+    <button class="nav" onclick="switchTab('invite',this)">&#36153;&#35831;&#31036;&#36259;</button>
+    <div class="spacer"></div>
+    <button class="signout-btn">&#36864;&#20986;&#30331;&#24405;</button>
+  </div>
+
+  <!-- 右侧内容 -->
+  <div class="main">
+
+    <!-- ===== 个人主页 tab ===== -->
+    <div class="tab-panel on" id="tab-profile">
+      <div class="page-title">&#20491;&#20154;&#20027;&#39029;</div>
+      <div class="profile-body">
+
+        <!-- 头像列 -->
+        <div class="av-col">
+          <div class="av">
+            J
+            <div class="av-overlay">&#26356;&#25442;</div>
+          </div>
+          <button class="upload-btn">&#19978;&#20256;&#22270;&#29255;</button>
+        </div>
+
+        <!-- 表单列 -->
+        <div class="form-col">
+
+          <!-- 用户名：查看模式 -->
+          <div class="uname-view" id="uname-view">
+            <span class="field-lbl">&#29992;&#25143;&#21517;&#65306;</span>
+            <input class="uname-readonly" type="text" value="jonathan" readonly>
+            <button class="edit-link" onclick="enterEdit()">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              &#20462;&#25913;&#29992;&#25143;&#21517;
+            </button>
+          </div>
+
+          <!-- 用户名：编辑模式 -->
+          <div class="uname-edit" id="uname-edit">
+            <div class="uname-edit-row">
+              <span class="field-lbl">&#29992;&#25143;&#21517;&#65306;</span>
+              <input class="uname-input" id="uname-input" type="text" value="jonathan">
+            </div>
+            <div class="uname-hint">&#27880;&#24847;&#65306;&#29992;&#25143;&#21517;&#27599;6&#20010;&#26376;&#21482;&#33021;&#20462;&#25913;&#19968;&#27425;</div>
+            <div class="uname-actions">
+              <button class="btn-sm dark" onclick="saveEdit()">&#20445;&#23384;</button>
+              <button class="btn-sm ghost" onclick="cancelEdit()">&#21462;&#28040;</button>
+            </div>
+          </div>
+
+          <!-- 姓氏 + 名字 -->
+          <div class="name-row">
+            <div class="name-field">
+              <span class="field-lbl">&#22351;&#27663;&#65306;</span>
+              <input class="n-input" type="text">
+            </div>
+            <div class="name-field">
+              <span class="field-lbl">&#21517;&#23383;&#65306;</span>
+              <input class="n-input" type="text">
+            </div>
+          </div>
+
+          <!-- 个人简介 -->
+          <div class="bio-wrap">
+            <span class="field-lbl">&#20491;&#20154;&#31616;&#20171;</span>
+            <textarea class="bio-ta"></textarea>
+          </div>
+
+          <!-- 保存 -->
+          <button class="save-btn">&#20445;&#23384;</button>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 账户信息 tab ===== -->
+    <div class="tab-panel" id="tab-account">
+      <div class="page-title">&#36134;&#25143;&#20449;&#24687;</div>
+      <div class="acct-list">
+
+        <!-- 密码：已设置 -->
+        <div class="acct-row">
+          <span class="acct-key">&#23494;&#30721;</span>
+          <span class="acct-val dots">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span>
+          <button class="acct-action">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            &#32534;&#36753;
+          </button>
+        </div>
+
+        <!-- 邮箱：已绑定 -->
+        <div class="acct-row">
+          <span class="acct-key">&#37038;&#31665;</span>
+          <span class="acct-val blue">blah@blah.com</span>
+          <button class="acct-action">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            &#32534;&#36753;
+          </button>
+        </div>
+
+        <!-- 手机号：未绑定 -->
+        <div class="acct-row">
+          <span class="acct-key">&#25163;&#26426;&#21495;</span>
+          <span class="acct-val empty">&#26410;&#32465;&#23450;</span>
+          <button class="acct-action primary">&#32465;&#23450;&#25163;&#26426;</button>
+        </div>
+
+        <!-- GitHub：已绑定 -->
+        <div class="acct-row">
+          <span class="acct-key">GitHub</span>
+          <span class="acct-val green">&#24050;&#32465;&#23450;</span>
+          <button class="acct-action">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            &#31455;&#35299;&#32465;&#23450;
+          </button>
+        </div>
+
+        <!-- 微信：未绑定 -->
+        <div class="acct-row">
+          <span class="acct-key">&#24494;&#20449;</span>
+          <span class="acct-val empty">&#26410;&#32465;&#23450;</span>
+          <button class="acct-action primary">&#32465;&#23450;&#24494;&#20449;</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== 邀请礼遇 tab ===== -->
+    <div class="tab-panel" id="tab-invite">
+      <div class="page-title">&#36153;&#35831;&#31036;&#36259;</div>
+      <p style="font-size:13px;color:#888;">&#36153;&#35831;&#20869;&#23481;&#23558;&#22312;&#27492;&#23637;&#31034;</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.nav').forEach(n => n.classList.remove('on'));
+  document.getElementById('tab-' + name).classList.add('on');
+  el.classList.add('on');
+}
+function enterEdit() {
+  document.getElementById('uname-view').style.display = 'none';
+  document.getElementById('uname-edit').style.display = 'flex';
+  document.getElementById('uname-input').focus();
+}
+function cancelEdit() {
+  document.getElementById('uname-edit').style.display = 'none';
+  document.getElementById('uname-view').style.display = 'flex';
+}
+function saveEdit() {
+  var v = document.getElementById('uname-input').value.trim();
+  if (!v) return;
+  document.querySelector('.uname-readonly').value = v;
+  cancelEdit();
+}
+</script>
+</body>
+</html>

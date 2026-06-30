@@ -2,9 +2,12 @@ import { useState } from "react";
 import {
   type ManagerPlan,
   type ManagerSubTask,
+  type HolisticReviewResult,
+  type ReviewPhase,
+  type ReviewStrictness,
   type BuildResultData,
-  useIDEStore,
 } from "@/stores/ide-store";
+import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -21,18 +24,18 @@ import {
   XCircle,
   AlertTriangle,
   ShieldCheck,
+  FileText,
   Hammer,
   PenLine,
   Search,
+  Loader2,
   ExternalLink,
   X,
   LayoutGrid,
   Ban,
-  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
-import { MediaPlanCard } from "./MediaPlanCard";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 import { BuildLivePanel } from "./BuildLivePanel";
 
@@ -41,7 +44,8 @@ function StepItem({
   status,
   failureReason,
   isCompleted,
-  stepActions,
+  isLast: _isLast,
+  liveNarration,
 }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
@@ -50,10 +54,9 @@ function StepItem({
   showNumber?: boolean;
   isLast?: boolean;
   liveNarration?: string;
-  stepActions?: ActionLogEntry[];
 }) {
   const s = status || "pending";
-  const lang = usePlanCardLang();
+  const tStep = useT();
   const isRunning = s === "running";
 
   const statusSymbol = (() => {
@@ -70,9 +73,9 @@ function StepItem({
   const failureReasonLabel =
     s === "failed"
       ? failureReason === "no_code"
-        ? t(lang, "noCodeOutput")
+        ? tStep("chat.noCodeOutput")
         : failureReason === "editor_error"
-          ? t(lang, "editorError")
+          ? tStep("chat.editorError")
           : null
       : null;
 
@@ -88,11 +91,10 @@ function StepItem({
         {task.step}
       </span>
       <span className="w-[14px] text-center shrink-0">{statusSymbol}</span>
-      <div className="flex-1 min-w-0 flex items-start gap-2">
+      <div className="flex-1 min-w-0">
         <span
           className={cn(
-            "flex-1 min-w-0",
-            isCompleted ? "text-muted-foreground/40"
+            isCompleted ? "text-[rgba(238,238,246,0.3)]"
               : s === "done" ? "text-muted-foreground/60"
               : s === "failed" ? "text-[#ef4444]"
               : isRunning ? "text-foreground font-medium"
@@ -108,27 +110,95 @@ function StepItem({
             ({failureReasonLabel})
           </span>
         )}
+        {isRunning && liveNarration && (
+          <div className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
+            {liveNarration}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export function ThinkingToggle({ thinking, isCompleted }: { thinking: string; isCompleted?: boolean }) {
+export function ReviewStatusBadge({
+  phase,
+  fixCycle,
+  review,
+  lang,
+}: {
+  phase: ReviewPhase;
+  fixCycle: number;
+  review: HolisticReviewResult | null;
+  lang: PlanCardLang;
+}) {
+  if (phase === "idle" || phase === "building") return null;
+
+  const issueCount = review
+    ? (review.bugs?.length || 0) +
+      (review.missing_features?.length || 0) +
+      (review.regressions?.length || 0)
+    : 0;
+
+  const configs: Record<
+    string,
+    { icon: JSX.Element; text: string; color: string }
+  > = {
+    reviewing: {
+      icon: <Search className="w-2.5 h-2.5 animate-pulse" />,
+      text: t(lang, "reviewing"),
+      color: "text-amber-400",
+    },
+    review_passed: {
+      icon: <ShieldCheck className="w-2.5 h-2.5" />,
+      text: review
+        ? t(lang, "reviewPassedPct", { pct: review.requirement_match_percent })
+        : t(lang, "reviewPassed"),
+      color: "text-[#34d68a]",
+    },
+    review_skipped: {
+      icon: <ShieldCheck className="w-2.5 h-2.5" />,
+      text: t(lang, "reviewSkipped"),
+      color: "text-muted-foreground/70",
+    },
+    review_failed: {
+      icon: <AlertTriangle className="w-2.5 h-2.5" />,
+      text: review
+        ? t(lang, "issuesFound", { n: issueCount })
+        : t(lang, "issuesFoundGeneric"),
+      color: "text-[#ef4444]",
+    },
+    fixing: {
+      icon: <Loader2 className="w-2.5 h-2.5 animate-spin" />,
+      text: t(lang, "fixingIssues", { n: fixCycle }),
+      color: "text-[#f97316]",
+    },
+  };
+
+  const config = configs[phase];
+  if (!config) return null;
+
+  return (
+    <div
+      className={cn("flex items-center gap-1.5 font-mono text-[10px]", config.color)}
+      data-testid="review-status-badge"
+    >
+      {config.icon}
+      <span>{config.text}</span>
+    </div>
+  );
+}
+
+export function ThinkingToggle({ thinking }: { thinking: string }) {
   const [open, setOpen] = useState(false);
-  const lang = usePlanCardLang();
-  // 从 store 实时读取：规划中或执行中 → 显示"思考中"；否则 → 显示"思考步骤"
-  const isManagerResponding = useIDEStore((s) => s.isManagerResponding);
-  const executingTaskIndex = useIDEStore((s) => s.executingTaskIndex);
-  const isActive = isManagerResponding || executingTaskIndex !== null;
   return (
     <div className="mb-1">
       <button
-        className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+        className="flex items-center gap-1 font-mono text-[10px] text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.5)] transition-colors"
         onClick={() => setOpen((o) => !o)}
         data-testid="button-toggle-thinking"
       >
         {open ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
-        <span className="italic">{t(lang, isActive ? "thinkingInProgress" : "thinking")}</span>
+        <span className="italic">thinking</span>
       </button>
       {open && (
         <p className="mt-1 font-mono text-[10px] text-muted-foreground/50 italic whitespace-pre-wrap pl-4 max-h-[150px] overflow-y-auto">
@@ -151,12 +221,20 @@ export function TaskPlanCard({
   pendingConfirmation,
   confirmationInput,
   onConfirmationInputChange,
+  reviewPhase,
+  holisticReview,
   fixCycle,
   thinking,
   liveNarration,
   completionSummary,
   changedFiles,
-  stepActionsMap,
+  onStartReview,
+  onStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -169,68 +247,189 @@ export function TaskPlanCard({
   pendingConfirmation?: { stepKey: string; items: string[] } | null;
   confirmationInput?: string;
   onConfirmationInputChange?: (value: string) => void;
+  reviewPhase?: ReviewPhase;
+  holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
   thinking?: string;
   liveNarration?: string;
   completionSummary?: string;
   changedFiles?: string[];
-  stepActionsMap?: Map<number, ActionLogEntry[]>;
+  onStartReview?: () => void;
+  onStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }) {
   const lang = usePlanCardLang();
-  const { setPlanPreview, checkpoints, restoreCheckpoint, refreshPreview } = useIDEStore();
+  const tCard = useT();
   const steps = normalizeSteps(plan);
   const doneCount = steps.filter((s) => taskStatuses[String(s.step)] === "done").length;
   const total = steps.length;
   const allDone = doneCount === total && total > 0;
   const hasNeedsInput = steps.some((s) => taskStatuses[String(s.step)] === "needs-input");
-  const showConfirmation = hasNeedsInput;
-  // Build completion: a build is fully complete once every step is done.
+  const phase = reviewPhase || "idle";
+  const hasReviewConfirmation = !!(pendingConfirmation?.stepKey === "review" && phase === "review_failed");
+  const showConfirmation = hasNeedsInput || hasReviewConfirmation;
+  // Build completion no longer depends on review — a build is fully complete once
+  // every step is done. Review is a separate, user-invoked step (see the run-review
+  // action) that does not gate this state.
   const isFullyComplete = allDone;
   const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
+  // The standalone review step is offered once the build has settled (build done
+  // and not mid-execution). It is optional, mirroring how plan is optional.
+  const buildSettled = allDone && !isExecuting;
+  const isReviewing = phase === "reviewing" || phase === "fixing";
+  const canStartReview = buildSettled && !isReviewing && !!onStartReview;
+  const reviewAdvisories = holisticReview?.advisories ?? [];
 
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
-  const [minimized, setMinimized] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
-  const [rollbackRestored, setRollbackRestored] = useState(false);
+  const [bgDropdownOpen, setBgDropdownOpen] = useState(false);
+  const bgDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!bgDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bgDropdownRef.current && !bgDropdownRef.current.contains(e.target as Node)) {
+        setBgDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [bgDropdownOpen]);
 
   const whatAndWhy = plan.narrated_what_and_why || plan.what_and_why;
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
 
-  if (minimized) {
-    return (
-      <div className="mx-2.5 my-1 flex justify-start">
-        <button
-          onClick={() => setMinimized(false)}
-          className={cn(
-            "flex items-center gap-1.5 font-mono text-[10px] rounded-full border px-2.5 py-1 transition-colors hover:bg-accent/10",
-            isFullyComplete
-              ? "border-[rgba(52,214,138,0.3)] text-[#34d68a] bg-[rgba(52,214,138,0.06)]"
-              : "border-border text-muted-foreground/60 bg-[var(--panel-mid-bg)]"
-          )}
-          style={{ boxShadow: "0 1px 6px rgba(0,0,0,0.15)" }}
-          data-testid="task-plan-card-mini"
-        >
-          {isFullyComplete ? (
-            <span className="text-[11px]">✓</span>
-          ) : isExecuting ? (
-            <span className="text-[11px] text-[#4f82ff] animate-pulse">●</span>
-          ) : (
-            <span className="text-[11px]">○</span>
-          )}
-          <span className="max-w-[160px] truncate">{plan.summary}</span>
-          <span className="text-muted-foreground/40 text-[9px]">{doneCount}/{total}</span>
-        </button>
-      </div>
-    );
-  }
-
   return (
     <>
       {thinking && (
         <div className="px-3 mb-0.5">
           <ThinkingToggle thinking={thinking} isCompleted={isFullyComplete} />
+        </div>
+      )}
+
+      {/* Right-side preview panel */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div
+            className="absolute right-0 top-0 h-full w-[420px] max-w-[90vw] flex flex-col bg-[var(--panel-mid-bg)] border-l border-border shadow-2xl"
+            style={{ animation: "slideInRight 180ms ease" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <style>{`
+              @keyframes slideInRight {
+                from { transform: translateX(24px); opacity: 0; }
+                to   { transform: translateX(0);    opacity: 1; }
+              }
+            `}</style>
+            {/* Panel header */}
+            <div className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)] shrink-0 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
+              <span className="font-mono text-[12px] font-semibold text-foreground flex-1 min-w-0 truncate">
+                {plan.summary}
+              </span>
+              <button
+                className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
+                onClick={() => setPreviewOpen(false)}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {/* Panel content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {overview && (
+                <div>
+                  <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">
+                    {t(lang, "overview")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {overview}
+                  </p>
+                </div>
+              )}
+              {whatAndWhy && (
+                <div>
+                  <p className="font-mono text-[9px] text-[#4f82ff]/60 uppercase tracking-wider mb-1.5">
+                    {t(lang, "whatAndWhy")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {whatAndWhy}
+                  </p>
+                </div>
+              )}
+              {doneLooksLike && (
+                <div>
+                  <p className="font-mono text-[9px] text-[#34d68a]/60 uppercase tracking-wider mb-1.5">
+                    {t(lang, "doneLooksLike")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.7)] leading-relaxed">
+                    {doneLooksLike}
+                  </p>
+                </div>
+              )}
+              {outOfScope && (
+                <div>
+                  <p className="font-mono text-[9px] text-muted-foreground/50 uppercase tracking-wider mb-1.5">
+                    {t(lang, "outOfScope")}
+                  </p>
+                  <p className="text-[12px] text-[rgba(238,238,246,0.5)] leading-relaxed">
+                    {outOfScope}
+                  </p>
+                </div>
+              )}
+              <div className={cn((overview || whatAndWhy || doneLooksLike || outOfScope) && "border-t border-border/60 pt-4")}>
+                <p className="font-mono text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-2">
+                  {t(lang, "tasks")}
+                </p>
+                <div className="space-y-2.5">
+                  {steps.map((step) => (
+                    <div key={step.step} className="flex items-start gap-2.5">
+                      <span className="font-mono text-[10px] text-[rgba(238,238,246,0.3)] w-4 text-right shrink-0 pt-0.5">
+                        {step.step}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-medium text-foreground">{step.title}</p>
+                        {step.description && (
+                          <p className="text-[11px] text-[rgba(238,238,246,0.5)] mt-0.5 leading-relaxed">
+                            {step.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Panel footer */}
+            <div className="px-5 py-3 border-t border-border/60 shrink-0 flex gap-2">
+              <button
+                className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] hover:text-[rgba(238,238,246,0.8)] border border-border rounded px-3 py-1.5 transition-colors flex items-center gap-1"
+                onClick={() => { setPreviewOpen(false); setRegenerateOpen(true); }}
+                data-testid="button-revise-plan-preview"
+              >
+                <PenLine className="w-2.5 h-2.5" />
+                {t(lang, "revisePlan")}
+              </button>
+              <div className="flex-1" />
+              <button
+                className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded px-3 py-1.5 transition-colors flex items-center gap-1"
+                onClick={() => { setPreviewOpen(false); onExecute?.(); }}
+                data-testid="button-build-now-preview"
+              >
+                <Hammer className="w-2.5 h-2.5" />
+                {t(lang, "buildNow")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -247,35 +446,21 @@ export function TaskPlanCard({
       >
         {/* ── Section 1: Header ── */}
         <div className="px-4 pt-3.5 pb-2.5 flex items-center gap-2 border-b border-border/60">
-          {isFullyComplete ? (
-            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-[#34d68a] text-[13px]">✓</span>
-          ) : (isExecuting && !allDone) ? (
-            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-[#4f82ff] text-[13px] animate-pulse">●</span>
-          ) : (
-            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-muted-foreground/50 text-[13px]">○</span>
-          )}
+          <Loader2 className="w-3.5 h-3.5 text-muted-foreground/70 animate-spin shrink-0" />
           <span className="font-mono text-[12.5px] font-semibold text-foreground flex-1 min-w-0 truncate">
-            {t(lang, isFullyComplete ? "taskPlanCreated" : "taskPlanInProgress")}
+            Task plan created
           </span>
           <button
-            onClick={() => {
-              setPlanPreview(true, {
-                summary: plan.summary,
-                overview,
-                steps: steps.map((s) => ({ title: s.title, description: s.description })),
-              });
-              window.dispatchEvent(new Event("plan-preview-open"));
-            }}
-            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            onClick={() => setPreviewOpen(true)}
+            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-[rgba(238,238,246,0.7)] transition-colors shrink-0"
             data-testid="button-view-plan-doc"
           >
             <ExternalLink className="w-3 h-3" />
-            <span>{t(lang, "view")}</span>
+            <span>View</span>
           </button>
           <button
-            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors shrink-0 ml-0.5"
-            onClick={() => setMinimized(true)}
-            title="minimize"
+            className="text-[rgba(238,238,246,0.3)] hover:text-[rgba(238,238,246,0.6)] transition-colors shrink-0 ml-0.5"
+            onClick={() => setExpanded((e) => !e)}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -287,15 +472,19 @@ export function TaskPlanCard({
             {plan.summary}
           </p>
           {overview && (
-            <p className="text-[11.5px] text-muted-foreground leading-relaxed mb-2">
+            <p className="text-[11.5px] text-[rgba(238,238,246,0.6)] leading-relaxed mb-2">
               {overview}
             </p>
           )}
+          <span className="inline-block text-[10px] font-mono text-[rgba(238,238,246,0.5)] bg-[rgba(255,255,255,0.05)] border border-border rounded-full px-2.5 py-0.5">
+            Web app
+          </span>
 
           {/* Steps list (collapsible) */}
           {expanded && (
             <div className="mt-2.5 space-y-0.5">
               {steps.map((task: ManagerSubTask, idx: number) => {
+                const isActive = taskStatuses[String(task.step)] === "running";
                 return (
                   <StepItem
                     key={task.step}
@@ -305,7 +494,7 @@ export function TaskPlanCard({
                     isCompleted={isFullyComplete}
                     showNumber
                     isLast={idx === steps.length - 1}
-                    stepActions={stepActionsMap?.get(task.step)}
+                    liveNarration={isActive ? liveNarration : undefined}
                   />
                 );
               })}
@@ -315,18 +504,149 @@ export function TaskPlanCard({
           {/* Progress line */}
           <div className="font-mono text-[10px] text-muted-foreground/50 mt-2">
             {t(lang, "stepsDone", { done: doneCount, total })}
-            {isFullyComplete && ` · ${t(lang, "allDone")}`}
+            {isFullyComplete && ` · ${tCard("chat.allDone")}`}
           </div>
         </div>
+
+        {/* Review status */}
+        {phase !== "idle" && phase !== "building" && (
+          <div className="px-4 py-2 border-b border-border/60">
+            <ReviewStatusBadge
+              phase={phase}
+              fixCycle={fixCycle || 0}
+              review={holisticReview || null}
+              lang={lang}
+            />
+            {holisticReview && phase === "review_failed" && (
+              <div className="mt-1 space-y-0.5 pl-4">
+                {holisticReview.bugs?.map((bug, i) => (
+                  <div key={bug.id || i} className="flex items-start gap-1">
+                    <XCircle className="w-2 h-2 text-[#ef4444] mt-0.5 shrink-0" />
+                    <span className="font-mono text-[9px] text-[#ef4444]/70 leading-snug">
+                      [{bug.severity}] {bug.description}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Completion line */}
+        {isFullyComplete && (
+          <div className="px-4 py-2 border-b border-border/60">
+            <div className="font-mono text-[11px] text-[#34d68a] flex items-center gap-1.5">
+              <span>{tCard("chat.doneCheck")}</span>
+              {changedFiles && changedFiles.length > 0 && (
+                <span className="text-muted-foreground/60 text-[10px]">
+                  · {changedFiles.length === 1
+                      ? tCard("chat.fileChanged")
+                      : tCard("chat.filesChanged", { n: String(changedFiles.length) })}
+                </span>
+              )}
+            </div>
+            {completionSummary && (
+              <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
+                {completionSummary}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Optional standalone review step (post-build) */}
+        {buildSettled && (onStartReview || isReviewing || reviewAdvisories.length > 0) && (
+          <div className="px-4 py-2 border-b border-border/60 space-y-1.5">
+            {isReviewing ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-mono text-[10px] text-[#4f82ff]">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  <span>
+                    {phase === "fixing" ? t(lang, "reviewFixing") : t(lang, "reviewInProgress")}
+                    {reviewRound && reviewMaxRounds
+                      ? ` (${reviewRound}/${reviewMaxRounds})`
+                      : ""}
+                  </span>
+                </div>
+                {onStopReview && (
+                  <button
+                    className="font-mono text-[9px] text-[#ef4444]/70 hover:text-[#ef4444] transition-colors"
+                    onClick={onStopReview}
+                    data-testid="button-stop-review"
+                  >
+                    {t(lang, "stop")}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-[rgba(238,238,246,0.9)] border border-border/80 rounded-lg px-2.5 py-1 transition-colors disabled:opacity-40"
+                  onClick={() => onStartReview?.()}
+                  disabled={!canStartReview}
+                  data-testid="button-start-review"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>{t(lang, "reviewCode")}</span>
+                </button>
+                {onReviewStrictnessChange && (
+                  <div className="flex items-center gap-0.5 rounded-md border border-border/60 p-0.5">
+                    {(["lenient", "balanced", "strict"] as ReviewStrictness[]).map((level) => (
+                      <button
+                        key={level}
+                        className={`font-mono text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                          (reviewStrictness || "balanced") === level
+                            ? "bg-[#4f82ff] text-white"
+                            : "text-muted-foreground/70 hover:text-foreground/80"
+                        }`}
+                        onClick={() => onReviewStrictnessChange(level)}
+                        data-testid={`button-strictness-${level}`}
+                      >
+                        {t(lang, `strictness_${level}` as Parameters<typeof t>[1])}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Live review narration */}
+            {isReviewing && reviewLiveNarration && (
+              <p className="font-mono text-[9px] text-muted-foreground/60 leading-snug pl-4">
+                {reviewLiveNarration}
+              </p>
+            )}
+
+            {/* Non-blocking advisories from the settled review */}
+            {!isReviewing && reviewAdvisories.length > 0 && (
+              <div className="space-y-0.5 pl-1">
+                <div className="font-mono text-[9px] text-muted-foreground/50">
+                  {t(lang, "reviewAdvisories")}
+                </div>
+                {reviewAdvisories.map((adv, i) => (
+                  <div key={adv.id || i} className="flex items-start gap-1">
+                    <span className="font-mono text-[9px] text-[#f59e0b]/80 mt-px shrink-0">[{adv.severity}]</span>
+                    <span className="font-mono text-[9px] text-muted-foreground/70 leading-snug">
+                      {adv.description}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Confirmation input */}
         {showConfirmation && pendingConfirmation && onContinueWithInput && (
           <div className="px-4 py-2.5 space-y-1.5 border-b border-border/60">
             <Textarea
-              placeholder={pendingConfirmation.items[0]}
+              placeholder={
+                pendingConfirmation.stepKey === "review"
+                  ? t(lang, "confirmationPlaceholder")
+                  : pendingConfirmation.items[0]
+              }
               value={confirmationInput || ""}
               onChange={(e) => onConfirmationInputChange?.(e.target.value)}
-              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[var(--panel-mid-bg)] border-border/40"
+              className="resize-none font-mono text-[11px] min-h-[28px] max-h-[60px] bg-[var(--panel-mid-bg)] border-[rgba(255,255,255,0.06)]"
               rows={1}
               data-testid="input-confirmation"
             />
@@ -335,7 +655,7 @@ export function TaskPlanCard({
                 size="sm"
                 variant="outline"
                 className="flex-1 h-5 text-[9px] font-mono border-border"
-                onClick={() => onContinueWithInput(t(lang, "looksGood"))}
+                onClick={() => onContinueWithInput(tCard("chat.looksGood"))}
                 data-testid="button-approve-all"
               >
                 <Check className="w-2 h-2 mr-0.5" />
@@ -366,7 +686,7 @@ export function TaskPlanCard({
                 <span>{t(lang, "needsInput")}</span>
               </div>
               {inputs.map((item, i) => (
-                <p key={i} className="font-mono text-[10px] text-muted-foreground/60 pl-4 leading-snug">
+                <p key={i} className="font-mono text-[10px] text-[rgba(238,238,246,0.5)] pl-4 leading-snug">
                   • {item}
                 </p>
               ))}
@@ -387,6 +707,40 @@ export function TaskPlanCard({
               </button>
             ) : isPreExecution ? (
               <>
+                {/* Split button: Build in background */}
+                <div className="flex items-center border border-border/80 rounded-lg overflow-visible relative" ref={bgDropdownRef}>
+                  <button
+                    className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-[rgba(238,238,246,0.9)] hover:bg-accent/10 px-2.5 py-1.5 transition-colors"
+                    onClick={() => onExecute?.()}
+                  >
+                    <Hammer className="w-3 h-3" />
+                    <span>Build in background</span>
+                  </button>
+                  <div className="w-px h-4 bg-[rgba(255,255,255,0.08)] shrink-0" />
+                  <button
+                    className="flex items-center justify-center px-1.5 py-1.5 text-muted-foreground/70 hover:text-[rgba(238,238,246,0.8)] hover:bg-accent/10 transition-colors"
+                    onClick={() => setBgDropdownOpen((o) => !o)}
+                  >
+                    <DropdownChevron className="w-3 h-3" />
+                  </button>
+                  {bgDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-44 bg-[var(--panel-mid-bg)] border border-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                      <button
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
+                      >
+                        Build in background
+                      </button>
+                      <button
+                        className="w-full text-left px-3 py-1.5 font-mono text-[10px] text-muted-foreground hover:bg-accent/15 hover:text-[rgba(238,238,246,0.9)] transition-colors"
+                        onClick={() => { setBgDropdownOpen(false); onExecute?.(); }}
+                      >
+                        Build quietly
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex-1" />
                 {/* Primary: Build here */}
                 <button
@@ -394,7 +748,7 @@ export function TaskPlanCard({
                   onClick={onExecute}
                   data-testid="button-execute-plan"
                 >
-                  {t(lang, "buildHere")}
+                  Build here
                 </button>
               </>
             ) : (
@@ -419,7 +773,7 @@ export function TaskPlanCard({
             data-testid="button-revise-plan"
           >
             <PenLine className="w-3 h-3" />
-            <span>{t(lang, "revise")}</span>
+            <span>Revise</span>
           </button>
           <button
             className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
@@ -427,11 +781,25 @@ export function TaskPlanCard({
             data-testid="button-cancel-plan"
           >
             <Ban className="w-3 h-3" />
-            <span>{t(lang, "cancel")}</span>
+            <span>Cancel</span>
           </button>
 
           <div className="flex-1" />
 
+          {/* Right: Power dropdown */}
+          <div className="flex items-center gap-0.5">
+            <button
+              className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80 transition-colors px-1.5 py-1 rounded hover:bg-accent/10"
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Power</span>
+            </button>
+            <button
+              className="flex items-center justify-center font-mono text-muted-foreground/70 hover:text-foreground/80 transition-colors px-0.5 py-1 rounded hover:bg-accent/10"
+            >
+              <DropdownChevron className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -474,7 +842,7 @@ export function RegeneratePlanDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 bg-[var(--panel-mid-bg)] border-border">
-        <DialogHeader className="px-5 pt-4 pb-3 border-b border-border/60">
+        <DialogHeader className="px-5 pt-4 pb-3 border-b border-[rgba(255,255,255,0.06)]">
           <DialogTitle className="text-sm font-mono font-medium">
             {t(lang, "regenerateTitle")}
           </DialogTitle>
@@ -512,9 +880,9 @@ export function RegeneratePlanDialog({
             />
           )}
         </div>
-        <div className="px-5 py-3 border-t border-border/60 flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.06)] flex justify-end gap-2">
           <button
-            className="font-mono text-[11px] text-muted-foreground hover:text-foreground border border-border rounded px-3 py-1.5 transition-colors"
+            className="font-mono text-[11px] text-[rgba(238,238,246,0.6)] hover:text-[rgba(238,238,246,0.9)] border border-border rounded px-3 py-1.5 transition-colors"
             onClick={() => onOpenChange(false)}
             data-testid="button-regenerate-cancel"
           >
@@ -559,8 +927,6 @@ export function BuildResultCard({
         entries={buildResult.actionLog as ActionLogEntry[]}
         segments={segments}
         isCompleted
-        tokenUsage={(buildResult as any).tokenUsage}
-        completionSummary={(buildResult as any).completionData?.summary}
       />
     </div>
   );
@@ -595,10 +961,18 @@ export function ManagerMessageBubble({
   pendingConfirmation,
   confirmationInput,
   onConfirmationInputChange,
+  reviewPhase,
+  holisticReview,
   fixCycle,
   liveNarration,
   completionData,
-  stepActionsMap,
+  onStartReview,
+  onStopReview,
+  reviewStrictness,
+  onReviewStrictnessChange,
+  reviewLiveNarration,
+  reviewRound,
+  reviewMaxRounds,
 }: {
   message: {
     role: string;
@@ -619,10 +993,18 @@ export function ManagerMessageBubble({
   pendingConfirmation?: { stepKey: string; items: string[] } | null;
   confirmationInput?: string;
   onConfirmationInputChange?: (value: string) => void;
+  reviewPhase?: ReviewPhase;
+  holisticReview?: HolisticReviewResult | null;
   fixCycle?: number;
   liveNarration?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
-  stepActionsMap?: Map<number, ActionLogEntry[]>;
+  onStartReview?: () => void;
+  onStopReview?: () => void;
+  reviewStrictness?: ReviewStrictness;
+  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
+  reviewLiveNarration?: string;
+  reviewRound?: number;
+  reviewMaxRounds?: number;
 }) {
   if (message.role === "user") {
     return (
@@ -639,15 +1021,6 @@ export function ManagerMessageBubble({
   }
 
   if (message.plan) {
-    // Media plan — route to AIGC card instead of code build card
-    if (message.plan.mode === "media") {
-      return (
-        <MediaPlanCard
-          plan={message.plan}
-          onCancel={() => onRevise?.()}
-        />
-      );
-    }
     return (
       <TaskPlanCard
         plan={message.plan}
@@ -661,12 +1034,20 @@ export function ManagerMessageBubble({
         pendingConfirmation={pendingConfirmation}
         confirmationInput={confirmationInput}
         onConfirmationInputChange={onConfirmationInputChange}
+        reviewPhase={reviewPhase}
+        holisticReview={holisticReview}
         fixCycle={fixCycle}
         thinking={message.thinking}
         liveNarration={liveNarration}
         completionSummary={completionData?.summary}
         changedFiles={completionData?.changedFiles}
-        stepActionsMap={stepActionsMap}
+        onStartReview={onStartReview}
+        onStopReview={onStopReview}
+        reviewStrictness={reviewStrictness}
+        onReviewStrictnessChange={onReviewStrictnessChange}
+        reviewLiveNarration={reviewLiveNarration}
+        reviewRound={reviewRound}
+        reviewMaxRounds={reviewMaxRounds}
       />
     );
   }
@@ -675,9 +1056,6 @@ export function ManagerMessageBubble({
     return null;
   }
 
-  // Assistant text reply with no plan/buildResult — e.g. clarifying questions or
-  // communicator narration. Render the content; without this the reply is
-  // invisible (the user bubble shows but the agent's answer never appears).
   if (!message.content) return null;
 
   const cleanContent = stripMd(message.content);

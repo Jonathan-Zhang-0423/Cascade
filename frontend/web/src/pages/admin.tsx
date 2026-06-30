@@ -19,7 +19,7 @@ interface LockedUser {
   remainingSec: number;
 }
 
-type AdminTab = "waitlist" | "users" | "security" | "feedback" | "changelog" | "square";
+type AdminTab = "waitlist" | "users" | "security" | "feedback" | "changelog";
 
 interface AppUser {
   id: string;
@@ -34,6 +34,27 @@ interface AppUser {
   trialRemainingSec: number | null;
 }
 
+interface FeedbackItem {
+  id: number;
+  content: string;
+  email: string | null;
+  ipAddress: string | null;
+  status: string;
+  createdAt: string;
+  userId: string | null;
+  username: string | null;
+  userEmail: string | null;
+}
+
+interface ChangelogItem {
+  id: number;
+  version: string | null;
+  title: string;
+  content: string;
+  publishedAt: string;
+  isPublished: boolean;
+}
+
 interface Subscriber {
   id: number;
   email: string;
@@ -45,7 +66,6 @@ interface Subscriber {
   expiresAt: string | null;
   batchId: number | null;
   seqNum: number | null;
-  registeredAt: string | null;
 }
 
 interface WaitlistData {
@@ -54,7 +74,7 @@ interface WaitlistData {
 }
 
 type FilterStatus = "all" | "pending" | "invited" | "email_failed";
-type FilterType = "all" | "edu" | "qj" | "normal";
+type FilterType = "all" | "edu" | "normal";
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
@@ -99,24 +119,6 @@ export default function AdminPage() {
   const [secMsg, setSecMsg] = useState("");
   const [secError, setSecError] = useState("");
   const [secFilter, setSecFilter] = useState<"all" | "ip" | "user">("all");
-
-  // Feedback panel state
-  const [feedbackItems, setFeedbackItems] = useState<{id:number;content:string;source:string;createdAt:string;username:string|null;email:string|null;phone:string|null;repliedAt:string|null;replyContent:string|null}[]>([]);
-  const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [feedbackError, setFeedbackError] = useState("");
-  const [feedbackSourceFilter, setFeedbackSourceFilter] = useState<"all"|"pc"|"mobile"|"qiji">("all");
-  const [replyTarget, setReplyTarget] = useState<number|null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [replySending, setReplySending] = useState(false);
-  const [replyMsg, setReplyMsg] = useState("");
-
-  // Changelog panel state
-  const [changelogItems, setChangelogItems] = useState<{id:number;version:string|null;title:string;content:string;publishedAt:string;isPublished:boolean}[]>([]);
-  const [changelogLoading, setChangelogLoading] = useState(false);
-  const [changelogError, setChangelogError] = useState("");
-  const [changelogMsg, setChangelogMsg] = useState("");
-  const [changelogForm, setChangelogForm] = useState<{open:boolean;editId:number|null;version:string;title:string;content:string;isPublished:boolean}>({open:false,editId:null,version:"",title:"",content:"",isPublished:false});
-  const [changelogSaving, setChangelogSaving] = useState(false);
   const [secSearch, setSecSearch] = useState("");
   const [manualIp, setManualIp] = useState("");
   const [manualReason, setManualReason] = useState("");
@@ -130,23 +132,23 @@ export default function AdminPage() {
   const [otpMsg, setOtpMsg] = useState("");
   const [otpError, setOtpError] = useState("");
 
-  // Square panel state
-  type SquareApp = { id: string; title: string; framework: string; visibility: string; isOpenSource: boolean; viewCount: number; forkCount: number; adminTakenDown: boolean; authorUsername: string; publishedAt: string };
-  type SquareStats = {
-    total: number;
-    totalActive: number;
-    totalTakenDown: number;
-    byFramework: { framework: string; cnt: number }[];
-    byVisibility: { visibility: string; cnt: number }[];
-    topViewed: SquareApp[];
-    perUser: { userId: string; authorUsername: string; appCount: number; totalViews: number; totalForks: number }[];
-    recent: SquareApp[];
-  };
-  const [squareStats, setSquareStats] = useState<SquareStats | null>(null);
-  const [squareLoading, setSquareLoading] = useState(false);
-  const [squareError, setSquareError] = useState("");
-  const [squareActioning, setSquareActioning] = useState<string | null>(null);
-  const [squareFilter, setSquareFilter] = useState<"all" | "active" | "takendown">("all");
+  // Feedback panel state
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackFilter, setFeedbackFilter] = useState<"all" | "new" | "reviewed">("all");
+  const [expandedFeedback, setExpandedFeedback] = useState<Set<number>>(new Set());
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
+  // Changelog panel state
+  const [changelogItems, setChangelogItems] = useState<ChangelogItem[]>([]);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const [changelogError, setChangelogError] = useState("");
+  const [changelogMsg, setChangelogMsg] = useState("");
+  const [changelogForm, setChangelogForm] = useState<{ open: boolean; editId: number | null; version: string; title: string; content: string; isPublished: boolean }>({
+    open: false, editId: null, version: "", title: "", content: "", isPublished: true,
+  });
+  const [changelogSaving, setChangelogSaving] = useState(false);
 
   const fetchData = useCallback(async (adminSecret: string) => {
     const res = await fetch("/api/waitlist", {
@@ -203,127 +205,6 @@ export default function AdminPage() {
     } finally {
       setUsersLoading(false);
     }
-  }
-
-  // ── Feedback handlers ─────────────────────────────────────────────────────
-  async function fetchFeedback() {
-    setFeedbackLoading(true); setFeedbackError("");
-    try {
-      const res = await fetch("/api/admin/feedback", { headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error("加载失败");
-      const json = await res.json();
-      setFeedbackItems(json.feedback ?? []);
-    } catch {
-      setFeedbackError("加载失败，请重试");
-    } finally {
-      setFeedbackLoading(false);
-    }
-  }
-
-  async function sendFeedbackReply(feedbackId: number) {
-    if (!replyText.trim()) return;
-    setReplySending(true); setReplyMsg("");
-    const msgContent = replyText.trim();
-    try {
-      const res = await fetch(`/api/admin/feedback/${feedbackId}/reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
-        body: JSON.stringify({ message: msgContent }),
-      });
-      if (!res.ok) throw new Error("发送失败");
-      // 立即更新本地状态，不需要刷新页面
-      setFeedbackItems((prev) => prev.map((item) =>
-        item.id === feedbackId
-          ? { ...item, repliedAt: new Date().toISOString(), replyContent: msgContent }
-          : item
-      ));
-      setReplyMsg("已发送通知给用户");
-      setReplyTarget(null);
-      setReplyText("");
-      setTimeout(() => setReplyMsg(""), 2000);
-    } catch {
-      setReplyMsg("发送失败，请重试");
-    } finally {
-      setReplySending(false);
-    }
-  }
-
-  // ── Changelog handlers ─────────────────────────────────────────────────────
-  async function fetchChangelog() {
-    setChangelogLoading(true); setChangelogError("");
-    try {
-      const res = await fetch("/api/admin/changelog", { headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error("加载失败");
-      const json = await res.json();
-      setChangelogItems(json.entries ?? []);
-    } catch {
-      setChangelogError("加载失败，请重试");
-    } finally {
-      setChangelogLoading(false);
-    }
-  }
-
-  async function saveChangelogEntry() {
-    if (!changelogForm.title.trim() || !changelogForm.content.trim()) return;
-    setChangelogSaving(true); setChangelogError("");
-    try {
-      const url = changelogForm.editId ? `/api/admin/changelog/${changelogForm.editId}` : "/api/admin/changelog";
-      const method = changelogForm.editId ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
-        body: JSON.stringify({ version: changelogForm.version.trim() || undefined, title: changelogForm.title.trim(), content: changelogForm.content.trim(), isPublished: changelogForm.isPublished }),
-      });
-      if (!res.ok) throw new Error("保存失败");
-      setChangelogForm({ open: false, editId: null, version: "", title: "", content: "", isPublished: false });
-      setChangelogMsg(changelogForm.editId ? "已更新" : "已新增");
-      setTimeout(() => setChangelogMsg(""), 2000);
-      await fetchChangelog();
-    } catch {
-      setChangelogError("保存失败，请重试");
-    } finally {
-      setChangelogSaving(false);
-    }
-  }
-
-  async function deleteChangelogEntry(id: number) {
-    if (!window.confirm("确认删除该条目？")) return;
-    try {
-      const res = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error("删除失败");
-      setChangelogItems((prev) => prev.filter((e) => e.id !== id));
-      setChangelogMsg("已删除"); setTimeout(() => setChangelogMsg(""), 2000);
-    } catch { setChangelogError("删除失败"); }
-  }
-
-  async function notifyChangelog(id: number) {
-    if (!window.confirm("确认向所有用户推送该更新通知？")) return;
-    try {
-      const res = await fetch(`/api/admin/changelog/${id}/notify`, { method: "POST", headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error("推送失败");
-      const json = await res.json();
-      // 推送成功后自动标记为已发布
-      await fetch(`/api/admin/changelog/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
-        body: JSON.stringify({ isPublished: true }),
-      });
-      setChangelogItems((prev) => prev.map((e) => e.id === id ? { ...e, isPublished: true } : e));
-      setChangelogMsg(`已推送通知给 ${json.sent} 位用户`);
-      setTimeout(() => setChangelogMsg(""), 3000);
-    } catch { setChangelogError("推送失败，请重试"); }
-  }
-
-  async function toggleChangelogPublished(item: {id:number;isPublished:boolean}) {
-    try {
-      const res = await fetch(`/api/admin/changelog/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
-        body: JSON.stringify({ isPublished: !item.isPublished }),
-      });
-      if (!res.ok) throw new Error("操作失败");
-      setChangelogItems((prev) => prev.map((e) => e.id === item.id ? { ...e, isPublished: !e.isPublished } : e));
-    } catch { setChangelogError("操作失败"); }
   }
 
   // ── Security handlers ──────────────────────────────────────────────────────
@@ -428,6 +309,118 @@ export default function AdminPage() {
     }
   }
 
+  // ── Feedback handlers ──────────────────────────────────────────────────────
+  async function fetchFeedback() {
+    setFeedbackLoading(true); setFeedbackError(""); setFeedbackMsg("");
+    try {
+      const url = feedbackFilter === "all" ? "/api/admin/feedback" : `/api/admin/feedback?status=${feedbackFilter}`;
+      const res = await fetch(url, { headers: { "x-admin-secret": secret.trim() } });
+      if (!res.ok) throw new Error("加载失败");
+      const json = await res.json();
+      setFeedbackItems(json.feedback ?? []);
+    } catch {
+      setFeedbackError("加载失败，请重试");
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }
+
+  async function markFeedbackReviewed(id: number) {
+    try {
+      const res = await fetch(`/api/admin/feedback/${id}`, {
+        method: "PATCH",
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("操作失败");
+      setFeedbackItems((prev) => prev.map((f) => f.id === id ? { ...f, status: "reviewed" } : f));
+      setFeedbackMsg("已标记为已读");
+      setTimeout(() => setFeedbackMsg(""), 2000);
+    } catch {
+      setFeedbackError("操作失败");
+    }
+  }
+
+  function toggleExpandFeedback(id: number) {
+    setExpandedFeedback((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // ── Changelog handlers ─────────────────────────────────────────────────────
+  async function fetchChangelog() {
+    setChangelogLoading(true); setChangelogError("");
+    try {
+      const res = await fetch("/api/admin/changelog", { headers: { "x-admin-secret": secret.trim() } });
+      if (!res.ok) throw new Error("加载失败");
+      const json = await res.json();
+      setChangelogItems(json.entries ?? []);
+    } catch {
+      setChangelogError("加载失败，请重试");
+    } finally {
+      setChangelogLoading(false);
+    }
+  }
+
+  async function saveChangelogEntry() {
+    if (!changelogForm.title.trim() || !changelogForm.content.trim()) return;
+    setChangelogSaving(true); setChangelogError("");
+    try {
+      const url = changelogForm.editId ? `/api/admin/changelog/${changelogForm.editId}` : "/api/admin/changelog";
+      const method = changelogForm.editId ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        body: JSON.stringify({
+          version: changelogForm.version.trim() || undefined,
+          title: changelogForm.title.trim(),
+          content: changelogForm.content.trim(),
+          isPublished: changelogForm.isPublished,
+        }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      setChangelogForm({ open: false, editId: null, version: "", title: "", content: "", isPublished: true });
+      setChangelogMsg(changelogForm.editId ? "已更新" : "已新增");
+      setTimeout(() => setChangelogMsg(""), 2000);
+      await fetchChangelog();
+    } catch {
+      setChangelogError("保存失败，请重试");
+    } finally {
+      setChangelogSaving(false);
+    }
+  }
+
+  async function deleteChangelogEntry(id: number) {
+    if (!window.confirm("确认删除该条目？")) return;
+    try {
+      const res = await fetch(`/api/admin/changelog/${id}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": secret.trim() },
+      });
+      if (!res.ok) throw new Error("删除失败");
+      setChangelogItems((prev) => prev.filter((e) => e.id !== id));
+      setChangelogMsg("已删除");
+      setTimeout(() => setChangelogMsg(""), 2000);
+    } catch {
+      setChangelogError("删除失败");
+    }
+  }
+
+  async function toggleChangelogPublished(item: ChangelogItem) {
+    try {
+      const res = await fetch(`/api/admin/changelog/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        body: JSON.stringify({ isPublished: !item.isPublished }),
+      });
+      if (!res.ok) throw new Error("操作失败");
+      setChangelogItems((prev) => prev.map((e) => e.id === item.id ? { ...e, isPublished: !e.isPublished } : e));
+    } catch {
+      setChangelogError("操作失败");
+    }
+  }
+
   // Load security data when switching to security tab
   useEffect(() => {
     if (authed && activeTab === "security") fetchSecurity();
@@ -438,71 +431,14 @@ export default function AdminPage() {
     if (authed && activeTab === "users") fetchUsers();
   }, [authed, activeTab]);
 
+  // Load feedback when switching to feedback tab or filter changes
   useEffect(() => {
     if (authed && activeTab === "feedback") fetchFeedback();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed, activeTab]);
+  }, [authed, activeTab, feedbackFilter]);
 
+  // Load changelog when switching to changelog tab
   useEffect(() => {
     if (authed && activeTab === "changelog") fetchChangelog();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed, activeTab]);
-
-  async function fetchSquare(filter: "all" | "active" | "takendown" = "all") {
-    setSquareLoading(true);
-    setSquareError("");
-    try {
-      const res = await fetch(`/api/admin/square?filter=${filter}`, { headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error("获取失败");
-      setSquareStats(await res.json());
-    } catch {
-      setSquareError("加载创造者广场数据失败，请重试");
-    } finally {
-      setSquareLoading(false);
-    }
-  }
-
-  async function takedownSquareApp(id: string) {
-    if (!confirm("确认强制下架此应用？下架后记录保留，可随时重新上架。")) return;
-    setSquareActioning(id);
-    try {
-      const res = await fetch(`/api/admin/square/${id}/takedown`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error();
-      setSquareStats((prev) => prev ? {
-        ...prev,
-        totalActive: prev.totalActive - 1,
-        totalTakenDown: prev.totalTakenDown + 1,
-        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: true } : a),
-      } : null);
-    } catch {
-      alert("下架失败，请重试");
-    } finally {
-      setSquareActioning(null);
-    }
-  }
-
-  async function restoreSquareApp(id: string) {
-    if (!confirm("确认重新上架此应用？")) return;
-    setSquareActioning(id);
-    try {
-      const res = await fetch(`/api/admin/square/${id}/restore`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
-      if (!res.ok) throw new Error();
-      setSquareStats((prev) => prev ? {
-        ...prev,
-        totalActive: prev.totalActive + 1,
-        totalTakenDown: prev.totalTakenDown - 1,
-        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: false } : a),
-      } : null);
-    } catch {
-      alert("上架失败，请重试");
-    } finally {
-      setSquareActioning(null);
-    }
-  }
-
-  useEffect(() => {
-    if (authed && activeTab === "square") fetchSquare();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, activeTab]);
 
   // 点击页面任意处关闭表头筛选下拉。
@@ -625,8 +561,7 @@ export default function AdminPage() {
   const filtered = (data?.subscribers ?? []).filter((s) => {
     if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (filterType === "edu" && !s.isEdu) return false;
-    if (filterType === "qj" && !s.email.toLowerCase().endsWith("@miracleplus.com")) return false;
-    if (filterType === "normal" && (s.isEdu || s.email.toLowerCase().endsWith("@miracleplus.com"))) return false;
+    if (filterType === "normal" && s.isEdu) return false;
     if (search && !s.email.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -733,28 +668,28 @@ export default function AdminPage() {
           <>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-8 border-b border-black/[0.07]">
-              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"], ["changelog", "更新看板"], ["square", "创造者广场"]] as [AdminTab, string][]).map(([tab, label]) => {
-                const unrepliedCount = tab === "feedback" ? feedbackItems.filter(f => !f.repliedAt).length : 0;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`relative px-5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-all ${
-                      activeTab === tab ? "border-black text-black" : "border-transparent text-gray-400 hover:text-gray-700"
-                    }`}
-                  >
-                    {label}
-                    {unrepliedCount > 0 && (
-                      <span
-                        className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full text-white font-bold"
-                        style={{ background: "#ef4444", fontSize: 9, minWidth: 14, height: 14, padding: "0 3px" }}
-                      >
-                        {unrepliedCount}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {([
+                ["waitlist", "Waitlist"],
+                ["users", "用户"],
+                ["security", "安全管理"],
+                ["feedback", "用户意见"],
+                ["changelog", "更新看板"],
+              ] as [AdminTab, string][]).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${
+                    activeTab === tab ? "border-black text-black" : "border-transparent text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  {label}
+                  {tab === "feedback" && feedbackItems.filter((f) => f.status === "new").length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: "#ef4444" }}>
+                      {feedbackItems.filter((f) => f.status === "new").length}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
 
             {/* Page title row */}
@@ -764,7 +699,7 @@ export default function AdminPage() {
                   className="font-bold text-black leading-tight"
                   style={{ fontSize: "clamp(28px, 4vw, 40px)", fontFamily: FONT }}
                 >
-                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : activeTab === "feedback" ? "用户建议" : activeTab === "changelog" ? "更新看板" : activeTab === "square" ? "创造者广场" : "安全管理"}
+                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : activeTab === "security" ? "安全管理" : activeTab === "feedback" ? "用户意见" : "更新看板"}
                 </h1>
                 {activeTab === "waitlist" && (
                   <p className="text-gray-500 text-[14px] mt-1">cascadeai.co · {data.total} subscribers</p>
@@ -775,11 +710,11 @@ export default function AdminPage() {
                 {activeTab === "security" && (
                   <p className="text-gray-500 text-[14px] mt-1">IP 封禁 {blockedIps.length} 条 · 账号锁定 {lockedUsers.length} 条</p>
                 )}
+                {activeTab === "feedback" && (
+                  <p className="text-gray-500 text-[14px] mt-1">共 {feedbackItems.length} 条 · 未读 {feedbackItems.filter((f) => f.status === "new").length} 条</p>
+                )}
                 {activeTab === "changelog" && (
                   <p className="text-gray-500 text-[14px] mt-1">共 {changelogItems.length} 条 · 已发布 {changelogItems.filter((e) => e.isPublished).length} 条</p>
-                )}
-                {activeTab === "square" && squareStats && (
-                  <p className="text-gray-500 text-[14px] mt-1">共 {squareStats.total} 个应用 · 上架 {squareStats.totalActive} · 下架 {squareStats.totalTakenDown} · {squareStats.perUser.length} 位创作者</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -822,6 +757,16 @@ export default function AdminPage() {
                     {secLoading ? "刷新中…" : "刷新"}
                   </button>
                 )}
+                {activeTab === "feedback" && (
+                  <button
+                    onClick={fetchFeedback}
+                    disabled={feedbackLoading}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+                  >
+                    {feedbackLoading ? "刷新中…" : "刷新"}
+                  </button>
+                )}
                 {activeTab === "changelog" && (
                   <>
                     <button
@@ -840,16 +785,6 @@ export default function AdminPage() {
                       + 新增
                     </button>
                   </>
-                )}
-                {activeTab === "square" && (
-                  <button
-                    onClick={() => fetchSquare(squareFilter)}
-                    disabled={squareLoading}
-                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
-                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
-                  >
-                    {squareLoading ? "刷新中…" : "刷新"}
-                  </button>
                 )}
               </div>
             </div>
@@ -928,7 +863,6 @@ export default function AdminPage() {
                 <option value="all" style={{ fontFamily: FONT }}>All types</option>
                 <option value="normal" style={{ fontFamily: FONT }}>Normal</option>
                 <option value="edu" style={{ fontFamily: FONT }}>EDU</option>
-                <option value="qj" style={{ fontFamily: FONT }}>QJ</option>
               </select>
 
               <div className="ml-auto flex items-center gap-3">
@@ -977,7 +911,6 @@ export default function AdminPage() {
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Invite Code</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Joined</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Expires</th>
-                      <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Registered</th>
                       <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Batch</th>
                     </tr>
                   </thead>
@@ -1032,11 +965,6 @@ export default function AdminPage() {
                         <td className="px-5 py-3.5 font-mono text-gray-500 text-[12px]">{s.inviteCode ?? "—"}</td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{formatDate(s.createdAt)}</td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.expiresAt ? formatDate(s.expiresAt) : "—"}</td>
-                        <td className="px-5 py-3.5 text-[12px]">
-                          {s.registeredAt
-                            ? <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>{formatDate(s.registeredAt)}</span>
-                            : <span className="text-gray-400">—</span>}
-                        </td>
                         <td className="px-5 py-3.5 text-gray-400 text-[12px]">{s.batchId ? `#${s.batchId}` : "—"}</td>
                       </tr>
                     ))}
@@ -1411,116 +1339,98 @@ export default function AdminPage() {
             </div>
             )}
 
-            {/* ── Feedback tab ─────────────────────────────────────────────── */}
+            {/* ── Feedback tab ─────────────────────────────────────────── */}
             {activeTab === "feedback" && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-2 flex-wrap">
-                  <h3 className="text-[14px] font-semibold text-gray-700">用户建议列表</h3>
+              <div className="flex flex-col gap-5">
+                {feedbackError && <p className="text-[13px] text-red-500">{feedbackError}</p>}
+                {feedbackMsg && <p className="text-[13px] text-green-600 font-medium">{feedbackMsg}</p>}
+
+                {/* Filter */}
+                <div className="flex items-center gap-3">
                   <select
-                    className="ml-auto text-[12px] rounded-lg px-2 py-1 text-gray-600"
-                    style={{ border: "1px solid rgba(0,0,0,0.10)", background: "white" }}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setFeedbackSourceFilter(v as "all" | "pc" | "mobile" | "qiji");
-                    }}
+                    value={feedbackFilter}
+                    onChange={(e) => setFeedbackFilter(e.target.value as "all" | "new" | "reviewed")}
+                    className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                    style={{ fontFamily: FONT, background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
                   >
-                    <option value="all">全部来源</option>
-                    <option value="pc">PC端</option>
-                    <option value="mobile">移动端</option>
-                    <option value="qiji">奇迹论坛账号</option>
+                    <option value="all">全部</option>
+                    <option value="new">未读</option>
+                    <option value="reviewed">已读</option>
                   </select>
-                  <button
-                    onClick={fetchFeedback}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                    style={{ border: "1px solid rgba(0,0,0,0.10)" }}
-                  >刷新</button>
                 </div>
-                {feedbackLoading && <p className="text-[13px] text-gray-400">加载中...</p>}
-                {feedbackError && <p className="text-[12px] text-red-500">{feedbackError}</p>}
-                {!feedbackLoading && feedbackItems.filter(item => {
-                  if (feedbackSourceFilter === "all") return true;
-                  if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
-                  return item.source === feedbackSourceFilter;
-                }).length === 0 && (
-                  <p className="text-[13px] text-gray-400">暂无用户建议</p>
+
+                {feedbackLoading && <p className="text-[13px] text-gray-400">加载中…</p>}
+                {!feedbackLoading && feedbackItems.length === 0 && (
+                  <div className="text-center py-20 text-gray-400 text-[14px]">暂无意见反馈</div>
                 )}
-                {replyMsg && <p className="text-[12px] text-green-600 font-medium">{replyMsg}</p>}
-                {feedbackItems.filter(item => {
-                  if (feedbackSourceFilter === "all") return true;
-                  if (feedbackSourceFilter === "qiji") return item.email?.endsWith("@miracleplus.com");
-                  return item.source === feedbackSourceFilter;
-                }).map((item) => (
-                  <div key={item.id} className="relative rounded-2xl p-4" style={{ background: item.repliedAt ? "rgba(240,253,244,0.9)" : "rgba(255,255,255,0.9)", border: `1px solid ${item.repliedAt ? "rgba(34,197,94,0.2)" : "rgba(0,0,0,0.07)"}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-                    {/* 未回复红点 */}
-                    {!item.repliedAt && (
-                      <span
-                        className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-white font-bold"
-                        style={{ background: "#ef4444", fontSize: 9, minWidth: 14, height: 14, padding: "0 3px" }}
-                      >
-                        新
-                      </span>
-                    )}
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <span className="text-[12px] font-semibold text-gray-700">{item.username ?? item.email ?? item.phone ?? "匿名"}</span>
-                      {item.email && <span className="text-[11px] text-gray-400">{item.email}</span>}
-                      {item.email?.endsWith("@miracleplus.com") && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(168,85,247,0.08)", color: "#9333ea" }}>奇迹</span>
-                      )}
-                      {item.repliedAt && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>✓ 已回复</span>
-                      )}
-                      <span className="ml-auto text-[11px] text-gray-400">{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: item.source === "mobile" ? "rgba(79,130,255,0.10)" : "rgba(0,0,0,0.05)", color: item.source === "mobile" ? "#4f82ff" : "#666" }}>{item.source === "mobile" ? "移动端" : "PC端"}</span>
-                    </div>
-                    <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed">{item.content}</p>
-                    {item.repliedAt && item.replyContent && (
-                      <div className="mt-2 px-3 py-2 rounded-xl text-[12px]" style={{ background: "rgba(34,197,94,0.08)", borderLeft: "3px solid rgba(34,197,94,0.4)" }}>
-                        <span className="text-[10px] text-green-600 font-semibold block mb-0.5">管理员回复 · {new Date(item.repliedAt).toLocaleString("zh-CN")}</span>
-                        <span className="text-gray-700">{item.replyContent}</span>
-                      </div>
-                    )}
-                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                      {replyTarget === item.id ? (
-                        <div className="flex flex-col gap-2">
-                          <textarea
-                            value={replyText}
-                            onChange={(e) => setReplyText(e.target.value)}
-                            placeholder="输入回复内容，用户将收到通知…"
-                            rows={3}
-                            maxLength={500}
-                            className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none"
-                            style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.10)" }}
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-2 justify-end">
-                            <button
-                              onClick={() => { setReplyTarget(null); setReplyText(""); }}
-                              className="px-3 py-1.5 rounded-lg text-[12px] text-gray-500 hover:bg-gray-100 transition-colors"
-                            >取消</button>
-                            <button
-                              onClick={() => sendFeedbackReply(item.id)}
-                              disabled={replySending || !replyText.trim()}
-                              className="px-4 py-1.5 rounded-lg text-[12px] font-semibold text-white disabled:opacity-40 transition-colors"
-                              style={{ background: "#111827" }}
-                            >{replySending ? "发送中…" : "发送通知"}</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => { setReplyTarget(item.id); setReplyText(""); }}
-                          className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                          style={{ border: "1px solid rgba(0,0,0,0.10)" }}
-                        >💬 回复用户</button>
-                      )}
-                    </div>
+                {!feedbackLoading && feedbackItems.length > 0 && (
+                  <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 20px rgba(0,0,0,0.05)" }}>
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "rgba(0,0,0,0.015)" }}>
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">提交时间</th>
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">内容</th>
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">用户</th>
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">IP</th>
+                          <th className="px-5 py-3.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {feedbackItems.map((f, i) => {
+                          const expanded = expandedFeedback.has(f.id);
+                          const isLong = f.content.length > 80;
+                          return (
+                            <tr key={f.id} style={{ borderBottom: i < feedbackItems.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }} className="hover:bg-gray-50/40 transition-colors align-top">
+                              <td className="px-5 py-3.5 text-gray-400 text-[12px] whitespace-nowrap">{formatDate(f.createdAt)}</td>
+                              <td className="px-5 py-3.5 text-gray-700 max-w-xs">
+                                <div className={expanded ? "" : "line-clamp-3"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                  {f.content}
+                                </div>
+                                {isLong && (
+                                  <button onClick={() => toggleExpandFeedback(f.id)} className="text-[11px] text-blue-500 hover:text-blue-700 mt-0.5">
+                                    {expanded ? "收起" : "展开"}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-5 py-3.5 text-[12px]">
+                                {f.username ? (
+                                  <div>
+                                    <div className="font-medium text-gray-800">{f.username}</div>
+                                    {(f.userEmail || f.email) && <div className="text-gray-400">{f.userEmail ?? f.email}</div>}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">{f.email ?? "未登录"}</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3.5 text-gray-400 text-[12px] font-mono">{f.ipAddress ?? "—"}</td>
+                              <td className="px-5 py-3.5">
+                                {f.status === "new" ? (
+                                  <button
+                                    onClick={() => markFeedbackReviewed(f.id)}
+                                    className="px-3 py-1 rounded-lg text-[12px] font-semibold transition-colors"
+                                    style={{ background: "rgba(234,179,8,0.1)", color: "#a16207", border: "1px solid rgba(234,179,8,0.2)" }}
+                                  >
+                                    标为已读
+                                  </button>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>
+                                    已读
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
+                )}
               </div>
             )}
 
             {/* ── Changelog tab ────────────────────────────────────────── */}
             {activeTab === "changelog" && (
-              <div className="space-y-5">
+              <div className="flex flex-col gap-5">
                 {changelogError && <p className="text-[13px] text-red-500">{changelogError}</p>}
                 {changelogMsg && <p className="text-[13px] text-green-600 font-medium">{changelogMsg}</p>}
 
@@ -1553,17 +1463,32 @@ export default function AdminPage() {
                         className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none resize-none"
                         style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
                       />
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-[13px] text-gray-600 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={changelogForm.isPublished}
+                            onChange={(e) => setChangelogForm((f) => ({ ...f, isPublished: e.target.checked }))}
+                            className="rounded"
+                          />
+                          立即发布
+                        </label>
+                        <div className="flex gap-2">
                           <button
-                            onClick={() => setChangelogForm({ open: false, editId: null, version: "", title: "", content: "", isPublished: false })}
+                            onClick={() => setChangelogForm({ open: false, editId: null, version: "", title: "", content: "", isPublished: true })}
                             className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                          >取消</button>
+                          >
+                            取消
+                          </button>
                           <button
                             onClick={saveChangelogEntry}
                             disabled={changelogSaving || !changelogForm.title.trim() || !changelogForm.content.trim()}
                             className="px-5 py-2 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 disabled:opacity-40"
                             style={{ background: "#111827" }}
-                          >{changelogSaving ? "保存中…" : "保存"}</button>
+                          >
+                            {changelogSaving ? "保存中…" : "保存"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1571,9 +1496,9 @@ export default function AdminPage() {
 
                 {changelogLoading && <p className="text-[13px] text-gray-400">加载中…</p>}
                 {!changelogLoading && changelogItems.length === 0 && !changelogForm.open && (
-                  <div className="text-center py-20 text-gray-400 text-[14px]">暂无更新条目，点击右上角「+ 新增」开始</div>
+                  <div className="text-center py-20 text-gray-400 text-[14px]">暂无更新条目</div>
                 )}
-                {changelogItems.length > 0 && (
+                {!changelogLoading && changelogItems.length > 0 && (
                   <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 20px rgba(0,0,0,0.05)" }}>
                     <table className="w-full text-[13px]">
                       <thead>
@@ -1589,19 +1514,24 @@ export default function AdminPage() {
                         {changelogItems.map((entry, i) => (
                           <tr key={entry.id} style={{ borderBottom: i < changelogItems.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }} className="hover:bg-gray-50/40 transition-colors">
                             <td className="px-5 py-3.5">
-                              {entry.version
-                                ? <span className="text-[11px] font-mono px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>{entry.version}</span>
-                                : <span className="text-gray-400">—</span>}
+                              {entry.version ? (
+                                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(99,102,241,0.08)", color: "#4f46e5" }}>
+                                  {entry.version}
+                                </span>
+                              ) : <span className="text-gray-400">—</span>}
                             </td>
                             <td className="px-5 py-3.5 font-medium text-gray-800 max-w-xs truncate">{entry.title}</td>
-                            <td className="px-5 py-3.5 text-gray-400 text-[12px] whitespace-nowrap">{new Date(entry.publishedAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                            <td className="px-5 py-3.5 text-gray-400 text-[12px] whitespace-nowrap">{formatDate(entry.publishedAt)}</td>
                             <td className="px-5 py-3.5">
-                              <span
-                                className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                              <button
+                                onClick={() => toggleChangelogPublished(entry)}
+                                className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors"
                                 style={entry.isPublished
                                   ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" }
                                   : { background: "rgba(0,0,0,0.05)", color: "#6b7280" }}
-                              >{entry.isPublished ? "已发布" : "草稿"}</span>
+                              >
+                                {entry.isPublished ? "已发布" : "草稿"}
+                              </button>
                             </td>
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-2">
@@ -1609,18 +1539,16 @@ export default function AdminPage() {
                                   onClick={() => setChangelogForm({ open: true, editId: entry.id, version: entry.version ?? "", title: entry.title, content: entry.content, isPublished: entry.isPublished })}
                                   className="px-3 py-1 rounded-lg text-[12px] font-medium text-gray-600 hover:bg-gray-100 transition-colors"
                                   style={{ border: "1px solid rgba(0,0,0,0.08)" }}
-                                >编辑</button>
-                                <button
-                                  onClick={() => !entry.isPublished && notifyChangelog(entry.id)}
-                                  disabled={entry.isPublished}
-                                  className="px-3 py-1 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                  style={{ border: "1px solid rgba(79,130,255,0.2)", background: "rgba(79,130,255,0.05)", color: "#4f82ff" }}
-                                >推送通知</button>
+                                >
+                                  编辑
+                                </button>
                                 <button
                                   onClick={() => deleteChangelogEntry(entry.id)}
                                   className="px-3 py-1 rounded-lg text-[12px] font-medium transition-colors"
                                   style={{ border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)", color: "#dc2626" }}
-                                >删除</button>
+                                >
+                                  删除
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1629,194 +1557,6 @@ export default function AdminPage() {
                     </table>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* ── Creator Square tab ───────────────────────────────────── */}
-            {activeTab === "square" && (
-              <div>
-                {squareLoading && <p className="text-[13px] text-gray-400">加载中…</p>}
-                {squareError && <p className="text-[13px] text-red-500">{squareError}</p>}
-                {squareStats && !squareLoading && (<>
-                  {/* ── Top stat cards ── */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-                    {[
-                      { label: "总记录数", value: squareStats.total },
-                      { label: "当前上架", value: squareStats.totalActive, color: "#16a34a" },
-                      { label: "强制下架", value: squareStats.totalTakenDown, color: squareStats.totalTakenDown > 0 ? "#dc2626" : undefined },
-                      { label: "创作者数", value: squareStats.perUser.length },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                        <p className="text-[12px] text-gray-400 mb-1">{label}</p>
-                        <p className="text-[28px] font-bold leading-none" style={{ color: color ?? "#000" }}>{value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* ── Framework breakdown + Visibility breakdown ── */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                    {/* Framework */}
-                    <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">项目类型分布（上架）</h3>
-                      <div className="space-y-2">
-                        {squareStats.byFramework.map(({ framework, cnt }) => {
-                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
-                          const labels: Record<string, string> = { web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
-                          return (
-                            <div key={framework}>
-                              <div className="flex justify-between text-[12px] mb-1">
-                                <span className="text-gray-600">{labels[framework] ?? framework}</span>
-                                <span className="text-gray-400">{cnt} ({pct}%)</span>
-                              </div>
-                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-black rounded-full transition-all" style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Visibility */}
-                    <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">可见性分布（上架）</h3>
-                      <div className="space-y-2">
-                        {squareStats.byVisibility.map(({ visibility, cnt }) => {
-                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
-                          const labels: Record<string, string> = { public: "公开", link_only: "链接可见", private: "私有" };
-                          const colors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#6b7280" };
-                          return (
-                            <div key={visibility}>
-                              <div className="flex justify-between text-[12px] mb-1">
-                                <span className="text-gray-600">{labels[visibility] ?? visibility}</span>
-                                <span className="text-gray-400">{cnt} ({pct}%)</span>
-                              </div>
-                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: colors[visibility] ?? "#111" }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── Per-user breakdown ── */}
-                  <div className="rounded-2xl overflow-hidden mb-8" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                    <div className="px-5 py-4 border-b border-black/[0.05]" style={{ background: "rgba(255,255,255,0.95)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700">创作者发布统计</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-[13px]" style={{ background: "rgba(255,255,255,0.9)" }}>
-                        <thead>
-                          <tr className="border-b border-black/[0.05]">
-                            {["用户名", "发布数", "总浏览量", "总 Fork 数"].map((h) => (
-                              <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {squareStats.perUser.map((u) => (
-                            <tr key={u.userId} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors">
-                              <td className="px-5 py-3.5 font-medium text-gray-900">{u.authorUsername}</td>
-                              <td className="px-5 py-3.5 text-gray-600">{u.appCount}</td>
-                              <td className="px-5 py-3.5 text-gray-600">{u.totalViews ?? 0}</td>
-                              <td className="px-5 py-3.5 text-gray-600">{u.totalForks ?? 0}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* ── All apps with filter + admin actions ── */}
-                  <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                    <div className="px-5 py-4 border-b border-black/[0.05] flex items-center justify-between gap-4" style={{ background: "rgba(255,255,255,0.95)" }}>
-                      <h3 className="text-[13px] font-semibold text-gray-700">全部应用（最多 100 条）</h3>
-                      {/* Filter tabs */}
-                      <div className="flex items-center gap-1">
-                        {([ ["all", "全部"], ["active", "已上架"], ["takendown", "已下架"] ] as ["all" | "active" | "takendown", string][]).map(([val, label]) => (
-                          <button
-                            key={val}
-                            onClick={() => {
-                              setSquareFilter(val);
-                              fetchSquare(val);
-                            }}
-                            className="px-3 py-1 rounded-full text-[12px] font-medium transition-colors"
-                            style={squareFilter === val
-                              ? { background: "#111", color: "#fff" }
-                              : { background: "transparent", color: "#6b7280", border: "1px solid rgba(0,0,0,0.1)" }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-[13px]" style={{ background: "rgba(255,255,255,0.9)" }}>
-                        <thead>
-                          <tr className="border-b border-black/[0.05]">
-                            {["应用名", "作者", "类型", "可见性", "状态", "开源", "浏览", "Fork", "发布时间", "操作"].map((h) => (
-                              <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {squareStats.recent.map((app) => {
-                            const fwLabels: Record<string, string> = { web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
-                            const visLabels: Record<string, string> = { public: "公开", link_only: "链接", private: "私有" };
-                            const visColors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#9ca3af" };
-                            const isBusy = squareActioning === app.id;
-                            return (
-                              <tr key={app.id} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors" style={app.adminTakenDown ? { opacity: 0.6 } : {}}>
-                                <td className="px-4 py-3.5 font-medium text-gray-900 max-w-[160px] truncate">{app.title}</td>
-                                <td className="px-4 py-3.5 text-gray-500">{app.authorUsername}</td>
-                                <td className="px-4 py-3.5">
-                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">{fwLabels[app.framework] ?? app.framework}</span>
-                                </td>
-                                <td className="px-4 py-3.5">
-                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: `${visColors[app.visibility]}20`, color: visColors[app.visibility] }}>{visLabels[app.visibility] ?? app.visibility}</span>
-                                </td>
-                                <td className="px-4 py-3.5">
-                                  {app.adminTakenDown ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(239,68,68,0.08)", color: "#dc2626" }}>已下架</span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>上架中</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3.5 text-gray-500">{app.isOpenSource ? "✅" : "—"}</td>
-                                <td className="px-4 py-3.5 text-gray-500">{app.viewCount}</td>
-                                <td className="px-4 py-3.5 text-gray-500">{app.forkCount}</td>
-                                <td className="px-4 py-3.5 text-gray-400 whitespace-nowrap">{new Date(app.publishedAt).toLocaleDateString("zh-CN")}</td>
-                                <td className="px-4 py-3.5">
-                                  {app.adminTakenDown ? (
-                                    <button
-                                      onClick={() => restoreSquareApp(app.id)}
-                                      disabled={isBusy}
-                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
-                                      style={{ border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.06)", color: "#16a34a" }}
-                                    >
-                                      {isBusy ? "操作中…" : "重新上架"}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => takedownSquareApp(app.id)}
-                                      disabled={isBusy}
-                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
-                                      style={{ border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)", color: "#dc2626" }}
-                                    >
-                                      {isBusy ? "操作中…" : "强制下架"}
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>)}
               </div>
             )}
           </>

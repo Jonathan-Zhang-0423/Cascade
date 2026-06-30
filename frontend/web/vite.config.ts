@@ -14,7 +14,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/github-oauth\//, /^\/github-callback/],
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             // Cache GET API responses, but NEVER intercept SSE streams or

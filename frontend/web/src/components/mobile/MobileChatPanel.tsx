@@ -8,93 +8,49 @@ export function MobileChatPanel() {
   const { mode } = useTheme();
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // 移动端滚动控制：
-  // 只要用户触摸屏幕（touchstart），立即禁止自动滚底
-  // 只有用户手动滚回到底部（距底 ≤ 20px）才恢复
+  // 两层 MutationObserver + 用户滚动检测：
+  // 仅当用户在底部附近时才自动滚底，避免强制打断手动上滑
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
 
-    const RESUME_THRESHOLD = 20;
+    const SCROLL_THRESHOLD = 120;
     const SCROLL_SEL = '[data-testid="chat-panel"] > .flex-1';
 
-    let userTouching = false; // 用户正在触摸中
-    let userScrolledUp = false; // 用户曾经往上滑过
+    const isNearBottom = (el: HTMLElement) =>
+      el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
 
     const scrollToBottom = (el: HTMLElement) => {
-      if (userScrolledUp) return; // 用户已上滑，绝对不自动滚底
-      el.scrollTop = el.scrollHeight;
+      if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
     };
 
     let contentObserver: MutationObserver | null = null;
-    let attached = false;
 
     const attachContentObserver = (el: HTMLElement) => {
-      if (attached) return;
-      attached = true;
-
-      // 挂载时强制滚一次
+      if (contentObserver) return;
+      // 挂载时强制滚一次（用户刚进入，还没手动上滑）
       el.scrollTop = el.scrollHeight;
-
-      // touchstart：用户开始触摸，立即禁止自动滚底
-      const onTouchStart = () => {
-        userTouching = true;
-        userScrolledUp = true;
-      };
-
-      // touchend：触摸结束，检查是否已回到底部
-      const onTouchEnd = () => {
-        userTouching = false;
-        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (dist <= RESUME_THRESHOLD) {
-          userScrolledUp = false; // 已回到底部，恢复自动滚底
-        }
-      };
-
-      // scroll：不触摸时（惯性滚动结束后）检查是否回到底部
-      const onScroll = () => {
-        if (userTouching) return;
-        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (dist <= RESUME_THRESHOLD) {
-          userScrolledUp = false;
-        }
-      };
-
-      el.addEventListener("touchstart", onTouchStart, { passive: true });
-      el.addEventListener("touchend", onTouchEnd, { passive: true });
-      el.addEventListener("scroll", onScroll, { passive: true });
-
-      // 只监听 childList（新消息节点），不监听 characterData（打字机文字变化）
       contentObserver = new MutationObserver(() => scrollToBottom(el));
-      contentObserver.observe(el, { childList: true, subtree: true });
-
-      return () => {
-        el.removeEventListener("touchstart", onTouchStart);
-        el.removeEventListener("touchend", onTouchEnd);
-        el.removeEventListener("scroll", onScroll);
-        contentObserver?.disconnect();
-      };
+      contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
     };
-
-    let cleanup: (() => void) | undefined;
 
     const existing = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
     if (existing) {
-      cleanup = attachContentObserver(existing);
-      return () => cleanup?.();
+      attachContentObserver(existing);
+      return () => contentObserver?.disconnect();
     }
 
     const waitObserver = new MutationObserver(() => {
       const el = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
       if (!el) return;
       waitObserver.disconnect();
-      cleanup = attachContentObserver(el);
+      attachContentObserver(el);
     });
     waitObserver.observe(wrap, { childList: true, subtree: true });
 
     return () => {
       waitObserver.disconnect();
-      cleanup?.();
+      contentObserver?.disconnect();
     };
   }, []);
 

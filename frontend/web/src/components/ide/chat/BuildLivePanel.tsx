@@ -53,55 +53,6 @@ function AnimatedDots() {
     </>
   );
 }
-
-// ── LiveBar — 转圈圈 + 打字机文字 + 三点（完全复用 TypingIndicator 逻辑）────
-const LIVE_PHRASES_ZH = [
-  "正在脑洞大开中", "灵感正在路上，请稍候", "AI 正在认真思考，不是在摸鱼",
-  "代码宇宙正在重组中", "正在向平行宇宙借点智慧", "思维发动机预热中",
-  "正在把你的想法翻译成代码语言", "正在解锁最优解", "AI 大脑正在高速运转",
-  "正在召唤代码精灵", "把咖啡因转化为代码中", "正在对齐神经元",
-  "想法正在结晶", "正在量子计算最优解", "大模型正在认真上班",
-  "正在把文字变成魔法", "灵感女神正在降临", "正在高速检索知识库",
-];
-const LIVE_PHRASES_EN = [
-  "Brainwaves detected, processing", "Consulting the code oracle",
-  "Firing up the neural engines", "Turning caffeine into code",
-  "Assembling brilliant thoughts", "Summoning the AI muse",
-  "Untangling the idea spaghetti", "Crunching possibilities",
-  "Downloading inspiration", "Aligning neurons, please hold",
-  "Searching all known universes", "Cooking up something great",
-  "Connecting the creative dots", "Spinning up the idea turbine",
-];
-
-function LiveBar() {
-  const { lang } = useLanguageStore();
-  const phrases = lang === "zh" ? LIVE_PHRASES_ZH : LIVE_PHRASES_EN;
-  const phrase = useRef(phrases[Math.floor(Math.random() * phrases.length)]).current;
-
-  const [charCount, setCharCount] = useState(0);
-  useEffect(() => {
-    let i = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      if (i < phrase.length) {
-        i++; setCharCount(i);
-        timer = setTimeout(tick, 90);
-      } else {
-        timer = setTimeout(() => { i = 0; setCharCount(0); timer = setTimeout(tick, 90); }, 2400);
-      }
-    };
-    timer = setTimeout(tick, 90);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phrase]);
-
-  return (
-    <span className="inline-flex items-center gap-1.5 text-muted-foreground/60 font-mono text-[10.5px]">
-      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-      <span>{phrase.slice(0, charCount)}<AnimatedDots /></span>
-    </span>
-  );
-}
 import {
   FileText,
   PencilLine,
@@ -121,7 +72,6 @@ import {
   Zap,
   ListChecks,
   DollarSign,
-  Globe,
   type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
@@ -276,7 +226,6 @@ function getActionNarration(entry: ActionLogEntry): string {
     case "file_delete":    return `删除了 ${fileName(entry)}`;
     case "thinking":       return extractThinkingNarration(entry.detail);
     case "tool_call":      return TOOL_NARRATION[entry.label] || `调用了 ${entry.label}`;
-    case "research":       return entry.label.toLowerCase().includes("complete") ? `研究完成 — ${entry.detail}` : `🔍 搜索: ${entry.detail || entry.label}`;
     case "terminal_command": return `执行命令：${entry.label}`;
     case "code_applied":   return `应用了 ${fileName(entry)}`;
     case "code_review":    return entry.label || "代码审查";
@@ -359,8 +308,6 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
       return { rows: entry.filePath ? [{ k: "路径", v: entry.filePath }] : [] };
     case "tool_call":
       return { rows: entry.label ? [{ k: "工具", v: entry.label }] : [] };
-    case "research":
-      return { rows: [{ k: "查询", v: entry.detail || entry.label }] };
     case "terminal_command":
       return { rows: [{ k: "命令", v: (entry.detail || entry.label || "").slice(0, 100) }] };
     case "code_review":
@@ -384,7 +331,7 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
 }
 
 // ── H. toDisplayType ──────────────────────────────────────────────────────
-type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
+type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "other";
 
 function toDisplayType(raw: string): ActionType {
   switch (raw) {
@@ -396,7 +343,6 @@ function toDisplayType(raw: string): ActionType {
     case "capabilities":   return "capabilities";
     case "plan":           return "plan";
     case "tool_call":      return "tool";
-    case "research":       return "research";
     case "terminal_command": return "terminal";
     default:               return "other";
   }
@@ -412,7 +358,6 @@ const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
   plan:         { icon: ListChecks,  color: "text-muted-foreground/50" },
   tool:         { icon: Wrench,      color: "text-muted-foreground/50" },
   terminal:     { icon: Terminal,    color: "text-muted-foreground/50" },
-  research:     { icon: Globe,       color: "text-cyan-400/70" },
   other:        { icon: Circle,      color: "text-muted-foreground/50" },
 };
 
@@ -507,7 +452,7 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
         <span className="truncate text-muted-foreground/70">
           {isLive ? <>{t("chat.thinkingLive")}<AnimatedDots /></> : t("agent.thinking")}
         </span>
-        {isLive && <LiveBar />}
+        {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin ml-1 shrink-0 text-muted-foreground/50" />}
       </button>
       {open && thinkingSummary && (
         <div className="pl-[34px] pb-1">
@@ -548,7 +493,7 @@ const SegmentView = memo(function SegmentView({
       <div className="mb-0.5 px-3.5" data-testid="segment-view">
         <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
           <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-          {isLive && <LiveBar />}
+          {isLive && <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />}
           {displayText0 && (
             <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
               {displayText0}
@@ -625,7 +570,7 @@ const SegmentView = memo(function SegmentView({
                   })()}
                 </span>
                 {isLive && (
-                  <LiveBar />
+                  <Loader2 className="w-3 h-3 animate-spin text-[#4f82ff]/70 shrink-0" />
                 )}
               </div>
             )}
@@ -999,41 +944,16 @@ export function BuildLivePanel({
   const liveSegments = useMemo<NarrationSegment[]>(() => {
     if (isPersisted) return [];
     const segs: NarrationSegment[] = [];
-    // 按 stepNum 分组：每个 entry 上都记录了它属于哪个步骤。
-    // step entry 本身创建 segment，其他 entry 按 stepNum 归入对应 segment。
-    // 这样即使 tool call 在 step entry 之前到达，也能正确归入对应步骤。
-    const segByStep = new Map<number, NarrationSegment>();
-    let maxStepNum = 0;
-
     for (const entry of entries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
-        const match = entry.label?.match(/Step\s*(\d+)/i);
-        const stepNum = match ? parseInt(match[1], 10) : (maxStepNum + 1);
-        maxStepNum = Math.max(maxStepNum, stepNum);
-        if (!segByStep.has(stepNum)) {
-          const seg: NarrationSegment = { id: String(stepNum), narration: "", actions: [], isLive: false, stepLabel: entry.label };
-          segByStep.set(stepNum, seg);
-        } else {
-          // step entry 到来时补上 stepLabel（可能比 action entries 晚到）
-          segByStep.get(stepNum)!.stepLabel = entry.label;
-        }
+        segs.push({ id: String(segs.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
       } else {
-        const sn = (entry as any).stepNum as number | undefined;
-        const targetStep = (sn != null && sn > 0) ? sn : (maxStepNum > 0 ? maxStepNum : 1);
-        maxStepNum = Math.max(maxStepNum, targetStep);
-        if (!segByStep.has(targetStep)) {
-          segByStep.set(targetStep, { id: String(targetStep), narration: "", actions: [], isLive: false });
-        }
-        segByStep.get(targetStep)!.actions.push(entry);
+        if (segs.length === 0) segs.push({ id: "0", narration: "", actions: [], isLive: false });
+        segs[segs.length - 1].actions.push(entry);
       }
     }
-
-    // 按步骤号顺序输出
-    const sortedSteps = Array.from(segByStep.keys()).sort((a, b) => a - b);
-    for (const sn of sortedSteps) segs.push(segByStep.get(sn)!);
-
-    // 每个 step 生成 narration
+    // 每个 step 根据已收集的 actions 生成 narration；live step 实时更新
     for (const seg of segs) {
       const summary = summarizeActions(seg.actions);
       seg.narration = summary;

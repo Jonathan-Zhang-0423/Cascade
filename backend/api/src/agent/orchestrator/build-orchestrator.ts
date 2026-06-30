@@ -19,10 +19,6 @@ import { lspManager } from "../tools/lsp-manager";
 import { shellManager } from "../tools/shell-manager";
 import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-dependency-analyzer";
 import { loadUserSkills } from "../../skills/user-skill-loader";
-import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../mcp/mcp-config";
-import { McpManager } from "../mcp/mcp-client";
-import { buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
-import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
 
 export interface BuildFile {
   path: string;
@@ -170,9 +166,7 @@ export function buildBuilderSystemPrompt(session: BuildSessionState): string {
     : null;
   const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
   const compileCheckSection = buildEditorCompileCheckPrompt(resolvedFramework);
-  const now = new Date();
-  const dateSection = `\n\n## Current Date\n\nToday is ${now.toISOString().split("T")[0]} (${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}). Use this when making decisions about library versions, API compatibility, or anything time-sensitive.`;
-  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${dateSection}${memorySection}${skillSection}${mobileSection}${compileCheckSection}`;
+  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${memorySection}${skillSection}${mobileSection}${compileCheckSection}`;
 }
 
 export function buildBuilderInitialMessage(
@@ -457,62 +451,6 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       : userKnowledge;
   }
 
-  // MCP: Always start built-in search server; merge user config on top.
-  // Failures are non-blocking — a broken server won't stop the build.
-  let mcpManager: McpManager | null = null;
-  try {
-    const builtinConfig = getBuiltinMcpConfig();
-    const userConfig = loadMcpConfig(session);
-    const mergedConfig: McpConfig = {
-      servers: {
-        ...builtinConfig.servers,
-        ...(userConfig?.servers ?? {}),
-      },
-    };
-
-    mcpManager = new McpManager();
-    await mcpManager.connect(mergedConfig);
-    if (mcpManager.getAvailableTools().length > 0) {
-      const mcpToolNames = getMcpToolNames(mcpManager);
-      // Inject MCP tool guidance into the skill content so the editor knows how to use them
-      const mcpGuidance = `\n\n## External Tools (MCP)
-
-You have access to external tools that connect to real-time services. These tools are prefixed with \`mcp_\` and provide capabilities beyond the project files (e.g. web search, API calls, database queries).
-
-Available MCP tools: ${mcpToolNames.join(", ")}
-
-### research(query) — IMPORTANT: Use Proactively
-
-Call \`research(query)\` whenever ANY of these conditions apply:
-- You are about to use a library, framework, or API and are not 100% certain of the **current** (${new Date().getFullYear()}) syntax or configuration format
-- The task mentions a specific version (e.g. "Tailwind v4", "Next.js 15", "React 19") — your training data may be outdated
-- You need to check if a package/API still exists or has been renamed/deprecated
-- You are writing configuration files (tsconfig, vite.config, tailwind.config, etc.) for a version you haven't seen in your training data
-- The user asks for "latest" or "newest" anything
-
-**DO NOT rely on your training data for version-specific details.** Your knowledge has a cutoff date. When in doubt, research first — it takes seconds and prevents hours of debugging wrong APIs.
-
-### CRITICAL: Research results are INTERNAL context only
-
-The output from research() is raw reference material for YOUR use only. NEVER paste, quote, or forward research results directly to the user. Instead:
-- Read and digest the research findings silently
-- Use the information to write correct code and make informed decisions
-- If the user needs to know something you learned, express it in your own words as part of your narration — brief, relevant, and integrated naturally
-
-Examples of when to call research:
-- "What is the Tailwind CSS v4 configuration format?" (before writing tailwind.config)
-- "React 19 useActionState API" (before using new React APIs)
-- "Vite 6 config changes" (before writing vite.config.ts)
-- "shadcn/ui latest install command" (before running install steps)`;
-      session.skillContent = session.skillContent
-        ? `${session.skillContent}${mcpGuidance}`
-        : mcpGuidance;
-    }
-  } catch (err) {
-    console.warn(`[BuildSession ${session.id}] MCP setup failed:`, err instanceof Error ? err.message : err);
-    mcpManager = null;
-  }
-
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
 
   // AG-10: Analyze step dependencies. By default execution stays sequential
@@ -549,49 +487,6 @@ Examples of when to call research:
         // Merge user-defined tool plugins into builder tools
         builderTools.schemas.push(...userSkillsLoaded.toolSchemas);
         Object.assign(builderTools.handlers, userSkillsLoaded.toolHandlers);
-        // Merge MCP tools into builder tools
-        if (mcpManager && mcpManager.getAvailableTools().length > 0) {
-          const mcpTools = buildMcpTools(mcpManager, emit);
-          builderTools.schemas.push(...mcpTools.schemas);
-          Object.assign(builderTools.handlers, mcpTools.handlers);
-
-          // Register the research sub-agent tool — lets the builder spawn a
-          // focused research agent that uses MCP tools to gather external info.
-          builderTools.schemas.push({
-            type: "function",
-            function: {
-              name: "research",
-              description: "Run a focused research sub-agent to find external information from the web. Use this when you need current docs, API references, best practices, version numbers, or any information not available in the project files. The sub-agent will search the web and return a synthesized answer.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "The research question — be specific. E.g. 'What is the latest TailwindCSS v4 configuration format?' or 'How to configure ESLint flat config for TypeScript?'",
-                  },
-                },
-                required: ["query"],
-              },
-            },
-          });
-          const capturedMcpManager = mcpManager;
-          builderTools.handlers["research"] = async (args, emitFn) => {
-            const query = args.query as string;
-            if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-            const result = await runResearchAgent(query, capturedMcpManager, emitFn);
-            // Emit research result summary so the UI shows completion
-            const wordCount = result ? result.split(/\s+/).length : 0;
-            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
-            const summaryLine = sourceCount > 0
-              ? `Found ${sourceCount} source(s), ${wordCount} words`
-              : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            // Sanitize: strip think tags, URLs, collapse whitespace, cap length
-            const sanitized = sanitizeResearchResult(result);
-            return sanitized || "(No findings)";
-          };
-        }
         await withFallback(providerChainEditor, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,
@@ -599,7 +494,7 @@ Examples of when to call research:
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 100, emitOnIterationExhausted: true, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
@@ -610,8 +505,6 @@ Examples of when to call research:
     emit({ type: "done" });
     telemetry.setFinalStatus("error", message);
     await telemetry.flush();
-    // Clean up MCP on error path
-    if (mcpManager) mcpManager.disconnect().catch(() => {});
     return;
   }
 
@@ -619,8 +512,6 @@ Examples of when to call research:
     emit({ type: "done" });
     telemetry.setFinalStatus("aborted");
     await telemetry.flush();
-    // Clean up MCP on abort path
-    if (mcpManager) mcpManager.disconnect().catch(() => {});
     return;
   }
 
@@ -720,13 +611,5 @@ Examples of when to call research:
   if (!passed) telemetry.setFinalStatus(session.aborted ? "aborted" : "fail");
   telemetry.setFixCycle(0);
   await telemetry.flush();
-
-  // Disconnect MCP servers (best-effort, non-blocking)
-  if (mcpManager) {
-    mcpManager.disconnect().catch((err) =>
-      console.warn(`[BuildSession ${session.id}] MCP disconnect failed:`, err instanceof Error ? err.message : err),
-    );
-  }
-
   emit({ type: "done" });
 }

@@ -12,7 +12,7 @@ import {
   PROJECT_NAME_REGEX,
   validateManagerEvent,
 } from "@/components/ide/chat/chat-types";
-import { stripProjectNameMarker, buildManagerHistory } from "@/components/ide/chat/chat-utils";
+import { stripProjectNameMarker } from "@/components/ide/chat/chat-utils";
 import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
 import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
@@ -102,11 +102,7 @@ export class ManagerStreamInstance {
     this.clearLiveTimer();
     this.actions.addManagerMessage({ role: "user", content: trimmed });
     this.actions.setManagerResponding(true);
-    // Reset connectionErrorAdded only for a brand-new user send so that
-    // reconnect retries within the same session don't re-add the error banner.
-    // It will be set back to true the first time an error message is appended.
     this.connectionErrorAdded = false;
-    this.reconnectRetry = 0;
     this.resetInactivityTimer();
     this.state.set({
       preparingPlan: false,
@@ -115,12 +111,9 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
-    const allMessages = this.actions.getManagerMessages();
-
-    // Compress any completed build round into a one-line summary so the planner
-    // focuses on the NEW request, not the previous round's plan. (Pure logic
-    // lives in buildManagerHistory — unit-tested in chat-utils.test.ts.)
-    const historyMessages = buildManagerHistory(allMessages as any);
+    const historyMessages = this.actions.getManagerMessages()
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     const controller = new AbortController();
     this.abortController = controller;
@@ -156,12 +149,10 @@ export class ManagerStreamInstance {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           messages: historyMessages,
           files,
           projectId: this.projectId,
-          chatSessionId: this.chatSessionId,
         }),
         signal: controller.signal,
       });
@@ -388,18 +379,9 @@ export class ManagerStreamInstance {
       const stillCurrent = myGen === this.generation;
 
       if (!isAbort && stillCurrent && this.sessionId) {
-        // Only attempt reconnect if under retry limit; otherwise fall through
-        // to handleStreamError so the user sees exactly one error message.
-        if (this.reconnectRetry < 3) {
-          this.scheduleReconnect();
-          // Clear stale live state while waiting for reconnect so old content
-          // doesn't linger in the panel.
-          this.clearLive(0);
-          return false;
-        }
+        this.scheduleReconnect();
       }
 
-      // No reconnect scheduled — show error once and fully reset state.
       if (!isAbort && !this.connectionErrorAdded && stillCurrent) {
         this.handleStreamError("connect");
       }
@@ -557,15 +539,7 @@ export class ManagerStreamInstance {
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       if (!isAbort && myGen === this.generation && this.sessionId) {
-        if (this.reconnectRetry < 3) {
-          this.scheduleReconnect();
-          this.clearLive(0); // clear stale live content while waiting
-          return;
-        }
-        // Exceeded retry limit — fully reset so user can send a new message.
-        if (!this.connectionErrorAdded) {
-          this.handleStreamError("connect");
-        }
+        this.scheduleReconnect();
       }
     } finally {
       if (myGen === this.generation && !this.reconnectTimer) {
@@ -640,7 +614,6 @@ export class ManagerStreamInstance {
       });
       const data = resp.ok ? await resp.json() : null;
       if (data?.active) {
-        const snapshot = this.actions.getStreamingSnapshot();
         const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
           && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId
@@ -704,7 +677,7 @@ export class ManagerStreamInstance {
       this.actions.setManagerResponding(false);
       this.state.set({ preparingPlan: false });
       this.clearLive(0);
-    }, 30_000);
+    }, 60_000);
   }
 
   private clearLive(delay?: number): void {
