@@ -14,21 +14,60 @@ import { useProjectStore } from "@/stores/project-store";
  * Create StoreActions bound to a specific project + session.
  * Guard: only write UI state when BOTH projectId AND currentSessionId match.
  * This prevents AI stream responses from bleeding across sessions.
+ *
+ * addManagerMessage / addChatMessage are special:
+ *   - If guard passes → write to store (which also queues DB upload).
+ *   - If guard fails  → write directly to DB so the message is persisted and
+ *     visible when the user switches back to this session. Store is NOT touched,
+ *     preventing cross-session UI bleed.
  */
 function createStoreActions(projectId: string, sessionId: string | null): StoreActions {
   const guard = () => {
     const s = useIDEStore.getState();
-    return s.projectId === projectId && s.currentSessionId === sessionId;
+    return s.idePageMounted && s.projectId === projectId && s.currentSessionId === sessionId;
   };
   const store = () => useIDEStore.getState();
 
+  // Persist a message directly to the server when the session is in the background.
+  const persistMsgToDB = (msg: { role: string; content: string; [k: string]: any }, kind: "chat" | "manager") => {
+    const sid = sessionId ?? "main";
+    const clientId = crypto.randomUUID();
+    const seq = Date.now(); // use timestamp as fallback seq for background msgs
+    const body = JSON.stringify({
+      messages: [{
+        clientId,
+        kind,
+        role: msg.role,
+        content: msg.content ?? "",
+        seq,
+        timestamp: Date.now(),
+        sessionId: sid,
+        metadata: msg.plan || msg.thinking || msg.source
+          ? JSON.stringify({ plan: msg.plan, thinking: msg.thinking, source: msg.source })
+          : null,
+      }],
+    });
+    fetch(`/api/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: body.length < 60_000,
+    }).catch(() => {});
+  };
+
   return {
-    // Guarded — only write when this project+session is active
-    addChatMessage: (msg) => { if (guard()) store().addChatMessage(msg as any); },
-    addManagerMessage: (msg) => { if (guard()) store().addManagerMessage(msg as any); },
+    // addChatMessage / addManagerMessage: write store if active, else persist to DB
+    addChatMessage: (msg) => {
+      if (guard()) store().addChatMessage(msg as any);
+      else persistMsgToDB(msg as any, "chat");
+    },
+    addManagerMessage: (msg) => {
+      if (guard()) store().addManagerMessage(msg as any);
+      else persistMsgToDB(msg as any, "manager");
+    },
     setManagerPlan: (plan) => { if (guard()) store().setManagerPlan(plan); },
     clearManagerPlan: () => { if (guard()) store().clearManagerPlan(); },
-    setManagerResponding: (v) => { if (guard()) store().setManagerResponding(v); },
+    setManagerResponding: (v) => { store().setManagerResponding(v, sessionId ?? "main"); },
     updateTaskStatus: (id, s) => { if (guard()) store().updateTaskStatus(id, s); },
     setTaskFailureReason: (id, reason) => { if (guard()) store().setTaskFailureReason(id, reason); },
     freezeLatestPlanStatuses: () => { if (guard()) store().freezeLatestPlanStatuses(); },

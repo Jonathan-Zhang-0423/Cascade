@@ -19,6 +19,7 @@ import { SkillsModal } from "@/components/ide/skills-modal";
 import type { Skill } from "@/components/ide/skill-types";
 import { CommandPalette } from "@/components/ide/command-palette";
 import { LLMMonitor } from "@/components/ide/llm-monitor";
+import { ChangelogModal } from "@/components/ide/changelog-modal";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -41,6 +42,7 @@ export default function IDEPage() {
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [skillsModal, setSkillsModal] = useState<{ skill: Skill | null; scope: "user" | "project" } | null>(null);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   // 全屏仅针对右内容区预览
   const handleFullscreen = useCallback(() => {
@@ -91,6 +93,11 @@ export default function IDEPage() {
     window.addEventListener("plan-preview-open", handler);
     return () => window.removeEventListener("plan-preview-open", handler);
   }, [t]);
+
+  // 打开 changelog 详情弹窗
+  const openChangelogTab = useCallback((_refId: number) => {
+    setChangelogOpen(true);
+  }, []);
 
   const addPreviewTab = () => {
     const id = `tab-${Date.now()}`;
@@ -196,6 +203,12 @@ export default function IDEPage() {
     };
   }, [id, project, projectId, loadProject, navigate]);
 
+  // Track IDE page mount state for stream-registry guard
+  useEffect(() => {
+    useIDEStore.getState().setIdePageMounted(true);
+    return () => { useIDEStore.getState().setIdePageMounted(false); };
+  }, []);
+
   useEffect(() => {
     if (isMobile) return;
     const handler = (e: KeyboardEvent) => {
@@ -249,6 +262,9 @@ export default function IDEPage() {
         onAddTab={addPreviewTab}
         onToggleTools={() => { addPreviewTab(); }}
         onFullscreen={handleFullscreen}
+        onOpenNotification={(type, refId) => {
+          if (type === "changelog") openChangelogTab(refId);
+        }}
       />
       <CommandPalette />
 
@@ -308,7 +324,9 @@ export default function IDEPage() {
           {activeTool && (
             <div className="h-full overflow-hidden">
               {activeTool === "files" && <FileTree />}
-              {activeTool === "chat" && <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>}
+              <div style={{ display: activeTool === "chat" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+                <ChatErrorBoundary><ChatPanel /></ChatErrorBoundary>
+              </div>
               {activeTool === "history" && <CheckpointPanel />}
               {activeTool === "skills" && (
                 <SkillsPanel onEdit={(skill, scope) => setSkillsModal({ skill, scope })} refreshKey={skillsRefreshKey} />
@@ -357,6 +375,7 @@ export default function IDEPage() {
           onSaved={() => { setSkillsModal(null); setSkillsRefreshKey((k) => k + 1); }}
         />
       )}
+      <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   );
 }

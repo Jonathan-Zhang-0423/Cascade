@@ -102,7 +102,11 @@ export class ManagerStreamInstance {
     this.clearLiveTimer();
     this.actions.addManagerMessage({ role: "user", content: trimmed });
     this.actions.setManagerResponding(true);
+    // Reset connectionErrorAdded only for a brand-new user send so that
+    // reconnect retries within the same session don't re-add the error banner.
+    // It will be set back to true the first time an error message is appended.
     this.connectionErrorAdded = false;
+    this.reconnectRetry = 0;
     this.resetInactivityTimer();
     this.state.set({
       preparingPlan: false,
@@ -111,9 +115,30 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
-    const historyMessages = this.actions.getManagerMessages()
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const allMessages = this.actions.getManagerMessages()
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing);
+
+    // Find the last buildResult message — everything before it is a "completed round".
+    // Compress completed rounds into a single summary to prevent the LLM from
+    // fixating on old plan context when the user sends a new request.
+    const lastBuildIdx = allMessages.reduce((acc, m, i) => (m as any).buildResult ? i : acc, -1);
+
+    let historyMessages: Array<{ role: "user" | "assistant"; content: string }>;
+    if (lastBuildIdx >= 0) {
+      // Summarize everything up to and including the buildResult as "previous round done"
+      const afterBuild = allMessages.slice(lastBuildIdx + 1);
+      const previousUserMsgs = allMessages.slice(0, lastBuildIdx + 1).filter(m => m.role === "user");
+      const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
+      const roundSummary = lastPrevUserMsg
+        ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
+        : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
+      historyMessages = [
+        { role: "assistant", content: roundSummary },
+        ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ];
+    } else {
+      historyMessages = allMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    }
 
     const controller = new AbortController();
     this.abortController = controller;
@@ -149,10 +174,12 @@ export class ManagerStreamInstance {
       const response = await fetch("/api/manager-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           messages: historyMessages,
           files,
           projectId: this.projectId,
+          chatSessionId: this.chatSessionId,
         }),
         signal: controller.signal,
       });
@@ -379,9 +406,18 @@ export class ManagerStreamInstance {
       const stillCurrent = myGen === this.generation;
 
       if (!isAbort && stillCurrent && this.sessionId) {
-        this.scheduleReconnect();
+        // Only attempt reconnect if under retry limit; otherwise fall through
+        // to handleStreamError so the user sees exactly one error message.
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          // Clear stale live state while waiting for reconnect so old content
+          // doesn't linger in the panel.
+          this.clearLive(0);
+          return false;
+        }
       }
 
+      // No reconnect scheduled — show error once and fully reset state.
       if (!isAbort && !this.connectionErrorAdded && stillCurrent) {
         this.handleStreamError("connect");
       }
@@ -539,7 +575,15 @@ export class ManagerStreamInstance {
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       if (!isAbort && myGen === this.generation && this.sessionId) {
-        this.scheduleReconnect();
+        if (this.reconnectRetry < 3) {
+          this.scheduleReconnect();
+          this.clearLive(0); // clear stale live content while waiting
+          return;
+        }
+        // Exceeded retry limit — fully reset so user can send a new message.
+        if (!this.connectionErrorAdded) {
+          this.handleStreamError("connect");
+        }
       }
     } finally {
       if (myGen === this.generation && !this.reconnectTimer) {
@@ -614,6 +658,7 @@ export class ManagerStreamInstance {
       });
       const data = resp.ok ? await resp.json() : null;
       if (data?.active) {
+        const snapshot = this.actions.getStreamingSnapshot();
         const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
           && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId
@@ -677,7 +722,7 @@ export class ManagerStreamInstance {
       this.actions.setManagerResponding(false);
       this.state.set({ preparingPlan: false });
       this.clearLive(0);
-    }, 60_000);
+    }, 30_000);
   }
 
   private clearLive(delay?: number): void {

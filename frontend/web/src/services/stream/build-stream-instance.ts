@@ -39,6 +39,8 @@ export class BuildStreamInstance {
   private disposed = false;
   private actionLog: ActionLogEntry[] = [];
   private thinkingStartTime: number | null = null;
+  private currentStepNum = 0;   // 当前执行步骤号，用于给 actionLog entry 打标
+  private executing = false;    // 防止并发 execute() 调用
   userConfirmation = "";
 
   constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
@@ -46,6 +48,18 @@ export class BuildStreamInstance {
     this.chatSessionId = chatSessionId;
     this.actions = actions;
     this.state = new ObservableState<BuildStreamState>({ ...INITIAL_BUILD_STREAM_STATE });
+  }
+
+  /** Send debug trace to server so we can see it in pm2 logs */
+  private _dbg(msg: string): void {
+    const full = `[BuildStream:${this.projectId?.slice(0,8)}] ${msg}`;
+    console.warn(full);
+    fetch("/api/_dbg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msg: full }),
+      keepalive: true,
+    }).catch(() => {});
   }
 
   // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
@@ -68,10 +82,24 @@ export class BuildStreamInstance {
    */
   async execute(opts?: { userMessage?: string }): Promise<void> {
     if (this.disposed) return;
+    // 防止并发 execute()：同一 slot 上第二次点击直接忽略
+    if (this.executing) { this._dbg("execute: already executing, ignoring"); return; }
+    this.executing = true;
+    this._dbg("execute() called");
+    try {
+      await this._executeInner(opts);
+    } finally {
+      this.executing = false;
+    }
+  }
+
+  private async _executeInner(opts?: { userMessage?: string }): Promise<void> {
+    if (this.disposed) { this._dbg("disposed, returning"); return; }
 
     const isDirect = !!opts?.userMessage;
     const existingPlan = this.actions.getManagerPlan();
-    if (!isDirect && !existingPlan) return;
+    if (!isDirect && !existingPlan) { this._dbg("no plan and not direct, returning"); return; }
+    this._dbg("START isDirect=" + isDirect);
 
     // Self-heal stale session
     if (this.sessionId) {
@@ -85,7 +113,15 @@ export class BuildStreamInstance {
           stillActive = !!data?.active && !data?.done;
         }
       } catch {}
-      if (stillActive) return;
+      if (stillActive) {
+        // Session 还在跑但 SSE 断了（如刷新页面）——重连，不要启动新 session
+        if (!this.reader) {
+          this.actions.setChatMode("build");
+          this.state.set({ buildPhase: "thinking" });
+          await this.connect(this.sessionId, this.lastEventId);
+        }
+        return;
+      }
       this.sessionId = null;
       this.reader = null;
       try { localStorage.removeItem(this.storageKey); } catch {}
@@ -100,7 +136,6 @@ export class BuildStreamInstance {
     }
     this.actions.setExecutingTaskIndex(0);
     this.actions.setManagerResponding(false);
-    this.state.set({ buildPhase: "thinking" });
     this.actions.setChatMode("build");
     this.actions.setFixCycle(0);
     this.actions.setCompletionData(null);
@@ -132,7 +167,11 @@ export class BuildStreamInstance {
     const myGen = ++this.generation;
     this.connectionErrorAdded = false;
 
+    // Write localStorage key immediately alongside the loading indicator.
+    // A refresh before POST completes leaves a key pointing to a session
+    // that may not exist yet; attemptReconnect handles this with a short retry.
     try { localStorage.setItem(this.storageKey, sessionId); } catch {}
+    this.state.set({ buildPhase: "thinking" });
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -141,7 +180,8 @@ export class BuildStreamInstance {
     // Accumulator state
     let thinkingAccumulated = "";
     let commAccumulated = "";
-    let currentStepNum = 0;
+    let receivedAllComplete = false;
+    this.currentStepNum = 0;
 
     let lastSnapshotFlush = 0;
     const flushSnapshot = () => {
@@ -160,6 +200,17 @@ export class BuildStreamInstance {
     };
 
     try {
+      // Pre-register the session so that a page refresh during the main POST
+      // (which can take hundreds of ms for large file payloads) still finds the
+      // session via /status. This is a fire-and-forget with keepalive so it
+      // survives page unload.
+      fetch("/api/build-session/pre-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+        keepalive: true,
+      }).catch(() => {});
+
       const framework = useProjectStore.getState().projects.find((p) => p.id === this.projectId)?.framework;
       const response = await fetch("/api/build-session", {
         method: "POST",
@@ -189,15 +240,23 @@ export class BuildStreamInstance {
         return;
       }
 
+      // POST succeeded — backend session now exists. Safe to persist the key
+      // and show the loading indicator. A refresh after this point will find
+      // the session via localStorage and can reconnect successfully.
+      try { localStorage.setItem(this.storageKey, sessionId); } catch {}
+      this.state.set({ buildPhase: "thinking" });
+
       const reader = response.body?.getReader();
       if (!reader) return;
       this.reader = reader;
       this.lastActivityTs = Date.now();
 
-      const watchdog = createHeartbeatWatchdog(15000, () => {
+      const watchdog = createHeartbeatWatchdog(45000, () => {
+        this._dbg("WATCHDOG FIRED 45s inactivity gen=" + myGen);
         try { reader.cancel(); } catch {}
       });
 
+      this._dbg("parseSseStream starting gen=" + myGen);
       await parseSseStream<BuildSseEvent>(reader, {
         onHeartbeat: () => {
           this.lastActivityTs = Date.now();
@@ -241,7 +300,7 @@ export class BuildStreamInstance {
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "", thinkingElapsedSec: null });
             this.thinkingStartTime = null;
             const stepNum = ev.stepNumber ?? 1;
-            currentStepNum = stepNum;
+            this.currentStepNum = stepNum; const currentStepNum = this.currentStepNum;
             this.appendActionLog({ type: "step", label: `Step ${stepNum}/${normalizedSteps.length}: ${ev.stepTitle || ""}`, detail: "", timestamp: Date.now() });
             // Emit plan action on first step — shows plan steps as detail
             if (stepNum === 1 && normalizedSteps.length > 0) {
@@ -289,7 +348,7 @@ export class BuildStreamInstance {
             this.state.set({
               narrationText: commAccumulated,
               buildPhase: "working",
-              stepNarrations: { ...prevNarrations, [currentStepNum]: commAccumulated },
+              stepNarrations: { ...prevNarrations, [this.currentStepNum]: commAccumulated },
             });
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
@@ -386,6 +445,7 @@ export class BuildStreamInstance {
               precedingNarration: commAccumulated || undefined,
             });
           } else if (type === "all_complete") {
+            receivedAllComplete = true;
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
               normalizedSteps.forEach((step) => {
@@ -420,6 +480,7 @@ export class BuildStreamInstance {
                     segs[segs.length - 1].actions.push(entry);
                   }
                 }
+                this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
                 this.actions.addManagerMessage({
                   role: "assistant",
                   content: "",
@@ -430,6 +491,9 @@ export class BuildStreamInstance {
                     tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
                   },
                 });
+                this._dbg("all_complete: addManagerMessage called with buildResult");
+              } else {
+                this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
               }
             }
             this.actions.setStreamingSnapshot(null);
@@ -467,12 +531,16 @@ export class BuildStreamInstance {
       });
 
       watchdog.clear();
+      this._dbg("parseSseStream exited normally gen=" + myGen + " allComplete=" + receivedAllComplete);
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       const stillCurrent = myGen === this.generation;
+      this._dbg("CATCH isAbort=" + isAbort + " stillCurrent=" + stillCurrent + " sessionId=" + this.sessionId + " allComplete=" + receivedAllComplete + " gen=" + myGen + "/" + this.generation + " err=" + (error instanceof Error ? error.message : String(error)));
 
-      if (!isAbort && stillCurrent && this.sessionId) {
-        if (this.reconnectRetry < 3) {
+      // If all_complete was already received, the build finished successfully —
+      // don't attempt reconnection or show error for the stream closing.
+      if (!receivedAllComplete && !isAbort && stillCurrent && this.sessionId) {
+        if (this.reconnectRetry < 10) {
           this.scheduleReconnect();
           return;
         }
@@ -486,26 +554,44 @@ export class BuildStreamInstance {
         }
       }
     } finally {
+      this._dbg("FINALLY gen=" + myGen + "/" + this.generation + " allComplete=" + receivedAllComplete + " reconnectTimer=" + !!this.reconnectTimer);
       if (this.heartbeatWatchdog) { clearTimeout(this.heartbeatWatchdog); this.heartbeatWatchdog = null; }
       const isCurrentGen = myGen === this.generation;
       if (isCurrentGen) {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
         this.reader = null;
-        try { localStorage.removeItem(this.storageKey); } catch {}
+        // Only remove the localStorage key if we are NOT waiting to reconnect.
+        // If reconnectTimer is set, we still need the key for the next attempt
+        // (e.g. page refresh while waiting for reconnect).
+        if (!this.reconnectTimer) {
+          try { localStorage.removeItem(this.storageKey); } catch {}
+        }
         if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
       }
-      if (isCurrentGen) {
+      // Only clear build UI state if all_complete didn't already handle it.
+      // When all_complete fires, it persists the build result and clears the
+      // live panel. Running this again is redundant — and if we got here via
+      // a watchdog timeout BEFORE all_complete, we should attempt reconnection
+      // (handled in catch above), not show a false "completed" state.
+      if (isCurrentGen && !receivedAllComplete) {
+        this._dbg("FINALLY: clearing build state (no all_complete)");
         this.actions.setStreamingSnapshot(null);
         this.state.set({ buildPhase: null });
         this.clearLive();
         if (this.actions.getProjectId() === this.projectId) {
-          normalizedSteps.forEach((step) => {
-            const key = String(step.step);
-            const s = this.actions.getTaskStatuses()[key];
-            if (s === "pending" || s === "running") this.actions.updateTaskStatus(key, "done");
-          });
+          // 不在这里把步骤标记为 done — 如果后端还在跑，步骤尚未完成，
+          // 错误地标记 done 会让 plan card 显示全部完成但实际没完成。
+          // 只有 all_complete 事件到来时才标记完成。
+          // 如果 session 结束时还有 pending/running 步骤，保持原状，
+          // 下次重连后会从后端拉取真实状态。
           this.actions.setExecutingTaskIndex(null);
+          this.actions.setAiResponding(false);
+        }
+      } else if (isCurrentGen && receivedAllComplete) {
+        // all_complete already cleaned up build state; just ensure
+        // aiResponding is cleared so the input box re-enables.
+        if (this.actions.getProjectId() === this.projectId) {
           this.actions.setAiResponding(false);
         }
       }
@@ -531,8 +617,7 @@ export class BuildStreamInstance {
 
     let thinkingAccumulated = "";
     let commAccumulated = "";
-
-    // Restore from snapshot
+    let receivedAllComplete = false;
     const snapshot = this.actions.getStreamingSnapshot();
     if (snapshot?.type === "build") {
       thinkingAccumulated = snapshot.thinkingText || "";
@@ -557,7 +642,7 @@ export class BuildStreamInstance {
       this.state.set({ isReconnecting: false });
       this.reconnectRetry = 0;
 
-      const watchdog = createHeartbeatWatchdog(15000, () => {
+      const watchdog = createHeartbeatWatchdog(45000, () => {
         try { reader.cancel(); } catch {}
       });
 
@@ -636,6 +721,7 @@ export class BuildStreamInstance {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
           } else if (type === "all_complete") {
+            receivedAllComplete = true;
             if (isCurrentProject) {
               nSteps.forEach((step) => {
                 const key = String(step.step);
@@ -697,7 +783,7 @@ export class BuildStreamInstance {
       watchdog.clear();
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
-      if (!isAbort && myGen === this.generation && this.sessionId) {
+      if (!receivedAllComplete && !isAbort && myGen === this.generation && this.sessionId) {
         this.scheduleReconnect();
       }
     } finally {
@@ -706,12 +792,20 @@ export class BuildStreamInstance {
         this.sessionId = null;
         this.reader = null;
         try { localStorage.removeItem(this.storageKey); } catch {}
-        this.actions.setStreamingSnapshot(null);
-        this.state.set({ buildPhase: null });
-        this.clearLive();
-        if (this.actions.getProjectId() === this.projectId) {
-          this.actions.setExecutingTaskIndex(null);
-          this.actions.setAiResponding(false);
+        if (!receivedAllComplete) {
+          this.actions.setStreamingSnapshot(null);
+          this.state.set({ buildPhase: null });
+          this.clearLive();
+          if (this.actions.getProjectId() === this.projectId) {
+            this.actions.setExecutingTaskIndex(null);
+            this.actions.setAiResponding(false);
+          }
+        } else {
+          // all_complete already cleaned up build state; just ensure
+          // aiResponding is cleared so the input box re-enables.
+          if (this.actions.getProjectId() === this.projectId) {
+            this.actions.setAiResponding(false);
+          }
         }
       }
     }
@@ -721,6 +815,7 @@ export class BuildStreamInstance {
    * Stop the current build.
    */
   stop(): void {
+    this._dbg("stop() called sessionId=" + this.sessionId);
     if (this.sessionId) {
       fetch(`/api/build-session/${this.sessionId}`, { method: "DELETE" }).catch(() => {});
     }
@@ -749,13 +844,32 @@ export class BuildStreamInstance {
       return;
     }
 
-    // Check session status
+    // Check session status — retry once after a short delay in case the page
+    // was refreshed while the POST /api/build-session was still in-flight
+    // (session exists in backend but response hadn't arrived yet).
     this.state.set({ isReconnecting: true });
+    const checkStatus = async (): Promise<{ active: boolean } | null> => {
+      try {
+        const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
+          cache: "no-store", headers: { "Cache-Control": "no-cache" },
+        });
+        return resp.ok ? await resp.json() : null;
+      } catch { return null; }
+    };
+
     try {
-      const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
-        cache: "no-store", headers: { "Cache-Control": "no-cache" },
-      });
-      const data = resp.ok ? await resp.json() : null;
+      let data = await checkStatus();
+
+      // 404 / inactive: the POST may still be in-flight. Wait up to 2s with
+      // 500ms polls before giving up so a fast refresh doesn't miss the session.
+      if (!data?.active) {
+        for (let i = 0; i < 4 && !data?.active; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (this.disposed || this.sessionId) return; // aborted or new send started
+          data = await checkStatus();
+        }
+      }
+
       if (data?.active) {
         this.actions.setExecutingTaskIndex(0);
         this.actions.setChatMode("build");
@@ -775,6 +889,7 @@ export class BuildStreamInstance {
    * Clean up all resources.
    */
   dispose(): void {
+    this._dbg("dispose()");
     this.disposed = true;
     this.abort();
     this.clearTimers();
@@ -787,12 +902,14 @@ export class BuildStreamInstance {
    * previous run doesn't bleed into the freshly-shown session.
    */
   resetLive(): void {
+    this._dbg("resetLive() isActive=" + this.isActive);
     this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────
 
   private abort(): void {
+    this._dbg("abort() hasReader=" + !!this.reader);
     if (this.reader) {
       this.reader.cancel().catch(() => {});
       this.reader = null;
@@ -815,7 +932,9 @@ export class BuildStreamInstance {
   }
 
   private appendActionLog(entry: ActionLogEntry): void {
-    this.actionLog.push(entry);
+    // 给每个 entry 打上当前步骤号，供前端分段渲染使用
+    const entryWithStep = entry.stepNum !== undefined ? entry : { ...entry, stepNum: this.currentStepNum };
+    this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
   }
 
