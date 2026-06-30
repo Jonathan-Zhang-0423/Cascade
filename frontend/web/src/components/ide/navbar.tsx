@@ -12,6 +12,7 @@ import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 import { getFirstDeviceForPlatform } from "@/lib/device-specs";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { ChangelogModal } from "./changelog-modal";
 import { PublishDialog } from "@/components/square/publish-dialog";
 
@@ -120,6 +121,7 @@ export function Navbar({
   const { lang, setLang } = useLanguageStore();
   const [, navigate] = useLocation();
   const t = useT();
+  const { toast } = useToast();
 
   // dropdown menu
   const [logoMenuOpen, setLogoMenuOpen] = useState(false);
@@ -923,7 +925,13 @@ export function Navbar({
         projectId={projectId}
         projectName={projectName}
         existing={publishedApp}
-        onPublished={(app) => { setPublishedApp((prev) => ({ ...prev, ...app } as any)); setPublishOpen(false); }}
+        onPublished={(app, linkCopied) => {
+          setPublishedApp((prev) => ({ ...prev, ...app } as any));
+          setPublishOpen(false);
+          if (linkCopied) {
+            toast({ title: "已复制分享链接到剪切板" });
+          }
+        }}
         onUnpublished={() => { setPublishedApp(null); }}
       />
     )}

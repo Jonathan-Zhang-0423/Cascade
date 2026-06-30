@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Code2, Lock, Globe, Link2, Camera, RefreshCw, ChevronRight, ChevronLeft } from "lucide-react";
+import { Code2, Lock, Globe, Link2, Camera, RefreshCw, ChevronRight, ChevronLeft, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
@@ -20,7 +20,7 @@ interface PublishDialogProps {
     visibility: Visibility;
     previewScreenshot: string | null;
   } | null;
-  onPublished?: (app: { id: string }) => void;
+  onPublished?: (app: { id: string }, linkCopied?: boolean) => void;
   onUnpublished?: () => void;
 }
 
@@ -134,11 +134,36 @@ export function PublishDialog({
           isOpenSource,
           visibility,
           previewScreenshot: screenshot ?? undefined,
+          framework: category,
         }),
       });
       if (!res.ok) throw new Error("failed");
       const data = await res.json();
-      onPublished?.(data.app);
+
+      // 仅链接可访问：自动复制分享链接
+      if (visibility === "link_only" && data.app?.id) {
+        const shareUrl = `${window.location.origin}/CreateSquare/app/${data.app.id}`;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(shareUrl);
+          } else {
+            const el = document.createElement("textarea");
+            el.value = shareUrl;
+            el.style.position = "fixed";
+            el.style.opacity = "0";
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand("copy");
+            document.body.removeChild(el);
+          }
+          onPublished?.(data.app, true);
+        } catch {
+          onPublished?.(data.app, false);
+        }
+      } else {
+        onPublished?.(data.app);
+      }
+
       onClose();
     } catch {
       setError("发布失败，请稍后重试。");
