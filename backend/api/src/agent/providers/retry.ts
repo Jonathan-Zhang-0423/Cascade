@@ -7,6 +7,15 @@ function isRateLimitError(err: unknown): boolean {
   return msg.includes("429") || msg.includes("rate") || msg.includes("速率限制");
 }
 
+/**
+ * Transient network errors that are safe to retry (the request may not have
+ * been processed, or was streaming and got interrupted mid-way).
+ */
+function isTransientError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /terminated|ECONNRESET|ETIMEDOUT|socket hang up|network|UND_ERR/i.test(msg);
+}
+
 export async function withRetry<T>(
   label: string,
   factory: () => Promise<T>,
@@ -27,12 +36,18 @@ export async function withRetry<T>(
 
       if (attempt < maxAttempts) {
         const isRateLimit = isRateLimitError(err);
-        const baseDelay = isRateLimit ? RATE_LIMIT_BASE_DELAY_MS : BASE_DELAY_MS;
-        const delayMs = baseDelay * Math.pow(2, attempt - 1);
-        console.warn(
-          `[retry] ${label} — attempt ${attempt}/${maxAttempts} failed: ${errMsg}. ${isRateLimit ? "Rate limited — " : ""}Retrying in ${delayMs}ms…`,
-        );
-        await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+        const isTransient = isTransientError(err);
+        if (isRateLimit || isTransient) {
+          const baseDelay = isRateLimit ? RATE_LIMIT_BASE_DELAY_MS : BASE_DELAY_MS;
+          const delayMs = baseDelay * Math.pow(2, attempt - 1);
+          console.warn(
+            `[retry] ${label} — attempt ${attempt}/${maxAttempts} failed: ${errMsg}. ${isRateLimit ? "Rate limited — " : isTransient ? "Transient — " : ""}Retrying in ${delayMs}ms…`,
+          );
+          await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+        } else {
+          // Non-retryable error — throw immediately
+          throw err;
+        }
       } else {
         console.warn(
           `[retry] ${label} — attempt ${attempt}/${maxAttempts} failed: ${errMsg}. All attempts exhausted.`,
