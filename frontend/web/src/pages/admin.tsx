@@ -26,6 +26,8 @@ interface AppUser {
   username: string;
   email: string | null;
   phone: string | null;
+  githubId: string | null;
+  wechatOpenId: string | null;
   activated: boolean;
   authMethod: string;
   projectCount: number;
@@ -1156,7 +1158,14 @@ export default function AdminPage() {
                                 return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={style}>{cat}</span>;
                               })()}
                             </td>
-                            <td className="px-5 py-3.5 text-gray-600">{userColByKey["auth"].value(u)}</td>
+                            <td className="px-5 py-3.5 text-gray-600">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {u.phone && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>📱</span>}
+                                {u.email && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(99,102,241,0.08)", color: "#4f46e5" }}>📧</span>}
+                                {u.githubId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(0,0,0,0.06)", color: "#333" }}>GH</span>}
+                                {u.wechatOpenId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#07c160" }}>微信</span>}
+                              </div>
+                            </td>
                             <td className="px-5 py-3.5">
                               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={u.activated ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" } : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}>
                                 {u.activated ? "已激活" : "未激活"}
@@ -1661,7 +1670,7 @@ export default function AdminPage() {
                       <div className="space-y-2">
                         {squareStats.byFramework.map(({ framework, cnt }) => {
                           const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
-                          const labels: Record<string, string> = { web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
+                          const labels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
                           return (
                             <div key={framework}>
                               <div className="flex justify-between text-[12px] mb-1">
@@ -1763,7 +1772,7 @@ export default function AdminPage() {
                         </thead>
                         <tbody>
                           {squareStats.recent.map((app) => {
-                            const fwLabels: Record<string, string> = { web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
+                            const fwLabels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
                             const visLabels: Record<string, string> = { public: "公开", link_only: "链接", private: "私有" };
                             const visColors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#9ca3af" };
                             const isBusy = squareActioning === app.id;
