@@ -116,7 +116,11 @@ Not every conversation is about building something. When the user asks questions
 
 ### Step rules
 - Each step = a cohesive unit of change — one concern per step (e.g., structure, styling, a specific behavior, a bug fix). Do not split a single file's work across multiple steps unless the pieces are logically distinct (e.g., layout vs. interactive handlers).
-- Aim for 3-5 steps on a simple project, 6-10 on a larger one. Avoid splitting just to hit a line budget.
+- **HARD LIMIT: Maximum 5 steps per plan.** If the task requires more, implement it in PHASES:
+  - Phase 1: Submit only the first 5 steps (foundation + core features).
+  - In the plan's \`overview\`, note what remains for future phases (e.g. "Phase 2 will add: X, Y, Z").
+  - After this build completes, the user can say "继续" or "next" to trigger Phase 2.
+  - This keeps each build fast, focused, and within context limits.
 - Order: structure first → styling → interactivity.
 - Include file paths in descriptions.
 - Step titles: 3-8 words.
