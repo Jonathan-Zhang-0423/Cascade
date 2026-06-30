@@ -11,6 +11,8 @@ import { insertProjectSchema } from "@cascade/database";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { requireInviteCode } from "../middleware/auth-middleware";
+import { getOptimalClient } from "../../agent/providers/kimi-client";
+import { DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 
 /**
  * Projects routes (Step C). CRUD, files, messages, sessions, export.
@@ -74,6 +76,37 @@ export function registerProjectsRoutes(app: Express): void {
       }
 
       res.json({ project });
+
+      // Auto-name the project based on the initial prompt (fire-and-forget,
+      // server-side so it doesn't depend on frontend fetch surviving navigation).
+      const initialPrompt = req.body.initialPrompt as string | undefined;
+      if (initialPrompt && initialPrompt.trim()) {
+        (async () => {
+          try {
+            const { client: nameClient } = getOptimalClient("planning", "doubao");
+            const isChinese = /[一-鿿]/.test(initialPrompt);
+            const langInstruction = isChinese
+              ? "用中文起名（2-4 个字或词），不要使用英文。"
+              : "Use English (2-4 words, title case).";
+            const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
+            const completion = await nameClient.chat.completions.create({
+              model: DOUBAO_LITE_MODEL,
+              messages: [{
+                role: "user",
+                content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${initialPrompt.slice(0, 200)}"\n\nRespond with ONLY the project name, nothing else.`,
+              }],
+              max_tokens: 20,
+            });
+            const generatedName = (completion.choices[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "");
+            if (generatedName && generatedName !== name) {
+              await storage.updateProjectName(id, generatedName);
+              console.log(`[auto-name] project ${id}: "${name}" → "${generatedName}"`);
+            }
+          } catch (err) {
+            console.warn("[auto-name] failed:", err instanceof Error ? err.message : err);
+          }
+        })();
+      }
     } catch (error: any) {
       console.error("Create project error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to create project" });

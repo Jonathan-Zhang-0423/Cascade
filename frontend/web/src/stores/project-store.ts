@@ -188,13 +188,13 @@ export function migrateOldState() {
   }
 }
 
-async function syncProjectToServer(id: string, name: string, emoji?: string, framework?: string) {
+async function syncProjectToServer(id: string, name: string, emoji?: string, framework?: string, initialPrompt?: string) {
   try {
     await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ id, name, emoji, framework }),
+      body: JSON.stringify({ id, name, emoji, framework, initialPrompt }),
     });
   } catch {}
 }
@@ -259,7 +259,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           ],
         }));
 
-        await syncProjectToServer(id, name, emoji, framework);
+        await syncProjectToServer(id, name, emoji, framework, initialPrompt);
 
         if (isWeb) {
           const flatFiles: { path: string; content: string }[] = [];
