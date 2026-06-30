@@ -28,23 +28,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, Palette, CheckSquare, Square, CheckCheck, LogOut, User, Home, Clock, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2 } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, CheckSquare, Square, CheckCheck, LogOut, Home, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2 } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
 import { THEME_LIST, type ThemeId } from "@/lib/themes";
-import { LangToggle } from "@/components/lang-toggle";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
 import { useIDEStore } from "@/stores/ide-store";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 migrateOldState();
 
@@ -156,7 +147,14 @@ export default function DashboardPage() {
     await fetch("/api/notifications/read-all", { method: "PATCH", credentials: "include" }).catch(() => {});
   };
 
-  useEffect(() => { fetchNotifs(); }, []);
+  // 初始拉取 + 每 30s 轮询 + 切回标签时刷新
+  useEffect(() => {
+    fetchNotifs();
+    const timer = setInterval(fetchNotifs, 30_000);
+    const onFocus = () => fetchNotifs();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, []);
   useEffect(() => { if (notifOpen) fetchNotifs(); }, [notifOpen]);
 
   useEffect(() => {
@@ -208,7 +206,7 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
-  // ── Edit username state ───────────────────────────────────────────────────
+  // ── Username dialog state ─────────────────────────────────────────────────
   const [showEditUsername, setShowEditUsername] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [editUsernameError, setEditUsernameError] = useState("");
@@ -296,30 +294,12 @@ export default function DashboardPage() {
   const isValidPhone = (v: string) => /^\+\d{8,15}$/.test(v.trim());
 
   // ── Invite panel state ────────────────────────────────────────────────────
-  const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referralLink, setReferralLink] = useState<string | null>(null);
   const [referralCount, setReferralCount] = useState(0);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  const openInviteDialog = () => {
-    setShowInviteDialog(true);
-    if (referralCode) return;
-    setInviteLoading(true);
-    fetch("/api/referral/my-code")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.referralCode) {
-          setReferralCode(d.referralCode);
-          setReferralLink(d.referralLink);
-          setReferralCount(d.referralCount ?? 0);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setInviteLoading(false));
-  };
 
   const copyText = (text: string, type: "code" | "link") => {
     const doCopy = () => {
@@ -370,9 +350,11 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setEditUsernameError(
-          data.error === "Username already taken" ? t("auth.usernameTaken") : data.error
-        );
+        if (data.error === "Username cooldown active") {
+          setEditUsernameError(`还需等待 ${data.remainingDays} 天才能再次修改`);
+        } else {
+          setEditUsernameError(data.error === "Username already taken" ? t("auth.usernameTaken") : data.error);
+        }
         return;
       }
       setUsername(data.username);
@@ -1122,89 +1104,358 @@ export default function DashboardPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Edit username dialog */}
-      <Dialog open={showEditUsername} onOpenChange={(open) => !open && setShowEditUsername(false)}>
-        <DialogContent className="sm:max-w-[360px]">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">{t("auth.editUsername")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleEditUsernameSubmit} className="flex flex-col gap-4 mt-2">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                {t("auth.editUsernameLabel")}
-              </label>
-              <Input
-                value={newUsername}
-                onChange={(e) => { setNewUsername(e.target.value); setEditUsernameError(""); }}
-                placeholder={t("auth.editUsernamePlaceholder")}
-                autoFocus
-                maxLength={32}
-              />
-              {editUsernameError && (
-                <p className="mt-1.5 text-xs text-destructive">{editUsernameError}</p>
-              )}
+      {/* ── 修改用户名弹窗 ── */}
+      {showEditUsername && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEditUsername(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowEditUsername(false); }}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+        >
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4" style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold" style={{ color: "#111" }}>修改用户名</h2>
+              <button className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setShowEditUsername(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
-            <DialogFooter className="gap-2">
-              <Button type="button" variant="ghost" size="sm"
-                onClick={() => setShowEditUsername(false)}>
-                {t("auth.editUsernameCancel")}
-              </Button>
-              <Button type="submit" size="sm" disabled={editUsernameLoading || !newUsername.trim()}>
-                {editUsernameLoading ? "…" : t("auth.editUsernameSubmit")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
-      {/* Invite dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={(open) => !open && setShowInviteDialog(false)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-[15px]">
-              <Gift className="w-4 h-4 text-[#4f82ff]" />
-              {t("navbar.invitePanel.title")}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.desc")}</p>
-          {inviteLoading ? (
-            <p className="text-[12px] text-muted-foreground py-2">{t("navbar.invitePanel.loading")}</p>
-          ) : referralCode ? (
-            <div className="flex flex-col gap-3 pt-1">
+            {usernameCooldown && !usernameCooldown.canChange ? (
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  {t("navbar.invitePanel.yourCode")}
+                <p className="text-[13px]" style={{ color: "#dc2626" }}>
+                  用户名每六个月只能修改一次。
                 </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-[14px] font-mono tracking-widest px-3 py-2 rounded-lg bg-muted text-foreground">
-                    {referralCode}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => copyText(referralCode, "code")}
-                  >
-                    {copiedCode ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  </Button>
+                <p className="text-[13px] text-muted-foreground mt-1">
+                  距离下次可修改还有 <strong>{usernameCooldown.remainingDays}</strong> 天。
+                </p>
+                <div className="flex justify-end mt-4">
+                  <button onClick={() => setShowEditUsername(false)} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                    知道了
+                  </button>
                 </div>
               </div>
-              <Button
-                className="w-full gap-2"
-                style={copiedLink ? { background: "rgba(52,214,138,0.15)", color: "#34d68a" } : {}}
-                onClick={() => referralLink && copyText(referralLink, "link")}
-              >
-                {copiedLink
-                  ? <><Check className="w-4 h-4" />{t("navbar.invitePanel.copied")}</>
-                  : <><Copy className="w-4 h-4" />{t("navbar.invitePanel.copyLink")}</>}
-              </Button>
-              <p className="text-[11px] text-center text-muted-foreground">
-                {t("navbar.invitePanel.referralCount").replace("{n}", String(referralCount))}
-              </p>
+            ) : (
+              <form onSubmit={handleEditUsernameSubmit} className="flex flex-col gap-4">
+                <p className="text-[12px] text-muted-foreground">用户名每六个月只能修改一次，请确认您的新用户名。</p>
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1.5">新用户名</label>
+                  <Input
+                    value={newUsername}
+                    onChange={(e) => { setNewUsername(e.target.value); setEditUsernameError(""); }}
+                    placeholder="输入新用户名（2–32 个字符）"
+                    autoFocus
+                    maxLength={32}
+                  />
+                  {editUsernameError && (
+                    <p className="mt-1.5 text-[12px]" style={{ color: "#dc2626" }}>{editUsernameError}</p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setShowEditUsername(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>
+                    取消
+                  </button>
+                  <button type="submit" disabled={editUsernameLoading || !newUsername.trim()} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: editUsernameLoading ? "not-allowed" : "pointer", opacity: editUsernameLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                    {editUsernameLoading ? "提交中…" : "确认修改"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 密码弹窗 ── */}
+      {showPwdDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPwdDialog(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowPwdDialog(false); }}
+          tabIndex={-1} ref={(el) => el?.focus()}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4" style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold" style={{ color: "#111" }}>
+                {pwdMode === "set" ? "设置密码" : "修改密码"}
+              </h2>
+              <button onClick={() => setShowPwdDialog(false)} className="text-muted-foreground hover:text-foreground">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+
+            {/* 设置密码 (无旧密码) */}
+            {pwdMode === "set" && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">新密码（至少6位）</label>
+                  <Input type="password" value={pwdNew} onChange={(e) => { setPwdNew(e.target.value); setPwdError(""); }} placeholder="输入新密码" autoFocus />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">确认新密码</label>
+                  <Input type="password" value={pwdConfirm} onChange={(e) => { setPwdConfirm(e.target.value); setPwdError(""); }} placeholder="再次输入新密码" />
+                </div>
+                {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => setShowPwdDialog(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>取消</button>
+                  <button onClick={handlePwdSubmit} disabled={pwdLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: pwdLoading ? "not-allowed" : "pointer", opacity: pwdLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                    {pwdLoading ? "提交中…" : "设置密码"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 修改密码流程 */}
+            {pwdMode === "change" && (
+              <div className="flex flex-col gap-3">
+                {pwdStep === 1 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">当前密码</label>
+                      <Input type="password" value={pwdCurrent} onChange={(e) => { setPwdCurrent(e.target.value); setPwdError(""); }} placeholder="输入当前密码" autoFocus />
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex items-center justify-between mt-1">
+                      <button onClick={() => { setPwdMode("forgot"); setPwdStep(1); setPwdError(""); setPwdForgotTarget(accountInfo?.email ?? accountInfo?.phone ?? ""); }} className="text-[12px] text-muted-foreground hover:text-foreground underline">忘记密码？</button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowPwdDialog(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>取消</button>
+                        <button onClick={() => { if (!pwdCurrent) { setPwdError("请输入当前密码"); return; } setPwdStep(2); setPwdError(""); }} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>下一步</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 2 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">新密码（至少6位）</label>
+                      <Input type="password" value={pwdNew} onChange={(e) => { setPwdNew(e.target.value); setPwdError(""); }} placeholder="输入新密码" autoFocus />
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => setPwdStep(1)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                      <button onClick={() => { if (pwdNew.length < 6) { setPwdError("密码至少6位"); return; } setPwdStep(3); setPwdError(""); }} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>下一步</button>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 3 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">确认新密码</label>
+                      <Input type="password" value={pwdConfirm} onChange={(e) => { setPwdConfirm(e.target.value); setPwdError(""); }} placeholder="再次输入新密码" autoFocus />
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => setPwdStep(2)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                      <button onClick={handlePwdSubmit} disabled={pwdLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: pwdLoading ? "not-allowed" : "pointer", opacity: pwdLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                        {pwdLoading ? "提交中…" : "确认修改"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 忘记密码流程 */}
+            {pwdMode === "forgot" && (
+              <div className="flex flex-col gap-3">
+                {pwdStep === 1 && (
+                  <>
+                    <p className="text-[12px] text-muted-foreground">选择验证方式来重置密码：</p>
+                    <div className="flex flex-col gap-2">
+                      {accountInfo?.email && (
+                        <label className="flex items-center gap-2 cursor-pointer text-[13px]">
+                          <input type="radio" checked={pwdForgotChannel === "email"} onChange={() => { setPwdForgotChannel("email"); setPwdForgotTarget(accountInfo?.email ?? ""); }} />
+                          <span>邮箱：{accountInfo.email}</span>
+                        </label>
+                      )}
+                      {accountInfo?.phone && (
+                        <label className="flex items-center gap-2 cursor-pointer text-[13px]">
+                          <input type="radio" checked={pwdForgotChannel === "sms"} onChange={() => { setPwdForgotChannel("sms"); setPwdForgotTarget(accountInfo?.phone ?? ""); }} />
+                          <span>手机：{accountInfo.phone}</span>
+                        </label>
+                      )}
+                    </div>
+                    {!accountInfo?.email && !accountInfo?.phone && (
+                      <p className="text-[12px]" style={{ color: "#dc2626" }}>请先绑定邮箱或手机号</p>
+                    )}
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => { setPwdMode("change"); setPwdStep(1); setPwdError(""); }} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>返回</button>
+                      <button onClick={() => { setPwdStep(2); setPwdError(""); }} disabled={!accountInfo?.email && !accountInfo?.phone} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>下一步</button>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 2 && (
+                  <>
+                    <p className="text-[12px] text-muted-foreground">将向 <strong>{pwdForgotTarget}</strong> 发送验证码。</p>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => setPwdStep(1)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                      <button onClick={handlePwdSendOtp} disabled={pwdLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: pwdLoading ? "not-allowed" : "pointer", opacity: pwdLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                        {pwdLoading ? "发送中…" : "发送验证码"}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 3 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">验证码（5分钟内有效）</label>
+                      <div className="flex gap-2">
+                        <Input value={pwdForgotCode} onChange={(e) => { setPwdForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setPwdError(""); }} placeholder="6位验证码" maxLength={6} autoFocus className="flex-1" />
+                        <button onClick={handlePwdSendOtp} disabled={pwdOtpCountdown > 0 || pwdLoading} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: pwdOtpCountdown > 0 ? "not-allowed" : "pointer", color: pwdOtpCountdown > 0 ? "#999" : "#111", whiteSpace: "nowrap", fontFamily: "inherit" }}>
+                          {pwdOtpCountdown > 0 ? `${pwdOtpCountdown}s` : "重新发送"}
+                        </button>
+                      </div>
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => { setPwdStep(4); setPwdError(""); }} disabled={pwdForgotCode.length !== 6} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: pwdForgotCode.length !== 6 ? "not-allowed" : "pointer", opacity: pwdForgotCode.length !== 6 ? 0.5 : 1, fontFamily: "inherit" }}>下一步</button>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 4 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">新密码（至少6位）</label>
+                      <Input type="password" value={pwdNew} onChange={(e) => { setPwdNew(e.target.value); setPwdError(""); }} placeholder="输入新密码" autoFocus />
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => { if (pwdNew.length < 6) { setPwdError("密码至少6位"); return; } setPwdStep(5); setPwdError(""); }} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>下一步</button>
+                    </div>
+                  </>
+                )}
+                {pwdStep === 5 && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">确认新密码</label>
+                      <Input type="password" value={pwdConfirm} onChange={(e) => { setPwdConfirm(e.target.value); setPwdError(""); }} placeholder="再次输入新密码" autoFocus />
+                    </div>
+                    {pwdError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{pwdError}</p>}
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => setPwdStep(4)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                      <button onClick={handlePwdSubmit} disabled={pwdLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: pwdLoading ? "not-allowed" : "pointer", opacity: pwdLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                        {pwdLoading ? "提交中…" : "重置密码"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 邮箱弹窗 ── */}
+      {showEmailDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEmailDialog(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowEmailDialog(false); }}
+          tabIndex={-1} ref={(el) => el?.focus()}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4" style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold" style={{ color: "#111" }}>
+                {accountInfo?.email ? "修改邮箱" : "绑定邮箱"}
+              </h2>
+              <button onClick={() => setShowEmailDialog(false)} className="text-muted-foreground hover:text-foreground">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            {emailStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">
+                    {accountInfo?.email ? "新邮箱地址" : "邮箱地址"}
+                  </label>
+                  <Input type="email" value={emailTarget} onChange={(e) => { setEmailTarget(e.target.value); setEmailError(""); }} placeholder="example@email.com" autoFocus />
+                </div>
+                {emailError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{emailError}</p>}
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => setShowEmailDialog(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>取消</button>
+                  <button onClick={handleEmailSendOtp} disabled={emailLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: emailLoading ? "not-allowed" : "pointer", opacity: emailLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                    {emailLoading ? "发送中…" : "发送验证码"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {emailStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">验证码已发送至 <strong>{emailTarget}</strong>，5分钟内有效。</p>
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">验证码</label>
+                  <div className="flex gap-2">
+                    <Input value={emailCode} onChange={(e) => { setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setEmailError(""); }} placeholder="6位验证码" maxLength={6} autoFocus className="flex-1" />
+                    <button onClick={handleEmailSendOtp} disabled={emailOtpCountdown > 0 || emailLoading} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: emailOtpCountdown > 0 ? "not-allowed" : "pointer", color: emailOtpCountdown > 0 ? "#999" : "#111", whiteSpace: "nowrap", fontFamily: "inherit" }}>
+                      {emailOtpCountdown > 0 ? `${emailOtpCountdown}s` : "重新发送"}
+                    </button>
+                  </div>
+                </div>
+                {emailError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{emailError}</p>}
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => { setEmailStep(1); setEmailError(""); }} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                  <button onClick={handleEmailVerify} disabled={emailLoading || emailCode.length !== 6} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: (emailLoading || emailCode.length !== 6) ? "not-allowed" : "pointer", opacity: (emailLoading || emailCode.length !== 6) ? 0.5 : 1, fontFamily: "inherit" }}>
+                    {emailLoading ? "验证中…" : "确认绑定"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 手机号弹窗 ── */}
+      {showPhoneDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPhoneDialog(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowPhoneDialog(false); }}
+          tabIndex={-1} ref={(el) => el?.focus()}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4" style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold" style={{ color: "#111" }}>
+                {accountInfo?.phone ? "修改手机号" : "绑定手机号"}
+              </h2>
+              <button onClick={() => setShowPhoneDialog(false)} className="text-muted-foreground hover:text-foreground">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            {phoneStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">
+                    {accountInfo?.phone ? "新手机号" : "手机号"}（含国家区号，如 +86）
+                  </label>
+                  <Input value={phoneTarget} onChange={(e) => { setPhoneTarget(e.target.value); setPhoneError(""); }} placeholder="+86 13800138000" autoFocus />
+                </div>
+                {phoneError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{phoneError}</p>}
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => setShowPhoneDialog(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>取消</button>
+                  <button onClick={handlePhoneSendOtp} disabled={phoneLoading} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: phoneLoading ? "not-allowed" : "pointer", opacity: phoneLoading ? 0.6 : 1, fontFamily: "inherit" }}>
+                    {phoneLoading ? "发送中…" : "发送验证码"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {phoneStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">验证码已发送至 <strong>{phoneTarget}</strong>，5分钟内有效。</p>
+                <div>
+                  <label className="block text-[12px] font-medium text-muted-foreground mb-1">验证码</label>
+                  <div className="flex gap-2">
+                    <Input value={phoneCode} onChange={(e) => { setPhoneCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setPhoneError(""); }} placeholder="6位验证码" maxLength={6} autoFocus className="flex-1" />
+                    <button onClick={handlePhoneSendOtp} disabled={phoneOtpCountdown > 0 || phoneLoading} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: phoneOtpCountdown > 0 ? "not-allowed" : "pointer", color: phoneOtpCountdown > 0 ? "#999" : "#111", whiteSpace: "nowrap", fontFamily: "inherit" }}>
+                      {phoneOtpCountdown > 0 ? `${phoneOtpCountdown}s` : "重新发送"}
+                    </button>
+                  </div>
+                </div>
+                {phoneError && <p className="text-[12px]" style={{ color: "#dc2626" }}>{phoneError}</p>}
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={() => { setPhoneStep(1); setPhoneError(""); }} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#555" }}>上一步</button>
+                  <button onClick={handlePhoneVerify} disabled={phoneLoading || phoneCode.length !== 6} style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "7px 20px", fontSize: 13, fontWeight: 600, cursor: (phoneLoading || phoneCode.length !== 6) ? "not-allowed" : "pointer", opacity: (phoneLoading || phoneCode.length !== 6) ? 0.5 : 1, fontFamily: "inherit" }}>
+                    {phoneLoading ? "验证中…" : "确认绑定"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── 用户建议弹窗 ── */}
       {feedbackOpen && (

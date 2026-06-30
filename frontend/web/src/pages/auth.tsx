@@ -753,7 +753,7 @@ export default function AuthPage() {
     } finally { setLoading(false); }
   };
 
-  const otpChannel = page === "signin" ? (signInChannel === "email" ? "email" : "sms") : (signUpChannel === "email" ? "email" : "sms");
+  const otpChannel: "email" | "sms" = page === "signin" ? (signInChannel === "email" ? "email" : "sms") : (signUpChannel === "email" ? "email" : "sms");
 
   // ── shared OtpBlock props ─────────────────────────────────────────────────
   const otpBlockProps = (isSignUp: boolean) => ({
