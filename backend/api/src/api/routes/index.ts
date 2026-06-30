@@ -3335,7 +3335,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
         return res.status(400).json({ error: "username and password required" });
       }
-      const user = await storage.getUserByUsername(username.trim());
+      const trimmed = username.trim();
+      const user = await storage.getUserByUsername(trimmed) ?? await storage.getUserByEmail(trimmed);
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
       // GitHub-only users (created via OAuth) have no password — reject the
       // password-based login path with the same generic error so we don't
@@ -3350,6 +3351,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({
         id: user.id,
         username: user.username,
+        phoneVerified: (user as any).phoneVerified ?? false,
         experienceLevel: (user as any).experienceLevel,
         hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
         inviteCode: (user as any).inviteCode ?? null,
