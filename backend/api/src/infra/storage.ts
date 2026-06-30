@@ -38,6 +38,7 @@ export interface IStorage {
   getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
+  getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   createGithubUser(input: {
     username: string;
@@ -111,6 +112,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const [user] = await db.insert(users).values({ ...insertUser, id }).returning();
@@ -145,11 +151,6 @@ export class DatabaseStorage implements IStorage {
       .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
       .where(eq(users.id, userId))
       .returning();
-    return user;
-  }
-
-  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
     return user;
   }
 

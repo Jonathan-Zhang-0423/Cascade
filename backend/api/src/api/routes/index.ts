@@ -3795,6 +3795,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
+      firstName: (user as any).firstName ?? null,
+      lastName: (user as any).lastName ?? null,
+      bio: (user as any).bio ?? null,
     });
   });
 
@@ -3817,11 +3820,47 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (existing && existing.id !== userId) {
         return res.status(409).json({ error: "Username already taken" });
       }
-      await db.update(users).set({ username: trimmed }).where(eq(users.id, userId));
+      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
       res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[auth/me/username]", err);
       res.status(500).json({ error: "Failed to update username" });
+    }
+  });
+
+  app.get("/api/auth/me/username-cooldown", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
+      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const elapsed = Date.now() - lastChanged.getTime();
+      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
+      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.json({ canChange: false, remainingDays });
+    } catch (err) {
+      console.error("[auth/me/username-cooldown]", err);
+      res.status(500).json({ error: "Failed to check cooldown" });
+    }
+  });
+
+  app.put("/api/auth/me/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
+      const updates: Record<string, string> = {};
+      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
+      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
+      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
+      await db.update(users).set(updates as any).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/me/profile]", err);
+      res.status(500).json({ error: "Failed to update profile" });
     }
   });
 
@@ -4023,7 +4062,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const purpose = rawPurpose === "bind_email" ? "bind_email" : "login";
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : rawPurpose === "bind_phone" ? "bind_phone" : "login";
       const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
@@ -4257,6 +4296,38 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  app.post("/api/auth/bind-phone", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+
+      const { target, code } = req.body as { target?: string; code?: string };
+      const normalized = normalizeTarget("sms", target ?? "");
+      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
+      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
+
+      const existing = await storage.getUserByPhone(normalized);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ error: "Phone already in use" });
+      }
+
+      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      await db.update(users)
+        .set({ phone: normalized, phoneVerified: true })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/bind-phone]", err);
+      res.status(500).json({ error: "Bind failed" });
+    }
+  });
+
   // === GitHub OAuth ===
 
   // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
@@ -4357,7 +4428,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
       const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
+      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，全失败后走 nginx 反代
       const GITHUB_IPS = ["20.205.243.166", "20.27.177.113", "140.82.112.4", "140.82.113.4", "140.82.114.4"];
 
       function tryTokenExchange(ghIp: string, body: string): Promise<any> {
@@ -4394,9 +4465,19 @@ Generate the cascade.md content for this project based on both the plan and the 
         redirect_uri: `${baseUrl}/api/auth/github/callback`,
       });
 
-      const tokenData: any = await Promise.any(
-        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
-      ).catch(() => { throw new Error("all_ips_failed"); });
+      // 先并发尝试 IP 直连，全失败再走 nginx 反代 /github-oauth/
+      let tokenData: any;
+      try {
+        tokenData = await Promise.any(GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody)));
+      } catch {
+        console.log("[github/exchange] IP direct failed, falling back to nginx proxy");
+        const proxyTokenRes = await fetch(`${baseUrl}/github-oauth/login/oauth/access_token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: tokenBody,
+        });
+        tokenData = await proxyTokenRes.json();
+      }
 
       if (!tokenData.access_token) {
         console.error("[github/exchange] token error:", tokenData);
@@ -4405,8 +4486,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
       const accessToken = tokenData.access_token;
 
-      const ghFetch = await getGithubFetch();
-      const userRes = await ghFetch("https://api.github.com/user", {
+      // api.github.com 在墙内不稳定，走 nginx /github-api/ 反代
+      const ghApiBase = `${baseUrl}/github-api`;
+      const userRes = await fetch(`${ghApiBase}/user`, {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
       if (!userRes.ok) {
@@ -4420,7 +4502,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
       let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
-        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
+        const emailsRes = await fetch(`${ghApiBase}/user/emails`, {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
         });
         if (emailsRes.ok) {

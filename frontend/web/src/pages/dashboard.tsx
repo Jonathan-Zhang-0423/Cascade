@@ -48,6 +48,33 @@ import {
 
 migrateOldState();
 
+type Notif = { id: number; type: string; title: string; body: string | null; isRead: boolean; createdAt: string };
+
+function NotifDetail({ notif }: { notif: Notif | undefined }) {
+  if (!notif) return null;
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
+            {notif.type === "changelog" ? "更新公告" : "系统消息"}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {new Date(notif.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{notif.title}</h3>
+      </div>
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {notif.body
+          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{notif.body}</p>
+          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
+      </div>
+    </div>
+  );
+}
+
 function relativeDate(ms: number): string {
   const diff = Date.now() - ms;
   const mins = Math.floor(diff / 60_000);
@@ -107,7 +134,15 @@ export default function DashboardPage() {
     setNotifLoading(true);
     try {
       const res = await fetch("/api/notifications", { credentials: "include" });
-      if (res.ok) { const d = await res.json(); setNotifs(d.notifications ?? []); }
+      if (res.ok) {
+        const d = await res.json();
+        const list = d.notifications ?? [];
+        setNotifs(list);
+        // 自动选中第一条（如果还没选）
+        if (list.length > 0) {
+          setSelectedNotifId((prev) => prev ?? list[0].id);
+        }
+      }
     } catch { /* non-fatal */ } finally { setNotifLoading(false); }
   };
 
@@ -148,12 +183,21 @@ export default function DashboardPage() {
   const setUsername = useIDEStore((s) => s.setUsername);
 
   // 注册方式信息
-  const [accountInfo, setAccountInfo] = useState<{ email?: string; phone?: string; githubId?: string } | null>(null);
-  useEffect(() => {
+  const [accountInfo, setAccountInfo] = useState<{
+    email?: string; phone?: string; githubId?: string;
+    hasPassword?: boolean;
+    firstName?: string; lastName?: string; bio?: string;
+  } | null>(null);
+  const refreshAccountInfo = () => {
     fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null).then(u => {
-      if (u) setAccountInfo({ email: u.email, phone: u.phone, githubId: u.githubId });
+      if (u) setAccountInfo({
+        email: u.email, phone: u.phone, githubId: u.githubId,
+        hasPassword: u.hasPassword,
+        firstName: u.firstName, lastName: u.lastName, bio: u.bio,
+      });
     }).catch(() => {});
-  }, []);
+  };
+  useEffect(() => { refreshAccountInfo(); }, []);
 
   const handleSignOut = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -167,6 +211,83 @@ export default function DashboardPage() {
   const [newUsername, setNewUsername] = useState("");
   const [editUsernameError, setEditUsernameError] = useState("");
   const [editUsernameLoading, setEditUsernameLoading] = useState(false);
+  const [usernameCooldown, setUsernameCooldown] = useState<{ canChange: boolean; remainingDays: number } | null>(null);
+
+  // ── Profile modal state ───────────────────────────────────────────────────
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileTab, setProfileTab] = useState<"home" | "account">("home");
+
+  // Profile inline edit
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [bio, setBio] = useState("");
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  useEffect(() => {
+    if (accountInfo) {
+      setFirstName(accountInfo.firstName ?? "");
+      setLastName(accountInfo.lastName ?? "");
+      setBio(accountInfo.bio ?? "");
+      setProfileDirty(false);
+    }
+  }, [accountInfo]);
+
+  // Password dialog
+  type PwdMode = "set" | "change" | "forgot";
+  const [showPwdDialog, setShowPwdDialog] = useState(false);
+  const [pwdMode, setPwdMode] = useState<PwdMode>("set");
+  const [pwdStep, setPwdStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdError, setPwdError] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdForgotChannel, setPwdForgotChannel] = useState<"email" | "sms">("email");
+  const [pwdForgotTarget, setPwdForgotTarget] = useState("");
+  const [pwdForgotCode, setPwdForgotCode] = useState("");
+  const [pwdOtpCountdown, setPwdOtpCountdown] = useState(0);
+
+  // Email dialog
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailStep, setEmailStep] = useState<1 | 2 | 3>(1);
+  const [emailTarget, setEmailTarget] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailOtpCountdown, setEmailOtpCountdown] = useState(0);
+
+  // Phone dialog
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [phoneStep, setPhoneStep] = useState<1 | 2 | 3>(1);
+  const [phoneTarget, setPhoneTarget] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneOtpCountdown, setPhoneOtpCountdown] = useState(0);
+
+  // OTP countdown helper
+  const startCountdown = (setter: React.Dispatch<React.SetStateAction<number>>, seconds: number) => {
+    setter(seconds);
+    const id = setInterval(() => {
+      setter((prev: number) => {
+        if (prev <= 1) { clearInterval(id); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Toast helper
+  const showToast = (msg: string, variant: "success" | "error" = "success") => {
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;background:${variant === "success" ? "#111" : "#dc2626"};color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.18);pointer-events:none;`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2800);
+  };
+
+  // Validation helpers
+  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+  const isValidPhone = (v: string) => /^\+\d{8,15}$/.test(v.trim());
 
   // ── Invite panel state ────────────────────────────────────────────────────
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -201,10 +322,14 @@ export default function DashboardPage() {
     });
   };
 
-  const handleEditUsernameOpen = () => {
+  const handleEditUsernameOpen = async () => {
     setNewUsername(username ?? "");
     setEditUsernameError("");
     setShowEditUsername(true);
+    try {
+      const r = await fetch("/api/auth/me/username-cooldown", { credentials: "include" });
+      if (r.ok) setUsernameCooldown(await r.json());
+    } catch {}
   };
 
   const handleEditUsernameSubmit = async (e: React.FormEvent) => {
@@ -228,9 +353,183 @@ export default function DashboardPage() {
       }
       setUsername(data.username);
       setShowEditUsername(false);
+      setProfileOpen(true);
+      showToast("用户名已更新");
     } finally {
       setEditUsernameLoading(false);
     }
+  };
+
+  const handleProfileSave = async () => {
+    setProfileSaving(true);
+    try {
+      const res = await fetch("/api/auth/me/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ firstName, lastName, bio }),
+      });
+      if (!res.ok) { showToast("保存失败，请重试", "error"); return; }
+      setProfileDirty(false);
+      refreshAccountInfo();
+      showToast("个人资料已保存");
+    } catch { showToast("保存失败，请重试", "error"); } finally { setProfileSaving(false); }
+  };
+
+  const openPwdDialog = () => {
+    const hasPassword = accountInfo?.hasPassword ?? false;
+    setPwdMode(hasPassword ? "change" : "set");
+    setPwdStep(1);
+    setPwdCurrent(""); setPwdNew(""); setPwdConfirm("");
+    setPwdError(""); setPwdLoading(false);
+    setPwdForgotChannel("email");
+    setPwdForgotTarget(accountInfo?.email ?? accountInfo?.phone ?? "");
+    setPwdForgotCode(""); setPwdOtpCountdown(0);
+    setShowPwdDialog(true);
+  };
+
+  const handlePwdSendOtp = async () => {
+    const channel = pwdForgotChannel;
+    const target = pwdForgotTarget.trim();
+    if (channel === "email" && !isValidEmail(target)) { setPwdError("邮箱格式不正确"); return; }
+    if (channel === "sms" && !isValidPhone(target)) { setPwdError("手机号格式不正确（需含国家区号如 +86）"); return; }
+    setPwdError(""); setPwdLoading(true);
+    try {
+      const r = await fetch("/api/auth/reset-password/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, target }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setPwdError(d.error ?? "发送失败"); return; }
+      startCountdown(setPwdOtpCountdown, d.retryAfterSec ?? 60);
+      setPwdStep(3);
+    } catch { setPwdError("发送失败，请重试"); } finally { setPwdLoading(false); }
+  };
+
+  const handlePwdSubmit = async () => {
+    setPwdError(""); setPwdLoading(true);
+    try {
+      if (pwdMode === "set" || pwdMode === "change") {
+        if (pwdNew.length < 6) { setPwdError("密码至少6位"); setPwdLoading(false); return; }
+        if (pwdNew !== pwdConfirm) { setPwdError("两次密码不一致"); setPwdLoading(false); return; }
+        const body: Record<string, string> = { password: pwdNew };
+        if (pwdMode === "change") body.currentPassword = pwdCurrent;
+        const r = await fetch("/api/auth/set-password", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          credentials: "include", body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (!r.ok) { setPwdError(d.error === "Current password incorrect" ? "当前密码错误" : d.error ?? "失败"); return; }
+        setShowPwdDialog(false);
+        showToast("密码已更新，请重新登录");
+        setTimeout(() => { window.location.href = "/login"; }, 1500);
+      } else {
+        if (pwdStep === 3) {
+          if (!/^\d{6}$/.test(pwdForgotCode)) { setPwdError("验证码格式错误"); return; }
+          setPwdStep(4); setPwdError("");
+        } else if (pwdStep === 4) {
+          if (pwdNew.length < 6) { setPwdError("密码至少6位"); return; }
+          setPwdStep(5); setPwdError("");
+        } else if (pwdStep === 5) {
+          if (pwdNew !== pwdConfirm) { setPwdError("两次密码不一致"); return; }
+          const r = await fetch("/api/auth/reset-password/verify", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel: pwdForgotChannel, target: pwdForgotTarget, code: pwdForgotCode, password: pwdNew }),
+          });
+          const d = await r.json();
+          if (!r.ok) { setPwdError(d.error ?? "验证失败"); return; }
+          setShowPwdDialog(false);
+          showToast("密码已重置，请重新登录");
+          setTimeout(() => { window.location.href = "/login"; }, 1500);
+        }
+      }
+    } catch { setPwdError("操作失败，请重试"); } finally { setPwdLoading(false); }
+  };
+
+  const openEmailDialog = () => {
+    setEmailStep(1); setEmailTarget(accountInfo?.email ?? "");
+    setEmailCode(""); setEmailError(""); setEmailLoading(false); setEmailOtpCountdown(0);
+    setShowEmailDialog(true);
+  };
+
+  const handleEmailSendOtp = async () => {
+    const target = emailTarget.trim();
+    if (!isValidEmail(target)) { setEmailError("邮箱格式不正确"); return; }
+    setEmailError(""); setEmailLoading(true);
+    try {
+      const r = await fetch("/api/auth/otp/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ channel: "email", target, purpose: "bind_email" }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setEmailError(d.error ?? "发送失败"); return; }
+      startCountdown(setEmailOtpCountdown, d.retryAfterSec ?? 60);
+      setEmailStep(2);
+    } catch { setEmailError("发送失败，请重试"); } finally { setEmailLoading(false); }
+  };
+
+  const handleEmailVerify = async () => {
+    if (!/^\d{6}$/.test(emailCode)) { setEmailError("验证码格式错误"); return; }
+    setEmailError(""); setEmailLoading(true);
+    try {
+      const r = await fetch("/api/auth/bind-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ target: emailTarget.trim(), code: emailCode }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setEmailError(d.error === "Email already in use" ? "该邮箱已被其他账号使用"
+          : d.error === "Invalid or expired code" ? "验证码错误或已过期"
+          : d.error ?? "验证失败");
+        return;
+      }
+      setShowEmailDialog(false);
+      refreshAccountInfo();
+      showToast("邮箱已绑定");
+    } catch { setEmailError("验证失败，请重试"); } finally { setEmailLoading(false); }
+  };
+
+  const openPhoneDialog = () => {
+    setPhoneStep(1); setPhoneTarget(accountInfo?.phone ?? "");
+    setPhoneCode(""); setPhoneError(""); setPhoneLoading(false); setPhoneOtpCountdown(0);
+    setShowPhoneDialog(true);
+  };
+
+  const handlePhoneSendOtp = async () => {
+    const target = phoneTarget.trim();
+    if (!isValidPhone(target)) { setPhoneError("手机号格式不正确（需含国家区号如 +86）"); return; }
+    setPhoneError(""); setPhoneLoading(true);
+    try {
+      const r = await fetch("/api/auth/otp/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ channel: "sms", target, purpose: "bind_phone" }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setPhoneError(d.error ?? "发送失败"); return; }
+      startCountdown(setPhoneOtpCountdown, d.retryAfterSec ?? 60);
+      setPhoneStep(2);
+    } catch { setPhoneError("发送失败，请重试"); } finally { setPhoneLoading(false); }
+  };
+
+  const handlePhoneVerify = async () => {
+    if (!/^\d{6}$/.test(phoneCode)) { setPhoneError("验证码格式错误"); return; }
+    setPhoneError(""); setPhoneLoading(true);
+    try {
+      const r = await fetch("/api/auth/bind-phone", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ target: phoneTarget.trim(), code: phoneCode }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setPhoneError(d.error === "Phone already in use" ? "该手机号已被其他账号使用"
+          : d.error === "Invalid or expired code" ? "验证码错误或已过期"
+          : d.error ?? "验证失败");
+        return;
+      }
+      setShowPhoneDialog(false);
+      refreshAccountInfo();
+      showToast("手机号已绑定");
+    } catch { setPhoneError("验证失败，请重试"); } finally { setPhoneLoading(false); }
   };
 
   // close logo menu on outside click
@@ -253,16 +552,6 @@ export default function DashboardPage() {
       label: t("navbar.home"),
       action: () => { navigate("/app"); setLogoMenuOpen(false); },
     },
-    {
-      icon: <Clock className="w-3.5 h-3.5" />,
-      label: t("navbar.recentProjects"),
-      action: () => { navigate("/app"); setLogoMenuOpen(false); },
-    },
-    {
-      icon: <Wand2 className="w-3.5 h-3.5" />,
-      label: "AIGC 创作",
-      action: () => { navigate("/aigc"); setLogoMenuOpen(false); },
-    },
     null,
     {
       icon: mode === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />,
@@ -284,11 +573,6 @@ export default function DashboardPage() {
       icon: <Bell className="w-3.5 h-3.5" />,
       label: lang === "zh" ? `消息通知${unreadCount > 0 ? ` (${unreadCount})` : ""}` : `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ""}`,
       action: () => { setLogoMenuOpen(false); setNotifOpen(true); },
-    },
-    {
-      icon: <LogOut className="w-3.5 h-3.5" />,
-      label: t("navbar.logout"),
-      action: () => { handleSignOut(); setLogoMenuOpen(false); },
     },
   ];
 
@@ -440,76 +724,13 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Theme selector — hidden on mobile, shown in user menu there */}
-            <div className="hidden sm:block">
-              <LangToggle />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-1.5 h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  data-testid="button-user-menu"
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{username ?? "…"}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel className="text-xs font-semibold text-foreground">
-                  {username ?? "…"}
-                </DropdownMenuLabel>
-                {/* 注册方式 */}
-                {accountInfo && (accountInfo.email || accountInfo.phone || accountInfo.githubId) && (
-                  <div className="px-2 py-1.5">
-                    <p className="text-[10px] text-muted-foreground/60 mb-0.5">注册方式</p>
-                    {accountInfo.email && (
-                      <p className="text-[11px] text-muted-foreground truncate">📧 {accountInfo.email}</p>
-                    )}
-                    {accountInfo.phone && (
-                      <p className="text-[11px] text-muted-foreground truncate">📱 {accountInfo.phone}</p>
-                    )}
-                    {accountInfo.githubId && (
-                      <p className="text-[11px] text-muted-foreground">🐙 GitHub</p>
-                    )}
-                  </div>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-xs cursor-pointer gap-2"
-                  onClick={handleEditUsernameOpen}
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  {t("auth.editUsername")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs cursor-pointer gap-2"
-                  onClick={openInviteDialog}
-                >
-                  <Gift className="w-3.5 h-3.5" />
-                  {t("navbar.invite")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-xs cursor-pointer gap-2"
-                  data-testid="menu-item-sign-out"
-                  onClick={handleSignOut}
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  {t("dashboard.signOut")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {/* Theme selector — desktop only, removed */}
-            <Button
-              onClick={() => setShowNewDialog(true)}
-              className="gap-2"
-              data-testid="button-new-project"
+            <button
+              className="h-8 px-2.5 rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
+              onClick={() => { setProfileTab("home"); setProfileOpen(true); }}
+              data-testid="button-user-menu"
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("dashboard.newProject")}</span>
-            </Button>
+              {accountInfo?.firstName || username || "…"}
+            </button>
           </div>
         </div>
       </header>
@@ -519,18 +740,31 @@ export default function DashboardPage() {
           <h1 className="font-lora text-xl font-bold tracking-tight text-foreground" data-testid="text-dashboard-title">
             {t("dashboard.myProjects")}
           </h1>
-          {sorted.length > 0 && !selectMode && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={enterSelectMode}
-              data-testid="button-enter-select"
-            >
-              <CheckSquare className="w-4 h-4" />
-              {t("dashboard.select")}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {!selectMode && (
+              <Button
+                onClick={() => setShowNewDialog(true)}
+                size="sm"
+                className="gap-1.5"
+                data-testid="button-new-project"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">{t("dashboard.newProject")}</span>
+              </Button>
+            )}
+            {sorted.length > 0 && !selectMode && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={enterSelectMode}
+                data-testid="button-enter-select"
+              >
+                <CheckSquare className="w-4 h-4" />
+                {t("dashboard.select")}
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-muted-foreground mb-6">
           {t("dashboard.subtitle")}
@@ -1020,55 +1254,50 @@ export default function DashboardPage() {
 
             {/* 内容区：手机单列，PC 双栏 */}
             <div className="flex flex-1 overflow-hidden">
-              {/* 列表 */}
-              <div className="flex flex-col overflow-y-auto" style={{ width: "100%", maxWidth: "100%", borderRight: "none" }}
-                /* PC 上加右边框 */
-              >
-                <style>{`@media(min-width:640px){.notif-list{width:260px!important;border-right:1px solid var(--panel-divider)!important}}`}</style>
-                <div className="notif-list flex flex-col overflow-y-auto h-full" style={{ width: "100%" }}>
-                  {notifLoading && (
-                    <div className="flex items-center justify-center flex-1 py-12">
-                      <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] border-t-transparent animate-spin" />
-                    </div>
-                  )}
-                  {!notifLoading && notifs.length === 0 && (
-                    <div className="flex flex-col items-center justify-center flex-1 gap-2 px-6 py-12">
-                      <Bell className="w-6 h-6 text-muted-foreground opacity-40" />
-                      <p className="text-[12px] text-muted-foreground text-center">暂无通知</p>
-                    </div>
-                  )}
-                  {notifs.map((n) => {
-                    const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
-                    return (
-                      <div key={n.id}
-                        className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
-                        style={{ minHeight: 72, borderBottom: "1px solid var(--panel-divider)", background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)", padding: "12px 16px" }}
-                        onClick={() => { markRead(n.id); setSelectedNotifId(n.id); }}
-                      >
-                        {!n.isRead && <div className="absolute left-0 top-4 bottom-4 rounded-r-full" style={{ width: 2.5, background: "#4f82ff" }} />}
-                        <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg"
-                          style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
-                          <span className="text-[13px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] leading-snug" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>{n.title}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {new Date(n.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                          {/* 手机端展开内容（直接内联显示，不需要右栏）*/}
-                          {isSelected && n.body && (
-                            <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed sm:hidden whitespace-pre-wrap">{n.body}</p>
-                          )}
-                        </div>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          className="shrink-0 text-muted-foreground sm:hidden"
-                          style={{ transform: isSelected ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
+              {/* 左栏：手机全宽，PC 固定 260px */}
+              <div className="flex flex-col overflow-y-auto w-full sm:w-[260px] sm:shrink-0" style={{ borderRight: "1px solid var(--panel-divider)" }}>
+                {notifLoading && (
+                  <div className="flex items-center justify-center flex-1 py-12">
+                    <div className="w-4 h-4 rounded-full border-2 border-[#4f82ff] border-t-transparent animate-spin" />
+                  </div>
+                )}
+                {!notifLoading && notifs.length === 0 && (
+                  <div className="flex flex-col items-center justify-center flex-1 gap-2 px-6 py-12">
+                    <Bell className="w-6 h-6 text-muted-foreground opacity-40" />
+                    <p className="text-[12px] text-muted-foreground text-center">暂无通知</p>
+                  </div>
+                )}
+                {notifs.map((n) => {
+                  const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
+                  return (
+                    <div key={n.id}
+                      className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
+                      style={{ minHeight: 72, borderBottom: "1px solid var(--panel-divider)", background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)", padding: "12px 16px" }}
+                      onClick={() => { markRead(n.id); setSelectedNotifId(n.id); }}
+                    >
+                      {!n.isRead && <div className="absolute left-0 top-4 bottom-4 rounded-r-full" style={{ width: 2.5, background: "#4f82ff" }} />}
+                      <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg"
+                        style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
+                        <span className="text-[13px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] leading-snug" style={{ fontWeight: n.isRead ? 400 : 600, color: "var(--foreground)" }}>{n.title}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {new Date(n.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                        {/* 手机端内联展开 */}
+                        {isSelected && n.body && (
+                          <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed sm:hidden whitespace-pre-wrap">{n.body}</p>
+                        )}
+                      </div>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                        className="shrink-0 text-muted-foreground sm:hidden"
+                        style={{ transform: isSelected ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* 右栏详情：仅 PC 显示 */}
@@ -1082,33 +1311,438 @@ export default function DashboardPage() {
                     <p className="text-[13px] font-medium text-foreground">收件箱是空的</p>
                     <p className="text-[12px] text-muted-foreground mt-1">新消息会出现在这里</p>
                   </div>
-                ) : (() => {
-                  const active = notifs.find(n => n.id === (selectedNotifId ?? notifs[0]?.id)) ?? notifs[0];
-                  if (!active) return null;
-                  return (
-                    <div className="flex flex-col h-full">
-                      <div className="px-6 shrink-0 flex flex-col justify-center" style={{ height: 72, borderBottom: "1px solid var(--panel-divider)" }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(79,130,255,0.10)", color: "#4f82ff" }}>
-                            {active.type === "changelog" ? "更新公告" : "系统消息"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {new Date(active.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        <h3 className="text-[14px] font-semibold text-foreground leading-snug truncate">{active.title}</h3>
-                      </div>
-                      <div className="flex-1 overflow-y-auto px-6 py-5">
-                        {active.body
-                          ? <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{active.body}</p>
-                          : <p className="text-[13px] text-muted-foreground">暂无详细内容。</p>}
-                      </div>
-                    </div>
-                  );
-                })()}
+                ) : (
+                  <NotifDetail notif={notifs.find(n => n.id === selectedNotifId) ?? notifs[0]} />
+                )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── 个人主页弹窗（两栏：左侧导航 + 右侧内容）── */}
+      {profileOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setProfileOpen(false); }}
+        >
+          <div
+            className="flex overflow-hidden w-full"
+            style={{
+              maxWidth: 700,
+              height: 520,
+              margin: "0 16px",
+              borderRadius: 16,
+              background: "var(--panel-mid-bg)",
+              border: "1px solid var(--panel-divider)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
+            }}
+          >
+            {/* 左侧导航栏 */}
+            <div
+              className="flex flex-col gap-1 p-3 shrink-0"
+              style={{ width: 160, borderRight: "1px solid var(--panel-divider)", background: "var(--panel-left-bg)" }}
+            >
+              <div className="px-2 py-3 mb-1">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm mb-2"
+                  style={{ background: "#4f82ff" }}>
+                  {(username ?? "?")[0].toUpperCase()}
+                </div>
+                <p className="text-[13px] font-semibold text-foreground truncate">{username ?? "…"}</p>
+              </div>
+              {(["home", "account"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setProfileTab(tab)}
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] transition-colors text-left"
+                  style={{
+                    background: profileTab === tab ? "rgba(79,130,255,0.12)" : "transparent",
+                    color: profileTab === tab ? "#4f82ff" : "var(--muted-foreground)",
+                    fontWeight: profileTab === tab ? 600 : 400,
+                  }}
+                >
+                  {tab === "home" ? <User className="w-3.5 h-3.5 shrink-0" /> : <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>}
+                  {tab === "home" ? "个人资料" : "账号管理"}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <button
+                onClick={() => setProfileOpen(false)}
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                关闭
+              </button>
+            </div>
+
+            {/* 右侧内容区 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {profileTab === "home" && (
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-4">个人资料</h2>
+                    {/* 头像行 */}
+                    <div className="flex items-center gap-4 mb-5">
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
+                        style={{ background: "#4f82ff" }}>
+                        {(username ?? "?")[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-[13px] font-medium text-foreground">{username ?? "…"}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">头像暂不支持更改</p>
+                      </div>
+                    </div>
+                    {/* 姓名行 */}
+                    <div className="flex gap-3 mb-3">
+                      <div className="flex-1 flex flex-col gap-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">姓氏</label>
+                        <Input
+                          value={lastName}
+                          onChange={(e) => { setLastName(e.target.value); setProfileDirty(true); }}
+                          placeholder="请输入姓氏"
+                          className="h-8 text-[13px]"
+                          maxLength={20}
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">名字</label>
+                        <Input
+                          value={firstName}
+                          onChange={(e) => { setFirstName(e.target.value); setProfileDirty(true); }}
+                          placeholder="请输入名字"
+                          className="h-8 text-[13px]"
+                          maxLength={40}
+                        />
+                      </div>
+                    </div>
+                    {/* 个人简介 */}
+                    <div className="flex flex-col gap-1 mb-4">
+                      <label className="text-[11px] font-medium text-muted-foreground">个人简介</label>
+                      <Textarea
+                        value={bio}
+                        onChange={(e) => { setBio(e.target.value); setProfileDirty(true); }}
+                        placeholder="介绍一下自己..."
+                        className="text-[13px] resize-none"
+                        style={{ minHeight: 72 }}
+                        maxLength={200}
+                      />
+                      <p className="text-[10px] text-muted-foreground/60 text-right">{bio.length}/200</p>
+                    </div>
+                    <Button
+                      onClick={handleProfileSave}
+                      disabled={!profileDirty || profileSaving}
+                      size="sm"
+                      className="gap-1.5"
+                    >
+                      {profileSaving ? "保存中…" : "保存更改"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {profileTab === "account" && (
+                <div className="flex flex-col gap-4">
+                  <h2 className="text-[15px] font-semibold text-foreground">账号管理</h2>
+
+                  {/* 用户名 */}
+                  <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">用户名</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{username ?? "未设置"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="text-[12px] h-7" onClick={() => { setProfileOpen(false); handleEditUsernameOpen(); }}>
+                      修改
+                    </Button>
+                  </div>
+
+                  {/* 密码 */}
+                  <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">密码</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{accountInfo?.hasPassword ? "已设置" : "未设置"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="text-[12px] h-7" onClick={openPwdDialog}>
+                      {accountInfo?.hasPassword ? "修改密码" : "设置密码"}
+                    </Button>
+                  </div>
+
+                  {/* 邮箱 */}
+                  <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">邮箱</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{accountInfo?.email ?? "未绑定"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="text-[12px] h-7" onClick={openEmailDialog}>
+                      {accountInfo?.email ? "更换邮箱" : "绑定邮箱"}
+                    </Button>
+                  </div>
+
+                  {/* 手机号 */}
+                  <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+                    <div>
+                      <p className="text-[13px] font-medium text-foreground">手机号</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{accountInfo?.phone ?? "未绑定"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="text-[12px] h-7" onClick={openPhoneDialog}>
+                      {accountInfo?.phone ? "更换手机" : "绑定手机"}
+                    </Button>
+                  </div>
+
+                  {/* GitHub */}
+                  {accountInfo?.githubId && (
+                    <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--panel-divider)" }}>
+                      <div>
+                        <p className="text-[13px] font-medium text-foreground">GitHub</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">已绑定</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 退出登录 */}
+                  <div className="pt-2">
+                    <Button variant="ghost" size="sm" className="text-[12px] h-7 text-destructive hover:text-destructive" onClick={handleSignOut}>
+                      退出登录
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 密码弹窗 ── */}
+      {showPwdDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPwdDialog(false); }}
+        >
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4"
+            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold text-foreground">
+                {pwdMode === "set" ? "设置密码" : pwdMode === "change" ? "修改密码" : "重置密码"}
+              </h2>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setShowPwdDialog(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* set / change: step 1 */}
+            {(pwdMode === "set" || pwdMode === "change") && (
+              <div className="flex flex-col gap-3">
+                {pwdMode === "change" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground mb-1 block">当前密码</label>
+                    <Input type="password" value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)} placeholder="输入当前密码" className="h-9 text-[13px]" />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">新密码</label>
+                  <Input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} placeholder="至少6位" className="h-9 text-[13px]" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">确认新密码</label>
+                  <Input type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} placeholder="再次输入新密码" className="h-9 text-[13px]"
+                    onKeyDown={(e) => e.key === "Enter" && handlePwdSubmit()} />
+                </div>
+                {pwdError && <p className="text-[12px] text-destructive">{pwdError}</p>}
+                <div className="flex items-center justify-between pt-1">
+                  {pwdMode === "change" && (
+                    <button className="text-[12px] text-[#4f82ff] hover:underline" onClick={() => { setPwdMode("forgot"); setPwdStep(2); setPwdError(""); }}>
+                      忘记密码？
+                    </button>
+                  )}
+                  {pwdMode === "set" && <span />}
+                  <Button size="sm" onClick={handlePwdSubmit} disabled={pwdLoading || !pwdNew || !pwdConfirm || (pwdMode === "change" && !pwdCurrent)} className="gap-1.5">
+                    {pwdLoading ? "处理中…" : "确认"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* forgot: step 2 — 选择验证方式 */}
+            {pwdMode === "forgot" && pwdStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">选择验证方式后，我们将发送验证码</p>
+                <div className="flex gap-2">
+                  {(["email", "sms"] as const).map((ch) => (
+                    <button key={ch} onClick={() => setPwdForgotChannel(ch)}
+                      className="flex-1 py-2 rounded-lg text-[12px] font-medium border transition-colors"
+                      style={{ borderColor: pwdForgotChannel === ch ? "#4f82ff" : "var(--panel-divider)", background: pwdForgotChannel === ch ? "rgba(79,130,255,0.08)" : "transparent", color: pwdForgotChannel === ch ? "#4f82ff" : "var(--muted-foreground)" }}>
+                      {ch === "email" ? "邮箱" : "手机号"}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  value={pwdForgotTarget}
+                  onChange={(e) => { setPwdForgotTarget(e.target.value); setPwdError(""); }}
+                  placeholder={pwdForgotChannel === "email" ? "输入邮箱地址" : "输入手机号（含区号 +86）"}
+                  className="h-9 text-[13px]"
+                />
+                {pwdError && <p className="text-[12px] text-destructive">{pwdError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => { setPwdMode("change"); setPwdStep(1); setPwdError(""); }}>取消</Button>
+                  <Button size="sm" onClick={handlePwdSendOtp} disabled={pwdLoading || !pwdForgotTarget.trim()}>
+                    {pwdLoading ? "发送中…" : "发送验证码"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* forgot: step 3 — 输入验证码 */}
+            {pwdMode === "forgot" && pwdStep === 3 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">验证码已发送至 <span className="font-medium text-foreground">{pwdForgotTarget}</span></p>
+                <Input value={pwdForgotCode} onChange={(e) => setPwdForgotCode(e.target.value)} placeholder="输入6位验证码" className="h-9 text-[13px]" maxLength={6} />
+                {pwdError && <p className="text-[12px] text-destructive">{pwdError}</p>}
+                <div className="flex items-center justify-between">
+                  <button className="text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                    disabled={pwdOtpCountdown > 0} onClick={handlePwdSendOtp}>
+                    {pwdOtpCountdown > 0 ? `${pwdOtpCountdown}s 后重发` : "重新发送"}
+                  </button>
+                  <Button size="sm" onClick={handlePwdSubmit} disabled={pwdLoading || !/^\d{6}$/.test(pwdForgotCode)}>
+                    {pwdLoading ? "验证中…" : "下一步"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* forgot: step 4 — 设置新密码 */}
+            {pwdMode === "forgot" && pwdStep === 4 && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">新密码</label>
+                  <Input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} placeholder="至少6位" className="h-9 text-[13px]" />
+                </div>
+                {pwdError && <p className="text-[12px] text-destructive">{pwdError}</p>}
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={handlePwdSubmit} disabled={pwdLoading || pwdNew.length < 6}>
+                    {pwdLoading ? "处理中…" : "下一步"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* forgot: step 5 — 确认新密码 */}
+            {pwdMode === "forgot" && pwdStep === 5 && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">确认新密码</label>
+                  <Input type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} placeholder="再次输入新密码" className="h-9 text-[13px]"
+                    onKeyDown={(e) => e.key === "Enter" && handlePwdSubmit()} />
+                </div>
+                {pwdError && <p className="text-[12px] text-destructive">{pwdError}</p>}
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={handlePwdSubmit} disabled={pwdLoading || !pwdConfirm}>
+                    {pwdLoading ? "重置中…" : "重置密码"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 绑定邮箱弹窗 ── */}
+      {showEmailDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEmailDialog(false); }}
+        >
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4"
+            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold text-foreground">{accountInfo?.email ? "更换邮箱" : "绑定邮箱"}</h2>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setShowEmailDialog(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {emailStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <Input value={emailTarget} onChange={(e) => { setEmailTarget(e.target.value); setEmailError(""); }}
+                  placeholder="输入邮箱地址" className="h-9 text-[13px]"
+                  onKeyDown={(e) => e.key === "Enter" && handleEmailSendOtp()} />
+                {emailError && <p className="text-[12px] text-destructive">{emailError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setShowEmailDialog(false)}>取消</Button>
+                  <Button size="sm" onClick={handleEmailSendOtp} disabled={emailLoading || !emailTarget.trim()}>
+                    {emailLoading ? "发送中…" : "发送验证码"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {emailStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">验证码已发送至 <span className="font-medium text-foreground">{emailTarget}</span></p>
+                <Input value={emailCode} onChange={(e) => setEmailCode(e.target.value)} placeholder="输入6位验证码" className="h-9 text-[13px]" maxLength={6}
+                  onKeyDown={(e) => e.key === "Enter" && handleEmailVerify()} />
+                {emailError && <p className="text-[12px] text-destructive">{emailError}</p>}
+                <div className="flex items-center justify-between">
+                  <button className="text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                    disabled={emailOtpCountdown > 0} onClick={handleEmailSendOtp}>
+                    {emailOtpCountdown > 0 ? `${emailOtpCountdown}s 后重发` : "重新发送"}
+                  </button>
+                  <Button size="sm" onClick={handleEmailVerify} disabled={emailLoading || !/^\d{6}$/.test(emailCode)}>
+                    {emailLoading ? "验证中…" : "绑定"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 绑定手机号弹窗 ── */}
+      {showPhoneDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPhoneDialog(false); }}
+        >
+          <div className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col gap-4"
+            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold text-foreground">{accountInfo?.phone ? "更换手机号" : "绑定手机号"}</h2>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setShowPhoneDialog(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {phoneStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">请输入手机号（含国家区号，如 +86 开头）</p>
+                <Input value={phoneTarget} onChange={(e) => { setPhoneTarget(e.target.value); setPhoneError(""); }}
+                  placeholder="+86 13800000000" className="h-9 text-[13px]"
+                  onKeyDown={(e) => e.key === "Enter" && handlePhoneSendOtp()} />
+                {phoneError && <p className="text-[12px] text-destructive">{phoneError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setShowPhoneDialog(false)}>取消</Button>
+                  <Button size="sm" onClick={handlePhoneSendOtp} disabled={phoneLoading || !phoneTarget.trim()}>
+                    {phoneLoading ? "发送中…" : "发送验证码"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {phoneStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-[12px] text-muted-foreground">验证码已发送至 <span className="font-medium text-foreground">{phoneTarget}</span></p>
+                <Input value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)} placeholder="输入6位验证码" className="h-9 text-[13px]" maxLength={6}
+                  onKeyDown={(e) => e.key === "Enter" && handlePhoneVerify()} />
+                {phoneError && <p className="text-[12px] text-destructive">{phoneError}</p>}
+                <div className="flex items-center justify-between">
+                  <button className="text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                    disabled={phoneOtpCountdown > 0} onClick={handlePhoneSendOtp}>
+                    {phoneOtpCountdown > 0 ? `${phoneOtpCountdown}s 后重发` : "重新发送"}
+                  </button>
+                  <Button size="sm" onClick={handlePhoneVerify} disabled={phoneLoading || !/^\d{6}$/.test(phoneCode)}>
+                    {phoneLoading ? "验证中…" : "绑定"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
