@@ -318,7 +318,8 @@ export function WasmPreview({
             src={iframeSrc}
             className="w-full h-full border-0"
             title={`${langLabel} WASM Preview`}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-popups allow-popups-to-escape-sandbox"
+            allow="fullscreen; autoplay; gamepad; xr-spatial-tracking; accelerometer; gyroscope"
             data-testid="preview-wasm-iframe"
           />
         </div>

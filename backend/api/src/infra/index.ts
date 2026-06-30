@@ -12,6 +12,10 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+// 生产部署在反代（Nginx 等）之后，开启 trust proxy 才能从 X-Forwarded-For
+// 取到客户端真实外网 IP——人机验证验票（captcha）和限流都依赖它。
+app.set("trust proxy", true);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -41,7 +45,13 @@ app.use(session({
   secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" },
+  cookie: {
+    httpOnly: true,
+    // OAuth 回调是跨站重定向，lax 模式下浏览器不带 cookie，导致 githubOAuthState
+    // 读不到、state 校验失败。none 允许跨站携带，必须配合 secure:true。
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: process.env.NODE_ENV === "production",
+  },
 }));
 
 export function log(message: string, source = "express") {

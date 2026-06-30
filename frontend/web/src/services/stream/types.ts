@@ -32,6 +32,7 @@ export interface BuildStreamState {
   isReconnecting: boolean;
   thinkingElapsedSec: number | null;
   sessionId: string | null;
+  stepNarrations: Record<number, string>;
 }
 
 export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
@@ -42,36 +43,12 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   isReconnecting: false,
   thinkingElapsedSec: null,
   sessionId: null,
-};
-
-// ─── Review Stream ─────────────────────────────────────────────────────────
-
-export interface ReviewStreamState {
-  thinkingText: string;
-  narrationText: string;
-  /** 0 = not started; otherwise the current review round (1-based). */
-  round: number;
-  maxRounds: number;
-  /** "reviewing" while the reviewer agent runs, "fixing" during a fix round. */
-  phase: "idle" | "reviewing" | "fixing";
-  isReconnecting: boolean;
-  sessionId: string | null;
-}
-
-export const INITIAL_REVIEW_STREAM_STATE: ReviewStreamState = {
-  thinkingText: "",
-  narrationText: "",
-  round: 0,
-  maxRounds: 0,
-  phase: "idle",
-  isReconnecting: false,
-  sessionId: null,
+  stepNarrations: {},
 };
 
 // ─── Store Actions (injected into stream instances) ────────────────────────
 
 export type TaskStatus = "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
-export type ReviewPhase = "idle" | "building" | "reviewing" | "review_passed" | "review_failed" | "fixing" | "review_skipped";
 export type ChatMode = "manager" | "build";
 
 export interface StreamingSnapshot {
@@ -85,6 +62,9 @@ export interface StreamingSnapshot {
 }
 
 export interface StoreActions {
+  // Chat message operations
+  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
+
   // Manager message operations
   addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
@@ -100,8 +80,6 @@ export interface StoreActions {
   setAiResponding: (v: boolean) => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setChatMode: (mode: ChatMode) => void;
-  setReviewPhase: (phase: ReviewPhase) => void;
-  setHolisticReview: (review: unknown) => void;
   setFixCycle: (cycle: number) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setCompletionData: (data: { changedFiles: string[]; summary: string } | null) => void;
@@ -111,6 +89,7 @@ export interface StoreActions {
 
   // File operations
   applyCodeBlock: (block: { filePath: string; code: string; language: string }) => Promise<void>;
+  deleteFile: (path: string) => void;
   setLastBuildFileDiff: (filePath: string, oldContent: string, newContent: string) => void;
   clearLastBuildFileDiffs: () => void;
   refreshPreview: () => void;
@@ -119,7 +98,7 @@ export interface StoreActions {
   createCheckpoint: (label: string, opts?: { includeManagerThread?: boolean }) => void;
 
   // Project rename
-  renameProject: (id: string, name: string) => void;
+  renameProject: (id: string, name: string, fromUser?: boolean) => void;
 
   // Read-only accessors (not guarded — safe from any project context)
   getProjectId: () => string | null;
@@ -128,8 +107,6 @@ export interface StoreActions {
   getFiles: () => FileNode[];
   getTaskStatuses: () => Record<string, TaskStatus>;
   getStreamingSnapshot: () => StreamingSnapshot | null;
-  getReviewPhase: () => ReviewPhase;
-  getReviewStrictness: () => "lenient" | "balanced" | "strict";
   getMessagesReady: () => boolean;
 }
 

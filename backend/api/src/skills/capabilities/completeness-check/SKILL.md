@@ -83,3 +83,12 @@ For each: file:line, what's wrong, and the concrete fix.
 - Mobile layout where a fixed-width element overflows the screen.
 - A `TODO: handle error` left in the network layer.
 - Console flooded with React key warnings or `undefined` access errors.
+
+## Self-check
+- [ ] Grep for dead patterns: `onClick={() => {}}`, `href="#"`, `TODO`, `FIXME`, `placeholder`, stray `console.log`.
+- [ ] Every promise/await has a catch; no empty `catch {}` swallowing errors.
+- [ ] Every data view renders loading, empty, and error states — not just success.
+- [ ] No console errors or unhandled rejections during a normal session.
+- [ ] State persists (API or localStorage) and reloads correctly on init.
+- [ ] Edge cases handled: empty input, double-submit, missing optional fields.
+- [ ] Build/type-check passes; layout holds on mobile; interactive elements keyboard-reachable.

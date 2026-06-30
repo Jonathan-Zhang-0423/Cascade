@@ -7,6 +7,7 @@ import type { ToolSchema, ToolHandler, ToolHandlers } from "../agent/loop/agent-
 import type { BuildSessionState, SseEmit } from "../agent/orchestrator/build-orchestrator";
 import { shellManager } from "../agent/tools/shell-manager";
 import { srcDir } from "../infra/paths";
+import { PROJECT_MEMORY_NAME } from "../infra/storage";
 
 export interface LoadedSkills {
   knowledgePacks: string[];
@@ -155,6 +156,7 @@ export async function loadUserSkills(
     .where(and(eq(projectSkills.projectId, projectId), eq(projectSkills.enabled, true)));
 
   for (const skill of projSkills) {
+    if (skill.name === PROJECT_MEMORY_NAME) continue; // injected separately as the Project Memory section
     if (seen.has(skill.name)) continue;
     seen.add(skill.name);
     parseSkillContent(skill.name, skill.type, skill.content, session.id, result);

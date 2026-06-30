@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import {
   type ManagerPlan,
   type ManagerSubTask,
@@ -31,7 +31,6 @@ import {
   Loader2,
   ExternalLink,
   X,
-  ChevronDown as DropdownChevron,
   LayoutGrid,
   Ban,
 } from "lucide-react";
@@ -311,7 +310,7 @@ export function TaskPlanCard({
     <>
       {thinking && (
         <div className="px-3 mb-0.5">
-          <ThinkingToggle thinking={thinking} />
+          <ThinkingToggle thinking={thinking} isCompleted={isFullyComplete} />
         </div>
       )}
 
@@ -743,7 +742,6 @@ export function TaskPlanCard({
                 </div>
 
                 <div className="flex-1" />
-
                 {/* Primary: Build here */}
                 <button
                   className="font-mono text-[10px] text-white bg-[#4f82ff] hover:bg-[#3a6ee8] rounded-lg px-4 py-1.5 transition-colors font-semibold"

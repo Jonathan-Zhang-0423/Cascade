@@ -7,7 +7,7 @@ import { sendEmail } from "../infra/email";
 import { sendSmsOtp } from "../infra/sms";
 
 export type OtpChannel = "email" | "sms";
-export type OtpPurpose = "login";
+export type OtpPurpose = "login" | "reset_password" | "bind_email";
 
 const CODE_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SEC = 60;
@@ -34,7 +34,7 @@ export function normalizeTarget(channel: OtpChannel, raw: string): string | null
 }
 
 export type SendOtpResult =
-  | { ok: true }
+  | { ok: true; retryAfterSec: number }
   | { ok: false; error: "rate_limited"; retryAfterSec: number };
 
 export async function sendOtp(args: {
@@ -100,7 +100,7 @@ export async function sendOtp(args: {
     await sendSmsOtp({ to: target, code, expiresMinutes: CODE_TTL_MINUTES });
   }
 
-  return { ok: true };
+  return { ok: true, retryAfterSec: RESEND_COOLDOWN_SEC };
 }
 
 export type VerifyOtpResult =

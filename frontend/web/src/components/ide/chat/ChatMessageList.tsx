@@ -1,6 +1,6 @@
-import type { ChatMessage, ManagerMessage, HolisticReviewResult, ReviewPhase, ReviewStrictness } from "@/stores/ide-store";
+import type { ChatMessage, ManagerMessage } from "@/stores/ide-store";
 import { useIDEStore } from "@/stores/ide-store";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useMemo } from "react";
 import type { ActionLogEntry } from "./chat-types";
 import { ActionLogCollapsed } from "./action-log";
 import {
@@ -8,6 +8,7 @@ import {
   CheckpointMarker,
 } from "./message-components";
 import { ManagerMessageBubble } from "./plan-components";
+import { streamRegistry } from "@/services/stream";
 
 interface ChatMessageListProps {
   chatMessages: ChatMessage[];
@@ -19,8 +20,6 @@ interface ChatMessageListProps {
   isExecuting: boolean;
   pendingConfirmation: { stepKey: string; items: string[] } | null | undefined;
   userConfirmationInput: string;
-  reviewPhase: ReviewPhase;
-  holisticReview: HolisticReviewResult | null | undefined;
   fixCycle: number;
   liveNarrationText?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
@@ -29,13 +28,6 @@ interface ChatMessageListProps {
   handleStopExecution?: () => void;
   handleContinueExecution?: (input?: string) => void;
   setUserConfirmationInput?: (v: string) => void;
-  handleStartReview?: () => void;
-  handleStopReview?: () => void;
-  reviewStrictness?: ReviewStrictness;
-  onReviewStrictnessChange?: (s: ReviewStrictness) => void;
-  reviewLiveNarration?: string;
-  reviewRound?: number;
-  reviewMaxRounds?: number;
 }
 
 export function ChatMessageList({
@@ -48,8 +40,6 @@ export function ChatMessageList({
   isExecuting,
   pendingConfirmation,
   userConfirmationInput,
-  reviewPhase,
-  holisticReview,
   fixCycle,
   liveNarrationText,
   completionData,
@@ -58,35 +48,52 @@ export function ChatMessageList({
   handleStopExecution,
   handleContinueExecution,
   setUserConfirmationInput,
-  handleStartReview,
-  handleStopReview,
-  reviewStrictness,
-  onReviewStrictnessChange,
-  reviewLiveNarration,
-  reviewRound,
-  reviewMaxRounds,
 }: ChatMessageListProps) {
+  // ── Subscribe to live actionLog at the list level (correct slot, single instance) ──
+  const projectId = useIDEStore((st) => st.projectId);
+  const currentSessionId = useIDEStore((st) => st.currentSessionId);
+  const slot = projectId ? streamRegistry.get(projectId, currentSessionId) : null;
+  const liveActionLog = useSyncExternalStore<ActionLogEntry[]>(
+    slot ? slot.build.state.subscribe : (() => () => {}),
+    slot ? () => slot.build.state.getSnapshot().actionLog : () => [],
+  );
+
+  // Build map: stepNumber (number) → ActionLogEntry[]
+  const stepActionsMap = useMemo(() => {
+    const map = new Map<number, ActionLogEntry[]>();
+    let currentStep = -1;
+    for (const entry of liveActionLog) {
+      if (entry.type === "step") {
+        const m = entry.label.match(/Step\s+(\d+)/i);
+        currentStep = m ? parseInt(m[1], 10) : currentStep + 1;
+        if (!map.has(currentStep)) map.set(currentStep, []);
+      } else if (currentStep >= 0) {
+        const bucket = map.get(currentStep);
+        if (bucket) bucket.push(entry);
+        else map.set(currentStep, [entry]);
+      }
+    }
+    return map;
+  }, [liveActionLog]);
   const lastPlanMsgId = [...managerMessages]
     .reverse()
     .find((m) => m.plan)?.id;
   const lastChatIdx = chatMessages.length - 1;
   type MergedItem =
-    | { kind: "chat"; msg: ChatMessage; idx: number; order: number }
-    | { kind: "manager"; msg: ManagerMessage; order: number };
+    | { kind: "chat"; msg: ChatMessage; idx: number }
+    | { kind: "manager"; msg: ManagerMessage };
   const merged: MergedItem[] = [
     ...chatMessages.map((msg, idx) => ({
       kind: "chat" as const,
       msg,
       idx,
-      order: idx,
     })),
-    ...managerMessages.map((msg, idx) => ({
+    ...managerMessages.map((msg) => ({
       kind: "manager" as const,
       msg,
-      order: idx,
     })),
   ].sort(
-    (a, b) => a.msg.seq - b.msg.seq || a.order - b.order,
+    (a, b) => a.msg.seq - b.msg.seq || a.msg.timestamp - b.msg.timestamp,
   );
 
   const allCheckpointSeqs = merged
@@ -141,9 +148,9 @@ export function ChatMessageList({
           (e.g. mid-session) — in that case keep showing it. */}
       {!messagesReady && merged.length <= 1 && (
         <div className="px-4 py-6 space-y-3" aria-hidden data-testid="chat-loading-skeleton">
-          <div className="h-3 w-2/3 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
-          <div className="h-3 w-1/2 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
-          <div className="h-3 w-3/4 rounded bg-[rgba(255,255,255,0.05)] animate-pulse" />
+          <div className="h-3 w-2/3 rounded bg-border/20 animate-pulse" />
+          <div className="h-3 w-1/2 rounded bg-border/20 animate-pulse" />
+          <div className="h-3 w-3/4 rounded bg-border/20 animate-pulse" />
         </div>
       )}
       {(messagesReady || merged.length > 1) && (hasMoreChat || hasMoreMgr) && totalMsgs > 0 && (
@@ -202,48 +209,46 @@ export function ChatMessageList({
             );
           }
           const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
+          // A card that already has frozen statuses is finished — always show its
+          // frozen snapshot, never the live taskStatuses. Otherwise a later build
+          // (especially a direct build, which adds a buildResult instead of a new
+          // plan card so this stale card stays "lastPlan") would bleed its live
+          // "running" status onto this completed card's step 1.
+          const useLiveStatuses = isLastPlan && !msg.frozenTaskStatuses;
           return (
             <div key={`m-${msg.id}`} className="space-y-2">
               <ManagerMessageBubble
                 message={msg}
                 taskStatuses={
-                  isLastPlan
+                  useLiveStatuses
                     ? taskStatuses
                     : (msg.frozenTaskStatuses ?? {})
                 }
                 taskFailureReasons={
-                  isLastPlan
+                  useLiveStatuses
                     ? taskFailureReasons
                     : msg.frozenTaskFailureReasons
                 }
-                onExecute={isLastPlan ? handleExecutePlan : undefined}
-                onRevise={isLastPlan ? handleRevisePlan : undefined}
-                isExecuting={isLastPlan ? isExecuting : undefined}
-                onStop={isLastPlan ? handleStopExecution : undefined}
+                onExecute={useLiveStatuses ? handleExecutePlan : undefined}
+                onRevise={useLiveStatuses ? handleRevisePlan : undefined}
+                isExecuting={useLiveStatuses ? isExecuting : undefined}
+                onStop={useLiveStatuses ? handleStopExecution : undefined}
                 onContinueWithInput={
-                  isLastPlan ? handleContinueExecution : undefined
+                  useLiveStatuses ? handleContinueExecution : undefined
                 }
                 pendingConfirmation={
-                  isLastPlan ? pendingConfirmation : undefined
+                  useLiveStatuses ? pendingConfirmation : undefined
                 }
                 confirmationInput={
-                  isLastPlan ? userConfirmationInput : undefined
+                  useLiveStatuses ? userConfirmationInput : undefined
                 }
                 onConfirmationInputChange={
-                  isLastPlan ? setUserConfirmationInput : undefined
+                  useLiveStatuses ? setUserConfirmationInput : undefined
                 }
-                reviewPhase={isLastPlan ? reviewPhase : msg.frozenReviewPhase}
-                holisticReview={isLastPlan ? holisticReview : undefined}
-                fixCycle={isLastPlan ? fixCycle : undefined}
-                liveNarration={isLastPlan ? liveNarrationText : undefined}
-                completionData={isLastPlan ? completionData : undefined}
-                onStartReview={isLastPlan ? handleStartReview : undefined}
-                onStopReview={isLastPlan ? handleStopReview : undefined}
-                reviewStrictness={isLastPlan ? reviewStrictness : undefined}
-                onReviewStrictnessChange={isLastPlan ? onReviewStrictnessChange : undefined}
-                reviewLiveNarration={isLastPlan ? reviewLiveNarration : undefined}
-                reviewRound={isLastPlan ? reviewRound : undefined}
-                reviewMaxRounds={isLastPlan ? reviewMaxRounds : undefined}
+                fixCycle={useLiveStatuses ? fixCycle : undefined}
+                liveNarration={useLiveStatuses ? liveNarrationText : undefined}
+                completionData={useLiveStatuses ? completionData : undefined}
+                stepActionsMap={useLiveStatuses ? stepActionsMap : undefined}
               />
             </div>
           );

@@ -5,11 +5,39 @@ import { useIDEStore, type FileNode } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useTheme } from "@/components/theme-provider";
 import { useLocation } from "wouter";
-import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Copy, Check, Download, Globe, QrCode, Maximize, Minimize, Languages } from "lucide-react";
+import { Home, Clock, Sun, Moon, HelpCircle, LogOut, ChevronDown, Maximize, Minimize, Languages, Monitor, Smartphone, Terminal, Type, Gift, Copy, Check } from "lucide-react";
 import { type ThemeId } from "@/lib/themes";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useT } from "@/lib/i18n";
 import { useLanguageStore } from "@/stores/language-store";
+import { getFirstDeviceForPlatform } from "@/lib/device-specs";
+import { cn } from "@/lib/utils";
+
+// 字体大小档位：value = html font-size 百分比
+export const FONT_SIZES = [
+  { key: "small", value: 87.5 },
+  { key: "medium", value: 100 },
+  { key: "large", value: 112.5 },
+  { key: "xlarge", value: 125 },
+] as const;
+type FontSizeKey = typeof FONT_SIZES[number]["key"];
+
+const FONT_SIZE_STORAGE_KEY = "cascade-font-size";
+
+export function getFontSizeKey(): FontSizeKey {
+  try {
+    const v = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    if (v && FONT_SIZES.some((f) => f.key === v)) return v as FontSizeKey;
+  } catch {}
+  return "medium";
+}
+
+export function applyFontSize(key: FontSizeKey) {
+  const size = FONT_SIZES.find((f) => f.key === key);
+  if (!size) return;
+  document.documentElement.style.fontSize = `${size.value}%`;
+  try { localStorage.setItem(FONT_SIZE_STORAGE_KEY, key); } catch {}
+}
 
 interface NavbarProps {
   projectName: string;
@@ -81,6 +109,7 @@ export function Navbar({
   const {
     activeFile, setPreviewFile, setPreviewOverrideHtml, refreshPreview,
     files, saveProject, addConsoleEntry, projectId,
+    isConsoleOpen, toggleConsole, devicePlatform, setDevicePlatform, setSelectedDevice,
   } = useIDEStore();
   const { projects } = useProjectStore();
   const { setThemeId, mode } = useTheme();
@@ -92,23 +121,61 @@ export function Navbar({
   const [logoMenuOpen, setLogoMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // invite modal
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
-  const inviteRef = useRef<HTMLDivElement>(null);
+  // invite panel
+  const [invitePanelOpen, setInvitePanelOpen] = useState(false);
+  const invitePanelRef = useRef<HTMLDivElement>(null);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralLink, setReferralLink] = useState<string | null>(null);
+  const [referralCount, setReferralCount] = useState<number>(0);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // publish modal
-  const [publishOpen, setPublishOpen] = useState(false);
-  const publishRef = useRef<HTMLDivElement>(null);
-  const [publishCopied, setPublishCopied] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
+  useEffect(() => {
+    if (!invitePanelOpen || referralCode) return;
+    setInviteLoading(true);
+    fetch("/api/referral/my-code", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.referralCode) {
+          setReferralCode(d.referralCode);
+          setReferralLink(d.referralLink);
+          setReferralCount(d.referralCount ?? 0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInviteLoading(false));
+  }, [invitePanelOpen, referralCode]);
+
+  const copyToClipboard = (text: string, type: "code" | "link") => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (type === "code") { setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }
+      else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
+    });
+  };
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!invitePanelRef.current) return;
+      if (!invitePanelRef.current.contains(e.target as Node)) {
+        setInvitePanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const [fontSize, setFontSize] = useState<FontSizeKey>(getFontSizeKey);
+
+  const handleFontSize = (key: FontSizeKey) => {
+    setFontSize(key);
+    applyFontSize(key);
+  };
 
   // close menus on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setLogoMenuOpen(false);
-      if (inviteRef.current && !inviteRef.current.contains(e.target as Node)) setInviteOpen(false);
-      if (publishRef.current && !publishRef.current.contains(e.target as Node)) setPublishOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -139,45 +206,6 @@ export function Navbar({
       return;
     }
     addConsoleEntry({ level: "warn", message: t("navbar.noRunHint") });
-  };
-
-  // invite — 前端占位链接，后端接口待实现
-  const shareLink = `${window.location.origin}/invite/${projectId ?? ""}`;
-  const handleInviteCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 2000);
-    } catch {}
-  };
-
-  // publish — export zip
-  const handleExportZip = async () => {
-    if (!projectId) return;
-    setExportLoading(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/export`);
-      if (!res.ok) throw new Error("export failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${currentProject?.name ?? "project"}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      addConsoleEntry({ level: "error", message: "Export failed" });
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handlePublishCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setPublishCopied(true);
-      setTimeout(() => setPublishCopied(false), 2000);
-    } catch {}
   };
 
   // fullscreen — 由外部传入，只全屏右内容区
@@ -228,7 +256,7 @@ export function Navbar({
 
           {logoMenuOpen && (
             <div
-              className="absolute top-full left-0 mt-1 w-48 rounded-lg py-1 z-50"
+              className="absolute top-full left-0 mt-1 w-52 rounded-lg py-1 z-50"
               style={{
                 background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2",
                 border: "1px solid var(--panel-divider)",
@@ -250,9 +278,45 @@ export function Navbar({
                   </button>
                 )
               )}
+              {/* 字体大小 */}
+              <div className="h-px my-1" style={{ background: "var(--panel-divider)" }} />
+              <div className="px-3 py-1.5 flex items-center gap-2">
+                <Type className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[12px] text-foreground flex-1">{t("navbar.fontSize")}</span>
+                <div className="flex gap-1 items-center">
+                  {FONT_SIZES.map((f, fi) => (
+                    <button
+                      key={f.key}
+                      onClick={() => handleFontSize(f.key)}
+                      className={cn(
+                        "w-7 h-7 rounded flex items-center justify-center transition-colors",
+                        fontSize === f.key
+                          ? "bg-[#4f82ff] text-white"
+                          : "bg-accent/20 text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+                      )}
+                      title={t(`navbar.fontSize${f.key.charAt(0).toUpperCase() + f.key.slice(1)}` as any)}
+                      style={{ fontSize: 9 + fi * 2 }}
+                    >
+                      A
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
+
+        {/* 弹性间距，把 Home 推到最右侧 */}
+        <div className="flex-1" />
+
+        {/* Home 按钮 */}
+        <button
+          className="flex items-center justify-center w-6 h-6 rounded hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          onClick={handleBack}
+          title={t("navbar.home")}
+        >
+          <Home className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* 竖线占位 5px，与 ide.tsx 绝对定位竖线宽度一致 */}
@@ -272,7 +336,7 @@ export function Navbar({
       <div style={{ width: 5, flexShrink: 0 }} />
 
       {/* ③ 右导航区 */}
-      <div className="flex-1 flex items-center px-2 min-w-0 overflow-hidden gap-0.5">
+      <div className="flex-1 flex items-center px-2 min-w-0 overflow-visible gap-0.5">
 
         {/* Tab 列表 */}
         {previewTabs.map((tab) => (
@@ -335,51 +399,115 @@ export function Navbar({
 
         <div className="flex-1" />
 
-        {/* Invite */}
-        <div className="relative" ref={inviteRef}>
-          <button
-            className="flex items-center h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors shrink-0 border"
-            style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)", color: "var(--foreground)" }}
-            onClick={() => { setInviteOpen((v) => !v); setPublishOpen(false); }}
-          >
-            {t("navbar.invite")}
-          </button>
+        {/* 控制台 icon */}
+        <button
+          className={cn("flex items-center justify-center w-[28px] h-[26px] border rounded-[6px] transition-colors shrink-0", isConsoleOpen ? "bg-[#F0F7FF] border-[#BFD9F2] text-[#0A66C2]" : "text-muted-foreground hover:text-foreground")}
+          style={!isConsoleOpen ? { background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" } : {}}
+          onClick={toggleConsole}
+          title="Terminal"
+        >
+          <Terminal className="w-[13px] h-[13px]" />
+        </button>
 
-          {inviteOpen && (
-            <div
-              className="absolute top-full right-0 mt-1.5 w-52 rounded-xl z-50"
-              style={{ background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.18)", opacity: 1 }}
-            >
-              <div className="px-4 py-4 flex flex-col items-center gap-1.5 text-center">
-                <span className="text-[22px]">🚀</span>
-                <div className="text-[13px] font-semibold text-foreground">{t("navbar.comingSoon")}</div>
-                <div className="text-[12px] text-muted-foreground">{t("navbar.inviteDesc")}</div>
-              </div>
-            </div>
-          )}
+        {/* 平台切换 */}
+        <div className="flex items-center rounded-[6px] p-[2px] gap-[1px] shrink-0 ml-1 border" style={{ background: "var(--panel-nav-bg)", borderColor: "var(--panel-divider)" }}>
+          <button
+            className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "android" ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+            style={devicePlatform === "android" ? { background: "var(--panel-left-bg)" } : {}}
+            onClick={() => { setDevicePlatform("android"); setSelectedDevice(getFirstDeviceForPlatform("android")); }}
+            title="Desktop"
+          >
+            <Monitor className="w-[13px] h-[13px]" />
+          </button>
+          <button
+            className={cn("flex items-center justify-center w-[26px] h-[22px] rounded-[4px] transition-colors", devicePlatform === "ios" ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+            style={devicePlatform === "ios" ? { background: "var(--panel-left-bg)" } : {}}
+            onClick={() => { setDevicePlatform("ios"); setSelectedDevice(getFirstDeviceForPlatform("ios")); }}
+            title="Mobile"
+          >
+            <Smartphone className="w-[13px] h-[13px]" />
+          </button>
         </div>
 
-        {/* Publish */}
-        <div className="relative ml-1" ref={publishRef}>
+        {/* 邀请按钮 */}
+        <div className="relative shrink-0 ml-1" ref={invitePanelRef}>
           <button
-            className="flex items-center gap-1.5 h-[26px] px-2.5 rounded-[5px] text-[11px] text-white font-medium transition-colors shrink-0"
-            style={{ background: "hsl(var(--primary))" }}
-            onClick={() => { setPublishOpen((v) => !v); setInviteOpen(false); }}
+            className={cn(
+              "flex items-center gap-1 h-[26px] px-2.5 rounded-[5px] text-[11px] font-medium transition-colors border",
+              invitePanelOpen
+                ? "bg-[#4f82ff]/10 border-[#4f82ff]/30 text-[#4f82ff]"
+                : "text-muted-foreground hover:text-foreground border-[var(--panel-divider)]"
+            )}
+            style={!invitePanelOpen ? { background: "var(--panel-nav-bg)" } : {}}
+            onClick={() => setInvitePanelOpen((v) => !v)}
+            title={t("navbar.invite")}
           >
-            <span className="w-[5px] h-[5px] rounded-full bg-white/70 shrink-0" />
-            {t("navbar.publish")}
+            <Gift className="w-[12px] h-[12px]" />
+            <span className="hidden sm:inline">{t("navbar.invite")}</span>
           </button>
 
-          {publishOpen && (
+          {invitePanelOpen && (
             <div
-              className="absolute top-full right-0 mt-1.5 w-52 rounded-xl z-50"
-              style={{ background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2", border: "1px solid var(--panel-divider)", boxShadow: "0 8px 32px rgba(0,0,0,0.18)", opacity: 1 }}
+              className="absolute top-full right-0 mt-1.5 w-72 rounded-xl p-4 z-50 flex flex-col gap-3"
+              style={{
+                background: mode === "dark" ? "hsl(222,22%,11%)" : "#fff",
+                border: "1px solid var(--panel-divider)",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
+              }}
             >
-              <div className="px-4 py-4 flex flex-col items-center gap-1.5 text-center">
-                <span className="text-[22px]">🚀</span>
-                <div className="text-[13px] font-semibold text-foreground">{t("navbar.comingSoon")}</div>
-                <div className="text-[12px] text-muted-foreground">{t("navbar.publishDesc")}</div>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">{t("navbar.invitePanel.title")}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{t("navbar.invitePanel.desc")}</p>
               </div>
+
+              {inviteLoading ? (
+                <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+              ) : referralCode ? (
+                <>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                      {t("navbar.invitePanel.yourCode")}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code
+                        className="flex-1 text-[13px] font-mono tracking-widest px-3 py-2 rounded-lg"
+                        style={{ background: "var(--panel-left-bg)", color: "var(--foreground)" }}
+                      >
+                        {referralCode}
+                      </code>
+                      <button
+                        className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                        style={{ background: "var(--panel-left-bg)" }}
+                        onClick={() => copyToClipboard(referralCode, "code")}
+                        title={t("navbar.invitePanel.copyCode")}
+                      >
+                        {copiedCode
+                          ? <Check className="w-3.5 h-3.5 text-green-500" />
+                          : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-[12px] font-medium transition-colors"
+                    style={{
+                      background: copiedLink ? "rgba(52,214,138,0.12)" : "#4f82ff",
+                      color: copiedLink ? "#34d68a" : "white",
+                    }}
+                    onClick={() => referralLink && copyToClipboard(referralLink, "link")}
+                  >
+                    {copiedLink
+                      ? <><Check className="w-3.5 h-3.5" />{t("navbar.invitePanel.copied")}</>
+                      : <><Copy className="w-3.5 h-3.5" />{t("navbar.invitePanel.copyLink")}</>}
+                  </button>
+
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {t("navbar.invitePanel.referralCount").replace("{n}", String(referralCount))}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[12px] text-muted-foreground">{t("navbar.invitePanel.loading")}</p>
+              )}
             </div>
           )}
         </div>

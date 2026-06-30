@@ -12,7 +12,7 @@ import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-stor
 import { useLanguageStore } from "@/stores/language-store";
 import { useProjectStore } from "@/stores/project-store";
 import { tr } from "@/lib/i18n";
-import type { ManagerPlan } from "@/stores/ide-store";
+import type { ManagerPlan, BuildResultData } from "@/stores/ide-store";
 import type { BuildPhase } from "@/components/ide/chat/BuildPhaseIndicator";
 
 /**
@@ -21,6 +21,7 @@ import type { BuildPhase } from "@/components/ide/chat/BuildPhaseIndicator";
  */
 export class BuildStreamInstance {
   readonly projectId: string;
+  readonly chatSessionId: string;   // 对话 session（主会话为 "main"），用于隔离 localStorage key
   readonly state: ObservableState<BuildStreamState>;
 
   private actions: StoreActions;
@@ -40,10 +41,16 @@ export class BuildStreamInstance {
   private thinkingStartTime: number | null = null;
   userConfirmation = "";
 
-  constructor(projectId: string, actions: StoreActions) {
+  constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
     this.projectId = projectId;
+    this.chatSessionId = chatSessionId;
     this.actions = actions;
     this.state = new ObservableState<BuildStreamState>({ ...INITIAL_BUILD_STREAM_STATE });
+  }
+
+  // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
+  private get storageKey(): string {
+    return `cascade-build-session-${this.projectId}-${this.chatSessionId}`;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -81,7 +88,7 @@ export class BuildStreamInstance {
       if (stillActive) return;
       this.sessionId = null;
       this.reader = null;
-      try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
     }
 
     this.clearLiveTimer();
@@ -96,7 +103,6 @@ export class BuildStreamInstance {
     this.state.set({ buildPhase: "thinking" });
     this.actions.setChatMode("build");
     this.actions.setFixCycle(0);
-    this.actions.setHolisticReview(null);
     this.actions.setCompletionData(null);
 
     const plan: ManagerPlan = isDirect
@@ -126,7 +132,7 @@ export class BuildStreamInstance {
     const myGen = ++this.generation;
     this.connectionErrorAdded = false;
 
-    try { localStorage.setItem(`cascade-build-session-${this.projectId}`, sessionId); } catch {}
+    try { localStorage.setItem(this.storageKey, sessionId); } catch {}
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -135,6 +141,7 @@ export class BuildStreamInstance {
     // Accumulator state
     let thinkingAccumulated = "";
     let commAccumulated = "";
+    let currentStepNum = 0;
 
     let lastSnapshotFlush = 0;
     const flushSnapshot = () => {
@@ -216,12 +223,38 @@ export class BuildStreamInstance {
 
           // ─── Event handling ─────────────────────────────────────────
           if (type === "step_starting") {
-            thinkingAccumulated = "";
+            // Flush any pending thinking from the previous step before moving on
+            if (thinkingAccumulated) {
+              const lastIsThinking = this.actionLog.length > 0 &&
+                this.actionLog[this.actionLog.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                this.appendActionLog({
+                  type: "thinking",
+                  label: "thinking",
+                  detail: thinkingAccumulated,
+                  timestamp: this.thinkingStartTime ?? Date.now(),
+                });
+              }
+              thinkingAccumulated = "";
+            }
             commAccumulated = "";
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "", thinkingElapsedSec: null });
             this.thinkingStartTime = null;
             const stepNum = ev.stepNumber ?? 1;
+            currentStepNum = stepNum;
             this.appendActionLog({ type: "step", label: `Step ${stepNum}/${normalizedSteps.length}: ${ev.stepTitle || ""}`, detail: "", timestamp: Date.now() });
+            // Emit plan action on first step — shows plan steps as detail
+            if (stepNum === 1 && normalizedSteps.length > 0) {
+              const planDetail = normalizedSteps
+                .map((s) => `${s.step}. ${s.title}`)
+                .join("\n");
+              this.appendActionLog({
+                type: "plan",
+                label: `${normalizedSteps.length} 个步骤`,
+                detail: planDetail,
+                timestamp: Date.now(),
+              });
+            }
             if (isCurrentProject) {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
@@ -235,20 +268,54 @@ export class BuildStreamInstance {
               this.state.set({ thinkingText: thinkingAccumulated });
             }
           } else if (type === "narration_token" || type === "communicator_token") {
-            // Transition from thinking to working
-            if (thinkingAccumulated && this.thinkingFadeTimer === null) {
-              this.thinkingFadeTimer = setTimeout(() => {
-                this.state.set({ thinkingText: "" });
-                this.thinkingFadeTimer = null;
-              }, 400);
+            // Flush thinking once at the start of narration phase, then clear it
+            if (thinkingAccumulated) {
+              const lastIsThinking = this.actionLog.length > 0 &&
+                this.actionLog[this.actionLog.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                this.appendActionLog({
+                  type: "thinking",
+                  label: "thinking",
+                  detail: thinkingAccumulated,
+                  timestamp: this.thinkingStartTime ?? Date.now(),
+                });
+              }
+              thinkingAccumulated = "";
             }
             commAccumulated += ev.token || "";
             flushSnapshot();
-            this.state.set({ narrationText: commAccumulated, buildPhase: "working" });
+            // Write per-step narration so StepItem can display it inline
+            const prevNarrations = this.state.get().stepNarrations;
+            this.state.set({
+              narrationText: commAccumulated,
+              buildPhase: "working",
+              stepNarrations: { ...prevNarrations, [currentStepNum]: commAccumulated },
+            });
+          } else if (type === "action_log") {
+            const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
+            if (actionType) {
+              this.appendActionLog({
+                type: actionType,
+                label: (ev.label as string) || "",
+                detail: (ev.detail as string) || "",
+                timestamp: Date.now(),
+                filePath: (ev.filePath as string) || undefined,
+                precedingNarration: commAccumulated || undefined,
+              });
+            }
           } else if (type === "code_applied") {
+            // Write code_applied action entry so it shows in the step's action row
+            const filePath = ev.filePath || "";
+            this.appendActionLog({
+              type: "code_applied",
+              label: filePath.split("/").pop() || filePath,
+              detail: "",
+              timestamp: Date.now(),
+              filePath: filePath || undefined,
+              precedingNarration: commAccumulated || undefined,
+            });
             this.state.set({ buildPhase: "working" });
             if (isCurrentProject) {
-              const filePath = ev.filePath || "";
               const newCode = ev.code || "";
               const files = this.actions.getFiles();
               const oldContent = files.find((f) => f.path === filePath)?.content ?? "";
@@ -256,9 +323,21 @@ export class BuildStreamInstance {
               await this.actions.applyCodeBlock({ filePath, code: newCode, language: "" });
               this.actions.refreshPreview();
             }
+          } else if (type === "file_deleted") {
+            const filePath = ev.filePath || "";
+            this.appendActionLog({
+              type: "file_delete",
+              label: filePath.split("/").pop() || filePath,
+              detail: "",
+              timestamp: Date.now(),
+              filePath: filePath || undefined,
+              precedingNarration: commAccumulated || undefined,
+            });
+            if (isCurrentProject && filePath) {
+              this.actions.deleteFile(filePath);
+              this.actions.refreshPreview();
+            }
           } else if (type === "step_completed") {
-            this.state.set({ narrationText: "" });
-            commAccumulated = "";
             const rawNum = ev.stepNumber;
             const parsedNum = typeof rawNum === "number" ? rawNum : parseInt(String(rawNum), 10);
             let resolvedKey: string;
@@ -268,6 +347,16 @@ export class BuildStreamInstance {
               const matched = normalizedSteps.find((s) => s.sub_task_id === String(rawNum));
               resolvedKey = matched ? String(matched.step) : String(rawNum);
             }
+            // Write the step summary from mark_step_complete into stepNarrations.
+            // This is the authoritative one-line summary of what the step did —
+            // zero latency, no extra LLM call, replaces the raw editor narration.
+            const stepSummary = (ev.summary as string | undefined)?.trim() || "";
+            if (stepSummary && !isNaN(parsedNum)) {
+              const prev = this.state.get().stepNarrations;
+              this.state.set({ stepNarrations: { ...prev, [parsedNum]: stepSummary } });
+            }
+            this.state.set({ narrationText: "" });
+            commAccumulated = "";
             if (isCurrentProject) this.actions.updateTaskStatus(resolvedKey, "done");
           } else if (type === "step_failed") {
             this.state.set({ narrationText: "" });
@@ -283,6 +372,19 @@ export class BuildStreamInstance {
             // separate, user-invoked step and is NOT part of the build stream.
             this.state.set({ narrationText: "" });
             commAccumulated = "";
+          } else if (type === "capabilities_active") {
+            const caps = Array.isArray(ev.capabilities)
+              ? (ev.capabilities as Array<{ name: string; score?: number }>)
+                  .map((c) => c.name)
+                  .join("、")
+              : "";
+            this.appendActionLog({
+              type: "capabilities",
+              label: caps || "能力激活",
+              detail: caps,
+              timestamp: Date.now(),
+              precedingNarration: commAccumulated || undefined,
+            });
           } else if (type === "all_complete") {
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
@@ -297,11 +399,48 @@ export class BuildStreamInstance {
               const changedFiles: string[] = ev.changedFiles || [];
               const summaryText = ev.summaryText || "";
               this.actions.setCompletionData({ changedFiles, summary: summaryText });
+              if (this.actionLog.length > 0) {
+                // Group by step entry — each "step" action_log entry starts a new segment.
+                // Narration comes from stepNarrations (keyed by step number), which is populated
+                // as communicator tokens arrive and finalized at step_completed. This is more
+                // reliable than precedingNarration (which is empty when actions fire before narration).
+                const stepNarrations = this.state.get().stepNarrations;
+                const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+                let currentSegStepNum = 0;
+                for (const entry of this.actionLog) {
+                  if (entry.type === "narration") continue;
+                  if (entry.type === "step") {
+                    // Extract step number from label e.g. "Step 2/4: ..."
+                    const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
+                    currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
+                    const narration = stepNarrations[currentSegStepNum] ?? "";
+                    segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
+                  } else {
+                    if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+                    segs[segs.length - 1].actions.push(entry);
+                  }
+                }
+                this.actions.addManagerMessage({
+                  role: "assistant",
+                  content: "",
+                  buildResult: {
+                    actionLog: [...this.actionLog],
+                    segments: segs,
+                    completionData: { changedFiles, summary: summaryText },
+                    tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
+                  },
+                });
+              }
             }
             this.actions.setStreamingSnapshot(null);
-            try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+            try { localStorage.removeItem(this.storageKey); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
+            // The finalized build is now persisted as a buildResult message; clear
+            // the live action-log/thinking/narration so the live BuildLivePanel
+            // stops rendering a duplicate of the same content below the plan card.
+            // (Without this it shows twice until a refresh wipes the live state.)
+            this.clearLive();
 
             // Refresh preview immediately (files were applied live via
             // code_applied), then reconcile against the server's authoritative
@@ -353,7 +492,7 @@ export class BuildStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
         this.reader = null;
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         if (this.thinkingFadeTimer) { clearTimeout(this.thinkingFadeTimer); this.thinkingFadeTimer = null; }
       }
       if (isCurrentGen) {
@@ -408,7 +547,7 @@ export class BuildStreamInstance {
       if (!response.ok || !response.body) {
         this.sessionId = null;
         this.state.set({ sessionId: null, isReconnecting: false });
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         return;
       }
 
@@ -433,18 +572,57 @@ export class BuildStreamInstance {
           const isCurrentProject = this.actions.getProjectId() === this.projectId;
 
           if (type === "step_starting") {
+            // Flush pending thinking from previous step
+            if (thinkingAccumulated) {
+              const lastIsThinking = this.actionLog.length > 0 &&
+                this.actionLog[this.actionLog.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                this.appendActionLog({
+                  type: "thinking",
+                  label: "thinking",
+                  detail: thinkingAccumulated,
+                  timestamp: Date.now(),
+                });
+              }
+              thinkingAccumulated = "";
+            }
             const stepNum = ev.stepNumber ?? 1;
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "" });
-            thinkingAccumulated = "";
             commAccumulated = "";
             if (isCurrentProject) {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
             }
+          } else if (type === "action_log") {
+            const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
+            if (actionType) {
+              this.appendActionLog({
+                type: actionType,
+                label: (ev.label as string) || "",
+                detail: (ev.detail as string) || "",
+                timestamp: Date.now(),
+                filePath: (ev.filePath as string) || undefined,
+                precedingNarration: commAccumulated || undefined,
+              });
+            }
           } else if (type === "thinking_token") {
             thinkingAccumulated += ev.token || "";
             this.state.set({ thinkingText: thinkingAccumulated });
           } else if (type === "narration_token" || type === "communicator_token") {
+            // Flush thinking once at narration start
+            if (thinkingAccumulated) {
+              const lastIsThinking = this.actionLog.length > 0 &&
+                this.actionLog[this.actionLog.length - 1].type === "thinking";
+              if (!lastIsThinking) {
+                this.appendActionLog({
+                  type: "thinking",
+                  label: "thinking",
+                  detail: thinkingAccumulated,
+                  timestamp: Date.now(),
+                });
+              }
+              thinkingAccumulated = "";
+            }
             commAccumulated += ev.token || "";
             this.state.set({ narrationText: commAccumulated, buildPhase: "working" });
           } else if (type === "step_completed") {
@@ -465,10 +643,34 @@ export class BuildStreamInstance {
                 if (s !== "done") this.actions.updateTaskStatus(key, "done");
               });
               this.actions.freezeLatestPlanStatuses();
-              this.actions.setCompletionData({
-                changedFiles: ev.changedFiles || [],
-                summary: ev.summaryText || "",
-              });
+              const changedFiles2: string[] = ev.changedFiles || [];
+              const summaryText2 = ev.summaryText || "";
+              this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
+              if (this.actionLog.length > 0) {
+                const segs2: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+                for (const entry of this.actionLog) {
+                  if (entry.type === "narration") continue;
+                  if (entry.type === "step") {
+                    segs2.push({ id: String(segs2.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+                  } else {
+                    if (segs2.length === 0) segs2.push({ id: "0", narration: "", actions: [], isLive: false });
+                    const last = segs2[segs2.length - 1];
+                    if (!last.narration && entry.precedingNarration) {
+                      last.narration = entry.precedingNarration;
+                    }
+                    last.actions.push(entry);
+                  }
+                }
+                this.actions.addChatMessage({
+                  role: "assistant",
+                  content: "",
+                  buildResult: {
+                    actionLog: [...this.actionLog],
+                    segments: segs2,
+                    completionData: { changedFiles: changedFiles2, summary: summaryText2 },
+                  } as any,
+                });
+              }
               // Background build finished while we were away: pull the latest
               // files and refresh the preview so the user sees the result
               // without a manual page refresh. The primary path does this via
@@ -477,9 +679,12 @@ export class BuildStreamInstance {
               this.refreshFilesAfterBuild();
             }
             this.actions.setStreamingSnapshot(null);
-            try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+            try { localStorage.removeItem(this.storageKey); } catch {}
             this.state.set({ buildPhase: null });
             this.actions.setExecutingTaskIndex(null);
+            // Clear live state so the BuildLivePanel doesn't duplicate the
+            // finalized buildResult card (see primary all_complete path).
+            this.clearLive();
           } else if (type === "done") {
             // handled in finally
           } else if (type === "build_error") {
@@ -500,7 +705,7 @@ export class BuildStreamInstance {
         this.state.set({ sessionId: null, isReconnecting: false });
         this.sessionId = null;
         this.reader = null;
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         this.actions.setStreamingSnapshot(null);
         this.state.set({ buildPhase: null });
         this.clearLive();
@@ -533,26 +738,14 @@ export class BuildStreamInstance {
     if (this.disposed || this.sessionId) return;
 
     const savedSessionId = (() => {
-      try { return localStorage.getItem(`cascade-build-session-${this.projectId}`); }
+      try { return localStorage.getItem(this.storageKey); }
       catch { return null; }
     })();
 
     if (!savedSessionId) {
-      // Try active endpoint
-      try {
-        const resp = await fetch(`/api/build-session/active/${this.projectId}`, {
-          cache: "no-store", headers: { "Cache-Control": "no-cache" },
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data?.sessionId && data?.active === true) {
-            this.actions.setExecutingTaskIndex(0);
-            this.actions.setChatMode("build");
-            this.state.set({ buildPhase: "thinking" });
-            await this.connect(data.sessionId, -1);
-          }
-        }
-      } catch {}
+      // 不再 fallback 到 /active/${projectId}：该接口只按 projectId 查活跃 build，
+      // 不区分 chatSessionId，会导致新会话误重连到其他会话的 build 流（session 串流）。
+      // 只通过本会话 localStorage key 保存的 sessionId 重连。
       return;
     }
 
@@ -569,11 +762,11 @@ export class BuildStreamInstance {
         this.state.set({ buildPhase: "thinking" });
         await this.connect(savedSessionId, -1);
       } else {
-        try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
         this.state.set({ isReconnecting: false });
       }
     } catch {
-      try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
       this.state.set({ isReconnecting: false });
     }
   }
@@ -588,6 +781,15 @@ export class BuildStreamInstance {
     this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
   }
 
+  /**
+   * Reset live UI state without disposing the instance.
+   * Used when switching INTO this session's slot so stale build output from a
+   * previous run doesn't bleed into the freshly-shown session.
+   */
+  resetLive(): void {
+    this.state.reset({ ...INITIAL_BUILD_STREAM_STATE });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────
 
   private abort(): void {
@@ -597,7 +799,7 @@ export class BuildStreamInstance {
     }
     this.sessionId = null;
     this.state.set({ sessionId: null });
-    try { localStorage.removeItem(`cascade-build-session-${this.projectId}`); } catch {}
+    try { localStorage.removeItem(this.storageKey); } catch {}
   }
 
   private scheduleReconnect(): void {
@@ -648,6 +850,8 @@ export class BuildStreamInstance {
   }
 
   private clearLive(): void {
+    // Keep stepNarrations — narration tokens can arrive after all_complete,
+    // and BuildLivePanel uses them to fill persisted segment narrations.
     this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
   }
 

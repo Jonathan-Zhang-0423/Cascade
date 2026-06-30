@@ -186,12 +186,14 @@
   --panel-nav-bg:    #F5F4F2;
 }
 
-/* ── 中文模式全局字体 ── */
-html.lang-zh,
-html.lang-zh body,
-html.lang-zh * {
+/* ── 全局字体：中英文统一使用 Lora, Georgia, serif ── */
+html,
+html body,
+html * {
   font-family: "Lora", Georgia, serif !important;
 }
+
+/* ── 中文模式保持同字体（无需额外规则） ── */
 
 /* ── 全局滚动条：去掉轨道背景，只显示滑块 ── */
 ::-webkit-scrollbar {
@@ -330,6 +332,21 @@ html.lang-zh * {
     @apply hidden;
   }
 
+  /* Hide browser-injected password reveal/clear controls (Edge ::-ms-reveal,
+     WebKit credentials button). Used on the confirm-password field so the
+     native "eye" doesn't collide with our own match check mark. */
+  .no-native-reveal::-ms-reveal,
+  .no-native-reveal::-ms-clear {
+    display: none;
+  }
+  .no-native-reveal::-webkit-credentials-auto-fill-button,
+  .no-native-reveal::-webkit-strong-password-auto-fill-button {
+    visibility: hidden;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+  }
+
   [contenteditable][data-placeholder]:empty::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
@@ -426,4 +443,46 @@ html.lang-zh * {
   0% { transform: scale(0); opacity: 0; }
   50% { transform: scale(1.2); }
   100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes dot-slide {
+  0%   { transform: translateX(-6px); opacity: 0; }
+  20%  { transform: translateX(0);    opacity: 1; }
+  80%  { transform: translateX(0);    opacity: 1; }
+  100% { transform: translateX(6px);  opacity: 0; }
+}
+
+/* ─── Auto-hide scrollbar (PC preview area) ─────────────────────────────────
+ * Only show when scrolling, light gray, disappears after idle.
+ * Applied via .scrollbar-auto class on overflow containers.
+ * --------------------------------------------------------------------------*/
+.scrollbar-auto {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s;
+}
+.scrollbar-auto:hover,
+.scrollbar-auto:focus-within {
+  scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+/* Webkit (Chrome/Safari/Edge) */
+.scrollbar-auto::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.scrollbar-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-auto::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 99px;
+  transition: background 0.3s;
+}
+.scrollbar-auto:hover::-webkit-scrollbar-thumb,
+.scrollbar-auto:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.18);
+}
+.dark .scrollbar-auto:hover::-webkit-scrollbar-thumb,
+.dark .scrollbar-auto:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
 }

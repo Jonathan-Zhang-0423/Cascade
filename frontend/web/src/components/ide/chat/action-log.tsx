@@ -10,6 +10,9 @@ import {
   ChevronUp,
   TerminalSquare,
   GitCompare,
+  GitMerge,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ActionLogEntry } from "./chat-types";
@@ -33,6 +36,14 @@ function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
       // >_ glyph matches the terminal aesthetic in the screenshots
       return <span className={cn("font-mono font-bold leading-none shrink-0", small ? "text-[8px]" : "text-[10px]")}>&gt;_</span>;
     case "step":
+      return <ListChecks className={cls} />;
+    case "code_applied":
+      return <GitMerge className={cls} />;
+    case "code_review":
+      return <ShieldCheck className={cls} />;
+    case "capabilities":
+      return <Zap className={cls} />;
+    case "plan":
       return <ListChecks className={cls} />;
     case "narration":
       return <Wrench className={cls} />;
@@ -110,13 +121,13 @@ export function ActionLogLiveRow({
             ? "border-[rgba(52,214,138,0.25)] bg-[rgba(52,214,138,0.08)] shadow-sm"
             : isRead
             ? "border-[rgba(129,140,248,0.15)] bg-[rgba(129,140,248,0.05)]"
-            : "border-border/20 bg-[rgba(255,255,255,0.02)]"
+            : "border-border/20 bg-border/20"
         )}
         style={isWrite ? { animation: "file-flash 600ms ease-out, fade-up 150ms ease" } : undefined}
       >
         <div className={cn(
           "flex items-center justify-center rounded-md p-1.5 shrink-0",
-          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-[rgba(255,255,255,0.05)]"
+          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-border/20"
         )}>
           <div className={isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-muted-foreground/60"}>
             {icon}
@@ -235,7 +246,7 @@ export function CollapsedThinking({ text }: { text: string }) {
       data-testid="collapsed-thinking"
     >
       <button
-        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-blue-400/70 hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left"
+        className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-blue-400/70 hover:bg-border/20 transition-colors text-left"
         onClick={() => setExpanded((e) => !e)}
         data-testid="button-expand-thinking"
       >
@@ -431,7 +442,7 @@ export function ActionLogChip({
     >
       <button
         className={cn(
-          "w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] hover:bg-[rgba(255,255,255,0.08)] transition-colors text-left group"
+          "w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] hover:bg-border/20 transition-colors text-left group"
         )}
         onClick={() => hasDetail && setExpanded((e) => !e)}
         disabled={!hasDetail && !fileDiff}
@@ -439,7 +450,7 @@ export function ActionLogChip({
       >
         <div className={cn(
           "flex items-center justify-center rounded p-1 shrink-0",
-          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-[rgba(255,255,255,0.05)]"
+          isWrite ? "bg-[rgba(52,214,138,0.15)]" : isRead ? "bg-[rgba(129,140,248,0.1)]" : "bg-border/20"
         )}>
           <div className={isWrite ? "text-[#5fe8a0]" : isRead ? "text-[#818cf8]" : "text-muted-foreground/60"}>
             {icon}
@@ -467,7 +478,7 @@ export function ActionLogChip({
         )}
         {fileDiff && (
           <button
-            className="shrink-0 flex items-center justify-center p-1 rounded hover:bg-[rgba(255,255,255,0.1)] transition-colors"
+            className="shrink-0 flex items-center justify-center p-1 rounded hover:bg-border/20 transition-colors"
             onClick={(e) => { e.stopPropagation(); setDiffExpanded((d) => !d); }}
             data-testid={`button-diff-${index}`}
           >
@@ -555,7 +566,7 @@ function CollapsedGroupedRow({ group, startIndex }: { group: ActionGroup; startI
     >
       <button
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-[rgba(255,255,255,0.05)] transition-colors text-left",
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-border/20 transition-colors text-left",
           getActionLogColor(group.type),
         )}
         onClick={() => setExpanded((e) => !e)}

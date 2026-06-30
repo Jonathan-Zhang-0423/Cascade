@@ -33,6 +33,7 @@ export interface AgentLoopResult {
   finalText: string;
   exitTool?: string;
   exitArgs?: Record<string, unknown>;
+  tokenUsage?: { input: number; output: number; total: number };
 }
 
 interface PendingToolCall {
@@ -89,6 +90,8 @@ export async function runAgentLoop(
   let finalText = "";
   let exitTool: string | undefined;
   let exitArgs: Record<string, unknown> | undefined;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
@@ -138,6 +141,7 @@ export async function runAgentLoop(
               tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
               tool_choice: tools.length > 0 ? "auto" : undefined,
               stream: true,
+              stream_options: { include_usage: true },
               max_tokens: 16384,
             } as any,
             { timeout: timeoutMs },
@@ -244,6 +248,13 @@ export async function runAgentLoop(
       if (choice.finish_reason && choice.finish_reason !== "tool_calls") {
         finalText = assistantText;
       }
+
+      // ── Usage (last chunk carries usage when stream_options.include_usage=true) ──
+      if ((chunk as any).usage) {
+        const u = (chunk as any).usage as { prompt_tokens?: number; completion_tokens?: number };
+        totalInputTokens += u.prompt_tokens ?? 0;
+        totalOutputTokens += u.completion_tokens ?? 0;
+      }
     }
 
     const toolCalls = Object.values(toolCallsMap);
@@ -296,7 +307,7 @@ export async function runAgentLoop(
         emitPart(partCtx, emit, toolPart);
       } else {
         // Legacy: emit action_log directly for tools that don't have their own logs
-        const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "request_review", "report_issue", "submit_verdict"]);
+        const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "finish_build", "report_issue", "submit_verdict"]);
         if (!toolsWithOwnLogs.has(tc.name)) {
           const argsPreview = JSON.stringify(args).slice(0, 120);
           emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
@@ -393,5 +404,12 @@ export async function runAgentLoop(
     if (shouldExit) break;
   }
 
-  return { finalText, exitTool, exitArgs };
+  return {
+    finalText,
+    exitTool,
+    exitArgs,
+    tokenUsage: totalInputTokens + totalOutputTokens > 0
+      ? { input: totalInputTokens, output: totalOutputTokens, total: totalInputTokens + totalOutputTokens }
+      : undefined,
+  };
 }

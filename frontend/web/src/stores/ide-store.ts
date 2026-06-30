@@ -305,6 +305,11 @@ interface IDEState {
   pendingPrompt: string | null;
   pendingPromptMode: ChatMode | null;
   checkpoints: Checkpoint[];
+
+  // ── Multi-session ──────────────────────────────────────────────────────────
+  currentSessionId: string | null;   // null = 主会话（默认）
+  sessions: { id: string; name: string; createdAt: string }[];
+  sessionsLoaded: boolean;
   lastBuildFileDiffs: Record<string, { old: string; new: string }>;
   setLastBuildFileDiff: (filePath: string, old: string, newContent: string) => void;
   clearLastBuildFileDiffs: () => void;
@@ -394,6 +399,10 @@ interface IDEState {
   setManagerResponding: (v: boolean) => void;
   clearManagerPlan: () => void;
   clearConversation: () => void;
+  createSession: () => Promise<void>;
+  switchSession: (sessionId: string | null) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  loadSessions: () => Promise<void>;
   updateVerificationResult: (subTaskId: string, result: VerificationResult) => void;
   setPendingConfirmation: (confirmation: { stepKey: string; items: string[] } | null) => void;
   setUserConfirmationInput: (input: string) => void;
@@ -582,6 +591,7 @@ type PendingChatMsg = {
   seq: number;
   timestamp: number;
   metadata?: string | null;
+  sessionId?: string | null;
 };
 const pendingMsgUploads = new Map<string, Map<string, PendingChatMsg>>();
 let msgUploadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -672,7 +682,7 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
   };
 }
 
-function chatMessageToDbInput(m: ChatMessage, projectId: string): PendingChatMsg {
+function chatMessageToDbInput(m: ChatMessage, projectId: string, sessionId?: string | null): PendingChatMsg {
   const metadata: Record<string, unknown> = {};
   if (m.checkpointId) metadata.checkpointId = m.checkpointId;
   if (m.hidden) metadata.hidden = m.hidden;
@@ -686,10 +696,11 @@ function chatMessageToDbInput(m: ChatMessage, projectId: string): PendingChatMsg
     seq: m.seq,
     timestamp: m.timestamp,
     metadata: Object.keys(metadata).length ? JSON.stringify(metadata) : null,
+    sessionId: sessionId ?? null,
   };
 }
 
-function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingChatMsg {
+function managerMessageToDbInput(m: ManagerMessage, projectId: string, sessionId?: string | null): PendingChatMsg {
   const metadata: Record<string, unknown> = {};
   if (m.plan) metadata.plan = m.plan;
   if (m.typing) metadata.typing = m.typing;
@@ -711,6 +722,7 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string): PendingC
     seq: m.seq,
     timestamp: m.timestamp,
     metadata: Object.keys(metadata).length ? JSON.stringify(metadata) : null,
+    sessionId: sessionId ?? null,
   };
 }
 
@@ -851,6 +863,11 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   setLastBuildFileDiff: (filePath, old, newContent) =>
     set((s) => ({ lastBuildFileDiffs: { ...s.lastBuildFileDiffs, [filePath]: { old, new: newContent } } })),
   clearLastBuildFileDiffs: () => set({ lastBuildFileDiffs: {} }),
+
+  // ── Multi-session initial state ────────────────────────────────────────────
+  currentSessionId: null,
+  sessions: [],
+  sessionsLoaded: false,
 
   layoutMode: "code",
   setLayoutMode: (mode) => { set({ layoutMode: mode }); debouncedPersist(get()); },
@@ -1160,7 +1177,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const chat = chatRows.map(dbRowToChatMessage);
       const mgr = mgrRows.map(dbRowToManagerMessage);
       // Only adopt server history if we got something. Otherwise keep whatever
-      // we already restored from the (legacy) saved blob.
+      // 如果用户已切换到非主会话，不覆盖消息（race condition 防护）
+      // 必须在 chat.length===0 的判断之外，无论服务器返回什么都先检查
       if (chat.length === 0 && mgr.length === 0) {
         const cur2 = get();
         if (cur2.projectId === id) set({ messagesReady: true });
@@ -1174,11 +1192,32 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const lastPlan = mgr.slice().reverse().find((m) => m.plan)?.plan ?? cur.managerPlan;
       // Restore taskStatuses from the latest plan message's frozen snapshot
       const lastPlanMsg = mgr.slice().reverse().find((m) => m.plan);
+      // Merge, do NOT replace. This fetch was started at loadProject time against
+      // a DB snapshot taken THEN. On a freshly created project the user's first
+      // prompt — and the in-flight manager stream's messages/plan — can land
+      // AFTER the fetch started but BEFORE it resolves. Blindly replacing the
+      // arrays would discard those live messages, so the prompt looks like it
+      // "never happened" even though the backend keeps streaming. Union server
+      // rows with any live message not in the server snapshot, keyed by id.
+      const mergeById = <T extends { id: string; seq: number }>(serverMsgs: T[], liveMsgs: T[]): T[] => {
+        const byId = new Map<string, T>();
+        for (const m of serverMsgs) byId.set(m.id, m);
+        for (const m of liveMsgs) if (!byId.has(m.id)) byId.set(m.id, m);
+        return Array.from(byId.values()).sort((a, b) => a.seq - b.seq);
+      };
+      const mergedChat = chat.length > 0 ? mergeById(chat, cur.chatMessages) : cur.chatMessages;
+      const mergedMgr = mgr.length > 0 ? mergeById(mgr, cur.managerMessages) : cur.managerMessages;
+      // 再次检查：如果用户已切换到非主会话，不覆盖消息
+      const cur3 = get();
+      if (cur3.projectId !== id || cur3.currentSessionId !== null) {
+        if (cur3.projectId === id) set({ messagesReady: true });
+        return;
+      }
       const restoredTaskStatuses = lastPlanMsg?.frozenTaskStatuses ?? cur.taskStatuses;
       const restoredTaskFailureReasons = lastPlanMsg?.frozenTaskFailureReasons ?? cur.taskFailureReasons;
       set({
-        chatMessages: chat.length > 0 ? chat : cur.chatMessages,
-        managerMessages: mgr.length > 0 ? mgr : cur.managerMessages,
+        chatMessages: mergedChat,
+        managerMessages: mergedMgr,
         _nextSeq: maxSeq,
         managerPlan: lastPlan,
         taskStatuses: restoredTaskStatuses,
@@ -1428,7 +1467,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         chatMessages: [...state.chatMessages, newMsg],
       };
       debouncedPersist(next);
-      if (state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(newMsg, state.projectId));
+      if (state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(newMsg, state.projectId, state.currentSessionId));
       return next;
     }),
 
@@ -1445,7 +1484,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       }
       const next = { ...state, chatMessages: msgs };
       debouncedPersist(next);
-      if (updated && state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(updated, state.projectId));
+      if (updated && state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(updated, state.projectId, state.currentSessionId));
       return next;
     }),
 
@@ -1613,7 +1652,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         managerMessages: [...state.managerMessages, newMsg],
       };
       debouncedPersist(next);
-      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(newMsg, state.projectId));
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(newMsg, state.projectId, state.currentSessionId));
       return next;
     }),
 
@@ -1703,6 +1742,95 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     persistState(get());
   },
 
+  // ── Session actions ────────────────────────────────────────────────────────
+  loadSessions: async () => {
+    const { projectId } = get();
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sessions`, { credentials: "include" });
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ sessions: data.sessions ?? [], sessionsLoaded: true });
+    } catch { /* non-fatal */ }
+  },
+
+  createSession: async () => {
+    const { projectId } = get();
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: "新会话" }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const newSession = data.session;
+      set((s) => ({ sessions: [newSession, ...s.sessions] }));
+      // 先切换 activeTool，再 switchSession，确保 dock 立即高亮新 session
+      set({ activeTool: "chat" });
+      await get().switchSession(newSession.id);
+    } catch { /* non-fatal */ }
+  },
+
+  switchSession: async (sessionId: string | null) => {
+    const { projectId } = get();
+    if (!projectId) return;
+    const welcome = {
+      id: "welcome-" + Date.now(),
+      role: "assistant" as const,
+      content: getWelcomeMessage(),
+      timestamp: Date.now(),
+      seq: 0,
+    };
+    set({
+      currentSessionId: sessionId,
+      chatMessages: [welcome],
+      managerMessages: [],
+      _nextSeq: 1,
+      managerPlan: null,
+      executingTaskIndex: null,
+      taskStatuses: {},
+      taskFailureReasons: {},
+      verificationResults: {},
+      pendingConfirmation: null,
+      userConfirmationInput: "",
+      fixCycle: 0,
+      completionData: null,
+      messagesReady: false,
+    });
+    try {
+      // sessionId=null 表示主会话，后端按 IS NULL 过滤；有值则按 sessionId 过滤
+      const sidParam = sessionId !== null ? `&sessionId=${sessionId}` : `&sessionId=null`;
+      const [chatRes, mgrRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/messages?kind=chat&limit=100${sidParam}`, { credentials: "include" }),
+        fetch(`/api/projects/${projectId}/messages?kind=manager&limit=100${sidParam}`, { credentials: "include" }),
+      ]);
+      const chatData = chatRes.ok ? await chatRes.json() : { messages: [] };
+      const mgrData = mgrRes.ok ? await mgrRes.json() : { messages: [] };
+      set({
+        chatMessages: chatData.messages?.length > 0 ? chatData.messages : [welcome],
+        managerMessages: mgrData.messages ?? [],
+        messagesReady: true,
+      });
+    } catch {
+      set({ messagesReady: true });
+    }
+  },
+
+  deleteSession: async (sessionId: string) => {
+    const { projectId, currentSessionId } = get();
+    if (!projectId) return;
+    try {
+      await fetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      set((s) => ({ sessions: s.sessions.filter((s2) => s2.id !== sessionId) }));
+      if (currentSessionId === sessionId) await get().switchSession(null);
+    } catch { /* non-fatal */ }
+  },
+
   updateVerificationResult: (subTaskId, result) =>
     set((state) => ({
       verificationResults: { ...state.verificationResults, [subTaskId]: result },
@@ -1736,7 +1864,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       if (!target || target.role !== "assistant") return state;
       msgs[index] = { ...target, thinking };
       const next = { ...state, managerMessages: msgs };
-      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[index], state.projectId));
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[index], state.projectId, state.currentSessionId));
       return next;
     }),
 
@@ -1760,7 +1888,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);
-      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[lastPlanIdx], state.projectId));
+      if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[lastPlanIdx], state.projectId, state.currentSessionId));
       return next;
     }),
 }));

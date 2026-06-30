@@ -3,11 +3,11 @@ import path from "path";
 import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
-import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
+import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
 import { buildFallbackChain, withFallback, getFastClient, type AIProvider } from "../providers/kimi-client";
-import { storage } from "../../infra/storage";
-import { BuildTelemetry } from "../../infra/telemetry";
+import { storage, PROJECT_MEMORY_MAX } from "../../infra/storage";
+import { BuildTelemetry, type BuildTelemetryRecord } from "../../infra/telemetry";
 import {
   buildBuilderTools,
 } from "../tools/agent-tools";
@@ -57,6 +57,8 @@ export interface BuildSessionState {
   taskStatuses?: Record<string, string>;
   userConfirmation?: string;
   skillContent?: string;
+  /** Per-project self-evolving memory doc, injected first as authoritative context. */
+  projectMemory?: string;
   provider?: AIProvider;
   framework?: Framework;
   events: BufferedEvent[];
@@ -103,12 +105,57 @@ function langNativeLabel(userLang: string): string {
   return userLang;
 }
 
+/**
+ * Auto-distill the per-project memory after a build with signal. Reads the
+ * current memory, hands it + this build's outcome to the fast model, and asks
+ * for a compact rewrite. Best-effort; persisted via storage (which caps size).
+ */
+async function distillProjectMemory(
+  session: BuildSessionState,
+  changedFiles: string[],
+  summaryText: string,
+  tele: BuildTelemetryRecord,
+): Promise<void> {
+  if (!session.projectId) return;
+  const existing = await storage.getProjectMemory(session.projectId);
+  const { client, model } = getFastClient();
+  const prompt = [
+    "You maintain a concise, durable MEMORY doc for a software project. Rewrite it to incorporate what this build round revealed.",
+    "Keep ONLY durable, project-specific learnings: architecture/tools/conventions in use, bugs hit and their fixes, recurring gotchas, and ideas to revisit. Drop one-off trivia and anything already obvious. Merge duplicates. Use short markdown bullet sections.",
+    `Hard limit: ${PROJECT_MEMORY_MAX} characters. If over, compress — keep the most useful.`,
+    "",
+    "=== CURRENT MEMORY ===",
+    existing || "(empty)",
+    "",
+    "=== THIS BUILD ROUND ===",
+    `Plan: ${session.plan?.summary ?? ""}`,
+    `Changed files: ${changedFiles.join(", ") || "(none)"}`,
+    `Fix cycles: ${tele.fixCycles ?? 0}; LSP errors seen: ${tele.lspDiagnosticErrorCount ?? 0}`,
+    `Summary: ${summaryText || "(none)"}`,
+    "",
+    "Output ONLY the new memory document (no preamble).",
+  ].join("\n");
+  const completion = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    stream: false,
+    max_tokens: 1500,
+  });
+  const updated = completion.choices[0]?.message?.content?.trim();
+  if (updated) {
+    await storage.setProjectMemory(session.projectId, session.userId ?? "", updated);
+  }
+}
+
 export function buildBuilderSystemPrompt(session: BuildSessionState): string {
   const label = langNativeLabel(session.userLang || "English");
   const isEnglish = label === (session.userLang || "English") && label === "English";
   const langPrefix = isEnglish
     ? ""
     : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
+  const memorySection = session.projectMemory && session.projectMemory.trim()
+    ? `\n\n## Project Memory (learned from past sessions)\n\nThis is accumulated, project-specific knowledge from previous builds — bugs hit and their fixes, the architecture/tools in use, and gotchas. Treat it as authoritative context for THIS project and avoid repeating past mistakes. If you learn something durable this session, call update_project_memory to record it:\n\n${session.projectMemory.trim()}`
+    : "";
   const skillSection = session.skillContent
     ? `\n\n## Technology & Capability Skill Guidance\n\nThese conventions and capability patterns are MANDATORY for this project — apply them as hard requirements, not suggestions. Where a capability includes a checklist, every applicable item must be satisfied before you consider a step complete:\n\n${session.skillContent}`
     : "";
@@ -119,7 +166,7 @@ export function buildBuilderSystemPrompt(session: BuildSessionState): string {
     : null;
   const mobileSection = mobileSupplement ? `\n${mobileSupplement}` : "";
   const compileCheckSection = buildEditorCompileCheckPrompt(resolvedFramework);
-  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${skillSection}${mobileSection}${compileCheckSection}`;
+  return `${langPrefix}${EDITOR_AGENT_SYSTEM_PROMPT}${memorySection}${skillSection}${mobileSection}${compileCheckSection}`;
 }
 
 export function buildBuilderInitialMessage(
@@ -368,16 +415,26 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     if (detectedCapMatches.length > 0) {
       console.log(
         `[build-session] capability skills active: ${detectedCapMatches
-          .map((m) => `${m.name}(score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+          .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
           .join("; ")}`,
       );
-      const capContent = await loadCapabilities(detectedCapMatches.map((m) => m.name));
+      const capContent = await loadCapabilitiesTiered(detectedCapMatches);
       if (capContent) {
         session.skillContent = session.skillContent
           ? `${session.skillContent}\n\n---\n\n${capContent}`
           : capContent;
-        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score })) });
+        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })) });
       }
+    }
+  }
+
+  // Load the per-project self-evolving memory doc (injected first as authoritative
+  // context by buildBuilderSystemPrompt). Best-effort — never block the build.
+  if (session.projectId && !session.projectMemory) {
+    try {
+      session.projectMemory = await storage.getProjectMemory(session.projectId);
+    } catch (err) {
+      console.warn(`[BuildSession ${session.id}] getProjectMemory failed:`, err instanceof Error ? err.message : err);
     }
   }
 
@@ -493,6 +550,8 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         max_tokens: 512,
       });
       summaryText = summaryCompletion.choices[0]?.message?.content || "";
+      // Strip <think>...</think> blocks that some models emit
+      summaryText = summaryText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     } catch {}
 
     let nextStepSuggestion = "";
@@ -531,6 +590,20 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         summary: plan.summary ?? "",
         completedAt: Date.now(),
       }).catch(() => {});
+    }
+
+    // Auto-distill project memory (safety net for when the agent didn't call
+    // update_project_memory itself). Only runs when there's signal — files
+    // changed or the build needed fix cycles — so trivial builds don't spend an
+    // LLM call. Fire-and-forget: never blocks all_complete.
+    if (session.projectId) {
+      const tele = telemetry.snapshot();
+      const hasSignal = changedFiles.length > 0 || (tele.fixCycles ?? 0) > 0 || (tele.lspDiagnosticErrorCount ?? 0) > 0;
+      if (hasSignal) {
+        void distillProjectMemory(session, changedFiles, summaryText, tele).catch((err) =>
+          console.warn(`[BuildSession ${session.id}] memory distill failed:`, err instanceof Error ? err.message : err),
+        );
+      }
     }
   }
 

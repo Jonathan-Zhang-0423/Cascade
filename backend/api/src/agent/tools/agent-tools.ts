@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
 import type { BuildSessionState, BuildStep, SseEmit } from "../orchestrator/build-orchestrator";
@@ -30,6 +30,46 @@ export interface VerifierIssue {
   type: "bug" | "missing_feature" | "regression";
   description: string;
   affected_file?: string;
+}
+
+/**
+ * Shared `update_project_memory` tool. Lets the agent (builder/fixer/manager)
+ * record durable, project-specific learnings into the per-project memory doc,
+ * which is injected as authoritative context at the start of future sessions.
+ * The model rewrites the WHOLE doc each call (self-compacting); storage caps it.
+ */
+function buildProjectMemoryTool(
+  projectId: string | undefined,
+  userId: string | undefined,
+  onUpdate?: (content: string) => void,
+): { schema: ToolSchema; handler: ToolHandler } {
+  const schema: ToolSchema = {
+    type: "function",
+    function: {
+      name: "update_project_memory",
+      description:
+        "Record durable, project-specific knowledge into this project's long-term memory: bugs you hit and their fix, the architecture/tools/conventions in use, gotchas, and ideas worth revisiting. This memory is shown to you at the start of every future session for THIS project, so it compounds. Provide the COMPLETE new memory document — rewrite it, keeping it tight (drop stale/obvious entries, merge duplicates). Only record things that will help future sessions; skip one-off trivia.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "The full updated memory document (markdown). Replaces the previous one.",
+          },
+        },
+        required: ["content"],
+      },
+    },
+  };
+  const handler: ToolHandler = async (args) => {
+    const content = args.content as string;
+    if (typeof content !== "string") return "Error: content (string) is required";
+    if (!projectId) return "Project memory unavailable (no project context).";
+    await storage.setProjectMemory(projectId, userId ?? "", content);
+    onUpdate?.(content); // reflect within this session too
+    return `Project memory updated (${content.length} chars).`;
+  };
+  return { schema, handler };
 }
 
 export interface VerifierVerdict {
@@ -203,6 +243,23 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "delete_file",
+        description: "Delete a file from the project. Use this for genuine cleanup — removing a dead/obsolete file, or the old file after moving its content elsewhere (rename = write_file the new path, then delete_file the old). Do NOT delete files a plan step doesn't call for. Fails if the file does not exist.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to delete, e.g. /project/old-helper.ts",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "finish_build",
         description: "Signal that you have finished implementing ALL plan steps and the build is complete. Call this once, after every step is done and any compile checks pass. This ENDS the build — it does NOT trigger a review.",
         parameters: {
@@ -284,6 +341,14 @@ export function buildBuilderTools(
       }
       if (!current.includes(oldContent)) {
         return `Error: old_content not found verbatim in ${path_}. The file may have changed. Read the file first and retry with the exact current content.`;
+      }
+      // Refuse ambiguous patches: if old_content appears more than once, a blind
+      // replace would silently patch only the FIRST occurrence — a real
+      // correctness footgun. Make the model disambiguate with more context
+      // (or use hash_patch_file for a named block).
+      const occurrences = current.split(oldContent).length - 1;
+      if (occurrences > 1) {
+        return `Error: old_content appears ${occurrences} times in ${path_}, so the patch is ambiguous. Include more surrounding context to make old_content unique, or use hash_patch_file to target a specific block.`;
       }
       const patched = current.replace(oldContent, newContent);
       const fileName = path_.split("/").pop() || path_;
@@ -400,6 +465,37 @@ export function buildBuilderTools(
       return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
     },
 
+    delete_file: async (args, emit) => {
+      const path_ = args.path as string;
+      if (!path_) return "Error: path is required";
+      if (!session.files.has(path_)) {
+        return `Error: file not found: ${path_}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      const fileName = path_.split("/").pop() || path_;
+      emit({ type: "action_log", actionType: "file_delete", label: fileName, detail: "", filePath: path_ });
+      session.files.delete(path_);
+      if (session.projectId) {
+        storage.deleteProjectFile(session.projectId, path_).catch((err) => {
+          console.warn(`[agent-tools] DB delete failed for ${path_}:`, err instanceof Error ? err.message : err);
+        });
+      }
+      emit({ type: "file_deleted", filePath: path_ });
+
+      // Remove the disk mirror + tell the LSP the file is gone (empty content).
+      if (session.sessionDir) {
+        try {
+          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          await rm(abs, { force: true });
+        } catch (err) {
+          console.warn("[agent-tools] disk delete failed for", path_, err instanceof Error ? err.message : err);
+        }
+        lspManager.notifyFileChange(session.id, path_, "").catch(() => {});
+      }
+
+      telemetry?.incr("deleteFileCount");
+      return `File deleted: ${path_}`;
+    },
+
     read_file: async (args, emit) => {
       const path = args.path as string;
       if (!path) return "Error: path is required";
@@ -434,7 +530,7 @@ export function buildBuilderTools(
         if (matched) resolvedNum = matched.step;
       }
 
-      emit({ type: "step_completed", stepNumber: resolvedNum });
+      emit({ type: "step_completed", stepNumber: resolvedNum, summary });
       completedSteps.add(resolvedNum);
 
       // Advance to the next step
@@ -485,6 +581,11 @@ export function buildBuilderTools(
   const testTools = buildTestTools(session, telemetry);
   schemas.push(...testTools.schemas);
   Object.assign(handlers, testTools.handlers);
+
+  // Self-evolving project memory
+  const mem = buildProjectMemoryTool(session.projectId, session.userId, (c) => { session.projectMemory = c; });
+  schemas.push(mem.schema);
+  handlers[mem.schema.function.name] = mem.handler;
 
   return { schemas, handlers };
 }
@@ -791,6 +892,7 @@ export function buildReviewTools(
 
 export function buildManagerTools(
   managerState: ManagerSessionState,
+  memoryCtx?: { projectId?: string; userId?: string },
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
@@ -897,6 +999,13 @@ export function buildManagerTools(
       return "Plan submitted successfully.";
     },
   };
+
+  // Self-evolving project memory (planning-time insights)
+  if (memoryCtx?.projectId) {
+    const mem = buildProjectMemoryTool(memoryCtx.projectId, memoryCtx.userId);
+    schemas.push(mem.schema);
+    handlers[mem.schema.function.name] = mem.handler;
+  }
 
   return { schemas, handlers };
 }

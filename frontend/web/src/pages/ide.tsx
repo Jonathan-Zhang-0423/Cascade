@@ -30,7 +30,7 @@ export default function IDEPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const isMobile = useIsMobile();
-  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible } =
+  const { activeTool, isConsoleOpen, toggleSidebar, toggleConsole, activeFile, loadProject, projectId, layoutMode, codeVisible, historyTabRequest } =
     useIDEStore();
   const userId = useIDEStore((s) => s.projectId ?? "");
   const { projects } = useProjectStore();
@@ -72,15 +72,54 @@ export default function IDEPage() {
     ));
   }, [lang]);
 
+  // 监听 historyTabRequest，打开右侧历史版本 tab
+  useEffect(() => {
+    if (historyTabRequest > 0) openHistoryTab();
+  }, [historyTabRequest]);
+
+  // 监听 plan-preview-open 事件，点击计划卡"查看"时在右侧新建/切换到计划详情 Tab
+  const PLAN_PREVIEW_TAB_ID = "plan-preview";
+  useEffect(() => {
+    const handler = () => {
+      setPreviewTabs((prev) => {
+        if (prev.some((tab) => tab.id === PLAN_PREVIEW_TAB_ID)) return prev;
+        return [...prev, { id: PLAN_PREVIEW_TAB_ID, label: t("navbar.planPreviewTab") ?? "任务计划", closable: true }];
+      });
+      setActivePreviewTab(PLAN_PREVIEW_TAB_ID);
+      setToolsPanelOpen(false);
+    };
+    window.addEventListener("plan-preview-open", handler);
+    return () => window.removeEventListener("plan-preview-open", handler);
+  }, [t]);
+
   const addPreviewTab = () => {
     const id = `tab-${Date.now()}`;
     setPreviewTabs((prev) => [...prev, { id, label: t("navbar.newTab"), closable: true }]);
     setActivePreviewTab(id);
     setToolsPanelOpen(true);
   };
+
+  const openHistoryTab = useCallback(() => {
+    const HISTORY_TAB_ID = "history";
+    setPreviewTabs((prev) => {
+      if (prev.some((tab) => tab.id === HISTORY_TAB_ID)) return prev;
+      return [...prev, { id: HISTORY_TAB_ID, label: t("checkpoint.title"), closable: true }];
+    });
+    setActivePreviewTab(HISTORY_TAB_ID);
+    setToolsPanelOpen(false);
+  }, [t]);
   const closePreviewTab = (id: string) => {
-    setPreviewTabs((prev) => prev.filter((tab) => tab.id !== id));
-    if (activePreviewTab === id) setActivePreviewTab("preview");
+    setPreviewTabs((prev) => {
+      const next = prev.filter((tab) => tab.id !== id);
+      // 如果关闭后只剩固定的 preview tab，关闭 tools 面板并切回 preview
+      if (next.every((t) => !t.closable)) {
+        setToolsPanelOpen(false);
+        setActivePreviewTab("preview");
+      } else if (activePreviewTab === id) {
+        setActivePreviewTab("preview");
+      }
+      return next;
+    });
   };
 
   // ── 两竖线拖拽：贯穿全高（含 Navbar） ──

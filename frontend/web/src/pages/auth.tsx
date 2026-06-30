@@ -1,367 +1,1019 @@
 import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
+import { getCaptchaTicket } from "@/lib/captcha";
+import { SiteBeian } from "@/components/SiteBeian";
+import cascadeLogo from "../assets/cascade-logo.png";
 
-type Tab = "username" | "email" | "phone";
-type Mode = "login" | "register";
+// ── Font ─────────────────────────────────────────────────────────────────────
+const fontStyle = `
+  @font-face {
+    font-family: "Inter";
+    src: url("/fonts/Inter-Medium.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+`;
+if (typeof document !== "undefined") {
+  const el = document.getElementById("cascade-font");
+  if (!el) {
+    const s = document.createElement("style");
+    s.id = "cascade-font";
+    s.textContent = fontStyle;
+    document.head.appendChild(s);
+  }
+}
+const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Page = "signin" | "signup";
+type SignInChannel = "email" | "phone";
+type SignInMode = "password" | "otp";
+type SignUpChannel = "email" | "phone";
+
+// ── Micro animations ──────────────────────────────────────────────────────────
+const fadeUp = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0,
+    transition: { duration: 0.42, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] as const },
+  }),
+};
+
+// ── Shared input style ────────────────────────────────────────────────────────
+const inputCls =
+  "w-full bg-[#fafafa] border border-[#e5e5e5] rounded-xl px-4 py-3 text-[14px] text-gray-900 outline-none placeholder:text-gray-400 transition-all duration-200 focus:bg-white focus:border-black/30 focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]";
+const labelCls = "block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2";
+
+// ── GitHub icon ───────────────────────────────────────────────────────────────
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current shrink-0" aria-hidden>
+      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-.99-.02-1.95-3.2.7-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18a10.95 10.95 0 0 1 5.75 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.66.79.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z" />
+    </svg>
+  );
+}
+
+// ── Language toggle ───────────────────────────────────────────────────────────
+function LangPill() {
+  const { lang, setLang } = useLanguageStore();
+  return (
+    <button
+      onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-gray-500 hover:text-gray-900 transition-all duration-200 hover:bg-black/[0.04] select-none"
+      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+      aria-label="Toggle language"
+    >
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+        <path d="M6.5 1C6.5 1 4.5 3.5 4.5 6.5s2 5.5 2 5.5M6.5 1c0 0 2 2.5 2 5.5s-2 5.5-2 5.5M1 6.5h11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      </svg>
+      {lang === "zh" ? "中文" : "EN"}
+    </button>
+  );
+}
+
+// ── Method icons (landing card) ───────────────────────────────────────────────
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] shrink-0" fill="none" aria-hidden>
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M10.5 18.5h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+function MailIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] shrink-0" fill="none" aria-hidden>
+      <rect x="2.75" y="4.75" width="18.5" height="14.5" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 6.5l8.5 6 8.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ── Method button (landing card, Replit style) ────────────────────────────────
+function MethodBtn({ icon, label, onClick }: {
+  icon: React.ReactNode; label: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 h-12 px-4 rounded-xl text-[14px] font-semibold text-gray-800 bg-white transition-all duration-200 hover:bg-gray-50 hover:border-black/25 active:scale-[0.99]"
+      style={{ border: "1px solid rgba(0,0,0,0.14)", fontFamily: FONT, letterSpacing: "-0.01em" }}
+    >
+      <span className="text-gray-700">{icon}</span>
+      <span className="flex-1 text-left">{label}</span>
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" className="text-gray-300 shrink-0">
+        <path d="M5.5 3.5l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+// ── Eye toggle icon (password visibility) ─────────────────────────────────────
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg viewBox="0 0 20 20" className="w-[18px] h-[18px]" fill="none" aria-hidden>
+      <path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10Z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="10" cy="10" r="2.25" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" className="w-[18px] h-[18px]" fill="none" aria-hidden>
+      <path d="M2 10s3-5.5 8-5.5c1.4 0 2.66.43 3.74 1.05M18 10s-3 5.5-8 5.5c-1.4 0-2.66-.43-3.74-1.05" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 3l14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ── Primary button ────────────────────────────────────────────────────────────
+function PrimaryBtn({ children, loading, disabled, type = "submit" }: {
+  children: React.ReactNode; loading?: boolean; disabled?: boolean; type?: "submit" | "button";
+}) {
+  return (
+    <button
+      type={type}
+      disabled={disabled || loading}
+      className="w-full flex items-center justify-center h-12 rounded-xl bg-black text-white text-[14px] font-semibold transition-all duration-200 hover:opacity-80 active:scale-[0.98] disabled:opacity-35 disabled:cursor-not-allowed mt-1"
+      style={{ fontFamily: FONT, letterSpacing: "-0.01em" }}
+    >
+      {loading ? (
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 0.75, repeat: Infinity, ease: "linear" }}
+          className="w-4 h-4 rounded-full border-[2px] border-white/25 border-t-white"
+        />
+      ) : children}
+    </button>
+  );
+}
+
+// ── Send code button ──────────────────────────────────────────────────────────
+function SendBtn({ onClick, loading, sent, resendIn, labelSend, labelResend, labelWait }: {
+  onClick: () => void; loading: boolean; sent: boolean; resendIn: number;
+  labelSend: string; labelResend: string; labelWait: string;
+}) {
+  const isDisabled = loading || resendIn > 0;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isDisabled}
+      className="shrink-0 h-12 px-4 rounded-xl text-[13px] font-semibold transition-all duration-200 whitespace-nowrap"
+      style={{
+        background: isDisabled ? "rgba(0,0,0,0.04)" : "black",
+        color: isDisabled ? "rgba(0,0,0,0.35)" : "white",
+        border: isDisabled ? "1px solid rgba(0,0,0,0.08)" : "none",
+        cursor: isDisabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {loading && !sent ? labelWait : resendIn > 0 ? `${resendIn}s` : sent ? labelResend : labelSend}
+    </button>
+  );
+}
+
+// ── Error message ─────────────────────────────────────────────────────────────
+function ErrorMsg({ msg }: { msg: string | null }) {
+  return (
+    <AnimatePresence>
+      {msg && (
+        <motion.div
+          initial={{ opacity: 0, y: -6, height: 0 }}
+          animate={{ opacity: 1, y: 0, height: "auto" }}
+          exit={{ opacity: 0, y: -4, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className="overflow-hidden"
+        >
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-[13px] text-red-600"
+            style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
+              <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M6.5 4v2.5M6.5 9v.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            {msg}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ── Notice (success) message ──────────────────────────────────────────────────
+function NoticeMsg({ msg }: { msg: string | null }) {
+  return (
+    <AnimatePresence>
+      {msg && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          className="mb-5 flex items-center gap-2 px-3 py-2.5 rounded-lg text-[13px] text-emerald-700"
+          style={{ background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.18)" }}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
+            <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M4 6.5l2 2 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {msg}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ── Divider ───────────────────────────────────────────────────────────────────
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 my-5">
+      <div className="flex-1 h-px bg-black/[0.07]" />
+      <span className="text-[10px] uppercase tracking-[0.15em] text-gray-400 font-medium">{label}</span>
+      <div className="flex-1 h-px bg-black/[0.07]" />
+    </div>
+  );
+}
+
+// ── Page tab switcher ─────────────────────────────────────────────────────────
+function PageTabs({ page, onChange, labelSignIn, labelSignUp }: {
+  page: Page; onChange: (p: Page) => void; labelSignIn: string; labelSignUp: string;
+}) {
+  return (
+    <div className="flex justify-center mb-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+      {(["signin", "signup"] as Page[]).map((p) => {
+        const active = page === p;
+        return (
+          <button
+            key={p} type="button" onClick={() => onChange(p)}
+            className="relative px-8 pb-3 text-[14px] font-semibold transition-colors duration-200"
+            style={{ color: active ? "#111" : "rgba(0,0,0,0.35)" }}
+          >
+            {p === "signin" ? labelSignIn : labelSignUp}
+            {active && (
+              <motion.div
+                layoutId="auth-tab-indicator"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-black rounded-full"
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Channel pills (Email / Phone) ─────────────────────────────────────────────
+function ChannelPills({ tabs, active, onChange }: {
+  tabs: { id: string; label: string }[]; active: string; onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex justify-center gap-2 mb-5">
+      {tabs.map((t) => {
+        const isActive = active === t.id;
+        return (
+          <button
+            key={t.id} type="button" onClick={() => onChange(t.id)}
+            className="px-5 py-1.5 rounded-full text-[12px] font-semibold transition-all duration-200"
+            style={{
+              background: isActive ? "#111" : "transparent",
+              color: isActive ? "white" : "rgba(0,0,0,0.45)",
+              border: isActive ? "1px solid transparent" : "1px solid rgba(0,0,0,0.12)",
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Mode toggle (Password / OTP) ──────────────────────────────────────────────
+function ModePills({ mode, onChange, labelPwd, labelOtp }: {
+  mode: SignInMode; onChange: (m: SignInMode) => void; labelPwd: string; labelOtp: string;
+}) {
+  return (
+    <div className="flex gap-2 mb-5">
+      {(["password", "otp"] as SignInMode[]).map((m) => {
+        const isActive = mode === m;
+        return (
+          <button
+            key={m} type="button" onClick={() => onChange(m)}
+            className="px-4 py-1.5 rounded-full text-[12px] font-semibold transition-all duration-200"
+            style={{
+              background: isActive ? "#111" : "transparent",
+              color: isActive ? "white" : "rgba(0,0,0,0.45)",
+              border: isActive ? "1px solid transparent" : "1px solid rgba(0,0,0,0.12)",
+            }}
+          >
+            {m === "password" ? labelPwd : labelOtp}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── OTP form — standalone component (prevents remount on parent re-render) ────
+function OtpBlock({
+  isSignUp, hasRefCode, channel, otpTarget, setOtpTarget, otpCode, setOtpCode,
+  inviteCode, setInviteCode, otpSent, resendIn, loading, error,
+  onSubmit, onSend,
+  labelTarget, placeholderTarget, labelCode, labelInvite, inviteHint,
+  labelSend, labelResend, labelWait, labelSubmit, labelInviteCodeHint,
+}: {
+  isSignUp: boolean; hasRefCode: boolean; channel: "email" | "sms";
+  otpTarget: string; setOtpTarget: (v: string) => void;
+  otpCode: string; setOtpCode: (v: string) => void;
+  inviteCode: string; setInviteCode: (v: string) => void;
+  otpSent: boolean; resendIn: number; loading: boolean; error: string | null;
+  onSubmit: (e: React.FormEvent) => void; onSend: () => void;
+  labelTarget: string; placeholderTarget: string; labelCode: string;
+  labelInvite: string; inviteHint: string;
+  labelSend: string; labelResend: string; labelWait: string;
+  labelSubmit: string; labelInviteCodeHint: string;
+}) {
+  const inputCls = "w-full bg-[#fafafa] border border-[#e5e5e5] rounded-xl px-4 py-3 text-[14px] text-gray-900 outline-none placeholder:text-gray-400 transition-all duration-200 focus:bg-white focus:border-black/30 focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]";
+  const labelCls = "block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2";
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div>
+        <label className={labelCls}>{labelTarget}</label>
+        <div className="flex gap-2">
+          <input
+            type={channel === "email" ? "email" : "tel"}
+            className={inputCls + " flex-1"}
+            value={otpTarget}
+            onChange={(e) => setOtpTarget(e.target.value)}
+            placeholder=""
+            autoComplete={channel === "email" ? "email" : "tel"}
+            required
+          />
+          <SendBtn onClick={onSend} loading={loading} sent={otpSent} resendIn={resendIn}
+            labelSend={labelSend} labelResend={labelResend} labelWait={labelWait} />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>{labelCode}</label>
+        <input inputMode="numeric" maxLength={6}
+          className={inputCls + " tracking-[0.5em] font-mono text-center"}
+          value={otpCode}
+          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          placeholder="" autoComplete="one-time-code" required />
+      </div>
+      {isSignUp && (
+        <div>
+          <label className={labelCls}>{labelInvite}</label>
+          {hasRefCode ? (
+            <div className={inputCls + " tracking-widest font-mono uppercase text-gray-400 cursor-default select-none"}>
+              已通过邀请链接自动填充
+            </div>
+          ) : (
+            <input className={inputCls + " tracking-widest font-mono uppercase"}
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+              placeholder="" autoComplete="off" required />
+          )}
+          <p className="mt-1.5 text-[11px] text-gray-400">{labelInviteCodeHint}</p>
+        </div>
+      )}
+      <ErrorMsg msg={error} />
+      <PrimaryBtn loading={loading}>{labelSubmit}</PrimaryBtn>
+    </form>
+  );
+}
+
+// ── Shell — standalone component (prevents remount on parent re-render) ───────
+function Shell({ children, footer, wide, showLogo = true }: { children: React.ReactNode; footer: string; wide?: boolean; showLogo?: boolean }) {
+  return (
+    <div
+      className="min-h-screen w-full flex flex-col items-center px-4 justify-start md:justify-center md:py-10"
+      style={{
+        fontFamily: FONT,
+        background: "linear-gradient(160deg, #fafafa 0%, #f4f4f5 100%)",
+        paddingTop: "32px",
+        paddingBottom: "24px",
+      }}
+    >
+      <div className="fixed inset-0 pointer-events-none opacity-[0.025]"
+        style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")" }} />
+      <div className={`w-full flex flex-col items-center ${wide ? "max-w-[400px] md:max-w-[480px]" : "max-w-[400px]"}`}>
+        {showLogo && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="mb-5">
+            <img src={cascadeLogo} alt="Cascade AI" className="h-8 w-auto object-contain" />
+          </motion.div>
+        )}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full relative bg-white rounded-2xl overflow-hidden"
+          style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.06)" }}>
+          {children}
+        </motion.div>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}
+          className="mt-5 text-center text-[11px] text-gray-400">
+          {footer}
+        </motion.p>
+        <SiteBeian className="mt-2" />
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Main component
+// ════════════════════════════════════════════════════════════════════════════
 export default function AuthPage() {
   const t = useT();
   const setUserId = useIDEStore((s) => s.setUserId);
   const setStoredUsername = useIDEStore((s) => s.setUsername);
   const [, setLocation] = useLocation();
 
-  const [tab, setTab] = useState<Tab>("username");
+  const [page, setPage] = useState<Page>("signin");
+  const [signInChannel, setSignInChannel] = useState<SignInChannel>("email");
+  const [signUpChannel, setSignUpChannel] = useState<SignUpChannel>("email");
 
-  // Username/password state
-  const [mode, setMode] = useState<Mode>("login");
-  const [username, setUsername] = useState("");
+  // Replit-style two-step flow: landing (pick a method) → detail (enter creds)
+  const [view, setView] = useState<"landing" | "detail">("landing");
+  const [detailMethod, setDetailMethod] = useState<"phone" | "email" | "github">("email");
+
+  // Pre-fill invite code from ?ref= query param and switch to signup tab
+  const [refCode, setRefCode] = useState<string>(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("ref") ?? "";
+  });
+
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-
-  // OTP state (shared between email + phone tabs, reset on tab switch)
+  const [showPassword, setShowPassword] = useState(false);
   const [otpTarget, setOtpTarget] = useState("");
   const [otpCode, setOtpCode] = useState("");
-  const [otpInviteCode, setOtpInviteCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
-  const resendTimerRef = useRef<number | null>(null);
+  const resendRef = useRef<number | null>(null);
+  // If URL has ?ref=, the invite code is auto-handled by the backend via referralCode.
+  // We keep inviteCode empty so the user doesn't need to fill it manually.
+  const hasRefCode = Boolean(new URLSearchParams(window.location.search).get("ref"));
+  const [inviteCode, setInviteCode] = useState(() => {
+    // Don't pre-fill the invite field with the ref param — backend handles it automatically.
+    return "";
+  });
+
+  const [forgot, setForgot] = useState(false);
+  const [forgotChannel, setForgotChannel] = useState<"email" | "sms">("email");
+  const [forgotTarget, setForgotTarget] = useState("");
+  const [forgotCode, setForgotCode] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotResendIn, setForgotResendIn] = useState(0);
+  const forgotResendRef = useRef<number | null>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // GitHub callback may bounce us back with ?github_error=…
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("github_error")) {
+    const p = new URLSearchParams(window.location.search);
+    if (p.has("github_error")) {
       setError(t("auth.githubError"));
       const url = new URL(window.location.href);
       url.searchParams.delete("github_error");
       window.history.replaceState({}, "", url.toString());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (p.has("passwordSet")) {
+      setNotice(t("auth.setPasswordDone"));
+      const url = new URL(window.location.href);
+      url.searchParams.delete("passwordSet");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // Auto-switch to signup tab when a referral code is in the URL
+    if (p.has("ref")) {
+      setPage("signup");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Resend countdown
   useEffect(() => {
     if (resendIn <= 0) return;
-    resendTimerRef.current = window.setInterval(() => {
-      setResendIn((s) => Math.max(0, s - 1));
-    }, 1000);
-    return () => {
-      if (resendTimerRef.current) window.clearInterval(resendTimerRef.current);
-    };
+    resendRef.current = window.setInterval(() => setResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => { if (resendRef.current) window.clearInterval(resendRef.current); };
   }, [resendIn > 0]);
 
-  const switchTab = (next: Tab) => {
-    setTab(next);
-    setError(null);
-    setOtpCode("");
-    setOtpInviteCode("");
-    setOtpSent(false);
+  useEffect(() => {
+    if (forgotResendIn <= 0) return;
+    forgotResendRef.current = window.setInterval(() => setForgotResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => { if (forgotResendRef.current) window.clearInterval(forgotResendRef.current); };
+  }, [forgotResendIn > 0]);
+
+  const resetOtp = () => { setOtpTarget(""); setOtpCode(""); setOtpSent(false); setResendIn(0); };
+
+  const switchPage = (p: Page) => {
+    setPage(p); setError(null); setNotice(null);
+    resetOtp(); setIdentifier(""); setPassword(""); setInviteCode("");
+    setView("landing");
   };
 
-  const validateOtpTarget = (): string | null => {
-    if (tab === "email") {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpTarget.trim().toLowerCase())) {
-        return t("auth.otpInvalidEmail");
-      }
-    } else if (tab === "phone") {
-      if (!/^\+\d{8,15}$/.test(otpTarget.trim())) {
-        return t("auth.otpInvalidPhone");
-      }
+  // Replit-style: pick a method on the landing card → open its detail form
+  const openMethod = (method: "phone" | "email" | "github") => {
+    setError(null); resetOtp(); setIdentifier(""); setPassword("");
+    setDetailMethod(method);
+    if (method !== "github") {
+      const channel = method as SignInChannel;
+      if (page === "signin") { setSignInChannel(channel); }
+      else { setSignUpChannel(channel); }
     }
+    setView("detail");
+  };
+  const backToLanding = () => {
+    setView("landing"); setError(null); resetOtp(); setIdentifier(""); setPassword(""); setShowPassword(false);
+  };
+
+  // Detail-page toggle: flip signin ⇄ signup but stay on the SAME method's detail page
+  const togglePageInDetail = () => {
+    const next: Page = page === "signin" ? "signup" : "signin";
+    setPage(next); setError(null); setNotice(null);
+    resetOtp(); setIdentifier(""); setPassword(""); setInviteCode(""); setShowPassword(false);
+    if (detailMethod !== "github") {
+      const channel = detailMethod as SignInChannel;
+      if (next === "signin") setSignInChannel(channel); else setSignUpChannel(channel);
+    }
+  };
+  const switchSignUpChannel = (c: string) => { setSignUpChannel(c as SignUpChannel); setError(null); resetOtp(); setInviteCode(""); };
+
+  const mapError = (msg: string): string => ({
+    "Username already taken": t("auth.usernameTaken"),
+    "Invalid credentials": t("auth.invalidCredentials"),
+    "username and password required": t("auth.fillBothFields"),
+    "Invite code required": t("auth.inviteCodeRequired"),
+    "Invalid invite code": t("auth.inviteCodeInvalid"),
+    "Invite code already used": t("auth.inviteCodeUsed"),
+    "Invite code expired": t("auth.inviteCodeExpired"),
+    "Invalid email": t("auth.otpInvalidEmail"),
+    "Invalid phone": t("auth.otpInvalidPhone"),
+    "Invalid or expired code": t("auth.otpInvalidOrExpired"),
+    "Code locked - request a new one": t("auth.otpLocked"),
+    "Send rate-limited": t("auth.otpRateLimited"),
+  } as Record<string, string>)[msg] ?? t("auth.genericError");
+
+  const validateTarget = (channel: "email" | "sms", value: string): string | null => {
+    if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase()))
+      return t("auth.otpInvalidEmail");
+    if (channel === "sms" && !/^\+\d{8,15}$/.test(value.trim()))
+      return t("auth.otpInvalidPhone");
     return null;
   };
 
-  const mapServerError = (msg: string): string => {
-    const map: Record<string, string> = {
-      "Username already taken": t("auth.usernameTaken"),
-      "Invalid credentials": t("auth.invalidCredentials"),
-      "username and password required": t("auth.fillBothFields"),
-      "Invite code required": t("auth.inviteCodeRequired"),
-      "Invalid invite code": t("auth.inviteCodeInvalid"),
-      "Invite code already used": t("auth.inviteCodeUsed"),
-      "Invite code expired": t("auth.inviteCodeExpired"),
-      "Invalid email": t("auth.otpInvalidEmail"),
-      "Invalid phone": t("auth.otpInvalidPhone"),
-      "Invalid or expired code": t("auth.otpInvalidOrExpired"),
-      "Code locked - request a new one": t("auth.otpLocked"),
-      "Send rate-limited": t("auth.otpRateLimited"),
-    };
-    return map[msg] ?? t("auth.genericError");
+  // 取人机验证票据；用户取消返回 null（调用方应中止）。未启用时返回空票。
+  const acquireCaptcha = async (): Promise<{ ticket: string; randstr: string } | null> => {
+    const cap = await getCaptchaTicket();
+    if (!cap) { setError(t("auth.captchaFailed")); return null; }
+    return cap;
   };
 
-  const handleUsernameSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!username.trim()) { setError(t("auth.usernameRequired")); return; }
-    if (password.length < 6) { setError(t("auth.passwordTooShort")); return; }
-    if (mode === "register" && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
-
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null);
+    if (!identifier.trim() || !password) { setError(t("auth.fillBothFields")); return; }
     setLoading(true);
     try {
-      const body = mode === "register"
-        ? { username, password, inviteCode }
-        : { username, password };
-      const res = await fetch(`/api/auth/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const cap = await acquireCaptcha();
+      if (!cap) return;
+      const res = await fetch("/api/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: identifier.trim(), password, ...cap }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(mapServerError(data.error)); return; }
-      setUserId(data.id);
-      setStoredUsername(data.username);
-      setLocation("/app");
-    } finally {
-      setLoading(false);
-    }
+      if (!res.ok) { setError(mapError(data.error)); return; }
+      setUserId(data.id); setStoredUsername(data.username); setLocation("/app");
+    } finally { setLoading(false); }
   };
 
-  const handleSendOtp = async () => {
-    const validationError = validateOtpTarget();
-    if (validationError) { setError(validationError); return; }
-    setError(null);
-    setLoading(true);
+  const handleSendOtp = async (channel: "email" | "sms", target: string) => {
+    const err = validateTarget(channel, target);
+    if (err) { setError(err); return; }
+    setError(null); setLoading(true);
     try {
-      const channel = tab === "email" ? "email" : "sms";
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, target: otpTarget.trim() }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ channel, target: target.trim(), ...cap }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(mapServerError(data.error));
-        if (typeof data.retryAfterSec === "number") setResendIn(data.retryAfterSec);
-        return;
-      }
-      setOtpSent(true);
-      setResendIn(data.retryAfterSec ?? 60);
-    } finally {
-      setLoading(false);
-    }
+      if (!res.ok) { setError(mapError(data.error)); if (typeof data.retryAfterSec === "number") setResendIn(data.retryAfterSec); return; }
+      setOtpSent(true); setResendIn(data.retryAfterSec ?? 60);
+    } finally { setLoading(false); }
   };
 
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const handleOtpSignIn = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null);
     if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
-
+    const channel = signInChannel === "email" ? "email" : "sms";
     setLoading(true);
     try {
-      const channel = tab === "email" ? "email" : "sms";
-      const body: Record<string, string> = {
-        channel,
-        target: otpTarget.trim(),
-        code: otpCode,
-      };
-      if (otpInviteCode.trim()) body.inviteCode = otpInviteCode.trim();
+      const cap = await acquireCaptcha();
+      if (!cap) return;
       const res = await fetch("/api/auth/otp/verify-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ channel, target: otpTarget.trim(), code: otpCode, ...cap }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(mapError(data.error)); return; }
+      setUserId(data.id); setStoredUsername(data.username);
+      setLocation(res.status === 201 ? "/set-password" : "/app");
+    } finally { setLoading(false); }
+  };
+
+  const handleOtpSignUp = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null);
+    if (!/^\d{6}$/.test(otpCode)) { setError(t("auth.otpInvalidCode")); return; }
+    if (!hasRefCode && !inviteCode.trim()) { setError(t("auth.inviteCodeRequired")); return; }
+    const channel = signUpChannel === "email" ? "email" : "sms";
+    setLoading(true);
+    try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
+      const body: Record<string, string> = { channel, target: otpTarget.trim(), code: otpCode, ...cap };
+      if (hasRefCode) {
+        body.referralCode = refCode.trim().toUpperCase();
+      } else {
+        body.inviteCode = inviteCode.trim();
+      }
+      const res = await fetch("/api/auth/otp/verify-login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setError(mapServerError(data.error)); return; }
-      setUserId(data.id);
-      setStoredUsername(data.username);
-      setLocation("/app");
-    } finally {
-      setLoading(false);
+      if (!res.ok) { setError(mapError(data.error)); return; }
+      setUserId(data.id); setStoredUsername(data.username);
+      // If the user arrived via a referral link, silently redeem the referral code
+      if (refCode.trim()) {
+        try {
+          await fetch("/api/referral/redeem", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ referralCode: refCode.trim().toUpperCase() }),
+          });
+        } catch { /* non-fatal */ }
+      }
+      setLocation("/set-password");
+    } finally { setLoading(false); }
+  };
+
+  const handleGitHub = async () => {
+    try {
+      const res = await fetch("/api/auth/github?mode=url");
+      const { url } = await res.json();
+      window.location.replace(url);
+    } catch {
+      window.location.replace("/api/auth/github");
     }
   };
 
-  const handleGithubSignIn = () => {
-    window.location.href = "/api/auth/github";
+  const openForgot = () => { setForgot(true); setForgotTarget(""); setForgotCode(""); setForgotSent(false); setForgotResendIn(0); setNewPassword(""); setError(null); };
+  const closeForgot = () => { setForgot(false); setError(null); };
+
+  const handleForgotSend = async () => {
+    const err = validateTarget(forgotChannel === "email" ? "email" : "sms", forgotTarget);
+    if (err) { setError(err); return; }
+    setError(null); setLoading(true);
+    try {
+      const cap = await acquireCaptcha();
+      if (!cap) return;
+      const res = await fetch("/api/auth/reset-password/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ channel: forgotChannel, target: forgotTarget.trim(), ...cap }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(mapError(data.error)); if (typeof data.retryAfterSec === "number") setForgotResendIn(data.retryAfterSec); return; }
+      setForgotSent(true); setForgotResendIn(data.retryAfterSec ?? 60);
+    } finally { setLoading(false); }
   };
 
-  const channelLabel = tab === "email" ? t("auth.otpChannelEmail") : t("auth.otpChannelPhone");
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null);
+    if (!/^\d{6}$/.test(forgotCode)) { setError(t("auth.otpInvalidCode")); return; }
+    if (newPassword.length < 6) { setError(t("auth.passwordTooShort")); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password/verify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ channel: forgotChannel, target: forgotTarget.trim(), code: forgotCode, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(mapError(data.error)); return; }
+      setForgot(false); setPage("signin"); setNotice(t("auth.resetSuccess"));
+    } finally { setLoading(false); }
+  };
+
+  const otpChannel = page === "signin" ? (signInChannel === "email" ? "email" : "sms") : (signUpChannel === "email" ? "email" : "sms");
+
+  // ── shared OtpBlock props ─────────────────────────────────────────────────
+  const otpBlockProps = (isSignUp: boolean) => ({
+    isSignUp,
+    hasRefCode,
+    channel: otpChannel,
+    otpTarget, setOtpTarget,
+    otpCode, setOtpCode,
+    inviteCode, setInviteCode,
+    otpSent, resendIn, loading, error,
+    onSubmit: isSignUp ? handleOtpSignUp : handleOtpSignIn,
+    onSend: () => handleSendOtp(otpChannel, otpTarget),
+    labelTarget: otpChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber"),
+    placeholderTarget: otpChannel === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder"),
+    labelCode: t("auth.verifyCode"),
+    labelInvite: t("auth.inviteCodeLabel"),
+    inviteHint: t("auth.inviteCodeHint"),
+    labelSend: t("auth.sendCode"),
+    labelResend: t("auth.resendCode"),
+    labelWait: t("auth.sending"),
+    labelSubmit: isSignUp ? t("auth.pageSignUp") : t("auth.pageSignIn"),
+    labelInviteCodeHint: t("auth.inviteCodeHint"),
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Forgot password
+  // ════════════════════════════════════════════════════════════════════════
+  if (forgot) {
+    return (
+      <Shell footer={t("auth.footer")}>
+        <div className="p-6">
+          <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.06 } } }}>
+            {/* back + lang */}
+            <motion.div variants={fadeUp} custom={0} className="flex items-center justify-between mb-6">
+              <button type="button" onClick={closeForgot}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400 hover:text-gray-900 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {t("auth.forgotBack")}
+              </button>
+              <LangPill />
+            </motion.div>
+
+            <motion.div variants={fadeUp} custom={1} className="mb-6">
+              <h1 className="text-[20px] font-bold text-gray-900 tracking-tight">{t("auth.resetPasswordTitle")}</h1>
+              <p className="mt-1 text-[13px] text-gray-500">{t("auth.resetPasswordDesc")}</p>
+            </motion.div>
+
+            {/* GitHub note */}
+            <motion.div variants={fadeUp} custom={1.5}
+              className="mb-5 flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-[12px] text-gray-500"
+              style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.07)" }}>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0 mt-0.5">
+                <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+                <path d="M6.5 5v.2M6.5 7v2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              {t("auth.githubHint")}
+            </motion.div>
+
+            <motion.div variants={fadeUp} custom={2}>
+              <ChannelPills
+                tabs={[{ id: "email", label: t("auth.methodEmail") }, { id: "sms", label: t("auth.methodPhone") }]}
+                active={forgotChannel}
+                onChange={(id) => { setForgotChannel(id as "email" | "sms"); setError(null); setForgotTarget(""); setForgotCode(""); setForgotSent(false); }}
+              />
+            </motion.div>
+
+            <form onSubmit={handleForgotSubmit} className="flex flex-col gap-4">
+              <motion.div variants={fadeUp} custom={3}>
+                <label className={labelCls}>{forgotChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}</label>
+                <div className="flex gap-2">
+                  <input type={forgotChannel === "email" ? "email" : "tel"} className={inputCls + " flex-1"}
+                    value={forgotTarget} onChange={(e) => setForgotTarget(e.target.value)}
+                    placeholder={forgotChannel === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
+                    autoComplete={forgotChannel === "email" ? "email" : "tel"} required />
+                  <SendBtn onClick={handleForgotSend} loading={loading} sent={forgotSent} resendIn={forgotResendIn}
+                    labelSend={t("auth.sendCode")} labelResend={t("auth.resendCode")} labelWait={t("auth.sending")} />
+                </div>
+              </motion.div>
+              <motion.div variants={fadeUp} custom={4}>
+                <label className={labelCls}>{t("auth.verifyCode")}</label>
+                <input inputMode="numeric" maxLength={6}
+                  className={inputCls + " tracking-[0.5em] font-mono text-center"}
+                  value={forgotCode} onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="• • • • • •" autoComplete="one-time-code" required />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={5}>
+                <label className={labelCls}>{t("auth.newPassword")}</label>
+                <input type="password" className={inputCls} value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={t("auth.newPasswordPlaceholder")} autoComplete="new-password" required />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={6}><ErrorMsg msg={error} /></motion.div>
+              <motion.div variants={fadeUp} custom={7}>
+                <PrimaryBtn loading={loading}>{t("auth.doResetPassword")}</PrimaryBtn>
+              </motion.div>
+            </form>
+          </motion.div>
+        </div>
+      </Shell>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Sign In / Sign Up — Replit-style two-step flow
+  // ════════════════════════════════════════════════════════════════════════
+
+  // Active channel for the detail view depends on which page we're on
+  const detailChannel: SignInChannel = page === "signin" ? signInChannel : signUpChannel;
+
+  // ── Landing card: pick a login method ─────────────────────────────────────
+  if (view === "landing") {
+    return (
+      <Shell footer={t("auth.footer")} wide>
+        <div className="px-6 pb-6 pt-4 md:px-8 md:pb-8 md:pt-6">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+          >
+            <motion.div variants={fadeUp} custom={0}>
+              <NoticeMsg msg={notice} />
+            </motion.div>
+
+            {/* Lang pill — centered */}
+            <motion.div variants={fadeUp} custom={1.5} className="flex justify-center mt-1 mb-5">
+              <LangPill />
+            </motion.div>
+
+            {/* Title */}
+            <motion.div variants={fadeUp} custom={2} className="mb-6 text-center">
+              <h1 className="text-[22px] font-bold text-gray-900 tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+                {page === "signin" ? t("auth.landingTitleSignIn") : t("auth.landingTitleSignUp")}
+              </h1>
+              <p className="mt-1.5 text-[13px] text-gray-500">
+                {page === "signin" ? t("auth.signInDesc") : t("auth.signUpDesc")}
+              </p>
+            </motion.div>
+
+            {/* Method buttons — phone, email, GitHub */}
+            <div className="flex flex-col gap-3">
+              <motion.div variants={fadeUp} custom={3}>
+                <MethodBtn
+                  icon={<PhoneIcon />}
+                  label={page === "signin" ? t("auth.methodPhoneBtn") : t("auth.methodPhoneBtnSignUp")}
+                  onClick={() => openMethod("phone")}
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={4}>
+                <MethodBtn
+                  icon={<MailIcon />}
+                  label={page === "signin" ? t("auth.methodEmailBtn") : t("auth.methodEmailBtnSignUp")}
+                  onClick={() => openMethod("email")}
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} custom={5}>
+                <MethodBtn
+                  icon={<GitHubIcon />}
+                  label={page === "signin" ? t("auth.methodGithubBtn") : t("auth.methodGithubBtnSignUp")}
+                  onClick={() => openMethod("github")}
+                />
+              </motion.div>
+            </div>
+
+            {/* Switch sign-in / sign-up */}
+            <motion.div variants={fadeUp} custom={6} className="mt-6 text-center text-[13px] text-gray-500">
+              {page === "signin" ? t("auth.landingNoAccount") : t("auth.landingHasAccount")}{" "}
+              <button type="button"
+                onClick={() => switchPage(page === "signin" ? "signup" : "signin")}
+                className="font-semibold text-gray-900 hover:underline">
+                {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
+              </button>
+            </motion.div>
+          </motion.div>
+        </div>
+      </Shell>
+    );
+  }
+
+  // ── Detail card: enter credentials for the chosen method ──────────────────
+  // Title is simply "Log in" / "Sign up" (figure 1) — language-switchable
+  const detailTitle = page === "signin" ? t("auth.detailLoginTitle") : t("auth.detailSignUpTitle");
 
   return (
-    <div className="min-h-screen bg-[#080810] flex items-center justify-center">
-      <div className="w-full max-w-md bg-[#0d1525] border border-[rgba(255,255,255,0.08)] rounded-2xl p-8 shadow-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-white">Cascade</h1>
-          <p className="mt-1 text-sm text-[rgba(255,255,255,0.4)]">
-            {tab === "username" && mode === "register"
-              ? t("auth.registerSubtitle")
-              : t("auth.signInSubtitle")}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGithubSignIn}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] text-white text-sm font-medium hover:bg-[rgba(255,255,255,0.1)]"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
-            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-.99-.02-1.95-3.2.7-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18a10.95 10.95 0 0 1 5.75 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.66.79.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"/>
+    <Shell footer={t("auth.footer")} wide showLogo={false}>
+      <div className="relative p-6 md:px-12 md:py-12">
+        {/* Close (X) — top-right, returns to landing */}
+        <button type="button" onClick={backToLanding} aria-label={t("auth.close")}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-900 hover:bg-black/[0.04] transition-all duration-200 z-10">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
-          {t("auth.continueWithGithub")}
         </button>
 
-        <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-wider text-[rgba(255,255,255,0.3)]">
-          <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]" />
-          {t("auth.or")}
-          <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]" />
-        </div>
+        <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.06 } } }}>
+          {/* Logo — centered inside card (replica of figure 1) */}
+          <motion.div variants={fadeUp} custom={0} className="flex justify-center mb-7 md:mb-9">
+            <img src={cascadeLogo} alt="Cascade AI" className="h-9 md:h-10 w-auto object-contain" />
+          </motion.div>
 
-        {/* Tab switcher */}
-        <div className="grid grid-cols-3 gap-1 mb-5 p-1 bg-[rgba(255,255,255,0.04)] rounded-lg border border-[rgba(255,255,255,0.06)]">
-          {(["username", "email", "phone"] as Tab[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => switchTab(id)}
-              className={`text-xs py-1.5 rounded-md transition-colors ${
-                tab === id
-                  ? "bg-[rgba(255,255,255,0.08)] text-white"
-                  : "text-[rgba(255,255,255,0.5)] hover:text-white"
-              }`}
-            >
-              {id === "username" ? t("auth.tabUsername") : id === "email" ? t("auth.tabEmail") : t("auth.tabPhone")}
+          {/* Title — large, centered */}
+          <motion.div variants={fadeUp} custom={1} className="mb-5 text-center">
+            <h1 className="text-[26px] md:text-[30px] font-bold text-gray-900 tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+              {detailTitle}
+            </h1>
+          </motion.div>
+
+          {/* Back + lang — centered row below title */}
+          <motion.div variants={fadeUp} custom={2} className="flex items-center justify-between mb-7">
+            <button type="button" onClick={backToLanding}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400 hover:text-gray-900 transition-colors">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {t("auth.back")}
             </button>
-          ))}
-        </div>
+            <LangPill />
+          </motion.div>
 
-        {tab === "username" && (
-          <form onSubmit={handleUsernameSubmit} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.usernameLabel")}</label>
-              <input
-                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t("auth.usernamePlaceholder")}
-                autoComplete="username"
-                required
-              />
-            </div>
+          <AnimatePresence mode="wait">
+            {detailMethod === "github" ? (
+              /* ── GitHub continue page ── */
+              <motion.div key="github"
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}
+                className="flex flex-col gap-5">
+                <p className="text-center text-[13px] text-gray-500 leading-relaxed">
+                  {t("auth.githubContinueDesc")}
+                </p>
+                <button type="button" onClick={handleGitHub}
+                  className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-black text-white text-[14px] font-semibold transition-all duration-200 hover:opacity-80 active:scale-[0.98]"
+                  style={{ fontFamily: FONT, letterSpacing: "-0.01em" }}>
+                  <GitHubIcon />
+                  {page === "signin" ? t("auth.continueWithGithub") : t("auth.signUpWithGithub")}
+                </button>
+              </motion.div>
+            ) : page === "signin" ? (
+              <motion.div key={"signin-" + detailChannel}
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
 
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.passwordLabel")}</label>
-              <input
-                type="password"
-                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                required
-              />
-            </div>
-
-            {mode === "register" && (
-              <div>
-                <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.inviteCodeLabel")}</label>
-                <input
-                  className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-widest"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder={t("auth.inviteCodePlaceholder")}
-                  autoComplete="off"
-                  required
-                />
-              </div>
+                <motion.form
+                  onSubmit={handlePasswordSignIn} className="flex flex-col gap-5">
+                  <div>
+                    <label className={labelCls}>
+                      {detailChannel === "email" ? t("auth.emailAddr") : t("auth.phoneNumber")}
+                    </label>
+                    <input
+                      type={detailChannel === "email" ? "email" : "tel"}
+                      className={inputCls + " h-12"}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder=""
+                      autoComplete={detailChannel === "email" ? "email" : "tel"}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t("auth.passwordLabel")}</label>
+                    <div className="relative">
+                      <input type={showPassword ? "text" : "password"} className={inputCls + " h-12 pr-11"} value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="" autoComplete="current-password" required />
+                      <button type="button" onClick={() => setShowPassword((s) => !s)}
+                        aria-label="toggle password"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
+                        <EyeIcon open={showPassword} />
+                      </button>
+                    </div>
+                  </div>
+                  <ErrorMsg msg={error} />
+                  <PrimaryBtn loading={loading}>{t("auth.pageSignIn")}</PrimaryBtn>
+                </motion.form>
+              </motion.div>
+            ) : (
+              <motion.div key={"signup-" + detailChannel}
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
+                <OtpBlock {...otpBlockProps(true)} />
+              </motion.div>
             )}
+          </AnimatePresence>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
-            >
-              {loading ? "…" : mode === "login" ? t("auth.signIn") : t("auth.createAccount")}
+          {/* Bottom links — Forgot password? / New to CascadeAI? Create account */}
+          <motion.div variants={fadeUp} custom={4} className="mt-8 flex flex-col items-center gap-2.5">
+            <button type="button" onClick={openForgot}
+              className="text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
+              {t("auth.forgotPassword")}
             </button>
-
-            <p className="text-center text-xs text-[rgba(255,255,255,0.35)]">
-              {mode === "login" ? t("auth.noAccount") : t("auth.hasAccount")}
-              <button
-                type="button"
-                onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}
-                className="text-blue-400 hover:text-blue-300"
-              >
-                {mode === "login" ? t("auth.signUp") : t("auth.signIn")}
+            <p className="text-[13px] text-gray-500">
+              {page === "signin" ? t("auth.newToCascade") : t("auth.landingHasAccount")}{" "}
+              <button type="button"
+                onClick={togglePageInDetail}
+                className="font-semibold text-gray-900 hover:underline">
+                {page === "signin" ? t("auth.landingCreateAccount") : t("auth.landingSignIn")}
               </button>
             </p>
-          </form>
-        )}
-
-        {(tab === "email" || tab === "phone") && (
-          <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">
-                {tab === "email" ? t("auth.emailLabel") : t("auth.phoneLabel")}
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type={tab === "email" ? "email" : "tel"}
-                  className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                  value={otpTarget}
-                  onChange={(e) => setOtpTarget(e.target.value)}
-                  placeholder={tab === "email" ? t("auth.emailPlaceholder") : t("auth.phonePlaceholder")}
-                  autoComplete={tab === "email" ? "email" : "tel"}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={handleSendOtp}
-                  disabled={loading || resendIn > 0 || !otpTarget.trim()}
-                  className="px-3 py-2 rounded-lg bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] text-white text-xs font-medium hover:bg-[rgba(255,255,255,0.1)] disabled:opacity-40 whitespace-nowrap"
-                >
-                  {loading && !otpSent
-                    ? t("auth.otpSending")
-                    : resendIn > 0
-                    ? t("auth.otpResendIn", { n: String(resendIn) })
-                    : t("auth.otpSend")}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.otpCodeLabel")}</label>
-              <input
-                inputMode="numeric"
-                maxLength={6}
-                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-[0.5em]"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder={t("auth.otpCodePlaceholder")}
-                autoComplete="one-time-code"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-[rgba(255,255,255,0.5)] mb-1">{t("auth.inviteCodeLabel")}</label>
-              <input
-                className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500 tracking-widest"
-                value={otpInviteCode}
-                onChange={(e) => setOtpInviteCode(e.target.value)}
-                placeholder={t("auth.inviteCodePlaceholder")}
-                autoComplete="off"
-              />
-              <p className="mt-1 text-[10px] text-[rgba(255,255,255,0.35)]">
-                {t("auth.otpInviteHint", { channel: channelLabel })}
-              </p>
-            </div>
-
-            {error && <p className="text-sm text-red-400">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40 mt-2"
-            >
-              {loading ? "…" : t("auth.otpSubmit")}
-            </button>
-          </form>
-        )}
+          </motion.div>
+        </motion.div>
       </div>
-    </div>
+    </Shell>
   );
 }

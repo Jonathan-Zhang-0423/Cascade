@@ -99,6 +99,38 @@ export function ChatPanel() {
   const [smartResponseLoading, setSmartResponseLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
   const [polishResult, setPolishResult] = useState<{ original: string; polished: string } | null>(null);
+
+  // Thinking indicator — covers both manager mode (isManagerResponding) and
+  // build mode (buildPhase="thinking" before any live content arrives).
+  // mountedRef: 挂载后 800ms 内不显示 TypingIndicator，避免刷新时 store
+  // 状态短暂变化触发动画（手机端刷新出现打字动态的根因）
+  const [showThinking, setShowThinking] = useState(false);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    const id = setTimeout(() => { mountedRef.current = true; }, 800);
+    return () => clearTimeout(id);
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const shouldShow =
+      isManagerResponding ||
+      mgrPreparingPlan ||
+      buildPhase === "thinking";
+    if (shouldShow) {
+      setShowThinking(true);
+    } else {
+      setShowThinking(false);
+    }
+  }, [isManagerResponding, mgrPreparingPlan, buildPhase]);
+  // Hide once actual action log entries arrive (not just thinking tokens) — this
+  // ensures the TypingIndicator stays visible until BuildLivePanel has real content,
+  // eliminating the 1-3s gap between prompt send and first visible live content.
+  useEffect(() => {
+    const hasActionContent = mgrLiveActionLog.length > 0 || liveActionLog.length > 0;
+    if (!hasActionContent) return;
+    const t = setTimeout(() => setShowThinking(false), 50);
+    return () => clearTimeout(t);
+  }, [mgrLiveActionLog, liveActionLog]);
   const [providers, setProviders] = useState<{
     doubao: boolean;
     kimi: boolean;
@@ -158,10 +190,37 @@ export function ChatPanel() {
       .catch(() => {});
   }, [setProviders]);
 
+  // ── 自动滚底：实时读 DOM 距底距离，避免 passive scroll 事件与 React commit 的竞态 ──
+  const SCROLL_THRESHOLD = 120; // px，距底部多少以内算"在底部"
+
+  // 挂载时滚到底——刷新后恢复到最新消息位置
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const r = requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    });
+    return () => cancelAnimationFrame(r);
+  }, []); // 只在挂载时执行一次
+
+  // 服务器消息加载完成后再滚一次——覆盖 localStorage 恢复后的 race condition
+  useEffect(() => {
+    if (!messagesReady) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const r = requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    });
+    return () => cancelAnimationFrame(r);
+  }, [messagesReady]);
+
+  // 内容变化时：直接读当前 scrollTop 判断用户是否在底部，不依赖异步 ref
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom > SCROLL_THRESHOLD) return;
+    el.scrollTop = el.scrollHeight;
   }, [
     chatMessages,
     managerMessages,
@@ -171,6 +230,8 @@ export function ChatPanel() {
     mgrLiveThinkingText,
     mgrLiveNarrationText,
     mgrLiveActionLog,
+    isAiResponding,
+    isManagerResponding,
   ]);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import OnboardingPage from "@/pages/onboarding";
+import SetPasswordPage from "@/pages/set-password";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import InviteGatePage from "@/pages/invite-gate";
@@ -22,7 +23,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/onboarding", "/admin", "/invite-gate", "/CreateSquare"];
+const UNGUARDED_PATHS = ["/", "/login", "/onboarding", "/set-password", "/admin", "/invite-gate", "/CreateSquare"];
 const UNGUARDED_PREFIXES = ["/CreateSquare/app/"];
 
 function Router() {
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/" component={LandingPage} />
       <Route path="/login" component={AuthPage} />
       <Route path="/onboarding" component={OnboardingPage} />
+      <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
       <Route path="/CreateSquare" component={CreateSquarePage} />
       <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
@@ -75,9 +77,6 @@ function App() {
           if (!u.inviteCode) {
             window.location.href = `/invite-gate?next=${encodeURIComponent(path)}`;
             return;
-          }
-          if (!u.hasSetExperienceLevel && path !== "/onboarding") {
-            window.location.href = "/onboarding";
           }
         });
       } else {

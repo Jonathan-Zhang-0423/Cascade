@@ -62,17 +62,36 @@ describe("patch_file handler", () => {
     expect(diskContent).toBe("goodbye world");
   });
 
-  it("replaces only the first occurrence when old_content appears multiple times", async () => {
+  it("refuses an ambiguous patch when old_content appears multiple times (no silent first-match)", async () => {
     const session = makeSession();
     session.files.set("/project/app.ts", "foo\nfoo\nbar\n");
     const { handlers } = buildBuilderTools(session, []);
 
-    await handlers.patch_file(
+    const result = (await handlers.patch_file(
       { path: "/project/app.ts", old_content: "foo", new_content: "baz" },
       noopEmit,
-    );
+    )) as string;
 
-    expect(session.files.get("/project/app.ts")).toBe("baz\nfoo\nbar\n");
+    expect(result).toContain("Error:");
+    expect(result).toContain("ambiguous");
+    expect(result).toContain("2 times");
+    // File must be unchanged — no silent first-occurrence patch.
+    expect(session.files.get("/project/app.ts")).toBe("foo\nfoo\nbar\n");
+  });
+
+  it("patches a once-unique match even if a similar substring appears elsewhere", async () => {
+    const session = makeSession();
+    session.files.set("/project/app.ts", "foo\nfoobar\n");
+    const { handlers } = buildBuilderTools(session, []);
+
+    // "foo\n" occurs once verbatim (the "foo" inside "foobar" has no newline).
+    const result = (await handlers.patch_file(
+      { path: "/project/app.ts", old_content: "foo\n", new_content: "baz\n" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("File patched successfully");
+    expect(session.files.get("/project/app.ts")).toBe("baz\nfoobar\n");
   });
 
   it("returns error when file does not exist", async () => {
@@ -140,5 +159,69 @@ describe("patch_file handler", () => {
 
     // "replaced 3 chars with 2 chars"
     expect(result).toMatch(/replaced \d+ chars with \d+ chars/);
+  });
+});
+
+describe("delete_file handler", () => {
+  let tmpDir: string;
+
+  afterEach(async () => {
+    if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("removes the file from session.files and reports success", async () => {
+    const session = makeSession();
+    session.files.set("/project/dead.ts", "obsolete");
+    session.files.set("/project/keep.ts", "alive");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.delete_file({ path: "/project/dead.ts" }, noopEmit)) as string;
+
+    expect(result).toContain("File deleted");
+    expect(session.files.has("/project/dead.ts")).toBe(false);
+    expect(session.files.has("/project/keep.ts")).toBe(true);
+  });
+
+  it("emits a file_deleted event so the client can update the preview/tree", async () => {
+    const session = makeSession();
+    session.files.set("/project/dead.ts", "x");
+    const { handlers } = buildBuilderTools(session, []);
+    const events: Array<Record<string, unknown>> = [];
+
+    await handlers.delete_file({ path: "/project/dead.ts" }, (e) => events.push(e));
+
+    expect(events.some((e) => e.type === "file_deleted" && e.filePath === "/project/dead.ts")).toBe(true);
+  });
+
+  it("removes the disk mirror when sessionDir is set", async () => {
+    tmpDir = await mkdtemp(path.join(tmpdir(), "cascade-delete-test-"));
+    const session = makeSession({ sessionDir: tmpDir });
+    session.files.set("/project/app.ts", "data");
+    const { handlers } = buildBuilderTools(session, []);
+    // Create the mirror first via write_file.
+    await handlers.write_file({ path: "/project/app.ts", content: "data" }, noopEmit);
+
+    await handlers.delete_file({ path: "/project/app.ts" }, noopEmit);
+
+    const abs = path.join(tmpDir, "project/app.ts");
+    await expect(readFile(abs, "utf-8")).rejects.toThrow();
+  });
+
+  it("returns an error when the file does not exist", async () => {
+    const session = makeSession();
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.delete_file({ path: "/project/missing.ts" }, noopEmit)) as string;
+
+    expect(result).toContain("Error:");
+    expect(result).toContain("file not found");
+  });
+
+  it("returns an error when path is missing", async () => {
+    const session = makeSession();
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.delete_file({}, noopEmit)) as string;
+    expect(result).toContain("Error:");
   });
 });

@@ -17,6 +17,7 @@ import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
 import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
 import { tr } from "@/lib/i18n";
+import { useProjectStore } from "@/stores/project-store";
 
 /**
  * ManagerStreamInstance — owns the SSE connection and live state for a single
@@ -24,6 +25,7 @@ import { tr } from "@/lib/i18n";
  */
 export class ManagerStreamInstance {
   readonly projectId: string;
+  readonly chatSessionId: string;   // 对话 session（主会话为 "main"），用于隔离 localStorage key
   readonly state: ObservableState<ManagerStreamState>;
 
   private actions: StoreActions;
@@ -48,10 +50,16 @@ export class ManagerStreamInstance {
   private disposed = false;
   autoExecutePlan = false;
 
-  constructor(projectId: string, actions: StoreActions) {
+  constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
     this.projectId = projectId;
+    this.chatSessionId = chatSessionId;
     this.actions = actions;
     this.state = new ObservableState<ManagerStreamState>({ ...INITIAL_MANAGER_STREAM_STATE });
+  }
+
+  // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
+  private get storageKey(): string {
+    return `cascade-mgr-session-${this.projectId}-${this.chatSessionId}`;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -68,6 +76,26 @@ export class ManagerStreamInstance {
     const trimmed = message.trim();
     if (!trimmed) return false;
 
+    // Readiness guards run BEFORE mutating any state. If the store is still
+    // showing another project, bail. If this project's messages haven't loaded
+    // from the DB yet, don't swallow the prompt (which used to append the user
+    // message, return false, and leave nothing running — forcing the user to
+    // resend and piling up duplicate messages). Instead wait briefly for the
+    // async load and retry.
+    if (this.actions.getProjectId() !== this.projectId) {
+      return false;
+    }
+    if (!this.actions.getMessagesReady()) {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (this.disposed || this.actions.getProjectId() !== this.projectId) return false;
+        if (this.actions.getMessagesReady()) break;
+      }
+      // Still not ready after waiting — give up without mutating state.
+      if (!this.actions.getMessagesReady()) return false;
+    }
+
     // Mark in-flight synchronously so a concurrent mount-time reconnect can't
     // race this send (see field comment). Cleared in the finally block.
     this.sendInFlight = true;
@@ -82,20 +110,6 @@ export class ManagerStreamInstance {
       narrationText: "",
       actionLog: [],
     });
-
-    // Guard: only include messages that belong to our project. If the store
-    // hasn't finished loading this project's messages yet (async fetch from DB),
-    // wait a tick and verify projectId matches before reading history.
-    if (this.actions.getProjectId() !== this.projectId) {
-      // Store is still showing another project — abort to prevent cross-project contamination
-      this.actions.setManagerResponding(false);
-      return false;
-    }
-    // Block until messages from DB are loaded
-    if (!this.actions.getMessagesReady()) {
-      this.actions.setManagerResponding(false);
-      return false;
-    }
 
     const historyMessages = this.actions.getManagerMessages()
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing)
@@ -168,7 +182,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: this.sessionId });
             this.reconnectRetry = 0;
             if (this.projectId && ev.sessionId) {
-              try { localStorage.setItem(`cascade-mgr-session-${this.projectId}`, ev.sessionId); } catch {}
+              try { localStorage.setItem(this.storageKey, ev.sessionId); } catch {}
             }
             return;
           }
@@ -218,7 +232,6 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_preparing") {
             if (isCurrentProject) this.state.set({ preparingPlan: true });
           } else if (evType === "plan_ready") {
-            planEmitted = true;
             if (isCurrentProject) {
               const plan = ev.plan;
               if (plan) {
@@ -229,6 +242,7 @@ export class ManagerStreamInstance {
                   plan,
                   thinking: managerThinkingAccumulated || undefined,
                 });
+                planEmitted = true;
               }
             }
           } else if (evType === "manager_done") {
@@ -238,7 +252,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: null });
             this.reconnectRetry = 0;
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
 
             if (isCurrentProject) {
@@ -310,7 +324,7 @@ export class ManagerStreamInstance {
             this.state.set({ sessionId: null });
             this.reconnectRetry = 0;
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
             if (isCurrentProject) {
               this.actions.setManagerResponding(false);
@@ -345,11 +359,14 @@ export class ManagerStreamInstance {
         }
       }
 
-      // Extract project name from marker
+      // Extract project name from marker — only if user hasn't set a custom name
       if (this.actions.getProjectId() === this.projectId && managerAccumulated) {
         const nameFromMarker = managerAccumulated.match(PROJECT_NAME_REGEX)?.[1]?.trim();
         if (nameFromMarker && this.projectId) {
-          this.actions.renameProject(this.projectId, nameFromMarker);
+          const currentProject = useProjectStore.getState().projects.find((p) => p.id === this.projectId);
+          if (!currentProject?.userNamed) {
+            this.actions.renameProject(this.projectId, nameFromMarker);
+          }
         }
       }
 
@@ -378,7 +395,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.clearLive();
         this.actions.setManagerResponding(false);
@@ -411,7 +428,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.actions.setManagerResponding(false);
         return;
@@ -508,7 +525,7 @@ export class ManagerStreamInstance {
             this.sessionId = null;
             this.state.set({ sessionId: null });
             if (this.projectId) {
-              try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+              try { localStorage.removeItem(this.storageKey); } catch {}
             }
             if (isCurrentProject) {
               this.actions.setManagerResponding(false);
@@ -530,7 +547,7 @@ export class ManagerStreamInstance {
         this.sessionId = null;
         this.state.set({ sessionId: null });
         if (this.projectId) {
-          try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+          try { localStorage.removeItem(this.storageKey); } catch {}
         }
         this.clearLive();
         this.actions.setManagerResponding(false);
@@ -577,37 +594,15 @@ export class ManagerStreamInstance {
   async attemptReconnect(): Promise<void> {
     if (this.disposed) return;
 
-    const savedSessionId = (() => {
-      try { return localStorage.getItem(`cascade-mgr-session-${this.projectId}`); }
+    // 只用本会话 localStorage key 保存的 sessionId 重连。
+    // 不用 streamingSnapshot（全局、不含 chatSessionId，会串会话），
+    // 也不 fallback 到 /active/${projectId}（只按 projectId 查，会串会话）。
+    const sessionIdToReconnect = (() => {
+      try { return localStorage.getItem(this.storageKey); }
       catch { return null; }
     })();
 
-    const snapshot = this.actions.getStreamingSnapshot();
-    const sessionIdToReconnect =
-      (snapshot?.type === "manager" && snapshot.projectId === this.projectId
-        ? snapshot.sessionId
-        : null) || savedSessionId;
-
     if (!sessionIdToReconnect) {
-      // Try the /active endpoint
-      try {
-        const resp = await fetch(`/api/manager-chat/active/${this.projectId}`, {
-          cache: "no-store", headers: { "Cache-Control": "no-cache" },
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          // Only reconnect to a still-active session. A done session would
-          // replay plan_ready/manager_done, and the reconnect handlers would
-          // re-add those assistant messages under fresh UUIDs — duplicating
-          // history on every refresh. Finished sessions are already persisted
-          // and loaded by fetchMessagesFromServer.
-          if (data?.sessionId && data?.active === true) {
-            this.state.set({ isReconnecting: true });
-            await this.connect(data.sessionId, -1);
-            this.state.set({ isReconnecting: false });
-          }
-        }
-      } catch {}
       return;
     }
 
@@ -628,10 +623,10 @@ export class ManagerStreamInstance {
       } else {
         // Session is done or not found — no need to reconnect.
         // Messages are already persisted in DB and loaded by fetchMessagesFromServer.
-        try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+        try { localStorage.removeItem(this.storageKey); } catch {}
       }
     } catch {
-      try { localStorage.removeItem(`cascade-mgr-session-${this.projectId}`); } catch {}
+      try { localStorage.removeItem(this.storageKey); } catch {}
     } finally {
       this.state.set({ isReconnecting: false });
     }

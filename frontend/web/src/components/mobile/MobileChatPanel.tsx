@@ -2,9 +2,57 @@ import { ChatPanel } from "@/components/ide/chat-panel";
 import { ChatErrorBoundary } from "@/components/ide/chat/error-boundary";
 import { TOP_BAR_H } from "./MobileIDE";
 import { useTheme } from "@/components/theme-provider";
+import { useEffect, useRef } from "react";
 
 export function MobileChatPanel() {
   const { mode } = useTheme();
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // 两层 MutationObserver + 用户滚动检测：
+  // 仅当用户在底部附近时才自动滚底，避免强制打断手动上滑
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const SCROLL_THRESHOLD = 120;
+    const SCROLL_SEL = '[data-testid="chat-panel"] > .flex-1';
+
+    const isNearBottom = (el: HTMLElement) =>
+      el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
+
+    const scrollToBottom = (el: HTMLElement) => {
+      if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+    };
+
+    let contentObserver: MutationObserver | null = null;
+
+    const attachContentObserver = (el: HTMLElement) => {
+      if (contentObserver) return;
+      // 挂载时强制滚一次（用户刚进入，还没手动上滑）
+      el.scrollTop = el.scrollHeight;
+      contentObserver = new MutationObserver(() => scrollToBottom(el));
+      contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
+    };
+
+    const existing = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
+    if (existing) {
+      attachContentObserver(existing);
+      return () => contentObserver?.disconnect();
+    }
+
+    const waitObserver = new MutationObserver(() => {
+      const el = wrap.querySelector(SCROLL_SEL) as HTMLElement | null;
+      if (!el) return;
+      waitObserver.disconnect();
+      attachContentObserver(el);
+    });
+    waitObserver.observe(wrap, { childList: true, subtree: true });
+
+    return () => {
+      waitObserver.disconnect();
+      contentObserver?.disconnect();
+    };
+  }, []);
 
   const isDark = mode === "dark";
   const inputBg = isDark ? "hsl(222,22%,14%)" : "#ffffff";
@@ -17,7 +65,7 @@ export function MobileChatPanel() {
   const iconColor = isDark ? "#777777" : "#888888";
 
   return (
-    <div className="mobile-chat-wrap relative flex flex-col h-full w-full overflow-hidden">
+    <div ref={wrapRef} className="mobile-chat-wrap relative flex flex-col h-full w-full overflow-hidden">
       <style>{`
         /* ── 完全隐藏 model selector / polish ── */
         .mobile-chat-wrap [data-testid="select-model-provider"],
@@ -26,8 +74,32 @@ export function MobileChatPanel() {
         }
 
         /* ── 消息列表顶部留出 bar 高度，内容不被遮罩盖住 ── */
+        /* ── 底部 padding 设 0，完全靠 ::after 占位控制底线，避免双重叠加 ── */
         .mobile-chat-wrap [data-testid="chat-panel"] > .flex-1 {
           padding-top: ${TOP_BAR_H + 4}px !important;
+          padding-bottom: 0 !important;
+        }
+
+        /* ── 硬底线占位：高度 = 输入框(100px) + 胶囊(38px) + 间距(24px) + 安全区 ── */
+        /* 所有内容滚到底时停在这条线上方，绝不与胶囊交叉 ── */
+        .mobile-chat-wrap [data-testid="chat-panel"] > .flex-1::after {
+          content: "" !important;
+          display: block !important;
+          height: calc(162px + env(safe-area-inset-bottom, 16px)) !important;
+          width: 100% !important;
+          pointer-events: none !important;
+          flex-shrink: 0 !important;
+        }
+
+        /* ── 输入框：固定到视口底部，不被系统导航栏遮挡 ── */
+        .mobile-chat-wrap [data-testid="chat-panel"] > .relative.shrink-0 {
+          position: fixed !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          padding-bottom: env(safe-area-inset-bottom, 8px) !important;
+          z-index: 45 !important;
+          background: ${inputBg} !important;
         }
 
         /* ── 消息列表上滑虚化：顶部渐隐遮罩 ── */

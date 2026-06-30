@@ -191,6 +191,88 @@ describeIntegration("OTP send + verify", () => {
     });
   });
 
+  describe("bind-email", () => {
+    // Send a bind_email-purpose OTP (used by the bind-email route).
+    async function sendBindCode(http: HttpClient, target: string) {
+      const res = await http.post("/api/auth/otp/send", { channel: "email", target, purpose: "bind_email" });
+      expect(res.status).toBe(200);
+      return sentCodes.get(target)!;
+    }
+
+    // Send a login-purpose OTP (used during registration via otp/verify-login).
+    async function sendLoginCode(http: HttpClient, target: string) {
+      const res = await http.post("/api/auth/otp/send", { channel: "email", target });
+      expect(res.status).toBe(200);
+      return sentCodes.get(target)!;
+    }
+
+    // Register a brand-new OTP user on an authenticated client, returning the
+    // client (session cookie set) so we can then bind a different email to it.
+    async function registerOtpUser(): Promise<{ http: HttpClient; userId: string }> {
+      const http = new HttpClient(appCtx.baseUrl);
+      const target = email();
+      const code = await sendLoginCode(http, target);
+      const invite = await seedInviteCode();
+      const res = await http.post("/api/auth/otp/verify-login", { channel: "email", target, code, inviteCode: invite });
+      expect(res.status).toBe(201);
+      await truncateOtpOnly();
+      return { http, userId: res.body.id };
+    }
+
+    it("401 when not authenticated", async () => {
+      const http = new HttpClient(appCtx.baseUrl);
+      const target = email();
+      const res = await http.post("/api/auth/bind-email", { target, code: "123456" });
+      expect(res.status).toBe(401);
+    });
+
+    it("400 on a malformed code shape", async () => {
+      const { http } = await registerOtpUser();
+      const res = await http.post("/api/auth/bind-email", { target: email(), code: "abc" });
+      expect(res.status).toBe(400);
+    });
+
+    it("401 on a wrong code", async () => {
+      const { http } = await registerOtpUser();
+      const newEmail = email();
+      await sendBindCode(http, newEmail);
+      const res = await http.post("/api/auth/bind-email", { target: newEmail, code: "000000" });
+      expect(res.status).toBe(401);
+    });
+
+    it("binds a verified email to the logged-in account", async () => {
+      const { http, userId } = await registerOtpUser();
+      const newEmail = email();
+      const code = await sendBindCode(http, newEmail);
+      const res = await http.post("/api/auth/bind-email", { target: newEmail, code });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // The email is now persisted + marked verified on the user row.
+      const { db } = await import("../../src/infra/db");
+      const { users } = await import("@cascade/database");
+      const { eq } = await import("drizzle-orm");
+      const [row] = await db.select().from(users).where(eq(users.id, userId));
+      expect(row.email).toBe(newEmail);
+      expect(row.emailVerified).toBe(true);
+    });
+
+    it("409 when the email already belongs to another account", async () => {
+      // First account binds an email.
+      const { http: httpA } = await registerOtpUser();
+      const shared = email();
+      const codeA = await sendBindCode(httpA, shared);
+      expect((await httpA.post("/api/auth/bind-email", { target: shared, code: codeA })).status).toBe(200);
+      await truncateOtpOnly();
+
+      // Second account tries to bind the same email → 409.
+      const { http: httpB } = await registerOtpUser();
+      const codeB = await sendBindCode(httpB, shared);
+      const res = await httpB.post("/api/auth/bind-email", { target: shared, code: codeB });
+      expect(res.status).toBe(409);
+    });
+  });
+
   // Helper: clear only otp_codes so a second send isn't blocked by cooldown.
   async function truncateOtpOnly() {
     const { db } = await import("../../src/infra/db");

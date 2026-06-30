@@ -5,6 +5,9 @@ import { MobilePreviewPanel } from "./MobilePreviewPanel";
 import { useT } from "@/lib/i18n";
 import { useTheme } from "@/components/theme-provider";
 import { CascadeLogo } from "@/assets/CascadeLogo";
+import { applyFontSize, getFontSizeKey, FONT_SIZES } from "@/components/ide/navbar";
+import { cn } from "@/lib/utils";
+import { MobileInvitePanel } from "./MobileInvitePanel";
 
 type Tab = "chat" | "preview";
 
@@ -24,6 +27,14 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   const project = projects.find((p) => p.id === projectId);
   const t = useT();
   const { mode } = useTheme();
+  const [fontSize, setFontSize] = useState(() => getFontSizeKey());
+  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+
+  const handleFontSize = (key: typeof FONT_SIZES[number]["key"]) => {
+    setFontSize(key);
+    applyFontSize(key);
+    setFontMenuOpen(false);
+  };
 
   const TAB_LABELS: Record<Tab, string> = {
     chat: t("mobile.chatTab"),
@@ -55,16 +66,21 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   return (
     <div
       className="h-screen w-screen overflow-hidden bg-background relative"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      style={{ paddingTop: "env(safe-area-inset-top)", overscrollBehaviorY: "none" }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* 内容区 */}
+      {/* 内容区 — 两个面板始终挂载，CSS 控制显隐，彻底消除切换黑屏 */}
       <div className="h-full">
-        {activeTab === "chat" ? <MobileChatPanel /> : <MobilePreviewPanel />}
+        <div style={{ display: activeTab === "chat" ? "block" : "none", height: "100%" }}>
+          <MobileChatPanel />
+        </div>
+        <div style={{ display: activeTab === "preview" ? "block" : "none", height: "100%" }}>
+          <MobilePreviewPanel />
+        </div>
       </div>
 
-      {/* ── 顶部 bar（仅对话页）：返回 + 项目名居中 + 不透明背景 ── */}
+      {/* ── 顶部 bar（仅对话页）：返回 + 项目名居中 + 字体大小按钮 ── */}
       {activeTab === "chat" && (
         <div
           className="fixed left-0 right-0 z-40 flex items-center px-3"
@@ -80,24 +96,57 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
           <a
             href="/app"
             className="absolute left-3 flex items-center justify-center"
-            style={{
-              height: 30,
-              textDecoration: "none",
-              color: "var(--foreground)",
-            }}
+            style={{ height: 30, textDecoration: "none", color: "var(--foreground)" }}
             aria-label="Back to home"
           >
             <CascadeLogo width={22} height={22} />
           </a>
 
-          {/* 项目名居中，无 icon */}
+          {/* 项目名居中 */}
           <div className="flex items-center justify-center w-full min-w-0">
-            <span
-              className="text-sm font-medium truncate max-w-[60vw]"
-              style={{ color: "var(--foreground)" }}
-            >
+            <span className="text-sm font-medium truncate max-w-[55vw]" style={{ color: "var(--foreground)" }}>
               {project?.name ?? ""}
             </span>
+          </div>
+
+          {/* 字体大小按钮 + 邀请按钮（右侧绝对定位） */}
+          <div className="absolute right-3 flex items-center gap-1">
+            <button
+              className="flex items-center justify-center w-8 h-8 rounded-lg"
+              style={{ color: "var(--foreground)", opacity: 0.7 }}
+              onClick={() => setFontMenuOpen((v) => !v)}
+              aria-label={t("navbar.fontSize")}
+            >
+              <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>A</span>
+            </button>
+            {fontMenuOpen && (
+              <div
+                className="absolute top-full right-8 mt-1 rounded-xl py-2 px-3 flex gap-2 items-center"
+                style={{
+                  background: mode === "dark" ? "hsl(222,22%,11%)" : "#F5F4F2",
+                  border: "1px solid var(--panel-divider)",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+                  zIndex: 100,
+                }}
+              >
+                {FONT_SIZES.map((f, fi) => (
+                  <button
+                    key={f.key}
+                    onClick={() => handleFontSize(f.key)}
+                    className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      fontSize === f.key
+                        ? "bg-[#4f82ff] text-white"
+                        : "text-muted-foreground hover:bg-accent/30"
+                    )}
+                    style={{ fontSize: 9 + fi * 2 }}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+            )}
+            <MobileInvitePanel />
           </div>
         </div>
       )}

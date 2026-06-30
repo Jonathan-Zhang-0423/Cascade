@@ -14,6 +14,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             // Cache GET API responses, but NEVER intercept SSE streams or
@@ -45,6 +46,9 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname),
+  // .env 位于项目根（../../），而 root 指向 frontend/web，
+  // 不指定 envDir 的话 Vite 只在 frontend/web 找 .env，读不到根目录的 VITE_* 变量。
+  envDir: path.resolve(import.meta.dirname, "../../"),
   build: {
     outDir: path.resolve(import.meta.dirname, "../../dist/public"),
     emptyOutDir: true,

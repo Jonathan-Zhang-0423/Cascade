@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { getMainEntryFile } from "@/lib/preview-adapters";
+import { useLanguageStore } from "@/stores/language-store";
+
+function getWelcomeMessage(): string {
+  const lang = useLanguageStore.getState().lang;
+  return lang === "en"
+    ? "Hi! I'm your AI coding assistant. Tell me what you'd like to build, and I'll help you plan, code, and ship it."
+    : "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。";
+}
 
 interface StoredFileNode {
   name: string;
@@ -16,6 +24,7 @@ export interface ProjectEntry {
   createdAt: number;
   emoji?: string;
   framework?: string;
+  userNamed?: boolean;
 }
 
 interface ProjectStoreState {
@@ -24,7 +33,7 @@ interface ProjectStoreState {
   _syncing: boolean;
   createProject: (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => Promise<string>;
   deleteProject: (id: string) => void;
-  renameProject: (id: string, newName: string) => void;
+  renameProject: (id: string, newName: string, fromUser?: boolean) => void;
   syncFromServer: () => Promise<void>;
 }
 
@@ -103,14 +112,14 @@ function getDefaultProjectState(initialPrompt?: string, framework?: string, init
       {
         id: "welcome",
         role: "assistant" as const,
-        content:
-          "你好！我是你的 AI 编程助手。告诉我你想构建什么，我会帮你分析需求、编写代码并实现功能。",
+        content: getWelcomeMessage(),
         timestamp: Date.now(),
       },
     ],
     theme: "vs-dark",
     pendingPrompt: initialPrompt || null,
     pendingPromptMode: initialPrompt ? (initialMode ?? "manager") : null,
+    chatMode: initialPrompt ? (initialMode ?? "manager") : "build",
   };
 }
 
@@ -265,10 +274,15 @@ export const useProjectStore = create<ProjectStoreState>()(
         deleteProjectOnServer(id);
       },
 
-      renameProject: (id: string, newName: string) => {
+      renameProject: (id: string, newName: string, fromUser?: boolean) => {
+        // If AI tries to rename but user already set a custom name, skip
+        if (!fromUser) {
+          const existing = get().projects.find((p) => p.id === id);
+          if (existing?.userNamed) return;
+        }
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === id ? { ...p, name: newName } : p
+            p.id === id ? { ...p, name: newName, ...(fromUser ? { userNamed: true } : {}) } : p
           ),
         }));
         updateProjectOnServer(id, newName);

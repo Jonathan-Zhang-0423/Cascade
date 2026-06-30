@@ -18,11 +18,12 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries } from "@cascade/database";
 import { db } from "../../infra/db";
-import { eq, and, desc, count, isNull, or } from "drizzle-orm";
+import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
+import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
@@ -574,7 +575,30 @@ export async function registerRoutes(
     res.json(getConcurrencyMetrics());
   });
 
-  app.post("/api/build-session", async (req, res) => {
+  // ── Security: invite-code gate ──────────────────────────────────────────────
+  // Front-end guards the invite gate, but the core endpoints (project creation,
+  // planning, building) must independently enforce it: the session must be
+  // authenticated AND the user must have redeemed an invite code. Without this,
+  // a logged-in but un-gated user (e.g. a brand-new GitHub-only signup) could hit
+  // these APIs directly. Returns 401 if unauthenticated, 403 if no invite code.
+  const requireInviteCode = async (req: any, res: any, next: any) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+      const user = await storage.getUser(userId);
+      if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+      if (!(user as any).inviteCode) {
+        res.status(403).json({ error: "Invite code required" });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error("[requireInviteCode]", err);
+      res.status(500).json({ error: "Authorization check failed" });
+    }
+  };
+
+  app.post("/api/build-session", requireInviteCode, async (req, res) => {
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -1057,7 +1081,7 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/manager-chat", async (req, res) => {
+  app.post("/api/manager-chat", requireInviteCode, async (req, res) => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let mgrSessionId: string | undefined;
     let clientDisconnected = false;
@@ -1303,7 +1327,7 @@ This override applies to THIS message only — it does not change behavior for p
         } else if (data.type === "thinking_token" && typeof data.token === "string") {
           emit({ type: "thinking_token", token: data.token });
         } else if (data.type === "action_log") {
-          emit({ type: "action_log", actionType: data.actionType, label: data.label, detail: data.detail });
+          emit({ type: "action_log", actionType: data.actionType, label: data.label, detail: data.detail, filePath: data.filePath });
         }
       };
 
@@ -2202,7 +2226,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   const deleteFileSchema = z.object({ path: z.string().min(1) });
 
-  app.post("/api/projects", async (req, res) => {
+  app.post("/api/projects", requireInviteCode, async (req, res) => {
     try {
       const parsed = createProjectSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -2304,10 +2328,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const before = typeof beforeRaw === "string" && beforeRaw.length > 0 ? Number(beforeRaw) : undefined;
       const limitRaw = req.query.limit;
       const limit = typeof limitRaw === "string" && limitRaw.length > 0 ? Number(limitRaw) : 100;
+      // sessionId: 传了就过滤；"null" 字符串 = 主会话（sessionId IS NULL）；不传 = 全部
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string"
+        ? (sessionIdRaw === "null" ? null : sessionIdRaw)
+        : undefined;
       const rows = await storage.listChatMessages(projectId, {
         kind,
         before: Number.isFinite(before) ? (before as number) : undefined,
         limit: Number.isFinite(limit) ? limit : 100,
+        sessionId,
       });
       res.json({ messages: rows });
     } catch (error: any) {
@@ -2348,6 +2378,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           seq: m.seq,
           timestamp: m.timestamp,
           metadata: typeof m.metadata === "string" ? m.metadata : null,
+          sessionId: typeof m.sessionId === "string" ? m.sessionId : null,
         });
       }
       await storage.upsertChatMessages(projectId, sanitized);
@@ -2375,6 +2406,61 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete messages" });
+    }
+  });
+
+  // ── Chat Sessions ─────────────────────────────────────────────────────────
+  // GET  /api/projects/:id/sessions       — list sessions (newest first)
+  // POST /api/projects/:id/sessions       — create new session
+  // DELETE /api/projects/:id/sessions/:sid — delete session + its messages
+
+  app.get("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const rows = await db
+        .select()
+        .from(chatSessions)
+        .where(eq(chatSessions.projectId, projectId))
+        .orderBy(desc(chatSessions.createdAt));
+      res.json({ sessions: rows });
+    } catch (err) {
+      console.error("[sessions/list]", err);
+      res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  app.post("/api/projects/:id/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const projectId = req.params.id;
+      const name = (req.body as any)?.name ?? "新对话";
+      const id = randomBytes(8).toString("hex");
+      const [row] = await db.insert(chatSessions).values({
+        id,
+        projectId,
+        name: String(name).slice(0, 80),
+      }).returning();
+      res.status(201).json({ session: row });
+    } catch (err) {
+      console.error("[sessions/create]", err);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  app.delete("/api/projects/:id/sessions/:sid", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { sid } = req.params;
+      // cascade delete removes messages via FK
+      await db.delete(chatSessions).where(eq(chatSessions.id, sid));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[sessions/delete]", err);
+      res.status(500).json({ error: "Failed to delete session" });
     }
   });
 
@@ -2997,6 +3083,137 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // === REFERRAL ===
+
+  const REFERRAL_GRANT_DAYS = 30;
+  // Anti-abuse: cap how many referrals earn the *inviter* a reward. Without this,
+  // someone can register N throwaway accounts, have each redeem the inviter's
+  // code, and stack unlimited free trial days. Invitees still always get their
+  // one-time reward; only the inviter's payout is bounded.
+  const REFERRAL_MAX_REWARDED = 10;
+
+  // 6-character random suffix from an unambiguous charset, drawn from a CSPRNG.
+  // crypto.randomBytes (not Math.random) so issued codes are unpredictable and
+  // cannot be enumerated/guessed — Math.random is seeded PRNG output and is a
+  // real abuse vector for codes that gate paid trials.
+  // Space: 32^6 = ~1 billion combinations. charset length 32 divides 256, so
+  // `byte % 32` is bias-free.
+  function randomSuffix(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = randomBytes(6);
+    let s = "";
+    for (let i = 0; i < 6; i++) s += chars[bytes[i] % chars.length];
+    return s;
+  }
+
+  // Determine the referral code prefix for a user based on their email.
+  // CASCQJ = 奇迹创坛, CASCEDU = edu, CASC = standard
+  // Format matches admin-issued invite codes: prefix + 6 random chars, no separator.
+  async function referralCodePrefix(userId: string): Promise<string> {
+    const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+    const email = row?.email ?? "";
+    if (isQizhiEmail(email)) return "CASCQJ";
+    if (isEduEmail(email)) return "CASCEDU";
+    return "CASC";
+  }
+
+  // Ensure the user has a referral code, generating one if absent.
+  // Retries up to 20 times on unique-constraint collision (probability negligible at scale).
+  async function ensureReferralCode(userId: string): Promise<string> {
+    const [row] = await db.select({ referralCode: users.referralCode }).from(users).where(eq(users.id, userId));
+    if (row?.referralCode) return row.referralCode;
+    const prefix = await referralCodePrefix(userId);
+    for (let i = 0; i < 20; i++) {
+      const code = `${prefix}${randomSuffix()}`;
+      try {
+        await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+        return code;
+      } catch {
+        // unique constraint violation — retry with a new suffix
+      }
+    }
+    throw new Error("Failed to generate referral code after 20 attempts");
+  }
+
+  // Extend trialExpiresAt by N days (from now or from current expiry, whichever is later)
+  async function extendTrial(userId: string, days: number, reason: string, relatedUserId?: string): Promise<void> {
+    const [row] = await db.select({ trialExpiresAt: users.trialExpiresAt }).from(users).where(eq(users.id, userId));
+    const base = row?.trialExpiresAt && row.trialExpiresAt > new Date() ? row.trialExpiresAt : new Date();
+    const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+    await db.update(users).set({ trialExpiresAt: newExpiry }).where(eq(users.id, userId));
+    await db.insert(subscriptionGrants).values({ userId, grantedDays: days, reason, relatedUserId: relatedUserId ?? null });
+  }
+
+  // GET /api/referral/my-code — return the current user's referral code and stats
+  app.get("/api/referral/my-code", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const code = await ensureReferralCode(userId);
+
+      // Count how many users this person has successfully referred
+      const [{ referralCount }] = await db
+        .select({ referralCount: count() })
+        .from(users)
+        .where(eq(users.referredBy, userId));
+
+      const baseUrl = process.env.APP_BASE_URL || "http://localhost:5000";
+      res.json({
+        referralCode: code,
+        referralLink: `${baseUrl}/register?ref=${code}`,
+        referralCount: Number(referralCount),
+        grantDays: REFERRAL_GRANT_DAYS,
+      });
+    } catch (err) {
+      console.error("[referral/my-code]", err);
+      res.status(500).json({ error: "Failed to get referral code" });
+    }
+  });
+
+  // POST /api/referral/redeem — new user redeems a referral code after registration
+  // Body: { referralCode: string }
+  app.post("/api/referral/redeem", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const { referralCode: code } = req.body as { referralCode?: string };
+      if (!code?.trim()) return res.status(400).json({ error: "Referral code required" });
+
+      // Check the invitee hasn't already used a referral code
+      const [me] = await db.select({ referredBy: users.referredBy }).from(users).where(eq(users.id, userId));
+      if (me?.referredBy) return res.status(400).json({ error: "You have already used a referral code" });
+
+      // Look up the referrer
+      const [referrer] = await db.select({ id: users.id }).from(users).where(eq(users.referralCode, code.trim().toUpperCase()));
+      if (!referrer) return res.status(400).json({ error: "Invalid referral code" });
+      if (referrer.id === userId) return res.status(400).json({ error: "You cannot use your own referral code" });
+
+      // Record the referral. The invitee always gets their one-time reward, but
+      // the inviter's reward is capped (anti-abuse: stops mass throwaway-account
+      // referral farming). Count existing successful referrals BEFORE recording
+      // this one to decide whether the inviter is still within the reward cap.
+      const [{ priorReferrals }] = await db
+        .select({ priorReferrals: count() })
+        .from(users)
+        .where(eq(users.referredBy, referrer.id));
+
+      await db.update(users).set({ referredBy: referrer.id }).where(eq(users.id, userId));
+      await extendTrial(userId, REFERRAL_GRANT_DAYS, "referral_invitee", referrer.id);
+
+      const inviterRewarded = Number(priorReferrals) < REFERRAL_MAX_REWARDED;
+      if (inviterRewarded) {
+        await extendTrial(referrer.id, REFERRAL_GRANT_DAYS, "referral_inviter", userId);
+      }
+
+      res.json({ ok: true, grantedDays: REFERRAL_GRANT_DAYS, inviterRewarded });
+    } catch (err) {
+      console.error("[referral/redeem]", err);
+      res.status(500).json({ error: "Failed to redeem referral code" });
+    }
+  });
+
   // === AUTH ===
 
   // Validate an invite code and atomically mark it redeemed by the given user.
@@ -3108,6 +3325,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.post("/api/auth/login", async (req, res) => {
     try {
+      if (!(await checkCaptcha(req, res))) return;
       const { username, password } = req.body as { username: string; password: string };
       if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
         return res.status(400).json({ error: "username and password required" });
@@ -3121,6 +3339,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ error: "Invalid credentials" });
       (req.session as any).userId = user.id;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => (err ? reject(err) : resolve()))
+      );
       res.json({
         id: user.id,
         username: user.username,
@@ -3195,11 +3416,156 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
   });
 
+  // Set or change the current user's password. OTP-registered users (password
+  // === null) can set one without a current password. Users who already have a
+  // password must prove it (currentPassword) so a hijacked session can't lock
+  // out the owner. On success the session is destroyed — the user must log in
+  // again with the new credential.
+  app.post("/api/auth/set-password", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const { password, currentPassword } = req.body as {
+        password?: string; currentPassword?: string;
+      };
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      if ((user as any).password) {
+        // Already has a password — require the current one to change it.
+        if (typeof currentPassword !== "string" || !currentPassword) {
+          return res.status(403).json({ error: "Current password required" });
+        }
+        const match = await bcrypt.compare(currentPassword, (user as any).password);
+        if (!match) return res.status(403).json({ error: "Current password incorrect" });
+      }
+
+      const hashed = await bcrypt.hash(password, 10);
+      await db.update(users).set({ password: hashed }).where(eq(users.id, userId));
+
+      // Force re-login with the new credential.
+      req.session.destroy((err) => {
+        if (err) console.error("[auth/set-password] session destroy", err);
+        res.json({ ok: true, reauth: true });
+      });
+    } catch (err) {
+      console.error("[auth/set-password]", err);
+      res.status(500).json({ error: "Failed to set password" });
+    }
+  });
+
+  // Send a password-reset code to an email/phone. Anti-enumeration: always
+  // returns 200 regardless of whether an account exists; only sends a code when
+  // a matching user is found. Uses a distinct OTP purpose so a reset code can't
+  // be replayed against the login endpoint (and vice versa).
+  app.post("/api/auth/reset-password/send", async (req, res) => {
+    try {
+      if (!(await checkCaptcha(req, res))) return;
+      const { channel, target } = req.body as { channel?: string; target?: string };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+
+      const existing = channel === "email"
+        ? await storage.getUserByEmail(normalized)
+        : await storage.getUserByPhone(normalized);
+
+      if (existing) {
+        const result = await sendOtp({ channel, target: normalized, purpose: "reset_password" });
+        if (!result.ok) {
+          return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
+        }
+        // Identical response whether or not the account exists — anti-enumeration.
+        return res.json({ ok: true, retryAfterSec: result.retryAfterSec });
+      }
+      // Account not found — return identical shape so callers can't enumerate.
+      res.json({ ok: true, retryAfterSec: 60 });
+    } catch (err) {
+      console.error("[auth/reset-password/send]", err);
+      res.status(500).json({ error: "Failed to send code" });
+    }
+  });
+
+  // Verify a reset code and set a new password. Does NOT log the user in — they
+  // sign in afterwards with the new credential. Receiving the code proves
+  // ownership of the email/phone, so the matching verified flag is also set.
+  app.post("/api/auth/reset-password/verify", async (req, res) => {
+    try {
+      const { channel, target, code, password } = req.body as {
+        channel?: string; target?: string; code?: string; password?: string;
+      };
+      if (channel !== "email" && channel !== "sms") {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+      const normalized = normalizeTarget(channel, target ?? "");
+      if (!normalized) {
+        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
+      }
+      if (!code || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Invalid or expired code" });
+      }
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const verify = await verifyOtp({ channel, target: normalized, code, purpose: "reset_password" });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      const existing = channel === "email"
+        ? await storage.getUserByEmail(normalized)
+        : await storage.getUserByPhone(normalized);
+      // Generic 401 — don't reveal whether the account exists at this stage.
+      if (!existing) return res.status(401).json({ error: "Invalid or expired code" });
+
+      const hashed = await bcrypt.hash(password, 10);
+      const verifiedPatch = channel === "email"
+        ? { emailVerified: true }
+        : { phoneVerified: true };
+      await db.update(users)
+        .set({ password: hashed, ...verifiedPatch })
+        .where(eq(users.id, existing.id));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/reset-password/verify]", err);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
+  // 人机验证（腾讯云天御）：从请求体取 ticket/randstr，结合真实 IP 验票。
+  // 验证失败返回 403。未配置凭证时 verifyCaptcha 内部降级放行。
+  // 注意：这不替代 OTP 发送频率限制 / 验证码锁，两者叠加才完整。
+  const checkCaptcha = async (req: any, res: any): Promise<boolean> => {
+    const { ticket, randstr } = req.body as { ticket?: string; randstr?: string };
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+    const ok = await verifyCaptcha(ticket ?? "", randstr ?? "", ip);
+    if (!ok) res.status(403).json({ error: "Captcha verification failed" });
+    return ok;
+  };
+
+  // 前端 TCaptcha 初始化所需的公开 CaptchaAppId。enabled=false 时前端跳过取票。
+  app.get("/api/config/captcha", (_req, res) => {
+    res.json({ enabled: isCaptchaEnabled(), appId: getCaptchaAppId() });
+  });
+
   // === OTP (email + phone) ===
 
   app.post("/api/auth/otp/send", async (req, res) => {
     try {
-      const { channel, target } = req.body as { channel?: string; target?: string };
+      if (!(await checkCaptcha(req, res))) return;
+      const { channel, target, purpose: rawPurpose } = req.body as { channel?: string; target?: string; purpose?: string };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
       }
@@ -3220,6 +3586,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   app.post("/api/auth/otp/verify-login", async (req, res) => {
     try {
+      if (!(await checkCaptcha(req, res))) return;
       const { channel, target, code, inviteCode } = req.body as {
         channel?: string; target?: string; code?: string; inviteCode?: string;
       };
@@ -3251,6 +3618,9 @@ Generate the cascade.md content for this project based on both the plan and the 
           : { phoneVerified: true };
         await db.update(users).set(verifiedPatch).where(eq(users.id, existing.id));
         (req.session as any).userId = existing.id;
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err) => (err ? reject(err) : resolve()))
+        );
         return res.json({
           id: existing.id,
           username: existing.username,
@@ -3307,6 +3677,9 @@ Generate the cascade.md content for this project based on both the plan and the 
         .where(eq(users.id, createdUserId));
 
       (req.session as any).userId = createdUserId;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => (err ? reject(err) : resolve()))
+      );
       res.status(201).json({
         id: createdUserId,
         username,
@@ -3468,16 +3841,20 @@ Generate the cascade.md content for this project based on both the plan and the 
       // The /user endpoint returns email = null when the user marks it
       // private. Fetch /user/emails (which the user:email scope grants)
       // to find the verified primary email for account merging.
-      let primaryEmail: string | null = ghUser.email;
+      // Normalize to trimmed lowercase everywhere: OTP signup stores emails
+      // lowercased, so without this an existing user is missed here and a
+      // duplicate GitHub-only account gets created.
+      let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
         const emailsRes = await ghFetch("https://api.github.com/user/emails", {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
         });
         if (emailsRes.ok) {
           const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-          primaryEmail = emails.find(e => e.primary && e.verified)?.email
+          const picked = emails.find(e => e.primary && e.verified)?.email
             ?? emails.find(e => e.verified)?.email
             ?? null;
+          primaryEmail = picked ? picked.trim().toLowerCase() : null;
         }
       }
 
@@ -3518,7 +3895,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       // pre-existing user that was created before invite gating) must visit
       // the invite gate before reaching the app.
       const dest = (user as any).inviteCode ? "/app" : "/invite-gate?next=/app";
-      res.redirect(`${baseUrl}${dest}`);
+      req.session.save((err) => {
+        if (err) console.error("[auth/github/callback] session save", err);
+        res.redirect(`${baseUrl}${dest}`);
+      });
     } catch (err) {
       console.error("[auth/github/callback]", err);
       failRedirect("server_error");
@@ -3778,10 +4158,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天（自注册之日起计算）`,
     };
   }
-  function formatInviteCode(isEdu: boolean, seq: number): string {
-    return isEdu
-      ? `CASC-EDU-${String(seq).padStart(4, "0")}`
-      : `CASC-${String(seq).padStart(3, "0")}`;
+  // Prefix encodes the user tier; suffix is a 6-char CSPRNG random string.
+  // CASC = standard (30d), CASCEDU = edu (60d), CASCQJ = 奇绩创坛 (until 2026-09-30).
+  // Random (not sequential) so codes can't be guessed/enumerated to claim trials.
+  function inviteCodePrefix(email: string): string {
+    if (isQizhiEmail(email)) return "CASCQJ";
+    if (isEduEmail(email)) return "CASCEDU";
+    return "CASC";
+  }
+  function formatInviteCode(email: string): string {
+    return `${inviteCodePrefix(email)}${randomSuffix()}`;
   }
   function checkAdmin(req: any, res: any): boolean {
     if (!ADMIN_SECRET) {
@@ -3971,18 +4357,10 @@ Generate the cascade.md content for this project based on both the plan and the 
     const targets = allTargets.filter((s) => subscriberIds.includes(s.id));
     if (targets.length === 0) return 0;
 
-    // --- Fix #1: allocate sequence numbers inside a transaction with a
-    // lock-then-count pattern so concurrent calls cannot read the same count
-    // and produce duplicate codes (which would then collide on the unique
-    // constraint and abort the second batch mid-loop).
-    //
-    // Strategy: for each subscriber we open a short transaction that (a) reads
-    // MAX(id) of existing codes in that bucket — MAX is index-friendly and
-    // immune to concurrent inserts reading the same count — and (b) inserts
-    // the new row.  Because the INSERT itself is inside the transaction, a
-    // unique-constraint collision will only roll back that single subscriber,
-    // not the whole batch; we retry with seq+1 in that case.
-    const now = new Date();
+    // Codes are random (prefix + CSPRNG suffix). Each subscriber's INSERT runs in
+    // its own short transaction so a unique-constraint collision (negligibly rare)
+    // rolls back only that subscriber and is retried with a fresh suffix, never
+    // aborting the whole batch.
     let sent = 0;
 
     for (const sub of targets) {
@@ -3999,19 +4377,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (existing) {
         code = existing.code;
       } else {
-        // --- Fix #1: allocate inside a transaction so COUNT is stable under
-        // concurrent inserts.  Retry up to 5 times on unique-constraint collision.
+        // Codes are now random (prefix + CSPRNG suffix), so no COUNT/sequence is
+        // needed. Insert inside a transaction and retry on the (negligible, ~1 in
+        // 1e9) unique-constraint collision with a freshly-drawn suffix; a collision
+        // rolls back only this subscriber, not the whole batch.
         let allocated = false;
         let allocatedCode = "";
         for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
           try {
             await db.transaction(async (tx) => {
-              const [{ total }] = await tx
-                .select({ total: count() })
-                .from(inviteCodes)
-                .where(eq(inviteCodes.isEdu, sub.isEdu));
-              const seq = total + 1 + attempt;
-              allocatedCode = formatInviteCode(sub.isEdu, seq);
+              allocatedCode = formatInviteCode(sub.email);
               await tx.insert(inviteCodes).values({
                 code: allocatedCode,
                 isEdu: sub.isEdu,
@@ -4077,6 +4452,40 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
 
   // GET /api/admin/export-csv — download waitlist as CSV
+  // DELETE /api/admin/otp-limit/:target — clear OTP rate-limit records for an
+  // email or phone so the user can request a new code immediately.
+  app.delete("/api/admin/otp-limit/:target", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const target = decodeURIComponent(req.params.target).trim().toLowerCase();
+      if (!target) return res.status(400).json({ error: "target required" });
+      const deleted = await db.delete(otpCodes).where(eq(otpCodes.target, target)).returning({ id: otpCodes.id });
+      res.json({ ok: true, deleted: deleted.length });
+    } catch (err) {
+      console.error("[admin/otp-limit]", err);
+      res.status(500).json({ error: "Failed to clear OTP limit" });
+    }
+  });
+
+  // GET /api/admin/otp-limit/:target — show OTP records for a target
+  app.get("/api/admin/otp-limit/:target", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const target = decodeURIComponent(req.params.target).trim().toLowerCase();
+      if (!target) return res.status(400).json({ error: "target required" });
+      const rows = await db.select({
+        id: otpCodes.id, channel: otpCodes.channel, purpose: otpCodes.purpose,
+        attempts: otpCodes.attempts, expiresAt: otpCodes.expiresAt,
+        consumedAt: otpCodes.consumedAt, createdAt: otpCodes.createdAt,
+      }).from(otpCodes).where(eq(otpCodes.target, target))
+        .orderBy(desc(otpCodes.createdAt));
+      res.json({ items: rows });
+    } catch (err) {
+      console.error("[admin/otp-limit]", err);
+      res.status(500).json({ error: "Failed to fetch OTP records" });
+    }
+  });
+
   app.get("/api/admin/export-csv", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     try {
@@ -4145,6 +4554,70 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[admin/sync-sheets-now]", err);
       res.status(500).json({ error: "Sync failed" });
+    }
+  });
+
+  // GET /api/admin/users — 用户总览：注册状态、最后活跃、项目数、剩余免费期。
+  // 活跃时间 = 该用户名下所有项目最新一条 chat_messages 的时间戳（最贴近真实使用）。
+  app.get("/api/admin/users", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      // 每用户项目数。
+      const projectCounts = await db
+        .select({ userId: projects.userId, n: count() })
+        .from(projects)
+        .groupBy(projects.userId);
+      const projectCountMap = new Map<string, number>();
+      for (const row of projectCounts) {
+        if (row.userId) projectCountMap.set(row.userId, Number(row.n));
+      }
+
+      // 每用户最后活跃时间：关联 projects → chat_messages 取最大时间戳（bigint 毫秒）。
+      const activity = await db
+        .select({ userId: projects.userId, lastTs: sql<string>`max(${chatMessages.timestamp})` })
+        .from(chatMessages)
+        .innerJoin(projects, eq(chatMessages.projectId, projects.id))
+        .groupBy(projects.userId);
+      const lastActiveMap = new Map<string, number>();
+      for (const row of activity) {
+        if (row.userId && row.lastTs != null) lastActiveMap.set(row.userId, Number(row.lastTs));
+      }
+
+      const allUsers = await db.select().from(users);
+      const now = Date.now();
+      const items = allUsers.map((u) => {
+        const trialMs = u.trialExpiresAt ? new Date(u.trialExpiresAt).getTime() : null;
+        const lastActiveTs = lastActiveMap.get(u.id) ?? null;
+        return {
+          id: u.id,
+          username: u.username,
+          email: u.email,
+          phone: u.phone,
+          // 已激活 = 已兑换邀请码（通过邀请码门）。
+          activated: !!u.inviteCode,
+          authMethod: u.githubId ? "github" : u.email ? "email" : u.phone ? "phone" : "other",
+          projectCount: projectCountMap.get(u.id) ?? 0,
+          lastActiveAt: lastActiveTs ? new Date(lastActiveTs).toISOString() : null,
+          trialExpiresAt: u.trialExpiresAt ? new Date(u.trialExpiresAt).toISOString() : null,
+          // 剩余免费期（秒）；已过期为 0，无试用期为 null。
+          trialRemainingSec: trialMs != null ? Math.max(0, Math.floor((trialMs - now) / 1000)) : null,
+        };
+      });
+      // 最近活跃优先（无活跃记录的排末尾）。
+      items.sort((a, b) => {
+        const ta = a.lastActiveAt ? Date.parse(a.lastActiveAt) : 0;
+        const tb = b.lastActiveAt ? Date.parse(b.lastActiveAt) : 0;
+        return tb - ta;
+      });
+
+      res.json({
+        total: items.length,
+        activated: items.filter((i) => i.activated).length,
+        items,
+      });
+    } catch (err) {
+      console.error("[admin/users]", err);
+      res.status(500).json({ error: "Failed to load users" });
     }
   });
 
@@ -4502,6 +4975,127 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (published.visibility === "private") { res.status(403).json({ error: "forbidden" }); return; }
     const files = await storage.getProjectFiles(published.projectId);
     res.json({ files });
+  });
+
+  // ── Feedback ──────────────────────────────────────────────────────────────────
+
+  const feedbackRateLimit = new Map<string, number[]>();
+
+  app.post("/api/feedback", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
+    const now = Date.now();
+    const windowMs = 60 * 60 * 1000;
+    const hits = (feedbackRateLimit.get(ip) ?? []).filter((t) => now - t < windowMs);
+    if (hits.length >= 5) { res.status(429).json({ error: "rate_limited" }); return; }
+    hits.push(now);
+    feedbackRateLimit.set(ip, hits);
+
+    const bodySchema = z.object({
+      content: z.string().min(1).max(2000),
+      email: z.string().email().optional(),
+    });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
+
+    const userId = (req.session as any)?.userId as string | undefined;
+    await db.insert(userFeedback).values({
+      userId: userId ?? null,
+      email: parsed.data.email ?? null,
+      content: parsed.data.content,
+      ipAddress: ip,
+      status: "new",
+    });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/feedback", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const status = typeof req.query.status === "string" && req.query.status !== "all" ? req.query.status : undefined;
+    const rows = await db
+      .select({
+        id: userFeedback.id,
+        content: userFeedback.content,
+        email: userFeedback.email,
+        ipAddress: userFeedback.ipAddress,
+        status: userFeedback.status,
+        createdAt: userFeedback.createdAt,
+        userId: userFeedback.userId,
+        username: users.username,
+        userEmail: users.email,
+      })
+      .from(userFeedback)
+      .leftJoin(users, eq(userFeedback.userId, users.id))
+      .where(status ? eq(userFeedback.status, status) : undefined)
+      .orderBy(desc(userFeedback.createdAt));
+    res.json({ feedback: rows });
+  });
+
+  app.patch("/api/admin/feedback/:id", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
+    await db.update(userFeedback).set({ status: "reviewed" }).where(eq(userFeedback.id, id));
+    res.json({ ok: true });
+  });
+
+  // ── Changelog ─────────────────────────────────────────────────────────────────
+
+  app.get("/api/changelog", async (_req, res) => {
+    const entries = await db
+      .select()
+      .from(changelogEntries)
+      .where(eq(changelogEntries.isPublished, true))
+      .orderBy(desc(changelogEntries.publishedAt));
+    res.json({ entries });
+  });
+
+  app.get("/api/admin/changelog", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const entries = await db.select().from(changelogEntries).orderBy(desc(changelogEntries.publishedAt));
+    res.json({ entries });
+  });
+
+  app.post("/api/admin/changelog", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const bodySchema = z.object({
+      version: z.string().max(50).optional(),
+      title: z.string().min(1).max(200),
+      content: z.string().min(1),
+      isPublished: z.boolean().default(true),
+    });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
+    const [entry] = await db.insert(changelogEntries).values({
+      version: parsed.data.version ?? null,
+      title: parsed.data.title,
+      content: parsed.data.content,
+      isPublished: parsed.data.isPublished,
+    }).returning();
+    res.json({ entry });
+  });
+
+  app.patch("/api/admin/changelog/:id", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
+    const bodySchema = z.object({
+      version: z.string().max(50).optional().nullable(),
+      title: z.string().min(1).max(200).optional(),
+      content: z.string().min(1).optional(),
+      isPublished: z.boolean().optional(),
+    });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
+    const [entry] = await db.update(changelogEntries).set(parsed.data).where(eq(changelogEntries.id, id)).returning();
+    res.json({ entry });
+  });
+
+  app.delete("/api/admin/changelog/:id", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
+    await db.delete(changelogEntries).where(eq(changelogEntries.id, id));
+    res.json({ ok: true });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

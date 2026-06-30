@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { AnimatedDots } from "./AnimatedDots";
 import {
   useIDEStore,
   type ChatMessage,
 } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
+import { useLanguageStore } from "@/stores/language-store";
 import {
   Check,
   ExternalLink,
@@ -102,13 +104,13 @@ export function CodeBlockView({
     >
       {/* File header line */}
       <div
-        className="flex items-center gap-2 font-mono text-[10px] text-[rgba(238,238,246,0.3)] group/code-header cursor-pointer select-none hover:text-[rgba(238,238,246,0.5)] transition-colors"
+        className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground/50 group/code-header cursor-pointer select-none hover:text-muted-foreground transition-colors"
         onClick={() => setCollapsed((c) => !c)}
         data-testid={`toggle-code-${block.filePath}`}
       >
         <span className="shrink-0">──</span>
         <span className="truncate">{fileName}</span>
-        <span className="text-[rgba(238,238,246,0.15)]">{lineCount}L</span>
+        <span className="text-muted-foreground/30">{lineCount}L</span>
         {applied && (
           <span className="text-[#34d68a]/60 flex items-center gap-0.5">
             <Check className="w-2.5 h-2.5" />
@@ -138,11 +140,12 @@ export function CodeBlockView({
                   className="select-none text-right"
                   style={{
                     padding: "0 6px",
-                    color: "rgba(238,238,246,0.15)",
+                    color: "var(--muted-foreground)",
                     width: "32px",
                     minWidth: "32px",
                     userSelect: "none",
                     fontSize: "10px",
+                    opacity: 0.4,
                   }}
                 >
                   {idx + 1}
@@ -173,7 +176,7 @@ function TextWithSummary({ text }: { text: string }) {
   const match = findSummaryHeader(text);
 
   if (!match) {
-    return <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)]">{renderMarkdown(text)}</div>;
+    return <div className="text-[13px] leading-[1.6] text-foreground/80">{renderMarkdown(text)}</div>;
   }
 
   const before = text.slice(0, match.index);
@@ -184,7 +187,7 @@ function TextWithSummary({ text }: { text: string }) {
   return (
     <div>
       {before.trim().length > 0 && (
-        <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)] mb-1">{renderMarkdown(before)}</div>
+        <div className="text-[13px] leading-[1.6] text-foreground/80 mb-1">{renderMarkdown(before)}</div>
       )}
       <div className="mt-1 rounded-md border border-[rgba(52,214,138,0.1)] bg-[rgba(52,214,138,0.02)] px-3 py-2">
         <div className="flex items-center gap-1.5 font-mono text-[11px] font-medium text-[#34d68a]/70 mb-1">
@@ -196,7 +199,7 @@ function TextWithSummary({ text }: { text: string }) {
         </div>
       </div>
       {trailing.trim().length > 0 && (
-        <div className="text-[13px] leading-[1.6] text-[rgba(238,238,246,0.8)] mt-1">{renderMarkdown(trailing)}</div>
+        <div className="text-[13px] leading-[1.6] text-foreground/80 mt-1">{renderMarkdown(trailing)}</div>
       )}
     </div>
   );
@@ -303,7 +306,7 @@ export function MessageBubble({
     const hasCodeBlocks = message.content.includes('```');
     return (
       <div
-        className="my-0.5 px-3.5 font-mono text-[12px] leading-[1.6] text-[rgba(238,238,246,0.7)]"
+        className="my-0.5 px-3.5 font-mono text-[12px] leading-[1.6] text-foreground/80"
         data-testid={`chat-message-${message.id}`}
       >
         {hasCodeBlocks ? (
@@ -353,7 +356,7 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
       className="flex items-center gap-2 mx-3 my-2 font-mono"
       data-testid={`checkpoint-${message.checkpointId}`}
     >
-      <div className="flex-1 h-px bg-[rgba(255,255,255,0.04)]" />
+      <div className="flex-1 h-px bg-border/40" />
       <div className="flex items-center gap-1.5 shrink-0">
         <span className="text-[9px] text-muted-foreground/40">
           {message.content} · {formatRelativeTime(message.timestamp)}
@@ -379,20 +382,133 @@ export function CheckpointMarker({ message }: { message: ChatMessage }) {
           </button>
         )}
       </div>
-      <div className="flex-1 h-px bg-[rgba(255,255,255,0.04)]" />
+      <div className="flex-1 h-px bg-border/40" />
     </div>
   );
 }
 
+// ── Thinking phrases ─────────────────────────────────────────────────────────
+const THINKING_PHRASES: Record<"zh" | "en", string[]> = {
+  zh: [
+    "正在脑洞大开中",
+    "灵感正在路上，请稍候",
+    "AI 正在认真思考，不是在摸鱼",
+    "代码宇宙正在重组中",
+    "正在向平行宇宙借点智慧",
+    "思维发动机预热中",
+    "正在把你的想法翻译成代码语言",
+    "正在解锁最优解",
+    "AI 大脑正在高速运转",
+    "正在召唤代码精灵",
+    "把咖啡因转化为代码中",
+    "正在对齐神经元",
+    "想法正在结晶",
+    "正在量子计算最优解",
+    "创意引擎已启动，请系好安全带",
+    "正在消化你的需求，别催",
+    "大模型正在认真上班",
+    "正在把文字变成魔法",
+    "灵感女神正在降临",
+    "正在高速检索知识库",
+  ],
+  en: [
+    "Brainwaves detected, processing",
+    "Consulting the code oracle",
+    "Firing up the neural engines",
+    "Turning caffeine into code",
+    "Assembling brilliant thoughts",
+    "Summoning the AI muse",
+    "Untangling the idea spaghetti",
+    "Crunching possibilities",
+    "Downloading inspiration",
+    "Aligning neurons, please hold",
+    "Your idea is in good hands",
+    "Wrangling electrons into shape",
+    "Searching all known universes",
+    "Cooking up something great",
+    "Debugging the space-time fabric",
+    "Connecting the creative dots",
+    "Big thoughts incoming",
+    "Making sense of it all",
+    "Spinning up the idea turbine",
+    "Almost there, stay curious",
+  ],
+};
+
 export function TypingIndicator({ text }: { text?: string }) {
-  const lang = usePlanCardLang();
+  const { lang } = useLanguageStore();
+  const phrases = THINKING_PHRASES[lang === "zh" ? "zh" : "en"];
+
+  // Pick once per mount
+  const phrase = useRef<string>(
+    phrases[Math.floor(Math.random() * phrases.length)]
+  ).current;
+
+  const displayText = text || phrase;
+
+  // 逐字打字机效果：每 60ms 显示一个字，显示完后停顿 800ms 再重新循环
+  const [charCount, setCharCount] = useState(0);
+  useEffect(() => {
+    let i = charCount;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      if (i < displayText.length) {
+        i++;
+        setCharCount(i);
+        timer = setTimeout(tick, 90);
+      } else {
+        // 显示完整文字后停顿再重置
+        timer = setTimeout(() => {
+          i = 0;
+          setCharCount(0);
+          timer = setTimeout(tick, 90);
+        }, 2400);
+      }
+    };
+    timer = setTimeout(tick, 90);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayText]);
+
+  // Fade in after a short delay so it doesn't flash on very fast responses
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 120);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div
-      className="px-3.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/60"
-      data-testid="typing-indicator"
-    >
-      <span className="animate-pulse">⠋</span>
-      <span>{text || t(lang, "thinking")}</span>
-    </div>
+    <>
+      <style>{`
+        @keyframes cascade-bar {
+          0%, 100% { transform: scaleY(0.35); opacity: 0.45; }
+          50%       { transform: scaleY(1);    opacity: 1;    }
+        }
+        .cb-1 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0s;     }
+        .cb-2 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0.18s;  }
+        .cb-3 { animation: cascade-bar 1.1s ease-in-out infinite; animation-delay: 0.36s;  }
+      `}</style>
+      <div
+        className="px-3.5 py-1 flex items-center gap-2 text-[12px] text-muted-foreground/70"
+        style={{
+          opacity: visible ? 1 : 0,
+          transition: "opacity 0.25s ease",
+        }}
+        data-testid="typing-indicator"
+      >
+        {/* Cascade-brand three-bar animation */}
+        <div className="flex items-end gap-[2.5px] shrink-0" style={{ height: 14 }}>
+          <div className="cb-1 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 7  }} />
+          <div className="cb-2 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 11 }} />
+          <div className="cb-3 w-[3px] rounded-full bg-current origin-bottom" style={{ height: 14 }} />
+        </div>
+        {/* 打字机逐字显示 + 三点 */}
+        <span className="font-medium tracking-tight">
+          {displayText.slice(0, charCount)}
+          <AnimatedDots />
+        </span>
+      </div>
+    </>
   );
 }
