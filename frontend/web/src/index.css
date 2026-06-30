@@ -195,6 +195,10 @@ html * {
 
 /* ── 中文模式保持同字体（无需额外规则） ── */
 
+/* ── no-scrollbar utility — hide scrollbar while keeping scroll functional ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* ── 全局滚动条：去掉轨道背景，只显示滑块 ── */
 ::-webkit-scrollbar {
   width: 4px;
