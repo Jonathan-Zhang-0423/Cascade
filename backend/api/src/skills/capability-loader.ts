@@ -382,14 +382,26 @@ export async function loadCapabilityDigest(name: string): Promise<string | null>
  */
 export async function loadCapabilitiesTiered(matches: CapabilityMatch[]): Promise<string | null> {
   if (matches.length === 0) return null;
+  // Cap total capability content to 50KB to prevent system-prompt bloat.
+  const MAX_CAPABILITY_CHARS = 50_000;
+  let totalChars = 0;
   const parts: string[] = [];
   for (const m of matches) {
+    let section: string | null = null;
     if (m.tier === "full") {
       const content = await loadCapability(m.name);
-      if (content) parts.push(`### Capability: ${m.name}\n\n${content}`);
+      if (content) section = `### Capability: ${m.name}\n\n${content}`;
     } else {
       const digest = await loadCapabilityDigest(m.name);
-      if (digest) parts.push(`### Capability (digest): ${m.name}\n\n${digest}`);
+      if (digest) section = `### Capability (digest): ${m.name}\n\n${digest}`;
+    }
+    if (section) {
+      if (totalChars + section.length > MAX_CAPABILITY_CHARS) {
+        parts.push(`### (remaining capabilities omitted — budget exhausted)`);
+        break;
+      }
+      parts.push(section);
+      totalChars += section.length;
     }
   }
   if (parts.length === 0) return null;

@@ -139,11 +139,24 @@ export function buildEditorContextMessage(
 ): string {
   if (files.length === 0) return "";
 
-  const fileList = files
-    .map((f) => `--- ${f.path} ---\n${f.content}`)
-    .join("\n\n");
+  // Hard cap: 100KB total file context. If project exceeds this, inject file
+  // paths only (agent uses read_file on demand). Prevents context exhaustion.
+  const MAX_CONTEXT_CHARS = 100_000;
+  let totalChars = 0;
+  const parts: string[] = [];
+  for (const f of files) {
+    const entry = `--- ${f.path} ---\n${f.content}`;
+    if (totalChars + entry.length > MAX_CONTEXT_CHARS) {
+      // Budget exhausted — append remaining as paths only
+      const remaining = files.slice(files.indexOf(f));
+      parts.push(`\n(${remaining.length} more files omitted — use read_file to view them):\n${remaining.map(r => `- ${r.path}`).join("\n")}`);
+      break;
+    }
+    parts.push(entry);
+    totalChars += entry.length;
+  }
 
-  return `Current project files:\n\n${fileList}`;
+  return `Current project files:\n\n${parts.join("\n\n")}`;
 }
 
 export function buildEditorChatContextMessage(
@@ -152,9 +165,19 @@ export function buildEditorChatContextMessage(
   if (files.length === 0) {
     return "The project currently has no files. Start fresh!";
   }
+  // Same 100KB cap as buildEditorContextMessage.
+  const MAX_CONTEXT_CHARS = 100_000;
+  let totalChars = 0;
   const parts = ["Here are the current project files:\n"];
-  for (const f of files) {
-    parts.push(`--- ${f.path} ---\n${f.content}`);
+  for (let i = 0; i < files.length; i++) {
+    const entry = `--- ${files[i].path} ---\n${files[i].content}`;
+    if (totalChars + entry.length > MAX_CONTEXT_CHARS) {
+      const remaining = files.slice(i);
+      parts.push(`\n(${remaining.length} more files omitted — use read_file to view them):\n${remaining.map(r => `- ${r.path}`).join("\n")}`);
+      break;
+    }
+    parts.push(entry);
+    totalChars += entry.length;
   }
   return parts.join("\n\n");
 }

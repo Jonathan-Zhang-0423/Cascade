@@ -363,6 +363,14 @@ export async function runAgentLoop(
         }
       }
 
+      // Hard cap on tool result size to prevent unbounded context growth.
+      // 48000 chars ≈ 12K tokens — large enough for any reasonable file/output,
+      // small enough to prevent a single tool call from exhausting the window.
+      const MAX_TOOL_RESULT_CHARS = 48000;
+      if (result.length > MAX_TOOL_RESULT_CHARS) {
+        result = result.slice(0, MAX_TOOL_RESULT_CHARS) + "\n\n...(truncated — output exceeded 48000 chars)";
+      }
+
       const toolResultMsg: OpenAI.Chat.Completions.ChatCompletionToolMessageParam = {
         role: "tool",
         tool_call_id: tc.id,

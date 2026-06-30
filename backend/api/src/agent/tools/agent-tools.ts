@@ -548,16 +548,22 @@ export function buildBuilderTools(
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }
+      // Hard cap on file content to prevent context window exhaustion.
+      // 32000 chars ≈ 8K tokens — enough for any single source file.
+      const MAX_READ_CHARS = 32000;
+      const truncatedContent = content.length > MAX_READ_CHARS
+        ? content.slice(0, MAX_READ_CHARS) + `\n\n...(file truncated at ${MAX_READ_CHARS} chars — total ${content.length} chars)`
+        : content;
       // AG-16: Append block hash index so the editor can use hash_patch_file.
       let blockSuffix = "";
       try {
-        const blocks = await extractBlocks(path, content);
+        const blocks = await extractBlocks(path, truncatedContent);
         const formatted = formatBlockIndex(blocks);
         if (formatted) blockSuffix = `\n\n${formatted}`;
       } catch {
         // silent — block indexing is best-effort
       }
-      return `File: ${path}\n\n${content}${blockSuffix}`;
+      return `File: ${path}\n\n${truncatedContent}${blockSuffix}`;
     },
 
     mark_step_complete: async (args, emit) => {
