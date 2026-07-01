@@ -1704,15 +1704,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     }
   },
 
-  updateTaskStatus: (subTaskId, status) =>
+  updateTaskStatus: (subTaskId, status) => {
     set((state) => ({
       taskStatuses: { ...state.taskStatuses, [subTaskId]: status },
-    })),
+    }));
+    debouncedPersist(get());
+  },
 
-  setTaskFailureReason: (subTaskId, reason) =>
+  setTaskFailureReason: (subTaskId, reason) => {
     set((state) => ({
       taskFailureReasons: { ...state.taskFailureReasons, [subTaskId]: reason },
-    })),
+    }));
+    debouncedPersist(get());
+  },
 
   setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
 
