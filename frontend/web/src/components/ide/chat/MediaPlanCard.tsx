@@ -111,12 +111,28 @@ const TYPE_LABEL: Record<string, string> = {
   both: "海报 + 演示视频",
 };
 
+const STYLE_PRESETS = ["极简", "商务感", "赛博朋克", "插画风", "水彩", "写实"];
+
 export function MediaPlanCard({ plan, onCancel }: Props) {
   const projectId = useIDEStore((s) => s.projectId);
   const { toast } = useToast();
   const [shareOpen, setShareOpen] = useState(false);
   const [publishedAppId, setPublishedAppId] = useState<string | null>(null);
   const [refinePrompt, setRefinePrompt] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  const [recommendedStyles, setRecommendedStyles] = useState<string[]>([]);
+
+  // Load user style preferences
+  useEffect(() => {
+    fetch("/api/aigc/preferences")
+      .then((r) => r.ok ? r.json() : null)
+      .then((prefs: { styleHistory?: string[]; lastStyle?: string | null } | null) => {
+        if (!prefs) return;
+        if (prefs.lastStyle) setSelectedStyle(prefs.lastStyle);
+        if (prefs.styleHistory?.length) setRecommendedStyles(prefs.styleHistory.slice(-3).reverse());
+      })
+      .catch(() => {});
+  }, []);
 
   const mediaTask = plan.media_task;
   const taskType = mediaTask?.type ?? "poster";
@@ -131,12 +147,13 @@ export function MediaPlanCard({ plan, onCancel }: Props) {
     const sid = await startSession();
     if (!sid) return;
 
+    const styleNote = selectedStyle ? `，视觉风格：${selectedStyle}` : (mediaTask?.style ? `，视觉风格：${mediaTask.style}` : "");
     const message = taskType === "video"
       ? `请录制这个 App 的演示视频，时长约 ${mediaTask?.duration ?? 20} 秒`
-      : `请为这个 App 生成宣传海报。风格要求：${initialPrompt}${mediaTask?.style ? `，视觉风格：${mediaTask.style}` : ""}`;
+      : `请为这个 App 生成宣传海报。风格要求：${initialPrompt}${styleNote}`;
 
     await sendMessage(sid, message, taskType === "both" ? "poster" : taskType as "poster" | "video");
-  }, [mediaTask, plan.summary, taskType, startSession, sendMessage]);
+  }, [mediaTask, plan.summary, taskType, startSession, sendMessage, selectedStyle]);
 
   const handleRefine = useCallback(async () => {
     if (!refinePrompt.trim() || !sessionId) return;
@@ -198,6 +215,40 @@ export function MediaPlanCard({ plan, onCancel }: Props) {
           <div className="flex gap-2">
             <span className="text-muted-foreground/50 w-16 shrink-0">提示词</span>
             <span className="text-foreground/70 break-words">{mediaTask.prompt}</span>
+          </div>
+        )}
+        {/* Style selector — only for poster tasks */}
+        {(taskType === "poster" || taskType === "both") && phase.state === "idle" && (
+          <div className="flex gap-2 items-start pt-0.5">
+            <span className="text-muted-foreground/50 w-16 shrink-0 mt-1">风格</span>
+            <div className="flex flex-wrap gap-1.5">
+              {/* Recommended styles from history (shown first) */}
+              {recommendedStyles.map((s) => (
+                <button
+                  key={`rec-${s}`}
+                  onClick={() => setSelectedStyle(selectedStyle === s ? null : s)}
+                  className="px-2 py-0.5 rounded-full text-[11px] transition-all"
+                  style={selectedStyle === s
+                    ? { background: "#4f82ff", color: "#fff" }
+                    : { background: "rgba(79,130,255,0.12)", color: "#4f82ff", border: "1px solid rgba(79,130,255,0.3)" }}
+                >
+                  ★ {s}
+                </button>
+              ))}
+              {/* Standard presets */}
+              {STYLE_PRESETS.filter((s) => !recommendedStyles.includes(s)).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSelectedStyle(selectedStyle === s ? null : s)}
+                  className="px-2 py-0.5 rounded-full text-[11px] transition-all"
+                  style={selectedStyle === s
+                    ? { background: "#4f82ff", color: "#fff" }
+                    : { background: "rgba(255,255,255,0.05)", color: "var(--muted-foreground)", border: "1px solid rgba(255,255,255,0.1)" }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {(taskType === "video" || taskType === "both") && (

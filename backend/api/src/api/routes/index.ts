@@ -5042,6 +5042,139 @@ Generate the cascade.md content for this project based on both the plan and the 
       framework: project.framework ?? "web",
     });
     res.json({ app: saved });
+    const content = ((req.body as any)?.content ?? "").trim();
+    if (!content || content.length > 500) {
+      res.status(400).json({ error: "invalid_content" }); return;
+    }
+    try {
+      const { randomUUID } = await import("crypto");
+      const id = randomUUID();
+      const now = new Date();
+      await db.insert(appComments).values({
+        id,
+        appId: req.params.id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Fetch author username and app owner in one join
+      const [notifRow] = await db.select({
+        appTitle: publishedApps.title,
+        ownerId: publishedApps.userId,
+        authorUsername: users.username,
+      })
+        .from(publishedApps)
+        .innerJoin(users, eq(users.id, userId))
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1);
+
+      const authorUsername = notifRow?.authorUsername ?? "unknown";
+
+      res.json({
+        comment: { id, content, createdAt: now, userId, authorUsername }
+      });
+
+      // Send notification to app owner (fire-and-forget, after response)
+      if (notifRow && notifRow.ownerId !== userId) {
+        db.insert(notifications).values({
+          userId: notifRow.ownerId,
+          type: "app_comment",
+          title: "有人评论了你的应用",
+          body: `@${authorUsername} 评论了你分享的「${notifRow.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+          isRead: false,
+        }).catch((err) => { console.error("[square/comment/notif]", err); });
+      }
+    } catch (err) {
+      console.error("[square/comments/post]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id/comments/:commentId — delete comment (owner or admin)
+  app.delete("/api/square/:id/comments/:commentId", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const [comment] = await db
+        .select({ userId: appComments.userId })
+        .from(appComments)
+        .where(eq(appComments.id, req.params.commentId))
+        .limit(1);
+      if (!comment) { res.status(404).json({ error: "not_found" }); return; }
+      if (comment.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(appComments).where(eq(appComments.id, req.params.commentId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/comments/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/aigc/classify-intent — LLM-based media intent classification (level-2 fallback)
+  app.post("/api/aigc/classify-intent", async (req, res) => {
+    const { text } = req.body as { text?: string };
+    if (!text?.trim()) { res.json({ intent: "none" }); return; }
+    try {
+      const { getFastClient } = await import("../agent/providers/kimi-client");
+      const { client, model } = getFastClient();
+      const completion = await client.chat.completions.create({
+        model,
+        max_tokens: 20,
+        messages: [
+          {
+            role: "system",
+            content: `你是意图分类器。判断用户输入属于哪种意图：
+- "poster"：想生成海报/宣传图/封面/分享图/做图
+- "video"：想录制/生成演示视频/分享视频
+- "none"：其他
+
+只返回 JSON，格式：{"intent":"poster"} 或 {"intent":"video"} 或 {"intent":"none"}`,
+          },
+          { role: "user", content: text.trim() },
+        ],
+        temperature: 0,
+      });
+      const raw = completion.choices[0]?.message?.content?.trim() ?? '{"intent":"none"}';
+      const parsed = JSON.parse(raw.match(/\{[^}]+\}/)?.[0] ?? '{"intent":"none"}') as { intent: string };
+      const intent = ["poster", "video"].includes(parsed.intent) ? parsed.intent : "none";
+      res.json({ intent });
+    } catch (err) {
+      console.warn("[aigc/classify-intent]", err instanceof Error ? err.message : err);
+      res.json({ intent: "none" });
+    }
+  });
+
+  // POST /api/aigc/session — create a new AIGC session
+  app.post("/api/aigc/session", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
+
+    // Daily quota check
+    const { checkDailyQuota } = await import("../../infra/aigc-evaluator");
+    const quota = checkDailyQuota(userId);
+    if (!quota.allowed) {
+      res.status(429).json({ error: "daily_quota_exceeded", remaining: 0 });
+      return;
+    }
+
+    const { randomUUID } = await import("crypto");
+    const sessionId = randomUUID();
+    const session: AigcSession = {
+      id: sessionId,
+      projectId,
+      userId,
+      messages: [],
+      events: [],
+      nextEventId: 0,
+      done: false,
+      sseWriters: new Set(),
+    };
+    aigcSessions.set(sessionId, session);
+    res.json({ sessionId, quotaRemaining: quota.remaining });
   });
 
   app.delete("/api/square/:id", async (req, res) => {
@@ -5207,6 +5340,18 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
     await db.delete(changelogEntries).where(eq(changelogEntries.id, id));
     res.json({ ok: true });
+  });
+
+  // GET /api/aigc/preferences — get current user's style preferences
+  app.get("/api/aigc/preferences", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const prefs = await storage.getAigcPreferences(userId);
+      res.json(prefs ?? { styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    } catch {
+      res.json({ styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -78,6 +78,7 @@ export async function runAigcAgent(
   const toolCtx: AigcToolContext = {
     projectId: session.projectId,
     sessionId: session.id,
+    userId: session.userId,
     emit,
   };
   const { schemas, handlers } = buildAigcTools(toolCtx);
