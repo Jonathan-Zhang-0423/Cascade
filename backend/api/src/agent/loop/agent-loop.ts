@@ -278,8 +278,8 @@ export async function runAgentLoop(
       // retries, nudge the model to continue by injecting a reminder.
       if (assistantText.length === 0 && reasoningContent.length > 0 && iteration < maxIterations - 1 && tools.length > 0) {
         console.log(`[agent-loop] Empty response with reasoning — nudging model to use tools. iteration=${iteration + 1}`);
-        // Push the empty assistant message and a nudge
-        messages.push({ role: "assistant", content: reasoningContent } as any);
+        // Push a short marker (NOT the full reasoning — it can be 100K+ chars)
+        messages.push({ role: "assistant", content: "(thinking completed, no action taken)" } as any);
         messages.push({ role: "user", content: "Please continue with the implementation. Use your tools (write_file, mark_step_complete) to make progress on the plan. Do not just describe what you would do — actually do it by calling the appropriate tool." } as any);
         continue; // retry this iteration
       }
@@ -296,14 +296,17 @@ export async function runAgentLoop(
     }
 
     // Push assistant message with tool calls to context.
-    // IMPORTANT: Truncate large tool_call arguments (e.g. write_file content)
-    // to prevent messages array from exploding. The LLM can re-read files via
-    // read_file if needed — it doesn't need 50KB of prior write content in context.
-    const MAX_ARGS_IN_CONTEXT = 500; // chars — enough for the function name + path, not full content
+    // IMPORTANT optimizations to prevent messages[] from exploding:
+    // 1. reasoning_content is NOT kept — it's the model's per-turn scratchpad
+    //    (GLM-5 can produce 100K+ chars of reasoning). Re-sending it every
+    //    iteration is the #1 context bloat source. The model doesn't need its
+    //    own prior thinking; the resulting tool_calls capture the decisions.
+    // 2. tool_call arguments truncated (write_file content can be 50KB) — the
+    //    LLM can read_file again if it needs the content.
+    const MAX_ARGS_IN_CONTEXT = 500; // chars — enough for function name + path
     const assistantMsg = {
       role: "assistant" as const,
       content: assistantText || null,
-      ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: "function" as const,
