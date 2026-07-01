@@ -3097,12 +3097,54 @@ Rules:
     }
   });
 
+  // POST /api/aigc/classify-intent — LLM-based media intent classification (level-2 fallback)
+  app.post("/api/aigc/classify-intent", async (req, res) => {
+    const { text } = req.body as { text?: string };
+    if (!text?.trim()) { res.json({ intent: "none" }); return; }
+    try {
+      const { getFastClient } = await import("../agent/providers/kimi-client");
+      const { client, model } = getFastClient();
+      const completion = await client.chat.completions.create({
+        model,
+        max_tokens: 20,
+        messages: [
+          {
+            role: "system",
+            content: `你是意图分类器。判断用户输入属于哪种意图：
+- "poster"：想生成海报/宣传图/封面/分享图/做图
+- "video"：想录制/生成演示视频/分享视频
+- "none"：其他
+
+只返回 JSON，格式：{"intent":"poster"} 或 {"intent":"video"} 或 {"intent":"none"}`,
+          },
+          { role: "user", content: text.trim() },
+        ],
+        temperature: 0,
+      });
+      const raw = completion.choices[0]?.message?.content?.trim() ?? '{"intent":"none"}';
+      const parsed = JSON.parse(raw.match(/\{[^}]+\}/)?.[0] ?? '{"intent":"none"}') as { intent: string };
+      const intent = ["poster", "video"].includes(parsed.intent) ? parsed.intent : "none";
+      res.json({ intent });
+    } catch (err) {
+      console.warn("[aigc/classify-intent]", err instanceof Error ? err.message : err);
+      res.json({ intent: "none" });
+    }
+  });
+
   // POST /api/aigc/session — create a new AIGC session
   app.post("/api/aigc/session", async (req, res) => {
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
     const { projectId } = req.body as { projectId?: string };
     if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
+
+    // Daily quota check
+    const { checkDailyQuota } = await import("../../infra/aigc-evaluator");
+    const quota = checkDailyQuota(userId);
+    if (!quota.allowed) {
+      res.status(429).json({ error: "daily_quota_exceeded", remaining: 0 });
+      return;
+    }
 
     const { randomUUID } = await import("crypto");
     const sessionId = randomUUID();
@@ -3117,7 +3159,7 @@ Rules:
       sseWriters: new Set(),
     };
     aigcSessions.set(sessionId, session);
-    res.json({ sessionId });
+    res.json({ sessionId, quotaRemaining: quota.remaining });
   });
 
   // POST /api/aigc/session/:id/message — send a message to the AIGC agent
@@ -3169,6 +3211,18 @@ Rules:
       done: session.done,
       messageCount: session.messages.length,
     });
+  });
+
+  // GET /api/aigc/preferences — get current user's style preferences
+  app.get("/api/aigc/preferences", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const prefs = await storage.getAigcPreferences(userId);
+      res.json(prefs ?? { styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    } catch {
+      res.json({ styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    }
   });
 
 

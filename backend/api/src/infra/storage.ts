@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp } from "@cascade/database";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp, userAigcPreferences } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 
@@ -84,6 +84,9 @@ export interface IStorage {
   listUserPublishedApps(userId: string): Promise<(typeof publishedApps.$inferSelect)[]>;
   upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect>;
   deletePublishedApp(id: string, userId: string): Promise<void>;
+
+  getAigcPreferences(userId: string): Promise<{ styleHistory: string[]; colorTone: string | null; lastStyle: string | null; generationCount: number } | null>;
+  upsertAigcPreferences(userId: string, update: { styleHistory?: string[]; colorTone?: string; lastStyle?: string; generationCount?: number }): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -536,6 +539,26 @@ export class DatabaseStorage implements IStorage {
   async deletePublishedApp(id: string, userId: string): Promise<void> {
     await db.delete(publishedApps)
       .where(and(eq(publishedApps.id, id), eq(publishedApps.userId, userId)));
+  }
+
+  async getAigcPreferences(userId: string): Promise<{ styleHistory: string[]; colorTone: string | null; lastStyle: string | null; generationCount: number } | null> {
+    const [row] = await db.select().from(userAigcPreferences).where(eq(userAigcPreferences.userId, userId));
+    if (!row) return null;
+    return {
+      styleHistory: row.styleHistory ?? [],
+      colorTone: row.colorTone ?? null,
+      lastStyle: row.lastStyle ?? null,
+      generationCount: row.generationCount ?? 0,
+    };
+  }
+
+  async upsertAigcPreferences(userId: string, update: { styleHistory?: string[]; colorTone?: string; lastStyle?: string; generationCount?: number }): Promise<void> {
+    await db.insert(userAigcPreferences)
+      .values({ userId, ...update, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: userAigcPreferences.userId,
+        set: { ...update, updatedAt: new Date() },
+      });
   }
 }
 

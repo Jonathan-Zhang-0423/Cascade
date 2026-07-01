@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { X, Video, Download, Loader2 } from "lucide-react";
+import { X, Video, ImageIcon, Download, Loader2 } from "lucide-react";
 
 import { normalizeSteps } from "./chat/chat-utils";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
@@ -14,7 +14,7 @@ import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { usePolishPrompt } from "./chat/hooks/usePolishPrompt";
 import { useActiveStream } from "./chat/hooks/useActiveStream";
 import { PolishPreview } from "./chat/PolishPreview";
-import { useVideoTrigger, type VideoTriggerStatus } from "./chat/hooks/useVideoTrigger";
+import { useMediaTrigger, type MediaTriggerStatus } from "./chat/hooks/useMediaTrigger";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -61,10 +61,10 @@ export function ChatPanel() {
   const tGlobal = useT();
   const { toast } = useToast();
 
-  const [videoStatus, setVideoStatus] = useState<VideoTriggerStatus>({ phase: "idle" });
-  const { tryIntercept, reset: resetVideo } = useVideoTrigger({
+  const [mediaStatus, setMediaStatus] = useState<MediaTriggerStatus>({ phase: "idle" });
+  const { tryIntercept, reset: resetMedia } = useMediaTrigger({
     projectId: projectId ?? undefined,
-    onStatus: setVideoStatus,
+    onStatus: setMediaStatus,
   });
 
   const { manager, build, slot } = useActiveStream();
@@ -445,10 +445,10 @@ export function ChatPanel() {
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
-    // ── Video keyword intercept ──────────────────────────────────────────────
-    if (input.trim() && tryIntercept(input.trim())) {
-      setInput("");
-      return;
+    // ── Media keyword intercept ──────────────────────────────────────────────
+    if (input.trim()) {
+      const intercepted = await tryIntercept(input.trim());
+      if (intercepted) { setInput(""); return; }
     }
     // ────────────────────────────────────────────────────────────────────────
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
@@ -533,47 +533,60 @@ export function ChatPanel() {
           />
         )}
 
-        {/* Video generation status card */}
-        {videoStatus.phase !== "idle" && (
+        {/* Media generation status card */}
+        {mediaStatus.phase !== "idle" && (
           <div className="mx-3 my-2 rounded-md px-3 py-2.5 text-[12px] flex items-start gap-2.5"
             style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)" }}
           >
-            <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
+            {mediaStatus.phase === "generating" && mediaStatus.type === "video"
+              ? <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
+              : <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />}
             <div className="flex-1 min-w-0">
-              {videoStatus.phase === "generating" && (
+              {(mediaStatus.phase === "classifying" || mediaStatus.phase === "generating") && (
                 <div className="flex items-center gap-2">
                   <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
-                  <span className="text-muted-foreground/80">正在录制演示视频… {videoStatus.progress > 0 ? `${videoStatus.progress}%` : ""}</span>
+                  <span className="text-muted-foreground/80">
+                    {mediaStatus.phase === "classifying"
+                      ? "识别意图…"
+                      : mediaStatus.label}
+                  </span>
                 </div>
               )}
-              {videoStatus.phase === "done" && (
+              {mediaStatus.phase === "done" && mediaStatus.type === "video" && (
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[#34d68a]">演示视频已生成</span>
                   <div className="flex items-center gap-2">
-                    <a
-                      href={videoStatus.downloadUrl}
-                      download
-                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      下载
+                    <a href={mediaStatus.downloadUrl} download
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
+                      <Download className="w-3 h-3" />下载
                     </a>
-                    <button
-                      onClick={resetVideo}
-                      className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors"
-                    >
+                    <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
                       <X className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
               )}
-              {videoStatus.phase === "error" && (
+              {mediaStatus.phase === "done" && mediaStatus.type === "poster" && (
+                <div className="space-y-2">
+                  <img src={mediaStatus.downloadUrl} alt="Generated poster" className="w-full rounded object-cover max-h-64" />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#34d68a]">宣传海报已生成</span>
+                    <div className="flex items-center gap-2">
+                      <a href={mediaStatus.downloadUrl} download="cascade-poster.png"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
+                        <Download className="w-3 h-3" />下载
+                      </a>
+                      <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {mediaStatus.phase === "error" && (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#ef4444] truncate">{videoStatus.message}</span>
-                  <button
-                    onClick={resetVideo}
-                    className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0"
-                  >
+                  <span className="text-[#ef4444] truncate">{mediaStatus.message}</span>
+                  <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0">
                     <X className="w-3 h-3" />
                   </button>
                 </div>

@@ -11,12 +11,84 @@ import { aigcProvider } from "../../api/aigc/aigc-provider";
 import { addImageWatermark, addVideoWatermark } from "../../infra/watermark";
 import { videoStorage } from "../../infra/video-storage";
 import { executeDslSequence, validateDslSequence } from "../../api/video/dsl-executor";
+import { getFastClient } from "../providers/kimi-client";
+import { evaluatePoster, incrementSessionRetry, incrementDailyUsage } from "../../infra/aigc-evaluator";
+
+// ── Style tag extractor (fire-and-forget) ─────────────────────────────────────
+// Runs after poster generation to update user style preferences asynchronously.
+async function extractAndSaveStyleTags(userId: string, prompt: string, style: string | undefined): Promise<void> {
+  try {
+    const { client, model } = getFastClient();
+    const completion = await client.chat.completions.create({
+      model,
+      max_tokens: 40,
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content: `从以下图像生成描述中提取风格标签（最多3个中文词，如"极简","冷色调","商务感"）。只返回 JSON：{"tags":["极简","冷色调"]}`,
+        },
+        { role: "user", content: `提示词：${prompt}。风格选项：${style ?? "无"}` },
+      ],
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return;
+    const parsed = JSON.parse(match[0]) as { tags?: string[] };
+    const tags = (parsed.tags ?? []).filter((t) => typeof t === "string").slice(0, 3);
+    if (!tags.length) return;
+
+    const existing = await storage.getAigcPreferences(userId);
+    const merged = [...new Set([...(existing?.styleHistory ?? []), ...tags])].slice(-10);
+    await storage.upsertAigcPreferences(userId, {
+      styleHistory: merged,
+      lastStyle: style ?? existing?.lastStyle ?? undefined,
+      generationCount: (existing?.generationCount ?? 0) + 1,
+    });
+  } catch {
+    // Non-critical — silently ignore
+  }
+}
 
 const PORT = parseInt(process.env.PORT ?? "5000", 10);
+
+// ── Prompt expander ───────────────────────────────────────────────────────────
+// Expands a short user prompt into a rich image-generation prompt (English),
+// adding style descriptors, composition hints, and negative keywords.
+async function expandPosterPrompt(userPrompt: string, style?: string): Promise<string> {
+  try {
+    const { client, model } = getFastClient();
+    const styleHint = style ? `视觉风格偏好：${style}。` : "";
+    const completion = await client.chat.completions.create({
+      model,
+      max_tokens: 120,
+      temperature: 0.7,
+      messages: [
+        {
+          role: "system",
+          content: `你是专业图像提示词工程师。将用户的简短需求扩写为高质量图像生成提示词（英文，80词以内）。
+要求：加入设计风格、色调、构图、质量修饰词，最后加负向词 --no blur, watermark, low quality, text overlay。
+只输出提示词本身，不要解释。`,
+        },
+        {
+          role: "user",
+          content: `用户需求：${userPrompt}。${styleHint}这是一个 App 的宣传海报，App 截图将作为参考图。`,
+        },
+      ],
+    });
+    const expanded = completion.choices[0]?.message?.content?.trim();
+    if (expanded && expanded.length > 20) return expanded;
+  } catch (err) {
+    console.warn("[aigc-tools] prompt expansion failed, using original:", err instanceof Error ? err.message : err);
+  }
+  // Fallback: return original prompt if LLM fails
+  return userPrompt;
+}
 
 export interface AigcToolContext {
   projectId: string;
   sessionId: string;
+  userId?: string;
   emit: (event: Record<string, unknown>) => void;
 }
 
@@ -111,13 +183,17 @@ export function buildAigcTools(ctx: AigcToolContext): {
       if (!capturedScreenshotB64) {
         throw new Error("No screenshot available. Call capture_screenshot first.");
       }
-      const prompt = args.prompt as string;
-      emit({ type: "aigc_action", label: `生成海报: ${prompt.slice(0, 40)}` });
+      const rawPrompt = args.prompt as string;
+      const style = args.style as string | undefined;
+      emit({ type: "aigc_action", label: "优化提示词…" });
+
+      const expandedPrompt = await expandPosterPrompt(rawPrompt, style);
+      emit({ type: "aigc_action", label: `生成海报: ${expandedPrompt.slice(0, 40)}…` });
 
       const result = await aigcProvider.generatePoster({
-        prompt,
+        prompt: expandedPrompt,
         referenceImageB64: capturedScreenshotB64,
-        style: args.style as string | undefined,
+        style,
       });
 
       // Apply watermark via FFmpeg
@@ -136,10 +212,47 @@ export function buildAigcTools(ctx: AigcToolContext): {
         rm(tmpOut, { force: true }).catch(() => {});
       }
 
+      // ── Quality evaluation ───────────────────────────────────────────────
+      emit({ type: "aigc_action", label: "质量检测中…" });
+      const evalResult = await evaluatePoster(finalB64, expandedPrompt, ctx.sessionId);
+
+      if (evalResult.shouldRetry) {
+        // Auto-retry once with a freshened prompt
+        incrementSessionRetry(ctx.sessionId);
+        emit({ type: "aigc_action", label: `质量偏低(${evalResult.score}分)，自动优化重试…` });
+        const retryPrompt = await expandPosterPrompt(`${rawPrompt}，注意提升视觉质量和专业感`, style);
+        const retryResult = await aigcProvider.generatePoster({
+          prompt: retryPrompt,
+          referenceImageB64: capturedScreenshotB64!,
+          style,
+        });
+        const tmpIn2 = join(tmpdir(), `aigc-poster-retry-in-${Date.now()}.png`);
+        const tmpOut2 = join(tmpdir(), `aigc-poster-retry-out-${Date.now()}.png`);
+        let retryB64 = retryResult.imageB64;
+        try {
+          await writeFile(tmpIn2, Buffer.from(retryResult.imageB64, "base64"));
+          await addImageWatermark(tmpIn2, tmpOut2);
+          const { readFile } = await import("fs/promises");
+          retryB64 = (await readFile(tmpOut2)).toString("base64");
+        } catch { /* watermark failure non-fatal */ } finally {
+          rm(tmpIn2, { force: true }).catch(() => {});
+          rm(tmpOut2, { force: true }).catch(() => {});
+        }
+        finalB64 = retryB64;
+      }
+
+      incrementDailyUsage(ctx.sessionId);
+
+      // Fire-and-forget: extract style tags and update user preferences
+      if (ctx.userId) {
+        extractAndSaveStyleTags(ctx.userId, expandedPrompt, style).catch(() => {});
+      }
+
       const dataUrl = `data:image/png;base64,${finalB64}`;
-      emit({ type: "aigc_poster", dataUrl, prompt });
-      ctx.emit({ type: "aigc_poster_ready", dataUrl, sessionId: ctx.sessionId });
-      return `Poster generated. DataURL length: ${dataUrl.length} chars.`;
+      const qualityHint = evalResult.score >= 70 ? "quality_good" : evalResult.score >= 55 ? "quality_fair" : "quality_low";
+      emit({ type: "aigc_poster", dataUrl, prompt: expandedPrompt, score: evalResult.score, qualityHint });
+      ctx.emit({ type: "aigc_poster_ready", dataUrl, sessionId: ctx.sessionId, score: evalResult.score, qualityHint });
+      return `Poster generated. Score: ${evalResult.score}. DataURL length: ${dataUrl.length} chars.`;
     },
 
     record_demo_video: async (args, emit) => {
