@@ -118,6 +118,11 @@ export async function runAgentLoop(
   // 20+ iterations, which was causing GLM-5 to time out mid-stream ('terminated').
   const KEEP_RECENT_TOOL_RESULTS = 6; // last ~3 iterations' worth stay full
   const OLD_TOOL_RESULT_STUB = "(earlier tool output elided to save context — call read_file again if you need it)";
+  // After N iterations, compact the system prompt by stripping the bulky
+  // skill/capability guidance (it's been absorbed by then). Saves 10-50KB.
+  const COMPACT_SYSTEM_PROMPT_AFTER = 5;
+  let systemPromptCompacted = false;
+
   function compactOldToolResults(): void {
     // Find indices of tool-role messages (results)
     const toolIdxs: number[] = [];
@@ -135,12 +140,30 @@ export async function runAgentLoop(
     }
   }
 
+  function compactSystemPrompt(): void {
+    if (systemPromptCompacted) return;
+    systemPromptCompacted = true;
+    const sys = messages[0] as any;
+    if (!sys || sys.role !== "system") return;
+    const content = sys.content as string;
+    // Strip the bulky sections (skills, capabilities, memory) — they were
+    // only needed for initial context. The agent has internalized them.
+    const stripped = content
+      .replace(/\n\n## Technology & Capability Skill Guidance[\s\S]*?(?=\n\n## |$)/, "\n\n(skill guidance compacted — conventions already applied)")
+      .replace(/\n\n## Project Memory[\s\S]*?(?=\n\n## |$)/, "");
+    if (stripped.length < content.length * 0.8) {
+      sys.content = stripped;
+    }
+  }
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective
     const messageId = generatePartId();
 
     // Compact old tool results before sending (bounds context growth)
     compactOldToolResults();
+    // After N iterations, strip bulky skill/memory sections from system prompt
+    if (iteration >= COMPACT_SYSTEM_PROMPT_AFTER) compactSystemPrompt();
 
     // ── Step Start ──────────────────────────────────────────────────
     if (partCtx) {
