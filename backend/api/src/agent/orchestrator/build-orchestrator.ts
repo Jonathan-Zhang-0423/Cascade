@@ -186,6 +186,29 @@ export function buildBuilderInitialMessage(
     ? `\n\nExisting project files:\n${allFiles.map(f => `- ${f.path}`).join("\n")}`
     : "\n\nThe project currently has no files.";
 
+  // Pre-load content of the FIRST step's required_files so the agent can
+  // write immediately without a separate read_file round-trip. Capped at
+  // 32KB total to avoid bloating the initial message.
+  let preloadedContent = "";
+  const firstStep = steps[0];
+  if (firstStep?.required_files && allFiles.length > 0) {
+    const PRE_LOAD_CAP = 32000;
+    let preloadSize = 0;
+    const preloaded: string[] = [];
+    for (const rf of firstStep.required_files) {
+      const file = allFiles.find(f => f.path === rf || f.path.endsWith(rf.replace(/^\/project\//, "")));
+      if (file && file.content) {
+        const entry = `--- ${file.path} ---\n${file.content}`;
+        if (preloadSize + entry.length > PRE_LOAD_CAP) break;
+        preloaded.push(entry);
+        preloadSize += entry.length;
+      }
+    }
+    if (preloaded.length > 0) {
+      preloadedContent = `\n\n## Pre-loaded file content (step 1 — no need to read_file these)\n\n${preloaded.join("\n\n")}`;
+    }
+  }
+
   const existingFilesWarning = allFiles.length > 0
     ? `\n\n⚠️ WARNING — EXISTING PROJECT FILES DETECTED ⚠️\nThe following files already contain working code that must be preserved:\n${allFiles.map(f => `  - ${f.path}`).join("\n")}\nDO NOT delete, clear, or replace the content of these files unless a plan step explicitly says to. Always call read_file on each existing file BEFORE writing to it, so you preserve all current content.\n`
     : "";
@@ -201,10 +224,10 @@ ${session.userRequest}
 
 ## Plan Steps
 ${stepsList}
-${filesList}
+${filesList}${preloadedContent}
 
 IMPORTANT: You are implementing a complete coding project. For each step:
-1. Read existing files using read_file before modifying them.
+1. Read existing files using read_file before modifying them (SKIP for files already pre-loaded above or files you just wrote).
 2. Write the complete file content using write_file.
 3. Mark each step complete with mark_step_complete.
 4. After ALL steps are done, call finish_build.
