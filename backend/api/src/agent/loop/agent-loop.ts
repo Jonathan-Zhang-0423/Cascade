@@ -169,6 +169,15 @@ export async function runAgentLoop(
     // After N iterations, strip bulky skill/memory sections from system prompt
     if (iteration >= COMPACT_SYSTEM_PROMPT_AFTER) compactSystemPrompt();
 
+    // Safety valve: if iterations are excessive relative to what a build should
+    // need, inject a strong finish reminder. A 5-step plan shouldn't need > 50
+    // iterations. This catches "infinite loop" scenarios where the agent keeps
+    // writing/reading without marking steps complete or calling finish_build.
+    if (iteration > 0 && iteration % 25 === 0 && tools.length > 0) {
+      console.warn(`[agent-loop] iteration ${iteration + 1}: injecting finish reminder (session=${sessionId})`);
+      messages.push({ role: "user", content: "IMPORTANT: You have been running for many iterations. If all steps are complete, call finish_build NOW. If steps remain, call mark_step_complete for each completed step, then finish_build. Do not continue indefinitely." } as any);
+    }
+
     // ── Step Start ──────────────────────────────────────────────────
     if (partCtx) {
       const stepStart = createPart("step-start", sessionId, messageId, { step: iteration + 1 });
