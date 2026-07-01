@@ -21,6 +21,7 @@ describeIntegration("project files", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
     http = await createAuthenticatedClient(appCtx.baseUrl);
   });
 

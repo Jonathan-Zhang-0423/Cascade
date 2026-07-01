@@ -28,6 +28,8 @@ const ALL_TABLES = [
   "waitlist_subscribers",
   "projects",
   "users",
+  "admin_audit_log",
+  "admin_users",
 ];
 
 let guardChecked = false;
@@ -126,6 +128,33 @@ export async function createAuthenticatedClient(
   });
   if (res.status !== 201 && res.status !== 200) {
     throw new Error(`createAuthenticatedClient: verify-login returned ${res.status}: ${res.text}`);
+  }
+  return http;
+}
+
+/**
+ * Seed an admin user (TOTP disabled) and return an authenticated HttpClient
+ * for /api/admin/* — drives the real POST /api/admin/auth/login path, which
+ * issues the JWT cookie directly when TOTP hasn't been set up yet.
+ */
+export async function createAuthenticatedAdminClient(
+  baseUrl: string,
+  opts: { username?: string; password?: string } = {},
+): Promise<import("./http-client").HttpClient> {
+  const { HttpClient } = await import("./http-client");
+  const bcrypt = (await import("bcryptjs")).default;
+  const { adminUsers } = await import("@cascade/database");
+
+  const http = new HttpClient(baseUrl);
+  const username = opts.username ?? `admin_${Math.random().toString(36).slice(2, 8)}`;
+  const password = opts.password ?? "Test-Password-123!";
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  await db.insert(adminUsers).values({ username, passwordHash });
+
+  const res = await http.post("/api/admin/auth/login", { username, password });
+  if (res.status !== 200) {
+    throw new Error(`createAuthenticatedAdminClient: login returned ${res.status}: ${res.text}`);
   }
   return http;
 }

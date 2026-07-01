@@ -1,12 +1,13 @@
 import { beforeAll, afterAll, beforeEach, expect, it, describe, vi } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedAdminClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 
 /**
  * /api/waitlist — public submit (email validation, dedup, edu detection) and
- * the admin GET behind x-admin-secret. The confirmation email is fired
- * fire-and-forget, so we mock the email module to keep it silent and fast.
+ * the admin GET behind the admin JWT (adminAuthMiddleware + checkAdmin). The
+ * confirmation email is fired fire-and-forget, so we mock the email module to
+ * keep it silent and fast.
  */
 vi.mock("../../src/infra/email", async (orig) => {
   const actual = await orig<typeof import("../../src/infra/email")>();
@@ -68,26 +69,23 @@ describeIntegration("waitlist", () => {
   });
 
   describe("GET /api/waitlist (admin)", () => {
-    it("rejects without the admin secret", async () => {
+    it("rejects without an admin session", async () => {
       const http = new HttpClient(appCtx.baseUrl);
       const res = await http.get("/api/waitlist");
-      // 401 if ADMIN_SECRET configured, 503 if not — both are non-200 denials.
-      expect([401, 503]).toContain(res.status);
+      expect(res.status).toBe(401);
     });
 
-    it("rejects a wrong admin secret (401 when configured)", async () => {
+    it("rejects a forged admin cookie", async () => {
       const http = new HttpClient(appCtx.baseUrl);
-      const res = await http.get("/api/waitlist", { "x-admin-secret": "definitely-wrong" });
-      expect([401, 503]).toContain(res.status);
+      http.setCookie("admin_access", "definitely-not-a-valid-jwt");
+      const res = await http.get("/api/waitlist");
+      expect(res.status).toBe(401);
     });
 
-    it("returns the list when the correct admin secret is supplied", async () => {
-      const secret = process.env.ADMIN_SECRET;
-      // Only meaningful when ADMIN_SECRET is configured for the test env.
-      if (!secret) return;
-      const http = new HttpClient(appCtx.baseUrl);
+    it("returns the list for an authenticated admin", async () => {
+      const http = await createAuthenticatedAdminClient(appCtx.baseUrl);
       await http.post("/api/waitlist", { email: email() });
-      const res = await http.get("/api/waitlist", { "x-admin-secret": secret });
+      const res = await http.get("/api/waitlist");
       expect(res.status).toBe(200);
       expect(res.body.total).toBeGreaterThanOrEqual(1);
       expect(Array.isArray(res.body.subscribers)).toBe(true);

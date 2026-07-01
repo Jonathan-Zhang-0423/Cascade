@@ -20,6 +20,7 @@ describeIntegration("projects CRUD", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    appCtx.resetRateLimiters();
     // Routes are behind requireInviteCode; establish a fresh authed session
     // each test (truncateAll wipes the user + session every time).
     http = await createAuthenticatedClient(appCtx.baseUrl);
