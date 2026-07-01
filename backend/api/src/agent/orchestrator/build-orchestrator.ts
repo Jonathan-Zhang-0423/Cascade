@@ -618,7 +618,7 @@ Examples of when to call research:
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 100, emitOnIterationExhausted: true, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 40, emitOnIterationExhausted: true, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
