@@ -149,18 +149,32 @@ export function useMediaTrigger({ projectId, onStatus }: UseMediaTriggerOptions)
 
   // ── Main intercept ─────────────────────────────────────────────────────────
   const tryIntercept = useCallback(async (text: string): Promise<boolean> => {
-    // Level 1: keyword
+    // Level 1: keyword — fast, no LLM cost
     const kw = keywordDetect(text);
     if (kw === "video") { triggerVideo(20); return true; }
     if (kw === "poster") { triggerPoster(text); return true; }
 
-    // Level 2: LLM classify (async, show classifying state briefly)
+    // Level 2: LLM classify — only when text strongly suggests media intent.
+    // Skip if: too short (<6 chars), looks like a build/code request, or
+    // contains common non-media verbs that would never be media intent.
+    const SKIP_PATTERNS = [
+      /做.*游戏|写.*代码|开发|实现|帮我做|帮我写|帮我建|帮我搭|创建|新建|生成.*页面|生成.*功能|生成.*组件|修复|debug|fix|build|create.*app|make.*app/i,
+    ];
+    const MEDIA_HINTS = /图|视频|海报|封面|宣传|分享|录|截图|poster|video|image|share|screenshot/i;
+
+    const likelyMedia = MEDIA_HINTS.test(text);
+    const likelyBuild = SKIP_PATTERNS.some((p) => p.test(text));
+
+    if (!likelyMedia || likelyBuild || text.length < 6) {
+      return false;
+    }
+
+    // Only reach LLM when text has media-related words but no keyword matched
     update({ phase: "classifying" });
     const llm = await llmDetect(text);
     if (llm === "video") { triggerVideo(20); return true; }
     if (llm === "poster") { triggerPoster(text); return true; }
 
-    // Not a media intent — reset and let normal flow proceed
     update({ phase: "idle" });
     return false;
   }, [triggerVideo, triggerPoster, update]);
