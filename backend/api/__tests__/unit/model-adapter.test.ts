@@ -77,14 +77,14 @@ describe("MiniMaxAdapter", () => {
 describe("Glm52Adapter", () => {
   const adapter = new Glm52Adapter({} as any, "glm-5.2");
 
-  it("uses 'max' reasoning_effort on first iteration (no output yet)", () => {
+  it("uses 'high' reasoning_effort on first iteration (no output yet)", () => {
     const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 0 });
-    expect((extraBody as any).reasoning_effort).toBe("max");
+    expect((extraBody as any).reasoning_effort).toBe("high");
     expect((extraBody as any).thinking.type).toBe("enabled");
   });
-  it("drops to 'high' reasoning_effort on subsequent iterations", () => {
+  it("drops to 'low' reasoning_effort on subsequent iterations", () => {
     const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 5000 });
-    expect((extraBody as any).reasoning_effort).toBe("high");
+    expect((extraBody as any).reasoning_effort).toBe("low");
   });
   it("returns disabled when opts.disabled is true", () => {
     const { extraBody } = adapter.getThinkingConfig({ disabled: true });

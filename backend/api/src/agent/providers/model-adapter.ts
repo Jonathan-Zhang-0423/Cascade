@@ -157,8 +157,10 @@ export class Glm52Adapter implements ModelAdapter {
 
   getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
-    // Adaptive: high for first iteration, medium for subsequent (faster)
-    const effort = (opts.outputTokensSoFar ?? 0) > 0 ? "high" : "max";
+    // Adaptive effort: 'high' for first iteration (plan comprehension),
+    // 'low' for subsequent iterations (mechanical file writes — fast). Per GLM
+    // docs, low/medium map to high internally, but signal intent + future-proof.
+    const effort = (opts.outputTokensSoFar ?? 0) > 0 ? "low" : "high";
     return {
       thinkingParam: {},
       extraBody: { thinking: { type: "enabled" }, reasoning_effort: effort },
