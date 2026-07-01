@@ -320,6 +320,7 @@ export class BuildStreamInstance {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
             }
+            this.trackTaskStatus(String(stepNum), "running");
           } else if (type === "thinking_token") {
             const token = ev.token || "";
             if (token) {
@@ -419,6 +420,7 @@ export class BuildStreamInstance {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) this.actions.updateTaskStatus(resolvedKey, "done");
+            this.trackTaskStatus(resolvedKey, "done");
           } else if (type === "step_failed") {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
@@ -680,6 +682,7 @@ export class BuildStreamInstance {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
             }
+            this.trackTaskStatus(String(stepNum), "running");
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
             if (actionType) {
@@ -938,6 +941,30 @@ export class BuildStreamInstance {
     const entryWithStep = entry.stepNum !== undefined ? entry : { ...entry, stepNum: this.currentStepNum };
     this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
+  }
+
+  /** Track task status in per-session state (survives project switch). */
+  private trackTaskStatus(key: string, status: "running" | "done" | "failed"): void {
+    const prev = this.state.get().taskStatuses;
+    this.state.set({ taskStatuses: { ...prev, [key]: status } });
+  }
+
+  /**
+   * Restore per-session task statuses into the global store. Call when the
+   * user returns to this project after viewing another one.
+   */
+  restoreTaskStatuses(): void {
+    const statuses = this.state.get().taskStatuses;
+    const keys = Object.keys(statuses);
+    if (keys.length === 0) return;
+    for (const key of keys) {
+      this.actions.updateTaskStatus(key, statuses[key]);
+    }
+    // Also restore executingTaskIndex to the highest running step
+    const runningSteps = keys.filter(k => statuses[k] === "running").map(Number).filter(n => !isNaN(n));
+    if (runningSteps.length > 0) {
+      this.actions.setExecutingTaskIndex(Math.max(...runningSteps) - 1);
+    }
   }
 
   /**

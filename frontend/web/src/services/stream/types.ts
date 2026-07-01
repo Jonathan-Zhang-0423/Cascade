@@ -33,6 +33,10 @@ export interface BuildStreamState {
   thinkingElapsedSec: number | null;
   sessionId: string | null;
   stepNarrations: Record<number, string>;
+  /** Per-session task statuses — survives project switching (unlike the global
+   *  store's taskStatuses which is reset on loadProject). Source of truth for
+   *  restoring plan-card step progress when returning to an active build. */
+  taskStatuses: Record<string, TaskStatus>;
 }
 
 export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
@@ -44,6 +48,7 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   thinkingElapsedSec: null,
   sessionId: null,
   stepNarrations: {},
+  taskStatuses: {},
 };
 
 // ─── Store Actions (injected into stream instances) ────────────────────────

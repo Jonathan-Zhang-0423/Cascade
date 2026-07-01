@@ -387,7 +387,7 @@ export function ChatPanel() {
     }
   }, [isManagerResponding, handleExecutePlan, autoExecutePlanRef]);
 
-  const isExecuting = executingTaskIndex !== null;
+  const isExecuting = executingTaskIndex !== null || buildPhase !== null;
 
   // Derive a single AgentStatus from all the boolean flags — highest priority wins
   const agentStatus: AgentStatus = (() => {

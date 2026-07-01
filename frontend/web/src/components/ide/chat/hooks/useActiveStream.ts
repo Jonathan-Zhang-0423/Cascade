@@ -29,7 +29,11 @@ export function useActiveStream() {
       if (!slot.manager.isActive) {
         slot.manager.attemptReconnect().catch(() => {});
       }
-      if (!slot.build.isActive) {
+      if (slot.build.isActive) {
+        // Build still running for this project — restore its per-session task
+        // statuses into the global store (they were lost on loadProject reset).
+        slot.build.restoreTaskStatuses();
+      } else {
         slot.build.attemptReconnect().catch(() => {});
       }
     }, 200);
