@@ -126,7 +126,7 @@ export default function AppDetailPage() {
   const [commentInput, setCommentInput] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  const shareUrl = `${window.location.origin}/CreateSquare/app/${id}`;
+  const shareUrl = `${window.location.origin}/BuilderSquare/app/${id}`;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -225,7 +225,7 @@ export default function AppDetailPage() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4" style={{ fontFamily: FONT }}>
         <p className="text-[15px] text-gray-500">找不到该应用</p>
-        <button type="button" onClick={() => navigate("/CreateSquare")}
+        <button type="button" onClick={() => navigate("/BuilderSquare")}
           className="text-[13px] text-gray-400 hover:text-gray-800 transition-colors flex items-center gap-1.5">
           <ArrowLeft className="w-3.5 h-3.5" /> 返回广场
         </button>
@@ -252,7 +252,7 @@ export default function AppDetailPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => navigate("/CreateSquare")}
+            onClick={() => navigate("/BuilderSquare")}
             className="flex items-center gap-1.5 text-[13px] font-medium text-gray-500 hover:text-black transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

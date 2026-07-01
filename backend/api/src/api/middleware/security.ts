@@ -15,7 +15,7 @@ import rateLimit from "express-rate-limit";
  */
 
 // IPs that are never auto-blocked (owner / admin access).
-const IP_WHITELIST = new Set(["36.142.94.105", "127.0.0.1", "::1"]);
+const IP_WHITELIST = new Set(["36.142.94.105", "113.87.160.120", "106.120.98.170", "127.0.0.1", "::1"]);
 
 const MAX_FAIL = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -134,17 +134,31 @@ export function createSecurity(app: Express): Security {
     });
   }
 
-  const authLimiter = makeRateLimiter(30, 15, "Too many requests. Please try again later.");
+  // 只对敏感认证操作限速，/api/auth/me 等轮询接口不受限
   const loginLimiter = makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes.");
+  const registerLimiter = makeRateLimiter(5, 60, "Too many registration attempts. Please wait before trying again.");
   const otpSendLimiter = makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again.");
-  app.use("/api/auth", authLimiter);
+  const otpVerifyLoginLimiter = makeRateLimiter(10, 15, "Too many attempts. Please wait 15 minutes.");
+  const githubLimiter = makeRateLimiter(10, 15, "Too many requests. Please try again later.");
+  const wechatLimiter = makeRateLimiter(10, 15, "Too many requests. Please try again later.");
+  const resetPasswordLimiter = makeRateLimiter(5, 60, "Too many attempts. Please wait before trying again.");
   app.use("/api/auth/login", loginLimiter);
+  app.use("/api/auth/register", registerLimiter);
   app.use("/api/auth/otp/send", otpSendLimiter);
+  app.use("/api/auth/otp/verify-login", otpVerifyLoginLimiter);
+  app.use("/api/auth/github", githubLimiter);
+  app.use("/api/auth/wechat", wechatLimiter);
+  app.use("/api/auth/reset-password", resetPasswordLimiter);
+
+  const allLimiters = [
+    loginLimiter, registerLimiter, otpSendLimiter, otpVerifyLoginLimiter,
+    githubLimiter, wechatLimiter, resetPasswordLimiter,
+  ];
 
   // Test-only seam: reset the in-memory rate-limiter windows so serialized
   // integration tests don't accumulate strikes across cases.
   (app as any)._resetRateLimiters = () => {
-    for (const lim of [authLimiter, loginLimiter, otpSendLimiter]) {
+    for (const lim of allLimiters) {
       try { (lim as any).resetKey?.("::ffff:127.0.0.1"); (lim as any).resetKey?.("127.0.0.1"); } catch {}
       try { (lim as any).store?.resetAll?.(); } catch {}
     }

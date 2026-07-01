@@ -3,12 +3,14 @@ import { createServer, type Server } from "http";
 import https from "https";
 import OpenAI from "openai";
 import "express-session";
+import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
+import multer from "multer";
 import { z } from "zod";
 // @ts-ignore
 import helmet from "helmet";
@@ -72,10 +74,15 @@ import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/a
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
 import { setupPreviewServer } from "../../compiler/preview-server";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
+import { videoStorage } from "../../infra/video-storage";
+import { addVideoWatermark } from "../../infra/watermark";
+import { executeDslSequence, validateDslSequence } from "../video/dsl-executor";
 import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
+import { adminAuthMiddleware } from "../../auth/admin-auth.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -513,6 +520,14 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+
+  // ── Cookie parser (needed for JWT admin cookies) ────────────────────────────
+  app.use(cookieParser());
+
+  // ── Admin JWT auth routes + middleware ──────────────────────────────────────
+  registerAdminAuthRoutes(app);
+  app.use("/api/admin", adminAuthMiddleware);
+  app.use("/api/waitlist", adminAuthMiddleware);
 
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({
@@ -2207,8 +2222,6 @@ Rules:
 
   registerWaitlistRoutes(app);
 
-  // ── Admin: IP blocklist management ─────────────────────────────────────────
-
   setupPreviewServer(httpServer, app);
 
   // ─── Video generation ────────────────────────────────────────────────────────
@@ -2230,115 +2243,188 @@ Rules:
     jobId: string,
     projectId: string,
     duration: 10 | 20 | 30,
+    videoDbId?: string,
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any = null;
-    let ffmpegAbort: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let context: any = null;
+    let previewToken: string | null = null;
     let aborted = false;
+
+    const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
+      if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
+    };
+
+    const stopPreview = () => {
+      if (previewToken) {
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: previewToken }),
+        }).catch(() => {});
+        previewToken = null;
+      }
+    };
 
     const timeout = setTimeout(() => {
       aborted = true;
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      if (ffmpegAbort) ffmpegAbort();
       job.status = "error";
       job.error = "timeout";
       job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
+      stopPreview();
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // dynamic import via variable so tsc does not resolve the module at compile time
+      // ── Step 1: Start preview-serve (NO login required, 100% reliable) ──
+      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
+      if (projectFiles.length === 0) {
+        throw new Error("Project has no files to preview");
+      }
+      const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
+      const startData = await startRes.json() as { token: string; url: string };
+      previewToken = startData.token;
+      const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
+
+      // ── Step 2: Launch Playwright ──
       const pwModule = "playwright";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      const page = await browser.newPage();
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, { waitUntil: "networkidle", timeout: 30_000 });
-
-      job.status = "running";
-      const totalFrames = duration * 10;
-      const intervalMs = 100;
-
-      for (let i = 0; i < totalFrames; i++) {
-        if (aborted) return;
-        const framePath = join(tmpDir, `frame_${String(i).padStart(4, "0")}.png`);
-        await page.screenshot({ path: framePath });
-        const pct = Math.floor(((i + 1) / totalFrames) * 90);
-        job.progress = pct;
-        await new Promise<void>((r) => setTimeout(r, intervalMs));
-      }
-
-      await browser.close();
-      browser = null;
-
-      if (aborted) return;
-
-      const outputPath = join(tmpDir, "output.mp4");
-      const ffResult = await new Promise<{ exitCode: number; timedOut: boolean }>((resolve) => {
-        const child = spawn("ffmpeg", [
-          "-framerate", "10",
-          "-i", join(tmpDir, "frame_%04d.png"),
-          "-c:v", "libx264",
-          "-pix_fmt", "yuv420p",
-          "-y",
-          outputPath,
-        ], { cwd: tmpDir });
-
-        ffmpegAbort = () => { try { child.kill("SIGKILL"); } catch {} };
-
-        let settled = false;
-        const ffTimer = setTimeout(() => {
-          if (!settled) { settled = true; try { child.kill("SIGKILL"); } catch {} resolve({ exitCode: 1, timedOut: true }); }
-        }, 60_000);
-
-        child.on("close", (code) => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: code ?? 1, timedOut: false }); }
-        });
-        child.on("error", () => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: 1, timedOut: false }); }
-        });
+      context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
       });
+      const page = await context.newPage();
+      job.status = "running";
+      job.progress = 5;
 
-      // delete frame PNGs, keep only MP4
-      const frames = readdirSync(tmpDir).filter((f) => f.endsWith(".png"));
-      await Promise.all(frames.map((f) => rm(join(tmpDir, f), { force: true })));
+      // ── Step 3: Load App — use "load" not "networkidle" for reliability ──
+      await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
+      // Extra wait for JS frameworks to finish rendering
+      await new Promise<void>((r) => setTimeout(r, 3000));
+      job.progress = 15;
+
+      // ── Step 4: Interactions ──
+      const projectRow = await storage.getProject(projectId).catch(() => null);
+      const rawSequence = projectRow?.actionSequence;
+
+      if (rawSequence) {
+        // Use Builder-generated DSL script (precise, app-specific)
+        try {
+          const parsed = JSON.parse(rawSequence);
+          const validation = validateDslSequence(parsed);
+          if (validation.valid && validation.actions) {
+            job.progress = 20;
+            const result = await executeDslSequence(page, validation.actions);
+            if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
+          }
+        } catch (e) {
+          console.warn("[video] DSL error:", e instanceof Error ? e.message : e);
+        }
+      } else {
+        // Generic fallback: scroll + click visible buttons
+        try {
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
+          for (const btn of buttons.slice(0, 3)) {
+            try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
+          }
+          await page.mouse.wheel(0, -600);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+        } catch (e) {
+          console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e);
+        }
+      }
+
+      job.progress = 60;
+
+      // ── Step 5: Fill remaining time precisely ──
+      const usedMs = 3000 + (rawSequence ? 15000 : 8000);
+      const remainingMs = Math.max(2000, duration * 1000 - usedMs);
+      await new Promise<void>((r) => setTimeout(r, remainingMs));
+      job.progress = 80;
+
+      // ── Step 6: Flush video file ──
+      const videoHandle = await page.video();
+      await context.close(); context = null;
+      await browser.close(); browser = null;
+      stopPreview();
 
       if (aborted) return;
 
-      if (ffResult.exitCode !== 0 || !existsSync(outputPath)) {
-        throw new Error("ffmpeg failed");
+      const rawVideoPath = await videoHandle?.path();
+      if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
+
+      // ── Step 7: Watermark ──
+      const watermarkedPath = rawVideoPath.replace(/\.\w+$/, "-wm.mp4");
+      try {
+        await addVideoWatermark(rawVideoPath, watermarkedPath);
+        rm(rawVideoPath, { force: true }).catch(() => {});
+      } catch (wmErr) {
+        console.warn("[video] watermark failed:", wmErr instanceof Error ? wmErr.message : wmErr);
+        const { rename } = await import("fs/promises");
+        await rename(rawVideoPath, watermarkedPath);
       }
 
-      job.outputPath = outputPath;
+      // ── Step 8: Persist ──
+      const storagePath = await videoStorage.save(jobId, watermarkedPath);
+      job.outputPath = storagePath;
       job.progress = 100;
       job.status = "done";
       job.finishedAt = Date.now();
+      updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
+
     } catch (err: unknown) {
       if (!aborted) {
+        const msg = err instanceof Error ? err.message : "unknown";
         job.status = "error";
-        job.error = err instanceof Error ? err.message : "unknown";
+        job.error = msg;
         job.finishedAt = Date.now();
+        updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
       clearTimeout(timeout);
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      stopPreview();
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   app.post("/api/video/generate", async (req, res) => {
-    const { projectId, duration } = req.body as { projectId?: string; duration?: number };
-    if (!projectId || !duration || !ALLOWED_DURATIONS.has(duration)) {
-      res.status(400).json({ error: "invalid_duration" });
+    const { projectId, duration: rawDuration } = req.body as { projectId?: string; duration?: number };
+    // Default to 30s if not specified or invalid
+    const duration = (!rawDuration || !ALLOWED_DURATIONS.has(rawDuration)) ? 30 : rawDuration;
+    if (!projectId) {
+      res.status(400).json({ error: "projectId required" });
       return;
     }
     if (activeVideoJobs >= MAX_VIDEO_JOBS) {
       res.status(429).json({ error: "too_many_jobs" });
+      return;
+    }
+
+    // Only Web framework previews are stable enough for recording
+    const project = await storage.getProject(projectId).catch(() => null);
+    if (project && project.framework && project.framework !== "web") {
+      res.status(422).json({ error: "unsupported_framework", framework: project.framework });
       return;
     }
 
@@ -2353,8 +2439,26 @@ Rules:
     });
     activeVideoJobs++;
 
-    recordPreview(jobId, projectId, duration as 10 | 20 | 30).catch(() => {});
-    res.json({ jobId });
+    // Create persistent DB record
+    const userId = (req.session as any)?.userId as string | undefined;
+    let videoDbId: string | undefined;
+    try {
+      const { randomUUID } = await import("crypto");
+      const dbRecord = await storage.createProjectVideo({
+        id: randomUUID(),
+        projectId,
+        userId: userId ?? null,
+        status: "pending",
+        duration: duration as number,
+        style: "raw",
+      });
+      videoDbId = dbRecord.id;
+    } catch (e) {
+      console.warn("[video/generate] DB record failed:", e);
+    }
+
+    recordPreview(jobId, projectId, duration as 10 | 20 | 30, videoDbId).catch(() => {});
+    res.json({ jobId, videoId: videoDbId });
   });
 
   app.get("/api/video/status/:jobId", (req, res) => {
@@ -2363,23 +2467,27 @@ Rules:
     res.json({ status: job.status, progress: job.progress, error: job.error ?? undefined });
   });
 
+  // Persistent file download by DB videoId
+  app.get("/api/video/file/:videoId", async (req, res) => {
+    const record = await storage.getProjectVideo(req.params.videoId).catch(() => null);
+    if (!record || record.status !== "done") { res.status(404).end(); return; }
+    if (record.cosUrl) { res.redirect(302, record.cosUrl); return; }
+    const localPath = record.localPath;
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="demo.mp4"`);
+    res.sendFile(localPath);
+  });
+
+  // Legacy download by in-memory jobId (kept for compatibility)
   app.get("/api/video/download/:jobId", (req, res) => {
     const job = videoJobs.get(req.params.jobId);
-    if (!job || job.status !== "done" || !job.outputPath || !existsSync(job.outputPath)) {
-      res.status(404).end();
-      return;
-    }
-    const filePath = job.outputPath;
+    if (!job || job.status !== "done" || !job.outputPath) { res.status(404).end(); return; }
+    const localPath = videoStorage.getLocalPath(job.outputPath);
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
-
-    // clean up after response finishes
-    res.on("finish", () => {
-      rm(filePath, { force: true }).catch(() => {});
-      videoJobs.delete(req.params.jobId);
-    });
-
-    res.sendFile(filePath);
+    res.sendFile(localPath);
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
@@ -2429,21 +2537,31 @@ Rules:
 
   // ── Creator Square ────────────────────────────────────────────────────────────
 
-  // GET /api/square — list published apps (public)
+  // GET /api/square — list published apps
   app.get("/api/square", async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const offset = parseInt(req.query.offset as string) || 0;
       const framework = req.query.framework as string | undefined;
+      const category = req.query.category as string | undefined;
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
-      const author = (req.query.author as string | undefined)?.trim() || ""; // username filter
+      const author = (req.query.author as string | undefined)?.trim() || "";
+      const currentUserId = (req.session as any)?.userId as string | undefined;
 
-      // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
+      // Visibility rule:
+      //   - public: visible to everyone
+      //   - link_only: NOT listed publicly, BUT always visible to the owner regardless of filter
+      //   - private: never listed
+      const visibilityWhere = currentUserId
+        ? sql`(${publishedApps.visibility} = 'public' OR (${publishedApps.userId} = ${currentUserId} AND ${publishedApps.visibility} = 'link_only'))`
+        : eq(publishedApps.visibility, "public");
+
       const baseWhere = and(
-        eq(publishedApps.visibility, "public"),
+        visibilityWhere,
         eq(publishedApps.adminTakenDown, false),
         ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(category ? [eq(publishedApps.category, category)] : []),
         ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
       );
 
@@ -2470,6 +2588,7 @@ Rules:
           visibility: publishedApps.visibility,
           previewScreenshot: publishedApps.previewScreenshot,
           framework: publishedApps.framework,
+          category: publishedApps.category,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
           likeCount: publishedApps.likeCount,
@@ -2557,6 +2676,21 @@ Rules:
       const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
       if (!project) { res.status(403).json({ error: "forbidden" }); return; }
 
+      // Auto-classify app category based on title + description
+      const classifyCategory = (t: string, d: string): string => {
+        const text = (t + " " + d).toLowerCase();
+        if (/游戏|game|play|棋|snake|tetris|puzzle|quiz/.test(text)) return "games";
+        if (/学习|learn|教|study|单词|quiz|课|exam|test|知识/.test(text)) return "education";
+        if (/图表|chart|dashboard|可视化|visual|数据|data|统计|report/.test(text)) return "data-viz";
+        if (/画|draw|write|写作|生成|create|art|design|音乐|video/.test(text)) return "creative";
+        if (/聊天|chat|社交|social|message|留言|论坛|community/.test(text)) return "social";
+        if (/商|shop|finance|金融|支付|pay|电商|订单|invoice/.test(text)) return "business";
+        if (/天气|weather|食谱|cook|健康|health|生活|日历|calendar|todo|habit/.test(text)) return "lifestyle";
+        if (/工具|tool|util|convert|计算|calc|timer|clock|效率|productivity/.test(text)) return "tools";
+        return "other";
+      };
+      const autoCategory = classifyCategory(title.trim(), description?.trim() ?? "");
+
       // Scope lookup to (projectId + userId) — prevents cross-user collisions
       const [existing] = await db.select().from(publishedApps)
         .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
@@ -2572,6 +2706,7 @@ Rules:
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
+          category: autoCategory,
           updatedAt: new Date(),
         }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
       } else {
@@ -2585,6 +2720,7 @@ Rules:
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
+          category: autoCategory,
         });
       }
 
@@ -2828,7 +2964,7 @@ Rules:
               isRead: false,
             });
           })
-          .catch(() => {});
+          .catch((err) => { console.error("[square/like/notif]", err); });
       }
     } catch (err) {
       console.error("[square/like]", err);
@@ -2907,34 +3043,34 @@ Rules:
         createdAt: now,
         updatedAt: now,
       });
-      const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
-      const authorUsername = user[0]?.username ?? "unknown";
+
+      // Fetch author username and app owner in one join
+      const [notifRow] = await db.select({
+        appTitle: publishedApps.title,
+        ownerId: publishedApps.userId,
+        authorUsername: users.username,
+      })
+        .from(publishedApps)
+        .innerJoin(users, eq(users.id, userId))
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1);
+
+      const authorUsername = notifRow?.authorUsername ?? "unknown";
+
       res.json({
-        comment: {
-          id,
-          content,
-          createdAt: now,
-          userId,
-          authorUsername,
-        }
+        comment: { id, content, createdAt: now, userId, authorUsername }
       });
 
-      // Send notification to app owner (fire-and-forget)
-      db.select({ appTitle: publishedApps.title, ownerId: publishedApps.userId })
-        .from(publishedApps)
-        .where(eq(publishedApps.id, req.params.id))
-        .limit(1)
-        .then(([row]) => {
-          if (!row || row.ownerId === userId) return; // don't notify self-comment
-          return db.insert(notifications).values({
-            userId: row.ownerId,
-            type: "app_comment",
-            title: "有人评论了你的应用",
-            body: `@${authorUsername} 评论了你分享的「${row.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
-            isRead: false,
-          });
-        })
-        .catch(() => {});
+      // Send notification to app owner (fire-and-forget, after response)
+      if (notifRow && notifRow.ownerId !== userId) {
+        db.insert(notifications).values({
+          userId: notifRow.ownerId,
+          type: "app_comment",
+          title: "有人评论了你的应用",
+          body: `@${authorUsername} 评论了你分享的「${notifRow.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+          isRead: false,
+        }).catch((err) => { console.error("[square/comment/notif]", err); });
+      }
     } catch (err) {
       console.error("[square/comments/post]", err);
       res.status(500).json({ error: "failed" });

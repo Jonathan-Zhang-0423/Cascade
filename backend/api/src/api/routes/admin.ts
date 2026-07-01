@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { eq, and, desc, count, sql, isNull, or } from "drizzle-orm";
 import { db } from "../../infra/db";
 import { storage } from "../../infra/storage";
-import { users, waitlistSubscribers, inviteCodes, userFeedback, projects, chatMessages, otpCodes, notifications } from "@cascade/database";
+import { users, waitlistSubscribers, inviteCodes, userFeedback, projects, chatMessages, otpCodes, notifications, publishedApps } from "@cascade/database";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { isEduEmail, isQizhiEmail, getTrialInfo, inviteCodePrefix, formatInviteCode } from "../services/invite-service";
 import { checkAdmin } from "../middleware/auth-middleware";
@@ -22,9 +22,8 @@ export function registerAdminRoutes(app: Express): void {
   // POST /api/feedback — submit user suggestion
   // GET /api/admin/feedback — list all feedback (admin only)
   app.get("/api/admin/feedback", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
       const rows = await db
         .select({
           id: userFeedback.id,
@@ -50,9 +49,8 @@ export function registerAdminRoutes(app: Express): void {
 
   // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
   app.post("/api/admin/feedback/:id/reply", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
       const feedbackId = parseInt(req.params.id);
       const { message } = req.body as { message?: string };
       if (!message?.trim()) return res.status(400).json({ error: "Message required" });
@@ -515,9 +513,11 @@ export function registerAdminRoutes(app: Express): void {
           username: u.username,
           email: u.email,
           phone: u.phone,
+          githubId: u.githubId ?? null,
+          wechatOpenId: u.wechatOpenId ?? null,
           // 已激活 = 已兑换邀请码（通过邀请码门）。
           activated: !!u.inviteCode,
-          authMethod: u.githubId ? "github" : u.email ? "email" : u.phone ? "phone" : "other",
+          authMethod: u.githubId ? "github" : u.wechatOpenId ? "wechat" : u.email ? "email" : u.phone ? "phone" : "other",
           projectCount: projectCountMap.get(u.id) ?? 0,
           lastActiveAt: lastActiveTs ? new Date(lastActiveTs).toISOString() : null,
           trialExpiresAt: u.trialExpiresAt ? new Date(u.trialExpiresAt).toISOString() : null,
@@ -540,6 +540,128 @@ export function registerAdminRoutes(app: Express): void {
     } catch (err) {
       console.error("[admin/users]", err);
       res.status(500).json({ error: "Failed to load users" });
+    }
+  });
+
+  // ── Admin: Creator Square dashboard ────────────────────────────────────────
+
+  // GET /api/admin/square — aggregate stats + per-user breakdown
+  // Query param: ?filter=all|active|takendown (default: all)
+  app.get("/api/admin/square", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const filter = (req.query.filter as string) ?? "all";
+      const filterCond =
+        filter === "active" ? eq(publishedApps.adminTakenDown, false) :
+        filter === "takendown" ? eq(publishedApps.adminTakenDown, true) :
+        undefined;
+
+      // Total (all records regardless of filter)
+      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+      const [{ totalActive }] = await db.select({ totalActive: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, false));
+      const [{ totalTakenDown }] = await db.select({ totalTakenDown: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, true));
+
+      // By framework (active only for stats)
+      const byFramework = await db
+        .select({ framework: publishedApps.framework, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.framework)
+        .orderBy(desc(count()));
+
+      // By visibility (active only)
+      const byVisibility = await db
+        .select({ visibility: publishedApps.visibility, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.visibility);
+
+      // Top view_count (active only)
+      const topViewed = await db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.adminTakenDown, false))
+        .orderBy(desc(publishedApps.viewCount))
+        .limit(10);
+
+      // Per-user breakdown (all records)
+      const perUser = await db
+        .select({
+          userId: publishedApps.userId,
+          authorUsername: users.username,
+          appCount: count(),
+          totalViews: sql<number>`sum(${publishedApps.viewCount})`,
+          totalForks: sql<number>`sum(${publishedApps.forkCount})`,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .groupBy(publishedApps.userId, users.username)
+        .orderBy(desc(count()));
+
+      // All apps with filter applied, up to 100
+      const recentQuery = db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          visibility: publishedApps.visibility,
+          isOpenSource: publishedApps.isOpenSource,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          adminTakenDown: publishedApps.adminTakenDown,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .orderBy(desc(publishedApps.publishedAt))
+        .limit(100);
+
+      const recent = filterCond
+        ? await recentQuery.where(filterCond)
+        : await recentQuery;
+
+      res.json({ total, totalActive, totalTakenDown, byFramework, byVisibility, topViewed, perUser, recent });
+    } catch (err) {
+      console.error("[admin/square]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/takedown — admin soft takedown
+  app.patch("/api/admin/square/:id/takedown", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: true, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/takedown]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/restore — admin restore a taken-down app
+  app.patch("/api/admin/square/:id/restore", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: false, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/restore]", err);
+      res.status(500).json({ error: "failed" });
     }
   });
 }

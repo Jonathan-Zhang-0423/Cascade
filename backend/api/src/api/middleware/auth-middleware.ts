@@ -9,8 +9,6 @@ import { verifyCaptcha } from "../../infra/captcha";
  * Behavior is unchanged.
  */
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
-
 /**
  * Gate that requires an authenticated user who has redeemed an invite code.
  * Phone-verified users are exempt (they register without a code). Mounted on
@@ -49,15 +47,12 @@ export async function checkCaptcha(req: Request, res: Response): Promise<boolean
 }
 
 /**
- * Admin guard via the x-admin-secret header. Returns false (and writes the
- * error response) when not configured or the secret doesn't match.
+ * Admin guard — requires a valid admin JWT (set on req.adminUser by
+ * adminAuthMiddleware from auth/admin-auth.ts, mounted on /api/admin and
+ * /api/waitlist in routes/index.ts).
  */
 export function checkAdmin(req: Request, res: Response): boolean {
-  if (!ADMIN_SECRET) {
-    res.status(503).json({ error: "Admin access not configured" });
-    return false;
-  }
-  if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+  if (!req.adminUser) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }

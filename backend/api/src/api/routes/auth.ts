@@ -1,9 +1,11 @@
 import type { Express } from "express";
 import bcrypt from "bcryptjs";
 import https from "https";
+import multer from "multer";
 import { randomBytes } from "crypto";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { mkdir } from "fs/promises";
+import { join, resolve } from "path";
 import { eq, and } from "drizzle-orm";
 import { db, pool } from "../../infra/db";
 import { storage } from "../../infra/storage";
@@ -138,9 +140,16 @@ export function registerAuthRoutes(app: Express, security: Security): void {
       email: (user as any).email ?? null,
       phone: (user as any).phone ?? null,
       githubId: (user as any).githubId ?? null,
+      githubLogin: (user as any).githubLogin ?? null,
+      wechatOpenId: (user as any).wechatOpenId ?? null,
+      wechatNickname: (user as any).wechatNickname ?? null,
+      firstName: (user as any).firstName ?? null,
+      lastName: (user as any).lastName ?? null,
+      bio: (user as any).bio ?? null,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
+      avatarUrl: (user as any).avatarUrl ?? null,
     });
   });
 
@@ -163,11 +172,75 @@ export function registerAuthRoutes(app: Express, security: Security): void {
       if (existing && existing.id !== userId) {
         return res.status(409).json({ error: "Username already taken" });
       }
-      await db.update(users).set({ username: trimmed }).where(eq(users.id, userId));
+      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
       res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[auth/me/username]", err);
       res.status(500).json({ error: "Failed to update username" });
+    }
+  });
+
+  app.get("/api/auth/me/username-cooldown", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
+      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const elapsed = Date.now() - lastChanged.getTime();
+      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
+      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.json({ canChange: false, remainingDays });
+    } catch (err) {
+      console.error("[auth/me/username-cooldown]", err);
+      res.status(500).json({ error: "Failed to check cooldown" });
+    }
+  });
+
+  app.put("/api/auth/me/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
+      const updates: Record<string, string> = {};
+      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
+      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
+      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
+      await db.update(users).set(updates as any).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/me/profile]", err);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Avatar upload
+  const avatarDir = join(resolve("."), "dist", "public", "avatars");
+  const avatarUpload = multer({
+    storage: multer.diskStorage({
+      destination: async (_req, _file, cb) => { await mkdir(avatarDir, { recursive: true }); cb(null, avatarDir); },
+      filename: (req, _file, cb) => { const userId = (req.session as any)?.userId ?? "unknown"; cb(null, `${userId}-${Date.now()}.jpg`); },
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only image files are allowed"));
+    },
+  });
+
+  app.post("/api/auth/me/avatar", avatarUpload.single("avatar"), async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const avatarUrl = `/avatars/${req.file.filename}`;
+      await db.update(users).set({ avatarUrl } as any).where(eq(users.id, userId));
+      res.json({ ok: true, avatarUrl });
+    } catch (err) {
+      console.error("[auth/me/avatar]", err);
+      res.status(500).json({ error: "Failed to upload avatar" });
     }
   });
 
@@ -591,6 +664,45 @@ export function registerAuthRoutes(app: Express, security: Security): void {
     }
   });
 
+  // Bind phone to an existing logged-in account via OTP verification. If the
+  // phone is already claimed by another account, ownership transfers to the
+  // caller (OTP verification proves phone ownership).
+  app.post("/api/auth/bind-phone", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+
+      const { target, code } = req.body as { target?: string; code?: string };
+      const normalized = normalizeTarget("sms", target ?? "");
+      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
+      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
+
+      // 先验证 OTP，证明手机所有权
+      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      // OTP 验证通过 = 证明了手机所有权，如果该手机被其他账号占用则自动转移
+      const existing = await storage.getUserByPhone(normalized);
+      if (existing && existing.id !== userId) {
+        await db.update(users)
+          .set({ phone: null, phoneVerified: false })
+          .where(eq(users.id, existing.id));
+      }
+
+      await db.update(users)
+        .set({ phone: normalized, phoneVerified: true })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/bind-phone]", err);
+      res.status(500).json({ error: "Bind failed" });
+    }
+  });
+
   // === GitHub OAuth ===
 
   // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
@@ -628,10 +740,11 @@ export function registerAuthRoutes(app: Express, security: Security): void {
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
     await pool.query(
       `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
        ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
-      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state }), expiresAt]
+      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state, mode }), expiresAt]
     );
     const redirectUri = `${baseUrl}/api/auth/github/callback`;
     const params = new URLSearchParams({
@@ -685,6 +798,8 @@ export function registerAuthRoutes(app: Express, security: Security): void {
         [`github_state:${state}`]
       );
       if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
       await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
 
       const clientId = process.env.GITHUB_CLIENT_ID!;
@@ -766,11 +881,31 @@ export function registerAuthRoutes(app: Express, security: Security): void {
       }
 
       const githubId = String(ghUser.id);
+
+      // === BIND MODE: 将 GitHub 绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该 GitHub 账号是否已被其他用户占用
+        const existingGh = await storage.getUserByGithubId(githubId);
+        if (existingGh && existingGh.id !== userId) {
+          res.status(409).json({ error: "github_already_linked" });
+          return;
+        }
+        if (!existingGh || existingGh.id !== userId) {
+          await storage.linkGithubToUser(userId, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, githubLogin: ghUser.login });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
       let user = await storage.getUserByGithubId(githubId);
       if (!user && primaryEmail) {
         const matched = await storage.getUserByEmail(primaryEmail);
         if (matched) {
-          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url });
+          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
         }
       }
       if (!user) {
@@ -785,6 +920,7 @@ export function registerAuthRoutes(app: Express, security: Security): void {
           githubId,
           email: primaryEmail,
           avatarUrl: ghUser.avatar_url,
+          githubLogin: ghUser.login,
         });
       }
 
@@ -800,6 +936,195 @@ export function registerAuthRoutes(app: Express, security: Security): void {
     } catch (err) {
       console.error("[auth/github/exchange]", err);
       res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // === WeChat OAuth (PC 扫码登录) ===
+
+  // 1) Initiate WeChat OAuth — redirect to WeChat QR code page
+  app.get("/api/auth/wechat", async (req, res) => {
+    const appId = process.env.WECHAT_APP_ID;
+    if (!appId) { res.status(500).json({ error: "WeChat OAuth not configured" }); return; }
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const state = randomBytes(16).toString("hex");
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
+    await pool.query(
+      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
+      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state, mode }), expiresAt]
+    );
+    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/wechat/callback`);
+    const authorizeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
+    if (req.query.mode === "url") {
+      res.json({ url: authorizeUrl });
+      return;
+    }
+    res.redirect(authorizeUrl);
+  });
+
+  // 2) WeChat callback — redirect to frontend with code
+  app.get("/api/auth/wechat/callback", async (req, res) => {
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const { code, state } = req.query as { code?: string; state?: string };
+    if (!code || !state) {
+      res.redirect(`${baseUrl}/login?wechat_error=missing_params`);
+      return;
+    }
+    const row = await pool.query(
+      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+      [`wechat_state:${state}`]
+    );
+    if (row.rows.length === 0) {
+      res.redirect(`${baseUrl}/login?wechat_error=bad_state`);
+      return;
+    }
+    res.redirect(`${baseUrl}/wechat-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  });
+
+  // 3) exchange：前端发来 code+state，后端换 token，建立/绑定账号
+  app.post("/api/auth/wechat/exchange", async (req, res) => {
+    try {
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
+      const row = await pool.query(
+        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+        [`wechat_state:${state}`]
+      );
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
+      await pool.query(`DELETE FROM session WHERE sid = $1`, [`wechat_state:${state}`]);
+
+      const appId = process.env.WECHAT_APP_ID!;
+      const appSecret = process.env.WECHAT_APP_SECRET!;
+
+      const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appId}&secret=${appSecret}&code=${code}&grant_type=authorization_code`;
+      const tokenRes = await fetch(tokenUrl);
+      const tokenData = await tokenRes.json() as {
+        access_token?: string;
+        openid?: string;
+        unionid?: string;
+        errcode?: number;
+        errmsg?: string;
+      };
+
+      if (!tokenData.access_token || !tokenData.openid) {
+        console.error("[wechat/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.errmsg || "no_access_token" });
+        return;
+      }
+
+      // Fetch user info
+      const userInfoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}`;
+      const userInfoRes = await fetch(userInfoUrl);
+      const wxUser = await userInfoRes.json() as {
+        openid: string;
+        nickname: string;
+        headimgurl: string;
+        unionid?: string;
+        errcode?: number;
+      };
+
+      if (wxUser.errcode) {
+        console.error("[wechat/exchange] userinfo error:", wxUser);
+        res.status(400).json({ error: "userinfo_failed" });
+        return;
+      }
+
+      const openId = wxUser.openid;
+      const unionId = wxUser.unionid || tokenData.unionid;
+      const nickname = wxUser.nickname || "微信用户";
+      const avatar = wxUser.headimgurl || null;
+
+      // === BIND MODE: 将微信绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该微信账号是否已被其他用户占用
+        const existingWx = await storage.getUserByWechatOpenId(openId);
+        if (existingWx && existingWx.id !== userId) {
+          res.status(409).json({ error: "wechat_already_linked" });
+          return;
+        }
+        if (!existingWx || existingWx.id !== userId) {
+          await storage.linkWechatToUser(userId, { openId, unionId, avatarUrl: avatar, nickname });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, wechatNickname: nickname });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
+      // Find or create user
+      let user = await storage.getUserByWechatOpenId(openId);
+      if (!user) {
+        // Generate unique username from nickname
+        let candidate = nickname.replace(/[^\w一-龥]/g, "").slice(0, 20) || "微信用户";
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${nickname.replace(/[^\w一-龥]/g, "").slice(0, 20) || "微信用户"}-${suffix}`;
+        }
+        user = await storage.createWechatUser({
+          username: candidate,
+          openId,
+          unionId,
+          avatarUrl: avatar,
+          nickname,
+        });
+      }
+
+      (req.session as any).userId = user.id;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => err ? reject(err) : resolve())
+      );
+      res.json({
+        id: user.id,
+        username: user.username,
+        inviteCode: (user as any).inviteCode ?? null,
+      });
+    } catch (err) {
+      console.error("[auth/wechat/exchange]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // === Unbind GitHub ===
+  app.post("/api/auth/unbind-github", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).githubId) return res.status(400).json({ error: "GitHub not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).wechatOpenId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ githubId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-github]", err);
+      res.status(500).json({ error: "Unbind failed" });
+    }
+  });
+
+  // === Unbind WeChat ===
+  app.post("/api/auth/unbind-wechat", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).wechatOpenId) return res.status(400).json({ error: "WeChat not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).githubId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ wechatOpenId: null, wechatUnionId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-wechat]", err);
+      res.status(500).json({ error: "Unbind failed" });
     }
   });
 }

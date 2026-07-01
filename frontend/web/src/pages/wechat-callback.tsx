@@ -27,11 +27,22 @@ export default function WechatCallbackPage() {
         });
         if (!exchangeRes.ok) {
           const err = await exchangeRes.json().catch(() => ({}));
+          // 绑定模式下的错误跳回个人主页
+          if (err.error === "wechat_already_linked") {
+            window.location.replace("/app?bind_error=wechat_already_linked");
+            return;
+          }
           window.location.replace(`/login?wechat_error=${encodeURIComponent(err.error || "exchange_failed")}`);
           return;
         }
-        const user = await exchangeRes.json();
-        window.location.replace(user.inviteCode ? "/app" : "/invite-gate?next=/app");
+        const data = await exchangeRes.json();
+        // 绑定模式：返回个人主页
+        if (data.bound) {
+          window.location.replace("/app?bind_success=wechat");
+          return;
+        }
+        // 登录/注册模式
+        window.location.replace(data.inviteCode ? "/app" : "/invite-gate?next=/app");
       } catch (e) {
         console.error("[wechat-callback]", e);
         window.location.replace("/login?wechat_error=network_error");
