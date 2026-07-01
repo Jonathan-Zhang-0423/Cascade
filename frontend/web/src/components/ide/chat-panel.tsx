@@ -444,68 +444,6 @@ export function ChatPanel() {
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
-
-        {/* Media generation status card */}
-        {mediaStatus.phase !== "idle" && (
-          <div className="mx-3 my-2 rounded-md px-3 py-2.5 text-[12px] flex items-start gap-2.5"
-            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)" }}
-          >
-            {mediaStatus.phase === "generating" && mediaStatus.type === "video"
-              ? <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
-              : <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />}
-            <div className="flex-1 min-w-0">
-              {(mediaStatus.phase === "classifying" || mediaStatus.phase === "generating") && (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
-                  <span className="text-muted-foreground/80">
-                    {mediaStatus.phase === "classifying"
-                      ? "识别意图…"
-                      : mediaStatus.label}
-                  </span>
-                </div>
-              )}
-              {mediaStatus.phase === "done" && mediaStatus.type === "video" && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#34d68a]">演示视频已生成</span>
-                  <div className="flex items-center gap-2">
-                    <a href={mediaStatus.downloadUrl} download
-                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
-                      <Download className="w-3 h-3" />下载
-                    </a>
-                    <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              {mediaStatus.phase === "done" && mediaStatus.type === "poster" && (
-                <div className="space-y-2">
-                  <img src={mediaStatus.downloadUrl} alt="Generated poster" className="w-full rounded object-cover max-h-64" />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[#34d68a]">宣传海报已生成</span>
-                    <div className="flex items-center gap-2">
-                      <a href={mediaStatus.downloadUrl} download="cascade-poster.png"
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
-                        <Download className="w-3 h-3" />下载
-                      </a>
-                      <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {mediaStatus.phase === "error" && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#ef4444] truncate">{mediaStatus.message}</span>
-                  <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
     // ── Media keyword intercept ──────────────────────────────────────────────
     if (input.trim()) {
       const intercepted = await tryIntercept(input.trim());
@@ -539,7 +477,7 @@ export function ChatPanel() {
     userTriggeredRef.current = true;
     sendInFlightRef.current = true;
     handleManagerSend(undefined, text).finally(() => { sendInFlightRef.current = false; });
-  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
+  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding, tryIntercept]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");
@@ -592,6 +530,66 @@ export function ChatPanel() {
             completionSummary={completionData?.summary || undefined}
             stepNarrations={liveStepNarrations}
           />
+        )}
+
+        {/* ── Media generation status card ─────────────────────────────── */}
+        {mediaStatus.phase !== "idle" && (
+          <div className="mx-3 my-2 rounded-lg px-3 py-2.5 text-[12px] flex items-start gap-2.5"
+            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)" }}
+          >
+            {mediaStatus.phase === "generating" && mediaStatus.type === "video"
+              ? <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
+              : <ImageIcon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />}
+            <div className="flex-1 min-w-0">
+              {(mediaStatus.phase === "classifying" || mediaStatus.phase === "generating") && (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
+                  <span className="text-muted-foreground/80">
+                    {mediaStatus.phase === "classifying" ? "识别意图…" : mediaStatus.label}
+                  </span>
+                </div>
+              )}
+              {mediaStatus.phase === "done" && mediaStatus.type === "video" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#34d68a]">演示视频已生成</span>
+                  <div className="flex items-center gap-2">
+                    <a href={mediaStatus.downloadUrl} download
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
+                      <Download className="w-3 h-3" />下载
+                    </a>
+                    <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {mediaStatus.phase === "done" && mediaStatus.type === "poster" && (
+                <div className="space-y-2">
+                  <img src={mediaStatus.downloadUrl} alt="Generated poster" className="w-full rounded object-cover max-h-64" />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#34d68a]">宣传海报已生成</span>
+                    <div className="flex items-center gap-2">
+                      <a href={mediaStatus.downloadUrl} download="cascade-poster.png"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors">
+                        <Download className="w-3 h-3" />下载
+                      </a>
+                      <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {mediaStatus.phase === "error" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#ef4444] truncate">{mediaStatus.message}</span>
+                  <button onClick={resetMedia} className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
       <div className="relative shrink-0">
