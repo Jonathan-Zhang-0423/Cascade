@@ -3,7 +3,6 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { X, Video, ImageIcon, Download, Loader2 } from "lucide-react";
-import { X } from "lucide-react";
 import { normalizeSteps } from "./chat/chat-utils";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
 import { TypingIndicator } from "./chat/message-components";
@@ -14,11 +13,6 @@ import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { usePolishPrompt } from "./chat/hooks/usePolishPrompt";
 import { useActiveStream } from "./chat/hooks/useActiveStream";
 import { PolishPreview } from "./chat/PolishPreview";
-  const [mediaStatus, setMediaStatus] = useState<MediaTriggerStatus>({ phase: "idle" });
-  const { tryIntercept, reset: resetMedia } = useMediaTrigger({
-    projectId: projectId ?? undefined,
-    onStatus: setMediaStatus,
-  });
 import { useMediaTrigger, type MediaTriggerStatus } from "./chat/hooks/useMediaTrigger";
 
 export type { ActionLogEntry } from "./chat/chat-types";
@@ -65,6 +59,12 @@ export function ChatPanel() {
 
   const tGlobal = useT();
   const { toast } = useToast();
+
+  const [mediaStatus, setMediaStatus] = useState<MediaTriggerStatus>({ phase: "idle" });
+  const { tryIntercept, reset: resetMedia } = useMediaTrigger({
+    projectId: projectId ?? undefined,
+    onStatus: setMediaStatus,
+  });
 
   const { manager, build, slot } = useActiveStream();
   const {
