@@ -335,10 +335,11 @@ export function buildBuilderTools(
       // Mirror to disk (with path traversal protection)
       if (session.sessionDir) {
         try {
-          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
+          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
+          const normalizedBase = path.resolve(session.sessionDir);
           // Guard: ensure the resolved path is inside sessionDir (prevent ../../ escape)
-          if (!abs.startsWith(session.sessionDir)) {
-            console.warn(`[agent-tools] path traversal blocked: ${path_} resolved to ${abs}`);
+          if (!abs.startsWith(normalizedBase)) {
+            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
           } else {
             await mkdir(path.dirname(abs), { recursive: true });
             await writeFile(abs, content, "utf-8");
@@ -407,8 +408,9 @@ export function buildBuilderTools(
 
       if (session.sessionDir) {
         try {
-          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          if (!abs.startsWith(session.sessionDir)) {
+          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
+          const normalizedBase = path.resolve(session.sessionDir);
+          if (!abs.startsWith(normalizedBase)) {
             console.warn(`[agent-tools] path traversal blocked: ${path_}`);
           } else {
             await mkdir(path.dirname(abs), { recursive: true });
@@ -484,8 +486,9 @@ export function buildBuilderTools(
 
       if (session.sessionDir) {
         try {
-          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          if (!abs.startsWith(session.sessionDir)) {
+          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
+          const normalizedBase = path.resolve(session.sessionDir);
+          if (!abs.startsWith(normalizedBase)) {
             console.warn(`[agent-tools] path traversal blocked: ${path_}`);
           } else {
             await mkdir(path.dirname(abs), { recursive: true });
@@ -540,8 +543,9 @@ export function buildBuilderTools(
       // Remove the disk mirror + tell the LSP the file is gone (empty content).
       if (session.sessionDir) {
         try {
-          const abs = path.join(session.sessionDir, path_.replace(/^\/+/, ""));
-          if (!abs.startsWith(session.sessionDir)) {
+          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
+          const normalizedBase = path.resolve(session.sessionDir);
+          if (!abs.startsWith(normalizedBase)) {
             console.warn(`[agent-tools] path traversal blocked on delete: ${path_}`);
           } else {
             await rm(abs, { force: true });
