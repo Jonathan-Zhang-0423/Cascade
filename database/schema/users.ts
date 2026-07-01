@@ -12,6 +12,10 @@ export const users = pgTable("users", {
   phone: text("phone").unique(),
   phoneVerified: boolean("phone_verified").notNull().default(false),
   githubId: text("github_id").unique(),
+  githubLogin: text("github_login"),
+  wechatOpenId: text("wechat_open_id").unique(),
+  wechatUnionId: text("wechat_union_id").unique(),
+  wechatNickname: text("wechat_nickname"),
   avatarUrl: text("avatar_url"),
   experienceLevel: text("experience_level").notNull().default("intermediate"),
   hasSetExperienceLevel: boolean("has_set_experience_level").notNull().default(false),
@@ -20,8 +24,11 @@ export const users = pgTable("users", {
   // Referral system
   referralCode: text("referral_code").unique(),   // this user's shareable code
   referredBy: varchar("referred_by"),             // id of the user who referred them
-  wechatOpenId: text("wechat_open_id").unique(),
-  wechatUnionId: text("wechat_union_id").unique(),
+  // Profile fields
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  bio: text("bio"),
+  usernameLastChangedAt: timestamp("username_last_changed_at", { mode: "date", withTimezone: true }),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
-import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills } from "@cascade/database";
+import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
 
@@ -35,19 +35,20 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByGithubId(githubId: string): Promise<User | undefined>;
+  getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
-  getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   createGithubUser(input: {
     username: string;
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User>;
-  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null }): Promise<User>;
-  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
-  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
+  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null; githubLogin?: string }): Promise<User>;
+  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
+  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
   getProjects(userId?: string): Promise<Project[]>;
@@ -55,6 +56,7 @@ export interface IStorage {
   updateProjectName(id: string, name: string): Promise<void>;
   updateProjectPlan(id: string, plan: unknown): Promise<void>;
   updateProjectBuildResult(id: string, result: unknown): Promise<void>;
+  updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void>;
   deleteProject(id: string): Promise<void>;
 
   getProjectMemory(projectId: string): Promise<string>;
@@ -68,6 +70,20 @@ export interface IStorage {
   listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number; sessionId?: string | null }): Promise<ChatMessageRow[]>;
   upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void>;
   deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void>;
+
+  // Project Videos
+  createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo>;
+  getProjectVideo(id: string): Promise<ProjectVideo | undefined>;
+  listProjectVideos(projectId: string): Promise<ProjectVideo[]>;
+  updateProjectVideo(id: string, patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>): Promise<void>;
+
+  // Published Apps (Creator Square)
+  getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined>;
+  getPublishedAppByProject(projectId: string): Promise<(typeof publishedApps.$inferSelect) | undefined>;
+  listPublishedApps(opts: { limit?: number; offset?: number; framework?: string }): Promise<(typeof publishedApps.$inferSelect & { authorUsername: string })[]>;
+  listUserPublishedApps(userId: string): Promise<(typeof publishedApps.$inferSelect)[]>;
+  upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect>;
+  deletePublishedApp(id: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -96,11 +112,6 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
-    return user;
-  }
-
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const [user] = await db.insert(users).values({ ...insertUser, id }).returning();
@@ -112,6 +123,7 @@ export class DatabaseStorage implements IStorage {
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User> {
     const id = randomUUID();
     const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 天
@@ -120,6 +132,7 @@ export class DatabaseStorage implements IStorage {
       username: input.username,
       password: null,
       githubId: input.githubId,
+      githubLogin: input.githubLogin || null,
       email: input.email,
       avatarUrl: input.avatarUrl,
       trialExpiresAt,
@@ -129,12 +142,17 @@ export class DatabaseStorage implements IStorage {
 
   async linkGithubToUser(
     userId: string,
-    input: { githubId: string; avatarUrl: string | null },
+    input: { githubId: string; avatarUrl: string | null; githubLogin?: string },
   ): Promise<User> {
     const [user] = await db.update(users)
-      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
+      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl, githubLogin: input.githubLogin || null })
       .where(eq(users.id, userId))
       .returning();
+    return user;
+  }
+
+  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
     return user;
   }
 
@@ -143,6 +161,7 @@ export class DatabaseStorage implements IStorage {
     openId: string;
     unionId?: string;
     avatarUrl: string | null;
+    nickname?: string;
   }): Promise<User> {
     const id = randomUUID();
     const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -152,6 +171,7 @@ export class DatabaseStorage implements IStorage {
       password: null,
       wechatOpenId: input.openId,
       wechatUnionId: input.unionId || null,
+      wechatNickname: input.nickname || null,
       avatarUrl: input.avatarUrl,
       trialExpiresAt,
     }).returning();
@@ -160,10 +180,10 @@ export class DatabaseStorage implements IStorage {
 
   async linkWechatToUser(
     userId: string,
-    input: { openId: string; unionId?: string; avatarUrl: string | null },
+    input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string },
   ): Promise<User> {
     const [user] = await db.update(users)
-      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl })
+      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl, wechatNickname: input.nickname || null })
       .where(eq(users.id, userId))
       .returning();
     return user;
@@ -200,6 +220,13 @@ export class DatabaseStorage implements IStorage {
 
   async updateProjectBuildResult(id: string, result: unknown): Promise<void> {
     await db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id));
+  }
+
+  async updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void> {
+    await db.update(projects).set({
+      actionSequence,
+      ...(durationHint !== undefined ? { actionSequenceDuration: durationHint } : {}),
+    }).where(eq(projects.id, id));
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -404,6 +431,110 @@ export class DatabaseStorage implements IStorage {
     const cutoff = Date.now() - maxAgeMs;
     await db.delete(managerSessions)
       .where(lt(managerSessions.startedAt, cutoff));
+  }
+
+  // ─── Project Videos ──────────────────────────────────────────────────────
+
+  async createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo> {
+    const [row] = await db.insert(projectVideos).values(video).returning();
+    return row;
+  }
+
+  async getProjectVideo(id: string): Promise<ProjectVideo | undefined> {
+    const [row] = await db.select().from(projectVideos).where(eq(projectVideos.id, id));
+    return row;
+  }
+
+  async listProjectVideos(projectId: string): Promise<ProjectVideo[]> {
+    return db.select().from(projectVideos)
+      .where(eq(projectVideos.projectId, projectId))
+      .orderBy(desc(projectVideos.createdAt));
+  }
+
+  async updateProjectVideo(
+    id: string,
+    patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>,
+  ): Promise<void> {
+    await db.update(projectVideos).set(patch).where(eq(projectVideos.id, id));
+  }
+
+  // ─── Published Apps (Creator Square) ─────────────────────────────────────
+
+  async getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined> {
+    const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, id));
+    return row;
+  }
+
+  async getPublishedAppByProject(projectId: string): Promise<(typeof publishedApps.$inferSelect) | undefined> {
+    const [row] = await db.select().from(publishedApps).where(eq(publishedApps.projectId, projectId));
+    return row;
+  }
+
+  async listPublishedApps(opts: { limit?: number; offset?: number; framework?: string }): Promise<(typeof publishedApps.$inferSelect & { authorUsername: string })[]> {
+    const limit = Math.min(opts.limit ?? 20, 50);
+    const offset = opts.offset ?? 0;
+    const rows = await db
+      .select({
+        id: publishedApps.id,
+        projectId: publishedApps.projectId,
+        userId: publishedApps.userId,
+        title: publishedApps.title,
+        description: publishedApps.description,
+        isOpenSource: publishedApps.isOpenSource,
+        visibility: publishedApps.visibility,
+        previewScreenshot: publishedApps.previewScreenshot,
+        previewVideo: publishedApps.previewVideo,
+        framework: publishedApps.framework,
+        viewCount: publishedApps.viewCount,
+        forkCount: publishedApps.forkCount,
+        likeCount: publishedApps.likeCount,
+        adminTakenDown: publishedApps.adminTakenDown,
+        publishedAt: publishedApps.publishedAt,
+        updatedAt: publishedApps.updatedAt,
+        authorUsername: users.username,
+      })
+      .from(publishedApps)
+      .leftJoin(users, eq(publishedApps.userId, users.id))
+      .where(
+        opts.framework
+          ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, opts.framework))
+          : eq(publishedApps.visibility, "public"),
+      )
+      .orderBy(desc(publishedApps.publishedAt))
+      .limit(limit)
+      .offset(offset);
+    return rows.map((r) => ({ ...r, authorUsername: r.authorUsername ?? "anonymous" }));
+  }
+
+  async listUserPublishedApps(userId: string): Promise<(typeof publishedApps.$inferSelect)[]> {
+    return db.select().from(publishedApps)
+      .where(eq(publishedApps.userId, userId))
+      .orderBy(desc(publishedApps.publishedAt));
+  }
+
+  async upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect> {
+    const now = new Date();
+    const [row] = await db.insert(publishedApps)
+      .values({ ...app, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [publishedApps.projectId],
+        set: {
+          title: sql`excluded.title`,
+          description: sql`excluded.description`,
+          isOpenSource: sql`excluded.is_open_source`,
+          visibility: sql`excluded.visibility`,
+          previewScreenshot: sql`excluded.preview_screenshot`,
+          previewVideo: sql`excluded.preview_video`,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async deletePublishedApp(id: string, userId: string): Promise<void> {
+    await db.delete(publishedApps)
+      .where(and(eq(publishedApps.id, id), eq(publishedApps.userId, userId)));
   }
 }
 

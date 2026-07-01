@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { X } from "lucide-react";
+import { X, Video, Download, Loader2 } from "lucide-react";
 
 import { normalizeSteps } from "./chat/chat-utils";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
@@ -14,6 +14,7 @@ import { useSmartResponse } from "./chat/hooks/useSmartResponse";
 import { usePolishPrompt } from "./chat/hooks/usePolishPrompt";
 import { useActiveStream } from "./chat/hooks/useActiveStream";
 import { PolishPreview } from "./chat/PolishPreview";
+import { useVideoTrigger, type VideoTriggerStatus } from "./chat/hooks/useVideoTrigger";
 
 export type { ActionLogEntry } from "./chat/chat-types";
 
@@ -59,6 +60,12 @@ export function ChatPanel() {
 
   const tGlobal = useT();
   const { toast } = useToast();
+
+  const [videoStatus, setVideoStatus] = useState<VideoTriggerStatus>({ phase: "idle" });
+  const { tryIntercept, reset: resetVideo } = useVideoTrigger({
+    projectId: projectId ?? undefined,
+    onStatus: setVideoStatus,
+  });
 
   const { manager, build, slot } = useActiveStream();
   const {
@@ -438,6 +445,12 @@ export function ChatPanel() {
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
+    // ── Video keyword intercept ──────────────────────────────────────────────
+    if (input.trim() && tryIntercept(input.trim())) {
+      setInput("");
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
       sendInFlightRef.current = true;
       handleExecutePlan().finally(() => { sendInFlightRef.current = false; });
@@ -518,6 +531,55 @@ export function ChatPanel() {
             completionSummary={completionData?.summary || undefined}
             stepNarrations={liveStepNarrations}
           />
+        )}
+
+        {/* Video generation status card */}
+        {videoStatus.phase !== "idle" && (
+          <div className="mx-3 my-2 rounded-md px-3 py-2.5 text-[12px] flex items-start gap-2.5"
+            style={{ background: "var(--panel-mid-bg)", border: "1px solid var(--panel-divider)" }}
+          >
+            <Video className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#4f82ff]" />
+            <div className="flex-1 min-w-0">
+              {videoStatus.phase === "generating" && (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/60 shrink-0" />
+                  <span className="text-muted-foreground/80">正在录制演示视频… {videoStatus.progress > 0 ? `${videoStatus.progress}%` : ""}</span>
+                </div>
+              )}
+              {videoStatus.phase === "done" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#34d68a]">演示视频已生成</span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={videoStatus.downloadUrl}
+                      download
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[#4f82ff] hover:bg-[rgba(79,130,255,0.1)] transition-colors"
+                    >
+                      <Download className="w-3 h-3" />
+                      下载
+                    </a>
+                    <button
+                      onClick={resetVideo}
+                      className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {videoStatus.phase === "error" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#ef4444] truncate">{videoStatus.message}</span>
+                  <button
+                    onClick={resetVideo}
+                    className="w-4 h-4 flex items-center justify-center rounded hover:bg-accent/10 text-muted-foreground/50 transition-colors shrink-0"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
       <div className="relative shrink-0">

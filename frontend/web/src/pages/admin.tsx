@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import cascadeLogo from "../assets/cascade-logo.png";
 
 interface BlockedIp {
@@ -19,13 +20,15 @@ interface LockedUser {
   remainingSec: number;
 }
 
-type AdminTab = "waitlist" | "users" | "security" | "feedback" | "changelog";
+type AdminTab = "waitlist" | "users" | "security" | "feedback" | "changelog" | "square";
 
 interface AppUser {
   id: string;
   username: string;
   email: string | null;
   phone: string | null;
+  githubId: string | null;
+  wechatOpenId: string | null;
   activated: boolean;
   authMethod: string;
   projectCount: number;
@@ -72,11 +75,12 @@ function fmtRemain(sec: number) {
 }
 
 export default function AdminPage() {
-  const [secret, setSecret] = useState("");
+  const [, navigate] = useLocation();
   const [data, setData] = useState<WaitlistData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const authChecked = useRef(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState("");
@@ -130,39 +134,65 @@ export default function AdminPage() {
   const [otpMsg, setOtpMsg] = useState("");
   const [otpError, setOtpError] = useState("");
 
-  const fetchData = useCallback(async (adminSecret: string) => {
-    const res = await fetch("/api/waitlist", {
-      headers: { "x-admin-secret": adminSecret },
-    });
-    if (res.status === 401) throw new Error("Incorrect password.");
+  // Square panel state
+  type SquareApp = { id: string; title: string; framework: string; visibility: string; isOpenSource: boolean; viewCount: number; forkCount: number; adminTakenDown: boolean; authorUsername: string; publishedAt: string };
+  type SquareStats = {
+    total: number;
+    totalActive: number;
+    totalTakenDown: number;
+    byFramework: { framework: string; cnt: number }[];
+    byVisibility: { visibility: string; cnt: number }[];
+    topViewed: SquareApp[];
+    perUser: { userId: string; authorUsername: string; appCount: number; totalViews: number; totalForks: number }[];
+    recent: SquareApp[];
+  };
+  const [squareStats, setSquareStats] = useState<SquareStats | null>(null);
+  const [squareLoading, setSquareLoading] = useState(false);
+  const [squareError, setSquareError] = useState("");
+  const [squareActioning, setSquareActioning] = useState<string | null>(null);
+  const [squareFilter, setSquareFilter] = useState<"all" | "active" | "takendown">("all");
+
+  const fetchData = useCallback(async () => {
+    const res = await fetch("/api/waitlist", { credentials: "include" });
+    if (res.status === 401 || res.status === 403) {
+      navigate("/admin/login");
+      throw new Error("未登录");
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error((body as { error?: string }).error ?? "Something went wrong.");
     }
     return res.json() as Promise<WaitlistData>;
-  }, []);
+  }, [navigate]);
+
+  // JWT 鉴权检查：挂载时调用 /me，未登录跳转登录页
+  useEffect(() => {
+    if (authChecked.current) return;
+    authChecked.current = true;
+    fetch("/api/admin/auth/me", { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) { navigate("/admin/login"); return; }
+        // 已登录，加载 waitlist 数据
+        try {
+          const json = await fetchData();
+          setData(json);
+          setAuthed(true);
+        } catch {
+          // fetchData 内部已处理跳转
+        }
+      })
+      .catch(() => navigate("/admin/login"));
+  }, [navigate, fetchData]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!secret.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const json = await fetchData(secret.trim());
-      setData(json);
-      setAuthed(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reach the server.");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function handleRefresh() {
     setLoading(true);
     setError("");
     try {
-      setData(await fetchData(secret.trim()));
+      setData(await fetchData());
       setSelected(new Set());
       setSendResult("");
     } catch (err) {
@@ -176,7 +206,7 @@ export default function AdminPage() {
   async function fetchUsers() {
     setUsersLoading(true); setUsersError("");
     try {
-      const res = await fetch("/api/admin/users", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/users", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setAppUsers(json.items ?? []);
@@ -191,7 +221,7 @@ export default function AdminPage() {
   async function fetchFeedback() {
     setFeedbackLoading(true); setFeedbackError("");
     try {
-      const res = await fetch("/api/admin/feedback", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/feedback", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setFeedbackItems(json.feedback ?? []);
@@ -209,7 +239,8 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/feedback/${feedbackId}/reply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ message: msgContent }),
       });
       if (!res.ok) throw new Error("发送失败");
@@ -234,7 +265,7 @@ export default function AdminPage() {
   async function fetchChangelog() {
     setChangelogLoading(true); setChangelogError("");
     try {
-      const res = await fetch("/api/admin/changelog", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/changelog", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setChangelogItems(json.entries ?? []);
@@ -253,7 +284,8 @@ export default function AdminPage() {
       const method = changelogForm.editId ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ version: changelogForm.version.trim() || undefined, title: changelogForm.title.trim(), content: changelogForm.content.trim(), isPublished: changelogForm.isPublished }),
       });
       if (!res.ok) throw new Error("保存失败");
@@ -271,7 +303,7 @@ export default function AdminPage() {
   async function deleteChangelogEntry(id: number) {
     if (!window.confirm("确认删除该条目？")) return;
     try {
-      const res = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("删除失败");
       setChangelogItems((prev) => prev.filter((e) => e.id !== id));
       setChangelogMsg("已删除"); setTimeout(() => setChangelogMsg(""), 2000);
@@ -281,13 +313,14 @@ export default function AdminPage() {
   async function notifyChangelog(id: number) {
     if (!window.confirm("确认向所有用户推送该更新通知？")) return;
     try {
-      const res = await fetch(`/api/admin/changelog/${id}/notify`, { method: "POST", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/changelog/${id}/notify`, { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("推送失败");
       const json = await res.json();
       // 推送成功后自动标记为已发布
       await fetch(`/api/admin/changelog/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ isPublished: true }),
       });
       setChangelogItems((prev) => prev.map((e) => e.id === id ? { ...e, isPublished: true } : e));
@@ -300,7 +333,8 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/changelog/${item.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ isPublished: !item.isPublished }),
       });
       if (!res.ok) throw new Error("操作失败");
@@ -313,8 +347,8 @@ export default function AdminPage() {
     setSecLoading(true); setSecError("");
     try {
       const [ipRes, userRes] = await Promise.all([
-        fetch("/api/admin/blocklist/ip", { headers: { "x-admin-secret": secret.trim() } }),
-        fetch("/api/admin/blocklist/users", { headers: { "x-admin-secret": secret.trim() } }),
+        fetch("/api/admin/blocklist/ip", { credentials: "include" }),
+        fetch("/api/admin/blocklist/users", { credentials: "include" }),
       ]);
       const ipData = await ipRes.json();
       const userData = await userRes.json();
@@ -331,7 +365,7 @@ export default function AdminPage() {
     setSecError(""); setSecMsg("");
     try {
       const res = await fetch(`/api/admin/blocklist/ip/${encodeURIComponent(ip)}`, {
-        method: "DELETE", headers: { "x-admin-secret": secret.trim() },
+        method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error("解除失败");
       setSecMsg(`IP ${ip} 已解除封禁`);
@@ -345,7 +379,7 @@ export default function AdminPage() {
     setSecError(""); setSecMsg("");
     try {
       const res = await fetch(`/api/admin/blocklist/users/${userId}`, {
-        method: "DELETE", headers: { "x-admin-secret": secret.trim() },
+        method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error("解除失败");
       setSecMsg(`账号 ${username} 已解除锁定`);
@@ -362,7 +396,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/blocklist/ip", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ ip: manualIp.trim(), durationHours: 1, reason: manualReason.trim() || "手动封禁" }),
       });
       if (!res.ok) throw new Error("封禁失败");
@@ -379,7 +414,7 @@ export default function AdminPage() {
     setOtpLoading(true); setOtpError(""); setOtpMsg("");
     try {
       const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("查询失败");
       const json = await res.json();
@@ -397,7 +432,7 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
         method: "DELETE",
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("清除失败");
       const json = await res.json();
@@ -430,6 +465,63 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, activeTab]);
 
+  async function fetchSquare(filter: "all" | "active" | "takendown" = "all") {
+    setSquareLoading(true);
+    setSquareError("");
+    try {
+      const res = await fetch(`/api/admin/square?filter=${filter}`, { credentials: "include" });
+      if (!res.ok) throw new Error("获取失败");
+      setSquareStats(await res.json());
+    } catch {
+      setSquareError("加载创造者广场数据失败，请重试");
+    } finally {
+      setSquareLoading(false);
+    }
+  }
+
+  async function takedownSquareApp(id: string) {
+    if (!confirm("确认强制下架此应用？下架后记录保留，可随时重新上架。")) return;
+    setSquareActioning(id);
+    try {
+      const res = await fetch(`/api/admin/square/${id}/takedown`, { method: "PATCH", credentials: "include" });
+      if (!res.ok) throw new Error();
+      setSquareStats((prev) => prev ? {
+        ...prev,
+        totalActive: prev.totalActive - 1,
+        totalTakenDown: prev.totalTakenDown + 1,
+        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: true } : a),
+      } : null);
+    } catch {
+      alert("下架失败，请重试");
+    } finally {
+      setSquareActioning(null);
+    }
+  }
+
+  async function restoreSquareApp(id: string) {
+    if (!confirm("确认重新上架此应用？")) return;
+    setSquareActioning(id);
+    try {
+      const res = await fetch(`/api/admin/square/${id}/restore`, { method: "PATCH", credentials: "include" });
+      if (!res.ok) throw new Error();
+      setSquareStats((prev) => prev ? {
+        ...prev,
+        totalActive: prev.totalActive + 1,
+        totalTakenDown: prev.totalTakenDown - 1,
+        recent: prev.recent.map((a) => a.id === id ? { ...a, adminTakenDown: false } : a),
+      } : null);
+    } catch {
+      alert("上架失败，请重试");
+    } finally {
+      setSquareActioning(null);
+    }
+  }
+
+  useEffect(() => {
+    if (authed && activeTab === "square") fetchSquare();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, activeTab]);
+
   // 点击页面任意处关闭表头筛选下拉。
   useEffect(() => {
     if (!openHeader) return;
@@ -446,10 +538,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/send-invites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-secret": secret.trim(),
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ ids: Array.from(selected) }),
       });
       const body = await res.json();
@@ -467,7 +557,7 @@ export default function AdminPage() {
   async function handleExportCSV() {
     try {
       const res = await fetch("/api/admin/export-csv", {
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -610,46 +700,10 @@ export default function AdminPage() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 pt-36 pb-20">
 
-        {/* Login */}
+        {/* Loading state while auth check runs */}
         {!authed && (
-          <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
-            <h1
-              className="font-bold text-black mb-3 leading-tight"
-              style={{ fontSize: "clamp(36px, 5vw, 52px)", fontFamily: FONT }}
-            >
-              CascadeAI Admin
-            </h1>
-            <p className="text-gray-500 text-[16px] mb-10">
-              Enter your admin password to continue.
-            </p>
-            <form onSubmit={handleLogin} className="flex flex-col gap-3 w-full max-w-sm">
-              <input
-                type="password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                placeholder="Admin password"
-                required
-                className="w-full px-4 py-3 rounded-xl text-[14px] outline-none text-gray-900 placeholder:text-gray-400"
-                style={{
-                  background: "rgba(255,255,255,0.9)",
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
-                }}
-                onFocus={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.4)"; }}
-                onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.12)"; }}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
-                style={{ background: "#111827", boxShadow: "0 4px 16px rgba(0,0,0,0.18)" }}
-              >
-                {loading ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
-            {error && (
-              <p className="mt-4 text-[13px] text-red-500">{error}</p>
-            )}
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <p className="text-gray-400 text-[14px]">验证登录状态…</p>
           </div>
         )}
 
@@ -658,7 +712,7 @@ export default function AdminPage() {
           <>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-8 border-b border-black/[0.07]">
-              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"], ["changelog", "更新看板"]] as [AdminTab, string][]).map(([tab, label]) => {
+              {([["waitlist", "Waitlist"], ["users", "用户"], ["security", "安全管理"], ["feedback", "用户建议"], ["changelog", "更新看板"], ["square", "创造者广场"]] as [AdminTab, string][]).map(([tab, label]) => {
                 const unrepliedCount = tab === "feedback" ? feedbackItems.filter(f => !f.repliedAt).length : 0;
                 return (
                   <button
@@ -674,7 +728,7 @@ export default function AdminPage() {
                         className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full text-white font-bold"
                         style={{ background: "#ef4444", fontSize: 9, minWidth: 14, height: 14, padding: "0 3px" }}
                       >
-                        {unrepliedCount > 99 ? "99+" : unrepliedCount}
+                        {unrepliedCount}
                       </span>
                     )}
                   </button>
@@ -689,7 +743,7 @@ export default function AdminPage() {
                   className="font-bold text-black leading-tight"
                   style={{ fontSize: "clamp(28px, 4vw, 40px)", fontFamily: FONT }}
                 >
-                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : activeTab === "feedback" ? "用户建议" : activeTab === "changelog" ? "更新看板" : "安全管理"}
+                  {activeTab === "waitlist" ? "Waitlist" : activeTab === "users" ? "用户" : activeTab === "feedback" ? "用户建议" : activeTab === "changelog" ? "更新看板" : activeTab === "square" ? "创造者广场" : "安全管理"}
                 </h1>
                 {activeTab === "waitlist" && (
                   <p className="text-gray-500 text-[14px] mt-1">cascadeai.co · {data.total} subscribers</p>
@@ -702,6 +756,9 @@ export default function AdminPage() {
                 )}
                 {activeTab === "changelog" && (
                   <p className="text-gray-500 text-[14px] mt-1">共 {changelogItems.length} 条 · 已发布 {changelogItems.filter((e) => e.isPublished).length} 条</p>
+                )}
+                {activeTab === "square" && squareStats && (
+                  <p className="text-gray-500 text-[14px] mt-1">共 {squareStats.total} 个应用 · 上架 {squareStats.totalActive} · 下架 {squareStats.totalTakenDown} · {squareStats.perUser.length} 位创作者</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -762,6 +819,16 @@ export default function AdminPage() {
                       + 新增
                     </button>
                   </>
+                )}
+                {activeTab === "square" && (
+                  <button
+                    onClick={() => fetchSquare(squareFilter)}
+                    disabled={squareLoading}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+                  >
+                    {squareLoading ? "刷新中…" : "刷新"}
+                  </button>
                 )}
               </div>
             </div>
@@ -1068,7 +1135,14 @@ export default function AdminPage() {
                                 return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={style}>{cat}</span>;
                               })()}
                             </td>
-                            <td className="px-5 py-3.5 text-gray-600">{userColByKey["auth"].value(u)}</td>
+                            <td className="px-5 py-3.5 text-gray-600">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {u.phone && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>📱</span>}
+                                {u.email && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(99,102,241,0.08)", color: "#4f46e5" }}>📧</span>}
+                                {u.githubId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(0,0,0,0.06)", color: "#333" }}>GH</span>}
+                                {u.wechatOpenId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#07c160" }}>微信</span>}
+                              </div>
+                            </td>
                             <td className="px-5 py-3.5">
                               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={u.activated ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" } : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}>
                                 {u.activated ? "已激活" : "未激活"}
@@ -1541,6 +1615,194 @@ export default function AdminPage() {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Creator Square tab ───────────────────────────────────── */}
+            {activeTab === "square" && (
+              <div>
+                {squareLoading && <p className="text-[13px] text-gray-400">加载中…</p>}
+                {squareError && <p className="text-[13px] text-red-500">{squareError}</p>}
+                {squareStats && !squareLoading && (<>
+                  {/* ── Top stat cards ── */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                    {[
+                      { label: "总记录数", value: squareStats.total },
+                      { label: "当前上架", value: squareStats.totalActive, color: "#16a34a" },
+                      { label: "强制下架", value: squareStats.totalTakenDown, color: squareStats.totalTakenDown > 0 ? "#dc2626" : undefined },
+                      { label: "创作者数", value: squareStats.perUser.length },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                        <p className="text-[12px] text-gray-400 mb-1">{label}</p>
+                        <p className="text-[28px] font-bold leading-none" style={{ color: color ?? "#000" }}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Framework breakdown + Visibility breakdown ── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                    {/* Framework */}
+                    <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">项目类型分布（上架）</h3>
+                      <div className="space-y-2">
+                        {squareStats.byFramework.map(({ framework, cnt }) => {
+                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
+                          const labels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "React Native", flutter: "Flutter", kotlin: "Kotlin", wechat: "微信小程序", swiftui: "SwiftUI" };
+                          return (
+                            <div key={framework}>
+                              <div className="flex justify-between text-[12px] mb-1">
+                                <span className="text-gray-600">{labels[framework] ?? framework}</span>
+                                <span className="text-gray-400">{cnt} ({pct}%)</span>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-black rounded-full transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Visibility */}
+                    <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                      <h3 className="text-[13px] font-semibold text-gray-700 mb-4">可见性分布（上架）</h3>
+                      <div className="space-y-2">
+                        {squareStats.byVisibility.map(({ visibility, cnt }) => {
+                          const pct = squareStats.totalActive > 0 ? Math.round((cnt / squareStats.totalActive) * 100) : 0;
+                          const labels: Record<string, string> = { public: "公开", link_only: "链接可见", private: "私有" };
+                          const colors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#6b7280" };
+                          return (
+                            <div key={visibility}>
+                              <div className="flex justify-between text-[12px] mb-1">
+                                <span className="text-gray-600">{labels[visibility] ?? visibility}</span>
+                                <span className="text-gray-400">{cnt} ({pct}%)</span>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: colors[visibility] ?? "#111" }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Per-user breakdown ── */}
+                  <div className="rounded-2xl overflow-hidden mb-8" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                    <div className="px-5 py-4 border-b border-black/[0.05]" style={{ background: "rgba(255,255,255,0.95)" }}>
+                      <h3 className="text-[13px] font-semibold text-gray-700">创作者发布统计</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[13px]" style={{ background: "rgba(255,255,255,0.9)" }}>
+                        <thead>
+                          <tr className="border-b border-black/[0.05]">
+                            {["用户名", "发布数", "总浏览量", "总 Fork 数"].map((h) => (
+                              <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {squareStats.perUser.map((u) => (
+                            <tr key={u.userId} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors">
+                              <td className="px-5 py-3.5 font-medium text-gray-900">{u.authorUsername}</td>
+                              <td className="px-5 py-3.5 text-gray-600">{u.appCount}</td>
+                              <td className="px-5 py-3.5 text-gray-600">{u.totalViews ?? 0}</td>
+                              <td className="px-5 py-3.5 text-gray-600">{u.totalForks ?? 0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ── All apps with filter + admin actions ── */}
+                  <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                    <div className="px-5 py-4 border-b border-black/[0.05] flex items-center justify-between gap-4" style={{ background: "rgba(255,255,255,0.95)" }}>
+                      <h3 className="text-[13px] font-semibold text-gray-700">全部应用（最多 100 条）</h3>
+                      {/* Filter tabs */}
+                      <div className="flex items-center gap-1">
+                        {([ ["all", "全部"], ["active", "已上架"], ["takendown", "已下架"] ] as ["all" | "active" | "takendown", string][]).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => {
+                              setSquareFilter(val);
+                              fetchSquare(val);
+                            }}
+                            className="px-3 py-1 rounded-full text-[12px] font-medium transition-colors"
+                            style={squareFilter === val
+                              ? { background: "#111", color: "#fff" }
+                              : { background: "transparent", color: "#6b7280", border: "1px solid rgba(0,0,0,0.1)" }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[13px]" style={{ background: "rgba(255,255,255,0.9)" }}>
+                        <thead>
+                          <tr className="border-b border-black/[0.05]">
+                            {["应用名", "作者", "类型", "可见性", "状态", "开源", "浏览", "Fork", "发布时间", "操作"].map((h) => (
+                              <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {squareStats.recent.map((app) => {
+                            const fwLabels: Record<string, string> = { tool: "工具效率", game: "游戏娱乐", ai: "AI 应用", education: "教育学习", content: "内容创作", data: "数据可视化", life: "生活服务", other: "其他", web: "Web", "rn-expo": "RN", flutter: "Flutter", kotlin: "Kotlin", wechat: "小程序", swiftui: "SwiftUI" };
+                            const visLabels: Record<string, string> = { public: "公开", link_only: "链接", private: "私有" };
+                            const visColors: Record<string, string> = { public: "#22c55e", link_only: "#f59e0b", private: "#9ca3af" };
+                            const isBusy = squareActioning === app.id;
+                            return (
+                              <tr key={app.id} className="border-b border-black/[0.04] hover:bg-gray-50/50 transition-colors" style={app.adminTakenDown ? { opacity: 0.6 } : {}}>
+                                <td className="px-4 py-3.5 font-medium text-gray-900 max-w-[160px] truncate">{app.title}</td>
+                                <td className="px-4 py-3.5 text-gray-500">{app.authorUsername}</td>
+                                <td className="px-4 py-3.5">
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">{fwLabels[app.framework] ?? app.framework}</span>
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: `${visColors[app.visibility]}20`, color: visColors[app.visibility] }}>{visLabels[app.visibility] ?? app.visibility}</span>
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  {app.adminTakenDown ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(239,68,68,0.08)", color: "#dc2626" }}>已下架</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>上架中</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 text-gray-500">{app.isOpenSource ? "✅" : "—"}</td>
+                                <td className="px-4 py-3.5 text-gray-500">{app.viewCount}</td>
+                                <td className="px-4 py-3.5 text-gray-500">{app.forkCount}</td>
+                                <td className="px-4 py-3.5 text-gray-400 whitespace-nowrap">{new Date(app.publishedAt).toLocaleDateString("zh-CN")}</td>
+                                <td className="px-4 py-3.5">
+                                  {app.adminTakenDown ? (
+                                    <button
+                                      onClick={() => restoreSquareApp(app.id)}
+                                      disabled={isBusy}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
+                                      style={{ border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.06)", color: "#16a34a" }}
+                                    >
+                                      {isBusy ? "操作中…" : "重新上架"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => takedownSquareApp(app.id)}
+                                      disabled={isBusy}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40 whitespace-nowrap"
+                                      style={{ border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)", color: "#dc2626" }}
+                                    >
+                                      {isBusy ? "操作中…" : "强制下架"}
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>)}
               </div>
             )}
           </>

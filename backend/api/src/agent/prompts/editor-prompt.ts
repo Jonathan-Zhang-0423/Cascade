@@ -42,7 +42,54 @@ Use these when they add value — they are not required for every step.
 - Always write COMPLETE file content — never partial files or diffs.
 - If a step is unclear, make a reasonable minimal interpretation and proceed.
 - Do NOT perform validation, testing, or verification — only produce code output.
-- Narrate only when your reasoning changes — what you just learned from a tool result, what you now intend to do because of it, or what surprised you. Do not narrate tool invocations themselves ("I'll read the file", "I'll write the file") — the user can already see the tool calls. Aim for silence between tool calls unless you have something substantive to say. **CRITICAL: You MUST narrate in the exact same language as the user's request. If the user wrote in Chinese, every narration sentence must be in Chinese. Never mix languages. NEVER use markdown syntax in narration — no **, no ##, no bullet points, no headers. Write in plain natural sentences only. KEEP NARRATION TO ONE SHORT SENTENCE — 15 words or fewer (Chinese: 15 characters or fewer). Never write multiple sentences.** Example of good narration: "The game loop isn't resetting the score on death." Example of filler to avoid: "I'll now read script.js to check the game loop."`;
+- Narrate only when your reasoning changes — what you just learned from a tool result, what you now intend to do because of it, or what surprised you. Do not narrate tool invocations themselves ("I'll read the file", "I'll write the file") — the user can already see the tool calls. Aim for silence between tool calls unless you have something substantive to say. **CRITICAL: You MUST narrate in the exact same language as the user's request. If the user wrote in Chinese, every narration sentence must be in Chinese. Never mix languages. NEVER use markdown syntax in narration — no **, no ##, no bullet points, no headers. Write in plain natural sentences only. KEEP NARRATION TO ONE SHORT SENTENCE — 15 words or fewer (Chinese: 15 characters or fewer). Never write multiple sentences.** Example of good narration: "The game loop isn't resetting the score on death." Example of filler to avoid: "I'll now read script.js to check the game loop."
+
+## Demo Interaction Script (REQUIRED before finish_build)
+
+After completing ALL build steps and before calling finish_build, you MUST call submit_interaction_script with a JSON script that demonstrates the app's core user journey.
+
+This script is used to auto-record a real demo video of the app running without any user involvement — so it must accurately reflect the app you just built.
+
+**Script rules (violations cause the tool to reject and ask you to fix):**
+1. First step MUST be: \`{ "action": "waitFor", "loadState": "networkidle" }\`
+2. Use ONLY semantic selectors: \`by: "role"\`, \`by: "text"\`, \`by: "label"\`, \`by: "placeholder"\`
+3. NEVER use CSS selectors (\`#id\`, \`.class\`, \`div\`, etc.) — they will be rejected
+4. Use \`waitFor\` between interactions to wait for state changes (not hard sleeps)
+5. Cover the main happy path in 8–20 steps, aiming for 15–25 seconds of interaction
+6. If the tool returns a validation error, fix the script and call submit_interaction_script again
+
+**Examples by app type:**
+
+Todo app:
+\`\`\`json
+[
+  { "action": "waitFor", "loadState": "networkidle" },
+  { "action": "click", "by": "placeholder", "placeholder": "Add a task..." },
+  { "action": "fill", "by": "placeholder", "placeholder": "Add a task...", "value": "Buy groceries" },
+  { "action": "press", "key": "Enter" },
+  { "action": "waitFor", "selector": ".todo-item", "state": "visible" },
+  { "action": "fill", "by": "placeholder", "placeholder": "Add a task...", "value": "Read a book" },
+  { "action": "press", "key": "Enter" },
+  { "action": "wait", "ms": 800 },
+  { "action": "click", "by": "role", "role": "checkbox" },
+  { "action": "scroll", "deltaY": 100 }
+]
+\`\`\`
+
+Game app:
+\`\`\`json
+[
+  { "action": "waitFor", "loadState": "networkidle" },
+  { "action": "click", "by": "role", "role": "button", "name": "Start Game" },
+  { "action": "waitFor", "selector": ".game-board", "state": "visible" },
+  { "action": "wait", "ms": 1000 },
+  { "action": "press", "key": "ArrowLeft" },
+  { "action": "press", "key": "ArrowDown" },
+  { "action": "press", "key": "ArrowRight" },
+  { "action": "wait", "ms": 500 },
+  { "action": "press", "key": "ArrowUp" }
+]
+\`\`\``;
 
 export const EDITOR_CHAT_SYSTEM_PROMPT = `You are a professional full-stack development engineer inside Cascade AI. You assist users directly through conversation — answering questions, writing code, and modifying project files.
 

@@ -4,12 +4,14 @@ import https from "https";
 import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import "express-session";
+import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
+import multer from "multer";
 import archiver from "archiver";
 import { z } from "zod";
 // @ts-ignore
@@ -23,7 +25,7 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, notifications } from "@cascade/database";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
 import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
@@ -66,10 +68,16 @@ import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } fr
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
 import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
+import { videoStorage } from "../../infra/video-storage";
+import { addVideoWatermark, addImageWatermark } from "../../infra/watermark";
+import { executeDslSequence, validateDslSequence } from "../video/dsl-executor";
+import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
 import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
+import { adminAuthMiddleware } from "../../auth/admin-auth.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -576,6 +584,14 @@ export async function registerRoutes(
   checkSwiftCompilerOnStartup();
   checkFlutterOnStartup();
 
+  // ── Cookie parser (needed for JWT admin cookies) ────────────────────────────
+  app.use(cookieParser());
+
+  // ── Admin JWT auth routes + middleware ──────────────────────────────────────
+  registerAdminAuthRoutes(app);
+  app.use("/api/admin", adminAuthMiddleware);
+  app.use("/api/waitlist", adminAuthMiddleware);
+
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({
     contentSecurityPolicy: false,
@@ -589,11 +605,15 @@ export async function registerRoutes(
   // Track 429 hits per IP to auto-block after 3 strikes
   const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
 
+  // IPs that are never auto-blocked (owner / admin access)
+  const IP_WHITELIST = new Set(["36.142.94.105", "113.87.160.120", "106.120.98.170", "127.0.0.1", "::1"]);
+
   function getClientIp(req: any): string {
     return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
   }
 
   function isIpBlocked(ip: string): boolean {
+    if (IP_WHITELIST.has(ip)) return false;
     const entry = ipBlocklist.get(ip);
     if (!entry) return false;
     if (entry.blockedUntil > Date.now()) return true;
@@ -601,8 +621,6 @@ export async function registerRoutes(
     return false;
   }
 
-  // IPs that are never auto-blocked (owner / admin access)
-  const IP_WHITELIST = new Set(["36.142.94.105", "127.0.0.1", "::1"]);
 
   function recordIpStrike(ip: string) {
     if (IP_WHITELIST.has(ip)) return; // 白名单 IP 不计 strike
@@ -686,12 +704,14 @@ export async function registerRoutes(
     });
   }
 
-  // All auth endpoints: 30 req / 15 min per IP
-  app.use("/api/auth", makeRateLimiter(30, 15, "Too many requests. Please try again later."));
-  // Login specifically: 10 req / 15 min per IP
+  // 只对敏感认证操作限速，/api/auth/me 等轮询接口不受限
   app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
-  // OTP send: 10 req / 60 min per IP
+  app.use("/api/auth/register", makeRateLimiter(5, 60, "Too many registration attempts. Please wait before trying again."));
   app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
+  app.use("/api/auth/otp/verify-login", makeRateLimiter(10, 15, "Too many attempts. Please wait 15 minutes."));
+  app.use("/api/auth/github", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/wechat", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/reset-password", makeRateLimiter(5, 60, "Too many attempts. Please wait before trying again."));
 
   app.get("/api/providers", (_req, res) => {
     res.json({
@@ -3541,8 +3561,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   // GET /api/admin/feedback — list all feedback (admin only)
   app.get("/api/admin/feedback", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
       const rows = await db
         .select({
           id: userFeedback.id,
@@ -3569,8 +3588,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
   app.post("/api/admin/feedback/:id/reply", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
       const feedbackId = parseInt(req.params.id);
       const { message } = req.body as { message?: string };
       if (!message?.trim()) return res.status(400).json({ error: "Message required" });
@@ -3759,6 +3777,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         experienceLevel: (user as any).experienceLevel,
         hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
         inviteCode: (user as any).inviteCode ?? null,
+        phoneVerified: !!(user as any).phoneVerified,
         trialExpiresAt: (user as any).trialExpiresAt
           ? ((user as any).trialExpiresAt as Date).toISOString()
           : null,
@@ -3785,9 +3804,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       email: (user as any).email ?? null,
       phone: (user as any).phone ?? null,
       githubId: (user as any).githubId ?? null,
+      githubLogin: (user as any).githubLogin ?? null,
+      wechatOpenId: (user as any).wechatOpenId ?? null,
+      wechatNickname: (user as any).wechatNickname ?? null,
+      firstName: (user as any).firstName ?? null,
+      lastName: (user as any).lastName ?? null,
+      bio: (user as any).bio ?? null,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
+      avatarUrl: (user as any).avatarUrl ?? null,
     });
   });
 
@@ -3810,11 +3836,75 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (existing && existing.id !== userId) {
         return res.status(409).json({ error: "Username already taken" });
       }
-      await db.update(users).set({ username: trimmed }).where(eq(users.id, userId));
+      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
       res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[auth/me/username]", err);
       res.status(500).json({ error: "Failed to update username" });
+    }
+  });
+
+  app.get("/api/auth/me/username-cooldown", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
+      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const elapsed = Date.now() - lastChanged.getTime();
+      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
+      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.json({ canChange: false, remainingDays });
+    } catch (err) {
+      console.error("[auth/me/username-cooldown]", err);
+      res.status(500).json({ error: "Failed to check cooldown" });
+    }
+  });
+
+  app.put("/api/auth/me/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
+      const updates: Record<string, string> = {};
+      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
+      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
+      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
+      await db.update(users).set(updates as any).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/me/profile]", err);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Avatar upload
+  const avatarDir = join(resolve("."), "dist", "public", "avatars");
+  const avatarUpload = multer({
+    storage: multer.diskStorage({
+      destination: async (_req, _file, cb) => { await mkdir(avatarDir, { recursive: true }); cb(null, avatarDir); },
+      filename: (req, _file, cb) => { const userId = (req.session as any)?.userId ?? "unknown"; cb(null, `${userId}-${Date.now()}.jpg`); },
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only image files are allowed"));
+    },
+  });
+
+  app.post("/api/auth/me/avatar", avatarUpload.single("avatar"), async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const avatarUrl = `/avatars/${req.file.filename}`;
+      await db.update(users).set({ avatarUrl } as any).where(eq(users.id, userId));
+      res.json({ ok: true, avatarUrl });
+    } catch (err) {
+      console.error("[auth/me/avatar]", err);
+      res.status(500).json({ error: "Failed to upload avatar" });
     }
   });
 
@@ -4016,7 +4106,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const purpose = rawPurpose === "bind_email" ? "bind_email" : "login";
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : rawPurpose === "bind_phone" ? "bind_phone" : "login";
       const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
@@ -4250,6 +4340,42 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  app.post("/api/auth/bind-phone", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+
+      const { target, code } = req.body as { target?: string; code?: string };
+      const normalized = normalizeTarget("sms", target ?? "");
+      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
+      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
+
+      // 先验证 OTP，证明手机所有权
+      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" as any });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      // OTP 验证通过 = 证明了手机所有权，如果该手机被其他账号占用则自动转移
+      const existing = await storage.getUserByPhone(normalized);
+      if (existing && existing.id !== userId) {
+        await db.update(users)
+          .set({ phone: null, phoneVerified: false })
+          .where(eq(users.id, existing.id));
+      }
+
+      await db.update(users)
+        .set({ phone: normalized, phoneVerified: true })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/bind-phone]", err);
+      res.status(500).json({ error: "Bind failed" });
+    }
+  });
+
   // === GitHub OAuth ===
 
   // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
@@ -4287,10 +4413,11 @@ Generate the cascade.md content for this project based on both the plan and the 
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
     await pool.query(
       `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
        ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
-      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state }), expiresAt]
+      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state, mode }), expiresAt]
     );
     const redirectUri = `${baseUrl}/api/auth/github/callback`;
     const params = new URLSearchParams({
@@ -4344,13 +4471,15 @@ Generate the cascade.md content for this project based on both the plan and the 
         [`github_state:${state}`]
       );
       if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
       await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
 
       const clientId = process.env.GITHUB_CLIENT_ID!;
       const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
       const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，全失败后走 nginx 反代
+      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
       const GITHUB_IPS = ["20.205.243.166", "20.27.177.113", "140.82.112.4", "140.82.113.4", "140.82.114.4"];
 
       function tryTokenExchange(ghIp: string, body: string): Promise<any> {
@@ -4387,19 +4516,9 @@ Generate the cascade.md content for this project based on both the plan and the 
         redirect_uri: `${baseUrl}/api/auth/github/callback`,
       });
 
-      // 先并发尝试 IP 直连，全失败再走 nginx 反代 /github-oauth/
-      let tokenData: any;
-      try {
-        tokenData = await Promise.any(GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody)));
-      } catch {
-        console.log("[github/exchange] IP direct failed, falling back to nginx proxy");
-        const proxyTokenRes = await fetch(`${baseUrl}/github-oauth/login/oauth/access_token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: tokenBody,
-        });
-        tokenData = await proxyTokenRes.json();
-      }
+      const tokenData: any = await Promise.any(
+        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
+      ).catch(() => { throw new Error("all_ips_failed"); });
 
       if (!tokenData.access_token) {
         console.error("[github/exchange] token error:", tokenData);
@@ -4408,9 +4527,8 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
       const accessToken = tokenData.access_token;
 
-      // api.github.com 在墙内不稳定，走 nginx /github-api/ 反代
-      const ghApiBase = `${baseUrl}/github-api`;
-      const userRes = await fetch(`${ghApiBase}/user`, {
+      const ghFetch = await getGithubFetch();
+      const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
       if (!userRes.ok) {
@@ -4424,7 +4542,7 @@ Generate the cascade.md content for this project based on both the plan and the 
 
       let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
-        const emailsRes = await fetch(`${ghApiBase}/user/emails`, {
+        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
         });
         if (emailsRes.ok) {
@@ -4436,11 +4554,31 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
 
       const githubId = String(ghUser.id);
+
+      // === BIND MODE: 将 GitHub 绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该 GitHub 账号是否已被其他用户占用
+        const existingGh = await storage.getUserByGithubId(githubId);
+        if (existingGh && existingGh.id !== userId) {
+          res.status(409).json({ error: "github_already_linked" });
+          return;
+        }
+        if (!existingGh || existingGh.id !== userId) {
+          await storage.linkGithubToUser(userId, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, githubLogin: ghUser.login });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
       let user = await storage.getUserByGithubId(githubId);
       if (!user && primaryEmail) {
         const matched = await storage.getUserByEmail(primaryEmail);
         if (matched) {
-          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url });
+          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
         }
       }
       if (!user) {
@@ -4455,6 +4593,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           githubId,
           email: primaryEmail,
           avatarUrl: ghUser.avatar_url,
+          githubLogin: ghUser.login,
         });
       }
 
@@ -4482,10 +4621,11 @@ Generate the cascade.md content for this project based on both the plan and the 
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
     await pool.query(
       `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
        ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
-      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state }), expiresAt]
+      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state, mode }), expiresAt]
     );
     const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/wechat/callback`);
     const authorizeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
@@ -4521,16 +4661,20 @@ Generate the cascade.md content for this project based on both the plan and the 
       const { code, state } = req.body as { code?: string; state?: string };
       if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
 
+      // Verify state
       const row = await pool.query(
         `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
         [`wechat_state:${state}`]
       );
       if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
       await pool.query(`DELETE FROM session WHERE sid = $1`, [`wechat_state:${state}`]);
 
       const appId = process.env.WECHAT_APP_ID!;
       const appSecret = process.env.WECHAT_APP_SECRET!;
 
+      // Exchange code for access_token
       const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appId}&secret=${appSecret}&code=${code}&grant_type=authorization_code`;
       const tokenRes = await fetch(tokenUrl);
       const tokenData = await tokenRes.json() as {
@@ -4547,6 +4691,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return;
       }
 
+      // Fetch user info
       const userInfoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}`;
       const userInfoRes = await fetch(userInfoUrl);
       const wxUser = await userInfoRes.json() as {
@@ -4568,8 +4713,29 @@ Generate the cascade.md content for this project based on both the plan and the 
       const nickname = wxUser.nickname || "微信用户";
       const avatar = wxUser.headimgurl || null;
 
+      // === BIND MODE: 将微信绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该微信账号是否已被其他用户占用
+        const existingWx = await storage.getUserByWechatOpenId(openId);
+        if (existingWx && existingWx.id !== userId) {
+          res.status(409).json({ error: "wechat_already_linked" });
+          return;
+        }
+        if (!existingWx || existingWx.id !== userId) {
+          await storage.linkWechatToUser(userId, { openId, unionId, avatarUrl: avatar, nickname });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, wechatNickname: nickname });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
+      // Find or create user
       let user = await storage.getUserByWechatOpenId(openId);
       if (!user) {
+        // Generate unique username from nickname
         let candidate = nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user";
         let suffix = 0;
         while (await storage.getUserByUsername(candidate)) {
@@ -4581,9 +4747,11 @@ Generate the cascade.md content for this project based on both the plan and the 
           openId,
           unionId,
           avatarUrl: avatar,
+          nickname,
         });
       }
 
+      // Set session
       (req.session as any).userId = user.id;
       await new Promise<void>((resolve, reject) =>
         req.session.save((err) => err ? reject(err) : resolve())
@@ -4598,6 +4766,44 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[auth/wechat/exchange]", err);
       res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // === Unbind GitHub ===
+  app.post("/api/auth/unbind-github", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).githubId) return res.status(400).json({ error: "GitHub not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).wechatOpenId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ githubId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-github]", err);
+      res.status(500).json({ error: "Unbind failed" });
+    }
+  });
+
+  // === Unbind WeChat ===
+  app.post("/api/auth/unbind-wechat", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).wechatOpenId) return res.status(400).json({ error: "WeChat not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).githubId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ wechatOpenId: null, wechatUnionId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-wechat]", err);
+      res.status(500).json({ error: "Unbind failed" });
     }
   });
 
@@ -4866,11 +5072,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     return `${inviteCodePrefix(email)}${randomSuffix()}`;
   }
   function checkAdmin(req: any, res: any): boolean {
-    if (!ADMIN_SECRET) {
-      res.status(503).json({ error: "Admin access not configured" });
-      return false;
-    }
-    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+    if (!req.adminUser) {
       res.status(401).json({ error: "Unauthorized" });
       return false;
     }
@@ -5093,6 +5295,128 @@ Generate the cascade.md content for this project based on both the plan and the 
       lockedUntil: new Date(entry.lockedUntil).toISOString(),
       remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
     });
+  });
+
+  // ── Admin: Creator Square dashboard ────────────────────────────────────────
+
+  // GET /api/admin/square — aggregate stats + per-user breakdown
+  // Query param: ?filter=all|active|takendown (default: all)
+  app.get("/api/admin/square", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const filter = (req.query.filter as string) ?? "all";
+      const filterCond =
+        filter === "active" ? eq(publishedApps.adminTakenDown, false) :
+        filter === "takendown" ? eq(publishedApps.adminTakenDown, true) :
+        undefined;
+
+      // Total (all records regardless of filter)
+      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+      const [{ totalActive }] = await db.select({ totalActive: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, false));
+      const [{ totalTakenDown }] = await db.select({ totalTakenDown: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, true));
+
+      // By framework (active only for stats)
+      const byFramework = await db
+        .select({ framework: publishedApps.framework, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.framework)
+        .orderBy(desc(count()));
+
+      // By visibility (active only)
+      const byVisibility = await db
+        .select({ visibility: publishedApps.visibility, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.visibility);
+
+      // Top view_count (active only)
+      const topViewed = await db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.adminTakenDown, false))
+        .orderBy(desc(publishedApps.viewCount))
+        .limit(10);
+
+      // Per-user breakdown (all records)
+      const perUser = await db
+        .select({
+          userId: publishedApps.userId,
+          authorUsername: users.username,
+          appCount: count(),
+          totalViews: sql<number>`sum(${publishedApps.viewCount})`,
+          totalForks: sql<number>`sum(${publishedApps.forkCount})`,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .groupBy(publishedApps.userId, users.username)
+        .orderBy(desc(count()));
+
+      // All apps with filter applied, up to 100
+      const recentQuery = db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          visibility: publishedApps.visibility,
+          isOpenSource: publishedApps.isOpenSource,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          adminTakenDown: publishedApps.adminTakenDown,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .orderBy(desc(publishedApps.publishedAt))
+        .limit(100);
+
+      const recent = filterCond
+        ? await recentQuery.where(filterCond)
+        : await recentQuery;
+
+      res.json({ total, totalActive, totalTakenDown, byFramework, byVisibility, topViewed, perUser, recent });
+    } catch (err) {
+      console.error("[admin/square]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/takedown — admin soft takedown
+  app.patch("/api/admin/square/:id/takedown", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: true, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/takedown]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/restore — admin restore a taken-down app
+  app.patch("/api/admin/square/:id/restore", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: false, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/restore]", err);
+      res.status(500).json({ error: "failed" });
+    }
   });
 
   // POST /api/admin/send-invites — manual bulk send by IDs
@@ -5436,9 +5760,11 @@ Generate the cascade.md content for this project based on both the plan and the 
           username: u.username,
           email: u.email,
           phone: u.phone,
+          githubId: u.githubId ?? null,
+          wechatOpenId: u.wechatOpenId ?? null,
           // 已激活 = 已兑换邀请码（通过邀请码门）。
           activated: !!u.inviteCode,
-          authMethod: u.githubId ? "github" : u.email ? "email" : u.phone ? "phone" : "other",
+          authMethod: u.githubId ? "github" : u.wechatOpenId ? "wechat" : u.email ? "email" : u.phone ? "phone" : "other",
           projectCount: projectCountMap.get(u.id) ?? 0,
           lastActiveAt: lastActiveTs ? new Date(lastActiveTs).toISOString() : null,
           trialExpiresAt: u.trialExpiresAt ? new Date(u.trialExpiresAt).toISOString() : null,
@@ -5521,115 +5847,188 @@ Generate the cascade.md content for this project based on both the plan and the 
     jobId: string,
     projectId: string,
     duration: 10 | 20 | 30,
+    videoDbId?: string,
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any = null;
-    let ffmpegAbort: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let context: any = null;
+    let previewToken: string | null = null;
     let aborted = false;
+
+    const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
+      if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
+    };
+
+    const stopPreview = () => {
+      if (previewToken) {
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: previewToken }),
+        }).catch(() => {});
+        previewToken = null;
+      }
+    };
 
     const timeout = setTimeout(() => {
       aborted = true;
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      if (ffmpegAbort) ffmpegAbort();
       job.status = "error";
       job.error = "timeout";
       job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
+      stopPreview();
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // dynamic import via variable so tsc does not resolve the module at compile time
+      // ── Step 1: Start preview-serve (NO login required, 100% reliable) ──
+      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
+      if (projectFiles.length === 0) {
+        throw new Error("Project has no files to preview");
+      }
+      const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
+      const startData = await startRes.json() as { token: string; url: string };
+      previewToken = startData.token;
+      const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
+
+      // ── Step 2: Launch Playwright ──
       const pwModule = "playwright";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      const page = await browser.newPage();
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, { waitUntil: "networkidle", timeout: 30_000 });
-
-      job.status = "running";
-      const totalFrames = duration * 10;
-      const intervalMs = 100;
-
-      for (let i = 0; i < totalFrames; i++) {
-        if (aborted) return;
-        const framePath = join(tmpDir, `frame_${String(i).padStart(4, "0")}.png`);
-        await page.screenshot({ path: framePath });
-        const pct = Math.floor(((i + 1) / totalFrames) * 90);
-        job.progress = pct;
-        await new Promise<void>((r) => setTimeout(r, intervalMs));
-      }
-
-      await browser.close();
-      browser = null;
-
-      if (aborted) return;
-
-      const outputPath = join(tmpDir, "output.mp4");
-      const ffResult = await new Promise<{ exitCode: number; timedOut: boolean }>((resolve) => {
-        const child = spawn("ffmpeg", [
-          "-framerate", "10",
-          "-i", join(tmpDir, "frame_%04d.png"),
-          "-c:v", "libx264",
-          "-pix_fmt", "yuv420p",
-          "-y",
-          outputPath,
-        ], { cwd: tmpDir });
-
-        ffmpegAbort = () => { try { child.kill("SIGKILL"); } catch {} };
-
-        let settled = false;
-        const ffTimer = setTimeout(() => {
-          if (!settled) { settled = true; try { child.kill("SIGKILL"); } catch {} resolve({ exitCode: 1, timedOut: true }); }
-        }, 60_000);
-
-        child.on("close", (code) => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: code ?? 1, timedOut: false }); }
-        });
-        child.on("error", () => {
-          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: 1, timedOut: false }); }
-        });
+      context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
       });
+      const page = await context.newPage();
+      job.status = "running";
+      job.progress = 5;
 
-      // delete frame PNGs, keep only MP4
-      const frames = readdirSync(tmpDir).filter((f) => f.endsWith(".png"));
-      await Promise.all(frames.map((f) => rm(join(tmpDir, f), { force: true })));
+      // ── Step 3: Load App — use "load" not "networkidle" for reliability ──
+      await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
+      // Extra wait for JS frameworks to finish rendering
+      await new Promise<void>((r) => setTimeout(r, 3000));
+      job.progress = 15;
+
+      // ── Step 4: Interactions ──
+      const projectRow = await storage.getProject(projectId).catch(() => null);
+      const rawSequence = projectRow?.actionSequence;
+
+      if (rawSequence) {
+        // Use Builder-generated DSL script (precise, app-specific)
+        try {
+          const parsed = JSON.parse(rawSequence);
+          const validation = validateDslSequence(parsed);
+          if (validation.valid && validation.actions) {
+            job.progress = 20;
+            const result = await executeDslSequence(page, validation.actions);
+            if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
+          }
+        } catch (e) {
+          console.warn("[video] DSL error:", e instanceof Error ? e.message : e);
+        }
+      } else {
+        // Generic fallback: scroll + click visible buttons
+        try {
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
+          for (const btn of buttons.slice(0, 3)) {
+            try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
+          }
+          await page.mouse.wheel(0, -600);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+        } catch (e) {
+          console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e);
+        }
+      }
+
+      job.progress = 60;
+
+      // ── Step 5: Fill remaining time precisely ──
+      const usedMs = 3000 + (rawSequence ? 15000 : 8000);
+      const remainingMs = Math.max(2000, duration * 1000 - usedMs);
+      await new Promise<void>((r) => setTimeout(r, remainingMs));
+      job.progress = 80;
+
+      // ── Step 6: Flush video file ──
+      const videoHandle = await page.video();
+      await context.close(); context = null;
+      await browser.close(); browser = null;
+      stopPreview();
 
       if (aborted) return;
 
-      if (ffResult.exitCode !== 0 || !existsSync(outputPath)) {
-        throw new Error("ffmpeg failed");
+      const rawVideoPath = await videoHandle?.path();
+      if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
+
+      // ── Step 7: Watermark ──
+      const watermarkedPath = rawVideoPath.replace(/\.\w+$/, "-wm.mp4");
+      try {
+        await addVideoWatermark(rawVideoPath, watermarkedPath);
+        rm(rawVideoPath, { force: true }).catch(() => {});
+      } catch (wmErr) {
+        console.warn("[video] watermark failed:", wmErr instanceof Error ? wmErr.message : wmErr);
+        const { rename } = await import("fs/promises");
+        await rename(rawVideoPath, watermarkedPath);
       }
 
-      job.outputPath = outputPath;
+      // ── Step 8: Persist ──
+      const storagePath = await videoStorage.save(jobId, watermarkedPath);
+      job.outputPath = storagePath;
       job.progress = 100;
       job.status = "done";
       job.finishedAt = Date.now();
+      updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
+
     } catch (err: unknown) {
       if (!aborted) {
+        const msg = err instanceof Error ? err.message : "unknown";
         job.status = "error";
-        job.error = err instanceof Error ? err.message : "unknown";
+        job.error = msg;
         job.finishedAt = Date.now();
+        updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
       clearTimeout(timeout);
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
+      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      stopPreview();
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   app.post("/api/video/generate", async (req, res) => {
-    const { projectId, duration } = req.body as { projectId?: string; duration?: number };
-    if (!projectId || !duration || !ALLOWED_DURATIONS.has(duration)) {
-      res.status(400).json({ error: "invalid_duration" });
+    const { projectId, duration: rawDuration } = req.body as { projectId?: string; duration?: number };
+    // Default to 30s if not specified or invalid
+    const duration = (!rawDuration || !ALLOWED_DURATIONS.has(rawDuration)) ? 30 : rawDuration;
+    if (!projectId) {
+      res.status(400).json({ error: "projectId required" });
       return;
     }
     if (activeVideoJobs >= MAX_VIDEO_JOBS) {
       res.status(429).json({ error: "too_many_jobs" });
+      return;
+    }
+
+    // Only Web framework previews are stable enough for recording
+    const project = await storage.getProject(projectId).catch(() => null);
+    if (project && project.framework && project.framework !== "web") {
+      res.status(422).json({ error: "unsupported_framework", framework: project.framework });
       return;
     }
 
@@ -5644,8 +6043,26 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
     activeVideoJobs++;
 
-    recordPreview(jobId, projectId, duration as 10 | 20 | 30).catch(() => {});
-    res.json({ jobId });
+    // Create persistent DB record
+    const userId = (req.session as any)?.userId as string | undefined;
+    let videoDbId: string | undefined;
+    try {
+      const { randomUUID } = await import("crypto");
+      const dbRecord = await storage.createProjectVideo({
+        id: randomUUID(),
+        projectId,
+        userId: userId ?? null,
+        status: "pending",
+        duration: duration as number,
+        style: "raw",
+      });
+      videoDbId = dbRecord.id;
+    } catch (e) {
+      console.warn("[video/generate] DB record failed:", e);
+    }
+
+    recordPreview(jobId, projectId, duration as 10 | 20 | 30, videoDbId).catch(() => {});
+    res.json({ jobId, videoId: videoDbId });
   });
 
   app.get("/api/video/status/:jobId", (req, res) => {
@@ -5654,23 +6071,27 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.json({ status: job.status, progress: job.progress, error: job.error ?? undefined });
   });
 
+  // Persistent file download by DB videoId
+  app.get("/api/video/file/:videoId", async (req, res) => {
+    const record = await storage.getProjectVideo(req.params.videoId).catch(() => null);
+    if (!record || record.status !== "done") { res.status(404).end(); return; }
+    if (record.cosUrl) { res.redirect(302, record.cosUrl); return; }
+    const localPath = record.localPath;
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="demo.mp4"`);
+    res.sendFile(localPath);
+  });
+
+  // Legacy download by in-memory jobId (kept for compatibility)
   app.get("/api/video/download/:jobId", (req, res) => {
     const job = videoJobs.get(req.params.jobId);
-    if (!job || job.status !== "done" || !job.outputPath || !existsSync(job.outputPath)) {
-      res.status(404).end();
-      return;
-    }
-    const filePath = job.outputPath;
+    if (!job || job.status !== "done" || !job.outputPath) { res.status(404).end(); return; }
+    const localPath = videoStorage.getLocalPath(job.outputPath);
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
-
-    // clean up after response finishes
-    res.on("finish", () => {
-      rm(filePath, { force: true }).catch(() => {});
-      videoJobs.delete(req.params.jobId);
-    });
-
-    res.sendFile(filePath);
+    res.sendFile(localPath);
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
@@ -5716,6 +6137,642 @@ Generate the cascade.md content for this project based on both the plan and the 
       console.error("[video/send-email] failed:", err);
       res.status(500).json({ error: "send_failed" });
     }
+  });
+
+  // ── Creator Square ────────────────────────────────────────────────────────────
+
+  // GET /api/square — list published apps
+  app.get("/api/square", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const framework = req.query.framework as string | undefined;
+      const category = req.query.category as string | undefined;
+      const sort = (req.query.sort as string) || "latest";
+      const q = (req.query.q as string | undefined)?.trim() || "";
+      const author = (req.query.author as string | undefined)?.trim() || "";
+      const currentUserId = (req.session as any)?.userId as string | undefined;
+
+      // Visibility rule:
+      //   - public: visible to everyone
+      //   - link_only: NOT listed publicly, BUT always visible to the owner regardless of filter
+      //   - private: never listed
+      const visibilityWhere = currentUserId
+        ? sql`(${publishedApps.visibility} = 'public' OR (${publishedApps.userId} = ${currentUserId} AND ${publishedApps.visibility} = 'link_only'))`
+        : eq(publishedApps.visibility, "public");
+
+      const baseWhere = and(
+        visibilityWhere,
+        eq(publishedApps.adminTakenDown, false),
+        ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(category ? [eq(publishedApps.category, category)] : []),
+        ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
+      );
+
+      const fullWhere = q
+        ? and(baseWhere, or(
+            sql`lower(${publishedApps.title}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${publishedApps.description}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${users.username}) like ${"%" + q.toLowerCase() + "%"}`,
+          ))
+        : baseWhere;
+
+      const orderBy = sort === "hottest"
+        ? desc(publishedApps.viewCount)
+        : desc(publishedApps.publishedAt);
+
+      const rows = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          category: publishedApps.category,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere);
+
+      res.json({ apps: rows, total });
+    } catch (err) {
+      console.error("[square/list]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id — get single app (public or link_only allows direct access, private = owner only)
+  app.get("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      const [row] = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.id, req.params.id));
+
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      // private: only owner can view
+      // link_only: anyone with the link can view (not listed in square, but direct access allowed)
+      // public: anyone can view
+      if (row.visibility === "private" && row.userId !== userId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Increment view count asynchronously (non-blocking, fire-and-forget)
+      db.update(publishedApps)
+        .set({ viewCount: sql`${publishedApps.viewCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ app: row });
+    } catch (err) {
+      console.error("[square/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square — publish or update (auth required)
+  app.post("/api/square", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId, title, description, isOpenSource, visibility, previewScreenshot, framework: fw } = req.body as {
+        projectId?: string; title?: string; description?: string;
+        isOpenSource?: boolean; visibility?: string; previewScreenshot?: string; framework?: string;
+      };
+      if (!projectId || !title?.trim()) { res.status(400).json({ error: "missing_fields" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      // Auto-classify app category based on title + description
+      const classifyCategory = (t: string, d: string): string => {
+        const text = (t + " " + d).toLowerCase();
+        if (/游戏|game|play|棋|snake|tetris|puzzle|quiz/.test(text)) return "games";
+        if (/学习|learn|教|study|单词|quiz|课|exam|test|知识/.test(text)) return "education";
+        if (/图表|chart|dashboard|可视化|visual|数据|data|统计|report/.test(text)) return "data-viz";
+        if (/画|draw|write|写作|生成|create|art|design|音乐|video/.test(text)) return "creative";
+        if (/聊天|chat|社交|social|message|留言|论坛|community/.test(text)) return "social";
+        if (/商|shop|finance|金融|支付|pay|电商|订单|invoice/.test(text)) return "business";
+        if (/天气|weather|食谱|cook|健康|health|生活|日历|calendar|todo|habit/.test(text)) return "lifestyle";
+        if (/工具|tool|util|convert|计算|calc|timer|clock|效率|productivity/.test(text)) return "tools";
+        return "other";
+      };
+      const autoCategory = classifyCategory(title.trim(), description?.trim() ?? "");
+
+      // Scope lookup to (projectId + userId) — prevents cross-user collisions
+      const [existing] = await db.select().from(publishedApps)
+        .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
+
+      const appId = existing?.id ?? randomBytes(8).toString("hex");
+      const detectedFramework = fw ?? (project as any).framework ?? "web";
+
+      if (existing) {
+        await db.update(publishedApps).set({
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          category: autoCategory,
+          updatedAt: new Date(),
+        }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
+      } else {
+        await db.insert(publishedApps).values({
+          id: appId,
+          projectId,
+          userId,
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          category: autoCategory,
+        });
+      }
+
+      const [app] = await db.select().from(publishedApps).where(eq(publishedApps.id, appId));
+      res.json({ app });
+    } catch (err) {
+      console.error("[square/publish]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id — unpublish (auth required, owner only)
+  app.delete("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      if (row.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/fork — fork open-source app into user's projects (auth required)
+  app.post("/api/square/:id/fork", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+
+      const sourceFiles = await storage.getProjectFiles(sourceApp.projectId);
+      const newProjectId = randomBytes(8).toString("hex");
+      await storage.createProject({ id: newProjectId, userId, name: `Fork of ${sourceApp.title}`, framework: sourceApp.framework as any });
+      if (sourceFiles.length > 0) {
+        await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
+      }
+      // Increment fork count asynchronously
+      db.update(publishedApps)
+        .set({ forkCount: sql`${publishedApps.forkCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ projectId: newProjectId });
+    } catch (err) {
+      console.error("[square/fork]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/files — get app source files (open-source only)
+  app.get("/api/square/:id/files", async (req, res) => {
+    try {
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+      const files = await storage.getProjectFiles(sourceApp.projectId);
+      res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
+    } catch (err) {
+      console.error("[square/files]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/preview-session — start a preview session for the app's files (web only)
+  // Returns a short-lived token; the client loads /preview-serve/:token/ in an iframe.
+  app.get("/api/square/:id/preview-session", async (req, res) => {
+    try {
+      const [app] = await db
+        .select({ id: publishedApps.id, projectId: publishedApps.projectId, framework: publishedApps.framework, adminTakenDown: publishedApps.adminTakenDown, visibility: publishedApps.visibility, userId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id));
+      if (!app) { res.status(404).json({ error: "not_found" }); return; }
+      if (app.adminTakenDown) { res.status(403).json({ error: "taken_down" }); return; }
+      // Only private apps restrict access (link_only is fine for direct link)
+      const sessionUserId = (req.session as any)?.userId as string | undefined;
+      if (app.visibility === "private" && app.userId !== sessionUserId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Only web apps can be previewed in an iframe
+      if (app.framework !== "web") {
+        res.status(422).json({ error: "not_web", framework: app.framework }); return;
+      }
+
+      const files = await storage.getProjectFiles(app.projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_start_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+      res.json({ token, previewUrl: `/preview-serve/${token}/` });
+    } catch (err) {
+      console.error("[square/preview-session]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+
+  // GET /api/square/authors — list all users who have public published apps
+  app.get("/api/square/authors", async (req, res) => {
+    try {
+      const rows = await db
+        .selectDistinct({
+          username: users.username,
+          appCount: count(),
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false)))
+        .groupBy(users.username)
+        .orderBy(desc(count()));
+      res.json({ authors: rows });
+    } catch (err) {
+      console.error("[square/authors]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/my/apps — list current user's published apps
+  app.get("/api/square/my/apps", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const rows = await db.select().from(publishedApps).where(eq(publishedApps.userId, userId)).orderBy(desc(publishedApps.publishedAt));
+      res.json({ apps: rows });
+    } catch (err) {
+      console.error("[square/my]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/screenshot — take a screenshot of the project preview (auth required)
+  app.post("/api/square/screenshot", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId } = req.body as { projectId?: string };
+      if (!projectId) { res.status(400).json({ error: "missing_projectId" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_session_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+
+      const previewUrl = `http://localhost:${PORT}/preview-serve/${token}/`;
+      const pwModule = "playwright";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
+      const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.goto(previewUrl, { waitUntil: "networkidle", timeout: 20_000 });
+        await new Promise<void>((r) => setTimeout(r, 1500));
+        const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 85 });
+        const base64 = buffer.toString("base64");
+        res.json({ screenshot: `data:image/jpeg;base64,${base64}` });
+      } finally {
+        await browser.close();
+        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[square/screenshot]", err);
+      res.status(500).json({ error: "screenshot_failed" });
+    }
+  });
+
+  // ── Likes ────────────────────────────────────────────────────────────────
+
+  // POST /api/square/:id/like — toggle like (auth required)
+  app.post("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const appId = req.params.id;
+    try {
+      const { randomUUID } = await import("crypto");
+      const existing = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // already liked — unlike
+        await db.delete(appLikes).where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)));
+        await db.update(publishedApps)
+          .set({ likeCount: sql`greatest(${publishedApps.likeCount} - 1, 0)` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: false });
+      } else {
+        // not liked — like
+        await db.insert(appLikes).values({ id: randomUUID(), appId, userId });
+        await db.update(publishedApps)
+          .set({ likeCount: sql`${publishedApps.likeCount} + 1` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: true });
+
+        // Send notification to app owner (fire-and-forget, don't block response)
+        db.select({
+          appTitle: publishedApps.title,
+          ownerId: publishedApps.userId,
+          likerUsername: users.username,
+        })
+          .from(publishedApps)
+          .innerJoin(users, eq(users.id, userId))
+          .where(eq(publishedApps.id, appId))
+          .limit(1)
+          .then(([row]) => {
+            if (!row || row.ownerId === userId) return; // don't notify self-like
+            return db.insert(notifications).values({
+              userId: row.ownerId,
+              type: "app_like",
+              title: "有人点赞了你的应用",
+              body: `@${row.likerUsername} 点赞了你分享的「${row.appTitle}」`,
+              isRead: false,
+            });
+          })
+          .catch((err) => { console.error("[square/like/notif]", err); });
+      }
+    } catch (err) {
+      console.error("[square/like]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/like — check if current user liked this app
+  app.get("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.json({ liked: false }); return; }
+    try {
+      const rows = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, req.params.id), eq(appLikes.userId, userId)))
+        .limit(1);
+      res.json({ liked: rows.length > 0 });
+    } catch (err) {
+      console.error("[square/like/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  // GET /api/square/:id/comments — list comments (public)
+  app.get("/api/square/:id/comments", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const offset = parseInt(req.query.offset as string) || 0;
+    try {
+      const rows = await db
+        .select({
+          id: appComments.id,
+          content: appComments.content,
+          createdAt: appComments.createdAt,
+          userId: appComments.userId,
+          authorUsername: users.username,
+        })
+        .from(appComments)
+        .innerJoin(users, eq(appComments.userId, users.id))
+        .where(eq(appComments.appId, req.params.id))
+        .orderBy(desc(appComments.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(appComments)
+        .where(eq(appComments.appId, req.params.id));
+
+      res.json({ comments: rows, total });
+    } catch (err) {
+      console.error("[square/comments/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/comments — add a comment (auth required)
+  app.post("/api/square/:id/comments", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const content = ((req.body as any)?.content ?? "").trim();
+    if (!content || content.length > 500) {
+      res.status(400).json({ error: "invalid_content" }); return;
+    }
+    try {
+      const { randomUUID } = await import("crypto");
+      const id = randomUUID();
+      const now = new Date();
+      await db.insert(appComments).values({
+        id,
+        appId: req.params.id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Fetch author username and app owner in one join
+      const [notifRow] = await db.select({
+        appTitle: publishedApps.title,
+        ownerId: publishedApps.userId,
+        authorUsername: users.username,
+      })
+        .from(publishedApps)
+        .innerJoin(users, eq(users.id, userId))
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1);
+
+      const authorUsername = notifRow?.authorUsername ?? "unknown";
+
+      res.json({
+        comment: { id, content, createdAt: now, userId, authorUsername }
+      });
+
+      // Send notification to app owner (fire-and-forget, after response)
+      if (notifRow && notifRow.ownerId !== userId) {
+        db.insert(notifications).values({
+          userId: notifRow.ownerId,
+          type: "app_comment",
+          title: "有人评论了你的应用",
+          body: `@${authorUsername} 评论了你分享的「${notifRow.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+          isRead: false,
+        }).catch((err) => { console.error("[square/comment/notif]", err); });
+      }
+    } catch (err) {
+      console.error("[square/comments/post]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id/comments/:commentId — delete comment (owner or admin)
+  app.delete("/api/square/:id/comments/:commentId", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const [comment] = await db
+        .select({ userId: appComments.userId })
+        .from(appComments)
+        .where(eq(appComments.id, req.params.commentId))
+        .limit(1);
+      if (!comment) { res.status(404).json({ error: "not_found" }); return; }
+      if (comment.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(appComments).where(eq(appComments.id, req.params.commentId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/comments/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/aigc/session — create a new AIGC session
+  app.post("/api/aigc/session", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
+
+    const { randomUUID } = await import("crypto");
+    const sessionId = randomUUID();
+    const session: AigcSession = {
+      id: sessionId,
+      projectId,
+      userId,
+      messages: [],
+      events: [],
+      nextEventId: 0,
+      done: false,
+      sseWriters: new Set(),
+    };
+    aigcSessions.set(sessionId, session);
+    res.json({ sessionId });
+  });
+
+  // POST /api/aigc/session/:id/message — send a message to the AIGC agent
+  app.post("/api/aigc/session/:id/message", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    const { message } = req.body as { message?: string };
+    if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
+
+    // Fire-and-forget — client polls via SSE
+    runAigcAgent(session, message.trim()).catch((err) => {
+      console.error("[aigc/session] agent error:", err);
+    });
+    res.json({ ok: true });
+  });
+
+  // GET /api/aigc/session/:id/stream — SSE stream of AIGC events
+  app.get("/api/aigc/session/:id/stream", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).end(); return; }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Replay missed events
+    const lastId = parseInt(req.headers["last-event-id"] as string ?? "-1", 10);
+    for (const ev of session.events) {
+      if ((ev.eventId as number) > lastId) {
+        res.write(`id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`);
+      }
+    }
+
+    const writer = (line: string) => { try { res.write(line); } catch {} };
+    session.sseWriters.add(writer);
+    req.on("close", () => session.sseWriters.delete(writer));
+  });
+
+  // GET /api/aigc/session/:id — get session state
+  app.get("/api/aigc/session/:id", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "not_found" }); return; }
+    res.json({
+      id: session.id,
+      projectId: session.projectId,
+      done: session.done,
+      messageCount: session.messages.length,
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

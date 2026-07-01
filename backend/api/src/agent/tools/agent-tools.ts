@@ -10,6 +10,7 @@ import { buildTestTools } from "./test-tools";
 import { extractBlocks, applyBlockReplacement, formatBlockIndex } from "./block-hash";
 import type { BuildTelemetry } from "../../infra/telemetry";
 import { storage } from "../../infra/storage";
+import { validateDslSequence } from "../../api/video/dsl-executor";
 
 /**
  * Fire-and-forget persist of a single file to the DB. Used by write tools to
@@ -271,6 +272,48 @@ export function buildBuilderTools(
             },
           },
           required: ["summary"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "submit_interaction_script",
+        description: "Submit a JSON interaction script that demonstrates the app's core features. Call this BEFORE finish_build, after all steps are complete. The script will be used to auto-record a real demo video of the app running — no user involvement. If this call fails with a validation error, fix the script and retry.",
+        parameters: {
+          type: "object",
+          properties: {
+            script: {
+              type: "array",
+              description: "Ordered list of interaction steps demonstrating the app's main user journey",
+              items: {
+                type: "object",
+                properties: {
+                  action: { type: "string", enum: ["waitFor", "click", "fill", "press", "hover", "scroll", "wait"] },
+                  by: { type: "string", enum: ["role", "text", "label", "placeholder"] },
+                  role: { type: "string", description: "ARIA role for getByRole" },
+                  name: { type: "string", description: "Accessible name for getByRole" },
+                  text: { type: "string", description: "Visible text for getByText" },
+                  label: { type: "string", description: "Label text for getByLabel" },
+                  placeholder: { type: "string", description: "Placeholder text for getByPlaceholder" },
+                  value: { type: "string", description: "Text to fill into an input" },
+                  key: { type: "string", description: "Keyboard key to press, e.g. 'Enter', 'ArrowLeft'" },
+                  selector: { type: "string", description: "CSS-free selector — only use for loadState/condition waitFor" },
+                  state: { type: "string", description: "Element state for waitFor: visible|hidden|attached|detached" },
+                  loadState: { type: "string", enum: ["load", "domcontentloaded", "networkidle"] },
+                  condition: { type: "string", description: "JS expression for waitForFunction" },
+                  deltaY: { type: "number", description: "Vertical scroll delta in pixels" },
+                  ms: { type: "number", description: "Wait duration in ms (max 3000)" },
+                },
+                required: ["action"],
+              },
+            },
+            duration_hint: {
+              type: "number",
+              description: "Estimated demo video duration in seconds (10–30). Use 15 if unsure.",
+            },
+          },
+          required: ["script", "duration_hint"],
         },
       },
     },
@@ -559,6 +602,20 @@ export function buildBuilderTools(
     finish_build: async (_args, emit) => {
       emit({ type: "build_complete" });
       return "Build finished.";
+    },
+
+    submit_interaction_script: async (args) => {
+      const raw = args.script;
+      const result = validateDslSequence(raw);
+      if (!result.valid) {
+        // Throw so the agent loop does NOT exit — Builder gets another iteration to fix it
+        throw new Error(`submit_interaction_script rejected: ${result.error}`);
+      }
+      const durationHint = typeof args.duration_hint === "number" ? args.duration_hint : 20;
+      if (session.projectId) {
+        storage.updateProjectActionSequence(session.projectId, JSON.stringify(result.actions), durationHint).catch(() => {});
+      }
+      return `Interaction script saved: ${result.actions!.length} steps, ~${durationHint}s demo.`;
     },
   };
 
@@ -956,6 +1013,22 @@ export function buildManagerTools(
               items: { type: "string" },
               description: "Items needing user decision, empty array if none",
             },
+            mode: {
+              type: "string",
+              enum: ["plan", "direct", "media"],
+              description: "Set to 'media' when the user wants to generate promotional posters or demo videos for their App, not write code.",
+            },
+            media_task: {
+              type: "object",
+              description: "Required when mode is 'media'. Describes the AIGC task.",
+              properties: {
+                type: { type: "string", enum: ["poster", "video", "both"], description: "What to generate" },
+                prompt: { type: "string", description: "User's style/content description" },
+                style: { type: "string", description: "Visual style hint e.g. cyberpunk, minimalist, anime" },
+                duration: { type: "number", description: "Video duration in seconds (10-30)" },
+              },
+              required: ["type"],
+            },
           },
           required: ["steps", "summary"],
         },
@@ -994,6 +1067,8 @@ export function buildManagerTools(
         summary: args.summary as string,
         steps: stepsRaw,
         needs_input: (args.needs_input as string[] | undefined) ?? [],
+        mode: (args.mode as string | undefined) ?? "plan",
+        media_task: args.media_task as Record<string, unknown> | undefined,
       };
       managerState.plan = plan;
       return "Plan submitted successfully.";
