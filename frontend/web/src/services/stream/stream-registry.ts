@@ -109,6 +109,14 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     getManagerPlan: () => store().managerPlan,
     getFiles: () => flattenFiles(store().files),
     getTaskStatuses: () => store().taskStatuses,
+    getConsoleErrors: () => {
+      const entries = store().consoleEntries || [];
+      return entries
+        .filter((e: any) => e.level === "error" || e.level === "warn")
+        .slice(-20) // last 20 errors/warnings
+        .map((e: any) => e.message || e.text || String(e))
+        .filter(Boolean);
+    },
     getStreamingSnapshot: () => store().streamingSnapshot as any,
     getMessagesReady: () => store().messagesReady,
   };

@@ -493,7 +493,7 @@ export async function registerRoutes(
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
         provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage,
+        mode: reqMode, userMessage, consoleErrors,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -508,6 +508,7 @@ export async function registerRoutes(
         userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
+        consoleErrors?: string[];
       };
 
       // Per-user session cap
@@ -572,6 +573,11 @@ export async function registerRoutes(
             `6. If the error mentions multiple files, fix them one by one.\n`
           : "";
 
+        // Include captured console errors from the preview (if available)
+        const consoleSection = consoleErrors && consoleErrors.length > 0
+          ? `\n\n## Browser Console Errors (captured from live preview)\n${consoleErrors.map(e => `[ERROR] ${e}`).join("\n")}\n`
+          : "";
+
         // Synthesize a single-step plan so we can reuse the entire builder pipeline
         resolvedPlan = {
           mode: "direct",
@@ -580,8 +586,8 @@ export async function registerRoutes(
             step: 1,
             title: userMessage!.length > 80 ? userMessage!.slice(0, 80) + "…" : userMessage!,
             description: exploreContext
-              ? `${userMessage}${debugGuidance}\n\n## Codebase context (fast scan)\n${exploreContext}`
-              : `${userMessage}${debugGuidance}`,
+              ? `${userMessage}${consoleSection}${debugGuidance}\n\n## Codebase context (fast scan)\n${exploreContext}`
+              : `${userMessage}${consoleSection}${debugGuidance}`,
           }],
         };
         resolvedUserRequest = userMessage!;

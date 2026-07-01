@@ -225,6 +225,8 @@ export class BuildStreamInstance {
           userConfirmation: userConfirmation || undefined,
           projectId: this.projectId || undefined,
           framework: framework || undefined,
+          // Include recent console errors for bug-fix context (direct mode only)
+          ...(isDirect ? { consoleErrors: this.actions.getConsoleErrors?.() } : {}),
         }),
       });
 

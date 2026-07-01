@@ -106,6 +106,7 @@ export interface StoreActions {
   getManagerPlan: () => ManagerPlan | null;
   getFiles: () => FileNode[];
   getTaskStatuses: () => Record<string, TaskStatus>;
+  getConsoleErrors: () => string[];
   getStreamingSnapshot: () => StreamingSnapshot | null;
   getMessagesReady: () => boolean;
 }
