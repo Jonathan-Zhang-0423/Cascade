@@ -559,6 +559,19 @@ export async function registerRoutes(
           const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
           exploreContext = await Promise.race([explorePromise, timeoutPromise]);
         }
+
+        // Detect if this is a bug-fix request (error patterns in the message)
+        const isErrorFix = /error|bug|fix|crash|broken|doesn't work|not working|报错|修复|出错|崩溃|无法|失败/i.test(userMessage!);
+        const debugGuidance = isErrorFix
+          ? `\n\n## DEBUGGING INSTRUCTIONS (this is a bug-fix request)\n` +
+            `1. FIRST: Call read_file on the file(s) mentioned in the error to see the CURRENT code.\n` +
+            `2. Identify the exact line/function causing the error based on the error message and stack trace.\n` +
+            `3. Understand WHY the error occurs (wrong variable name? missing import? logic error?).\n` +
+            `4. Fix ONLY the bug — do NOT rewrite unrelated code or add new features.\n` +
+            `5. Write the COMPLETE fixed file content using write_file.\n` +
+            `6. If the error mentions multiple files, fix them one by one.\n`
+          : "";
+
         // Synthesize a single-step plan so we can reuse the entire builder pipeline
         resolvedPlan = {
           mode: "direct",
@@ -567,8 +580,8 @@ export async function registerRoutes(
             step: 1,
             title: userMessage!.length > 80 ? userMessage!.slice(0, 80) + "…" : userMessage!,
             description: exploreContext
-              ? `${userMessage}\n\n## Codebase context (fast scan)\n${exploreContext}`
-              : userMessage!,
+              ? `${userMessage}${debugGuidance}\n\n## Codebase context (fast scan)\n${exploreContext}`
+              : `${userMessage}${debugGuidance}`,
           }],
         };
         resolvedUserRequest = userMessage!;
