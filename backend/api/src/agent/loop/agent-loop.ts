@@ -112,9 +112,35 @@ export async function runAgentLoop(
 
   const timeoutMs = adapter.timeoutMs;
 
+  // Sliding-window compaction: keep the system prompt + initial user message +
+  // the most recent tool results full; shrink OLDER tool results (mostly big
+  // read_file dumps) to a stub. Prevents context from growing unbounded over
+  // 20+ iterations, which was causing GLM-5 to time out mid-stream ('terminated').
+  const KEEP_RECENT_TOOL_RESULTS = 6; // last ~3 iterations' worth stay full
+  const OLD_TOOL_RESULT_STUB = "(earlier tool output elided to save context — call read_file again if you need it)";
+  function compactOldToolResults(): void {
+    // Find indices of tool-role messages (results)
+    const toolIdxs: number[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      if ((messages[i] as any).role === "tool") toolIdxs.push(i);
+    }
+    // Stub all but the most recent KEEP_RECENT_TOOL_RESULTS
+    const cutoff = toolIdxs.length - KEEP_RECENT_TOOL_RESULTS;
+    for (let k = 0; k < cutoff; k++) {
+      const idx = toolIdxs[k];
+      const m = messages[idx] as any;
+      if (typeof m.content === "string" && m.content.length > OLD_TOOL_RESULT_STUB.length && m.content !== OLD_TOOL_RESULT_STUB) {
+        m.content = OLD_TOOL_RESULT_STUB;
+      }
+    }
+  }
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective
     const messageId = generatePartId();
+
+    // Compact old tool results before sending (bounds context growth)
+    compactOldToolResults();
 
     // ── Step Start ──────────────────────────────────────────────────
     if (partCtx) {
