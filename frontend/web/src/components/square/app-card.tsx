@@ -43,19 +43,22 @@ const FRAMEWORK_EMOJI: Record<string, string> = {
 };
 
 function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const d = Math.floor(diff / 86400000);
-  if (d === 0) return "今天";
-  if (d === 1) return "昨天";
-  if (d < 30) return `${d}天前`;
-  const m = Math.floor(d / 30);
-  if (m < 12) return `${m}个月前`;
-  return `${Math.floor(m / 12)}年前`;
+  const diff = Math.max(0, Date.now() - new Date(dateStr).getTime());
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "刚刚";
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}天前`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}个月前`;
+  return `${Math.floor(months / 12)}年前`;
 }
 
 export function AppCard({ app, onClick, onFork, index = 0 }: AppCardProps) {
   const [shareOpen, setShareOpen] = useState(false);
-  const shareUrl = `${window.location.origin}/CreateSquare/app/${app.id}`;
+  const shareUrl = `${window.location.origin}/BuilderSquare/app/${app.id}`;
   const fwLabel = FRAMEWORK_LABELS[app.framework] ?? app.framework;
   const fwEmoji = FRAMEWORK_EMOJI[app.framework] ?? "✦";
 

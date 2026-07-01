@@ -109,6 +109,7 @@ const PwdDialog = memo(forwardRef<PwdDialogHandle, { onSuccess: (msg: string) =>
   useImperativeHandle(ref, () => ({
     open(opts) {
       setMode(opts.mode); setStep(1);
+      // mode="change" 时不预填当前密码，让用户手动输入
       setCurrent(""); setNewPwd(""); setConfirm("");
       setError(""); setLoading(false);
       setForgotChannel("email");
@@ -199,7 +200,7 @@ const PwdDialog = memo(forwardRef<PwdDialogHandle, { onSuccess: (msg: string) =>
             {mode === "change" && (
               <div>
                 <label className="text-[11px] font-medium text-muted-foreground mb-1 block">当前密码</label>
-                <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="输入当前密码" className="h-9 text-[13px]" />
+                <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="输入当前密码" className="h-9 text-[13px]" autoComplete="new-password" />
               </div>
             )}
             <div>
@@ -630,7 +631,7 @@ export default function DashboardPage() {
     firstName?: string; lastName?: string; bio?: string;
     avatarUrl?: string;
   } | null>(null);
-  const refreshAccountInfo = () => {
+  const refreshAccountInfo = useCallback(() => {
     fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null).then(u => {
       if (u) setAccountInfo({
         email: u.email, phone: u.phone, githubId: u.githubId, githubLogin: u.githubLogin, wechatOpenId: u.wechatOpenId, wechatNickname: u.wechatNickname,
@@ -639,7 +640,7 @@ export default function DashboardPage() {
         avatarUrl: u.avatarUrl,
       });
     }).catch(() => {});
-  };
+  }, []);
   useEffect(() => { refreshAccountInfo(); }, []);
 
   const handleSignOut = async () => {
@@ -696,13 +697,18 @@ export default function DashboardPage() {
   };
 
   // Toast helper
-  const showToast = (msg: string, variant: "success" | "error" = "success") => {
+  const showToast = useCallback((msg: string, variant: "success" | "error" = "success") => {
     const el = document.createElement("div");
     el.textContent = msg;
     el.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;background:${variant === "success" ? "#111" : "#dc2626"};color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.18);pointer-events:none;`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2800);
-  };
+  }, []);
+
+  // Stable dialog callbacks — defined outside JSX so memo() on dialog components actually works
+  const onPwdSuccess = useCallback((msg: string) => showToast(msg), [showToast]);
+  const onEmailSuccess = useCallback(() => { refreshAccountInfo(); showToast("邮箱已绑定"); }, [refreshAccountInfo, showToast]);
+  const onPhoneSuccess = useCallback(() => { refreshAccountInfo(); showToast("手机号已绑定"); }, [refreshAccountInfo, showToast]);
 
   // Validation helpers
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -1007,9 +1013,16 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-[-26px]">
+            <Button
+              size="sm"
+              className="w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+              onClick={() => { window.location.href = "/BuilderSquare"; }}
+            >
+              {t("dashboard.builderSquare")}
+            </Button>
             <button
-              className="h-8 px-2.5 rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
+              className="h-8 w-[72px] shrink-0 truncate rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
               onClick={() => { setProfileTab("home"); setProfileOpen(true); }}
               data-testid="button-user-menu"
             >
@@ -1024,12 +1037,12 @@ export default function DashboardPage() {
           <h1 className="font-lora text-xl font-bold tracking-tight text-foreground" data-testid="text-dashboard-title">
             {t("dashboard.myProjects")}
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-[-26px]">
             {!selectMode && (
               <Button
                 onClick={() => setShowNewDialog(true)}
                 size="sm"
-                className="gap-1.5"
+                className="w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
                 data-testid="button-new-project"
               >
                 <Plus className="w-4 h-4" />
@@ -1040,7 +1053,7 @@ export default function DashboardPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                className="w-[72px] shrink-0 justify-center gap-1.5 text-muted-foreground hover:text-foreground"
                 onClick={enterSelectMode}
                 data-testid="button-enter-select"
               >
@@ -1990,9 +2003,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <PwdDialog ref={pwdDialogRef} onSuccess={(msg) => showToast(msg)} />
-      <EmailDialog ref={emailDialogRef} onSuccess={() => { refreshAccountInfo(); showToast("邮箱已绑定"); }} />
-      <PhoneDialog ref={phoneDialogRef} onSuccess={() => { refreshAccountInfo(); showToast("手机号已绑定"); }} />
+      <PwdDialog ref={pwdDialogRef} onSuccess={onPwdSuccess} />
+      <EmailDialog ref={emailDialogRef} onSuccess={onEmailSuccess} />
+      <PhoneDialog ref={phoneDialogRef} onSuccess={onPhoneSuccess} />
     </div>
   );
 }

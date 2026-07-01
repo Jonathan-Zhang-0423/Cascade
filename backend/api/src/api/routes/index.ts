@@ -4,6 +4,7 @@ import https from "https";
 import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import "express-session";
+import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
@@ -75,6 +76,8 @@ import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
+import { adminAuthMiddleware } from "../../auth/admin-auth.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -580,6 +583,14 @@ export async function registerRoutes(
   checkCompilerOnStartup();
   checkSwiftCompilerOnStartup();
   checkFlutterOnStartup();
+
+  // ── Cookie parser (needed for JWT admin cookies) ────────────────────────────
+  app.use(cookieParser());
+
+  // ── Admin JWT auth routes + middleware ──────────────────────────────────────
+  registerAdminAuthRoutes(app);
+  app.use("/api/admin", adminAuthMiddleware);
+  app.use("/api/waitlist", adminAuthMiddleware);
 
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({
@@ -3550,8 +3561,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   // GET /api/admin/feedback — list all feedback (admin only)
   app.get("/api/admin/feedback", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
       const rows = await db
         .select({
           id: userFeedback.id,
@@ -3578,8 +3588,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
   app.post("/api/admin/feedback/:id/reply", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
       const feedbackId = parseInt(req.params.id);
       const { message } = req.body as { message?: string };
       if (!message?.trim()) return res.status(400).json({ error: "Message required" });
@@ -5063,11 +5072,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     return `${inviteCodePrefix(email)}${randomSuffix()}`;
   }
   function checkAdmin(req: any, res: any): boolean {
-    if (!ADMIN_SECRET) {
-      res.status(503).json({ error: "Admin access not configured" });
-      return false;
-    }
-    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+    if (!req.adminUser) {
       res.status(401).json({ error: "Unauthorized" });
       return false;
     }
@@ -6142,6 +6147,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const offset = parseInt(req.query.offset as string) || 0;
       const framework = req.query.framework as string | undefined;
+      const category = req.query.category as string | undefined;
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
       const author = (req.query.author as string | undefined)?.trim() || "";
@@ -6159,6 +6165,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         visibilityWhere,
         eq(publishedApps.adminTakenDown, false),
         ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(category ? [eq(publishedApps.category, category)] : []),
         ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
       );
 
@@ -6185,6 +6192,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: publishedApps.visibility,
           previewScreenshot: publishedApps.previewScreenshot,
           framework: publishedApps.framework,
+          category: publishedApps.category,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
           likeCount: publishedApps.likeCount,
@@ -6272,6 +6280,21 @@ Generate the cascade.md content for this project based on both the plan and the 
       const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
       if (!project) { res.status(403).json({ error: "forbidden" }); return; }
 
+      // Auto-classify app category based on title + description
+      const classifyCategory = (t: string, d: string): string => {
+        const text = (t + " " + d).toLowerCase();
+        if (/游戏|game|play|棋|snake|tetris|puzzle|quiz/.test(text)) return "games";
+        if (/学习|learn|教|study|单词|quiz|课|exam|test|知识/.test(text)) return "education";
+        if (/图表|chart|dashboard|可视化|visual|数据|data|统计|report/.test(text)) return "data-viz";
+        if (/画|draw|write|写作|生成|create|art|design|音乐|video/.test(text)) return "creative";
+        if (/聊天|chat|社交|social|message|留言|论坛|community/.test(text)) return "social";
+        if (/商|shop|finance|金融|支付|pay|电商|订单|invoice/.test(text)) return "business";
+        if (/天气|weather|食谱|cook|健康|health|生活|日历|calendar|todo|habit/.test(text)) return "lifestyle";
+        if (/工具|tool|util|convert|计算|calc|timer|clock|效率|productivity/.test(text)) return "tools";
+        return "other";
+      };
+      const autoCategory = classifyCategory(title.trim(), description?.trim() ?? "");
+
       // Scope lookup to (projectId + userId) — prevents cross-user collisions
       const [existing] = await db.select().from(publishedApps)
         .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
@@ -6287,6 +6310,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
+          category: autoCategory,
           updatedAt: new Date(),
         }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
       } else {
@@ -6300,6 +6324,7 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
+          category: autoCategory,
         });
       }
 

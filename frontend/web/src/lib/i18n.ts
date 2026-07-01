@@ -41,6 +41,7 @@ const zh: Dict = {
   "dashboard.modeBuildLabel": "直接构建",
   "dashboard.modeBuildDesc": "跳过规划，立即根据描述生成代码",
   "dashboard.comingSoon": "即将推出",
+  "dashboard.builderSquare": "创造者广场",
 
   "preview.buildFailed": "构建失败",
   "preview.askAiFix": "让 AI 修复",
@@ -572,6 +573,7 @@ const en: Dict = {
   "dashboard.modeBuildLabel": "Build directly",
   "dashboard.modeBuildDesc": "Skip planning and generate code immediately",
   "dashboard.comingSoon": "Coming Soon",
+  "dashboard.builderSquare": "Creator Square",
 
   "preview.buildFailed": "Build Failed",
   "preview.askAiFix": "Ask AI to Fix",

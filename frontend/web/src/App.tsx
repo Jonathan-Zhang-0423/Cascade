@@ -12,6 +12,8 @@ import SetPasswordPage from "@/pages/set-password";
 import OnboardingPage from "@/pages/onboarding";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
+import AdminLoginPage from "@/pages/admin-login";
+import AdminTotpSetupPage from "@/pages/admin-totp-setup";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
 import CreateSquarePage from "@/pages/create-square";
@@ -27,7 +29,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/wechat-callback", "/CreateSquare", "/onboarding", "/set-password"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin/login", "/admin/setup-totp", "/invite-gate", "/github-callback", "/wechat-callback", "/BuilderSquare", "/onboarding", "/set-password"];
 
 function Router() {
   return (
@@ -41,9 +43,11 @@ function Router() {
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
-      <Route path="/CreateSquare" component={CreateSquarePage} />
-      <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
+      <Route path="/BuilderSquare" component={CreateSquarePage} />
+      <Route path="/BuilderSquare/app/:id" component={AppDetailPage} />
       <Route path="/aigc" component={AigcPage} />
+      <Route path="/admin/login" component={AdminLoginPage} />
+      <Route path="/admin/setup-totp" component={AdminTotpSetupPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
       <Route path="/profile" component={ProfileSettingsPage} />
