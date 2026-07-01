@@ -129,12 +129,15 @@ export async function runAgentLoop(
     for (let i = 0; i < messages.length; i++) {
       if ((messages[i] as any).role === "tool") toolIdxs.push(i);
     }
-    // Stub all but the most recent KEEP_RECENT_TOOL_RESULTS
+    // Stub all but the most recent KEEP_RECENT_TOOL_RESULTS — but only
+    // if the result is long (>500 chars). Short results like "File written
+    // successfully" or "Step marked complete" stay (tiny, useful context).
+    const MIN_STUB_LENGTH = 500;
     const cutoff = toolIdxs.length - KEEP_RECENT_TOOL_RESULTS;
     for (let k = 0; k < cutoff; k++) {
       const idx = toolIdxs[k];
       const m = messages[idx] as any;
-      if (typeof m.content === "string" && m.content.length > OLD_TOOL_RESULT_STUB.length && m.content !== OLD_TOOL_RESULT_STUB) {
+      if (typeof m.content === "string" && m.content.length > MIN_STUB_LENGTH && m.content !== OLD_TOOL_RESULT_STUB) {
         m.content = OLD_TOOL_RESULT_STUB;
       }
     }

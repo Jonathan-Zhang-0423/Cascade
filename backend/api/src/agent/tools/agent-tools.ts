@@ -569,8 +569,8 @@ export function buildBuilderTools(
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }
+
       // Hard cap on file content to prevent context window exhaustion.
-      // 32000 chars ≈ 8K tokens — enough for any single source file.
       const MAX_READ_CHARS = 32000;
       const truncatedContent = content.length > MAX_READ_CHARS
         ? content.slice(0, MAX_READ_CHARS) + `\n\n...(file truncated at ${MAX_READ_CHARS} chars — total ${content.length} chars)`
