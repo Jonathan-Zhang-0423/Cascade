@@ -19,11 +19,17 @@ import { validateDslSequence } from "../../api/video/dsl-executor";
  */
 export function persistFileToDb(session: BuildSessionState, filePath: string, content: string): void {
   if (!session.projectId) return;
+  // Skip DB persist if a prior attempt already hit FK violation (project doesn't exist in DB)
+  if ((session as any)._dbPersistDisabled) return;
   storage.upsertProjectFile(session.projectId, filePath, content).catch((err) => {
-    console.warn(
-      `[BuildSession ${session.id}] mid-build DB persist failed for ${filePath}:`,
-      err instanceof Error ? err.message : err,
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("foreign key constraint")) {
+      // Project row doesn't exist — disable further persist attempts to avoid log spam
+      (session as any)._dbPersistDisabled = true;
+      console.warn(`[BuildSession ${session.id}] DB persist disabled — project ${session.projectId} not found in DB`);
+    } else {
+      console.warn(`[BuildSession ${session.id}] mid-build DB persist failed for ${filePath}:`, msg);
+    }
   });
 }
 

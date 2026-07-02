@@ -519,6 +519,17 @@ export async function registerRoutes(
         return;
       }
 
+      // Abort any existing active build for the SAME project (prevents stale
+      // sessions from running forever and interfering with the new build).
+      if (reqProjectId) {
+        for (const [id, s] of buildSessions) {
+          if (s.projectId === reqProjectId && !s.done && !s.aborted && id !== sessionId) {
+            s.aborted = true;
+            console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} (new build starting)`);
+          }
+        }
+      }
+
       const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
 
       if (resolvedMode === "plan") {
