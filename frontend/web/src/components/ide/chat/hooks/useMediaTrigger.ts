@@ -59,11 +59,13 @@ interface UseMediaTriggerOptions {
   onStatus?: (status: MediaTriggerStatus) => void;
   /** Push AIGC progress/result as chat messages into the conversation flow */
   onMessage?: (content: string, role?: "assistant" | "system") => void;
+  /** Add user message to chat flow (called before onMessage) */
+  onUserMessage?: (content: string) => void;
 }
 
 const POLL_MS = 1500;
 
-export function useMediaTrigger({ projectId, onStatus, onMessage }: UseMediaTriggerOptions) {
+export function useMediaTrigger({ projectId, onStatus, onMessage, onUserMessage }: UseMediaTriggerOptions) {
   const [status, setStatus] = useState<MediaTriggerStatus>({ phase: "idle" });
 
   const update = useCallback((s: MediaTriggerStatus) => {
@@ -115,6 +117,8 @@ export function useMediaTrigger({ projectId, onStatus, onMessage }: UseMediaTrig
   // ── Poster flow (AIGC session) ─────────────────────────────────────────────
   const triggerPoster = useCallback(async (prompt: string) => {
     if (!projectId) { update({ phase: "error", message: "No active project" }); return; }
+    // Show user message first in chat flow
+    onUserMessage?.(prompt);
     update({ phase: "generating", type: "poster", label: "启动 AIGC 会话…" });
     onMessage?.("🎨 正在为你生成宣传海报…", "assistant");
     try {
@@ -168,7 +172,7 @@ export function useMediaTrigger({ projectId, onStatus, onMessage }: UseMediaTrig
       update({ phase: "error", message: "海报生成请求异常" });
       onMessage?.("❌ 海报生成请求异常", "assistant");
     }
-  }, [projectId, update, onMessage]);
+  }, [projectId, update, onMessage, onUserMessage]);
 
   // ── Main intercept ─────────────────────────────────────────────────────────
   const tryIntercept = useCallback(async (text: string): Promise<boolean> => {

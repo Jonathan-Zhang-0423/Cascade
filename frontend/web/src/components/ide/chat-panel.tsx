@@ -64,6 +64,9 @@ export function ChatPanel() {
   const { tryIntercept, reset: resetMedia } = useMediaTrigger({
     projectId: projectId ?? undefined,
     onStatus: setMediaStatus,
+    onUserMessage: useCallback((content: string) => {
+      addManagerMessage({ role: "user", content });
+    }, [addManagerMessage]),
     onMessage: useCallback((content: string) => {
       addManagerMessage({ role: "assistant", content });
     }, [addManagerMessage]),
@@ -449,10 +452,9 @@ export function ChatPanel() {
     }
     // ── Media keyword intercept ──────────────────────────────────────────────
     if (input.trim()) {
-      const intercepted = await tryIntercept(input.trim());
+      const text = input.trim();
+      const intercepted = await tryIntercept(text);
       if (intercepted) {
-        // Add user message to chat flow before AIGC takes over
-        addManagerMessage({ role: "user", content: input.trim() });
         setInput("");
         return;
       }
