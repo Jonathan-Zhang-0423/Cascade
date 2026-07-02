@@ -9,8 +9,8 @@ export const pool = new Pool({
   // Prevent ECONNRESET on idle connections: close connections that have been
   // idle for 30s (Postgres default tcp_keepalives_idle is 2h, too long).
   idleTimeoutMillis: 30_000,
-  // Don't wait forever for a connection from the pool
-  connectionTimeoutMillis: 10_000,
+  // Allow generous time for initial connection (Docker container may be waking)
+  connectionTimeoutMillis: 30_000,
   // Cap pool size to avoid exhausting Postgres max_connections
   max: 20,
 });
