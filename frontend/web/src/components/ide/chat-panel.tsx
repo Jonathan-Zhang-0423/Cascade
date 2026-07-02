@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 import { useT } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { X, Video, ImageIcon, Download, Loader2 } from "lucide-react";
+import { X, Video, Download, Loader2 } from "lucide-react";
+
 import { normalizeSteps } from "./chat/chat-utils";
 import { BuildLivePanel } from "./chat/BuildLivePanel";
 import { TypingIndicator } from "./chat/message-components";
@@ -450,7 +451,7 @@ export function ChatPanel() {
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
-    // ── Media keyword intercept ──────────────────────────────────────────────
+    // ── Video keyword intercept ──────────────────────────────────────────────
     if (input.trim()) {
       const text = input.trim();
       const intercepted = await tryIntercept(text);
@@ -487,7 +488,7 @@ export function ChatPanel() {
     userTriggeredRef.current = true;
     sendInFlightRef.current = true;
     handleManagerSend(undefined, text).finally(() => { sendInFlightRef.current = false; });
-  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding, tryIntercept]);
+  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");
@@ -542,7 +543,7 @@ export function ChatPanel() {
           />
         )}
 
-        {/* AIGC status shown inline via onMessage — no floating card */}
+        {/* AIGC status — results shown inline via onMessage callbacks */}
       </div>
       <div className="relative shrink-0">
         {polishResult && (

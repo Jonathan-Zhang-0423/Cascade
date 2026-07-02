@@ -2,17 +2,6 @@ import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useLanguageStore } from "@/stores/language-store";
 
-// crypto.randomUUID() requires HTTPS; fall back for HTTP test environments
-function genId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-  });
-}
-
 function getWelcomeMessage(): string {
   const lang = useLanguageStore.getState().lang;
   return lang === "en"
@@ -70,8 +59,15 @@ export interface ManagerPlan {
   narrated_what_and_why?: string;
   narrated_done_looks_like?: string;
   narrated_out_of_scope?: string;
-  /** "direct": plan was synthesized for a direct build (no verifier, slim UI). Default is plan-mode. */
-  mode?: "plan" | "direct";
+  /** "direct": slim build UI. "media": AIGC poster/video task, not a code build. */
+  mode?: "plan" | "direct" | "media";
+  /** Only present when mode === "media" */
+  media_task?: {
+    type: "poster" | "video" | "both";
+    prompt?: string;
+    style?: string;
+    duration?: number;
+  };
 }
 
 export interface VerificationItem {
@@ -1327,7 +1323,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     if (!state.projectId) return;
 
     const currentFlat = flattenToFlatFiles(state.files);
-    const checkpointId = genId();
+    const checkpointId = crypto.randomUUID();
     const now = Date.now();
     const newCheckpoint: Checkpoint = {
       id: checkpointId,
@@ -1356,7 +1352,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set((prev) => {
       const seq = prev._nextSeq;
       const checkpointMessage: ChatMessage = {
-        id: genId(),
+        id: crypto.randomUUID(),
         role: "checkpoint",
         content: label,
         timestamp: now,
@@ -1365,7 +1361,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       const nextManagerMessages = options?.includeManagerThread
         ? [...prev.managerMessages, {
-            id: genId(),
+            id: crypto.randomUUID(),
             role: "checkpoint" as const,
             content: label,
             timestamp: now,
@@ -1478,7 +1474,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const seq = state._nextSeq;
       const newMsg: ChatMessage = {
         ...message,
-        id: genId(),
+        id: crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };
@@ -1519,7 +1515,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state.consoleEntries,
         {
           ...entry,
-          id: genId(),
+          id: crypto.randomUUID(),
           timestamp: Date.now(),
         },
       ],
@@ -1665,7 +1661,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const seq = state._nextSeq;
       const newMsg: ManagerMessage = {
         ...message,
-        id: genId(),
+        id: crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };

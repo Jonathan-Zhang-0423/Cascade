@@ -7,7 +7,7 @@ import { sendEmail } from "../infra/email";
 import { sendSmsOtp } from "../infra/sms";
 
 export type OtpChannel = "email" | "sms";
-export type OtpPurpose = "login" | "reset_password" | "bind_email";
+export type OtpPurpose = "login" | "reset_password" | "bind_email" | "bind_phone";
 
 const CODE_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SEC = 60;

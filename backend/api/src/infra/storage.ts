@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, gt, sql, asc } from "drizzle-orm";
+import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
 import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp, userAigcPreferences } from "@cascade/database";
 import { db } from "./db";
 import { randomUUID } from "crypto";
@@ -35,6 +35,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByGithubId(githubId: string): Promise<User | undefined>;
+  getUserByWechatOpenId(openId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -43,8 +44,11 @@ export interface IStorage {
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User>;
-  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null }): Promise<User>;
+  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null; githubLogin?: string }): Promise<User>;
+  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
+  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
   getProjects(userId?: string): Promise<Project[]>;
@@ -52,7 +56,11 @@ export interface IStorage {
   updateProjectName(id: string, name: string): Promise<void>;
   updateProjectPlan(id: string, plan: unknown): Promise<void>;
   updateProjectBuildResult(id: string, result: unknown): Promise<void>;
+  updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void>;
   deleteProject(id: string): Promise<void>;
+
+  getProjectMemory(projectId: string): Promise<string>;
+  setProjectMemory(projectId: string, userId: string, content: string): Promise<void>;
 
   getProjectFiles(projectId: string): Promise<ProjectFile[]>;
   upsertProjectFile(projectId: string, path: string, content: string): Promise<void>;
@@ -62,6 +70,12 @@ export interface IStorage {
   listChatMessages(projectId: string, opts: { kind?: "chat" | "manager"; before?: number; limit?: number; sessionId?: string | null }): Promise<ChatMessageRow[]>;
   upsertChatMessages(projectId: string, msgs: ChatMessageInput[]): Promise<void>;
   deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void>;
+
+  // Project Videos
+  createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo>;
+  getProjectVideo(id: string): Promise<ProjectVideo | undefined>;
+  listProjectVideos(projectId: string): Promise<ProjectVideo[]>;
+  updateProjectVideo(id: string, patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>): Promise<void>;
 
   // Published Apps (Creator Square)
   getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined>;
@@ -112,25 +126,67 @@ export class DatabaseStorage implements IStorage {
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User> {
     const id = randomUUID();
+    const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 天
     const [user] = await db.insert(users).values({
       id,
       username: input.username,
       password: null,
       githubId: input.githubId,
+      githubLogin: input.githubLogin || null,
       email: input.email,
       avatarUrl: input.avatarUrl,
+      trialExpiresAt,
     }).returning();
     return user;
   }
 
   async linkGithubToUser(
     userId: string,
-    input: { githubId: string; avatarUrl: string | null },
+    input: { githubId: string; avatarUrl: string | null; githubLogin?: string },
   ): Promise<User> {
     const [user] = await db.update(users)
-      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
+      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl, githubLogin: input.githubLogin || null })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
+  }
+
+  async getUserByWechatOpenId(openId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.wechatOpenId, openId));
+    return user;
+  }
+
+  async createWechatUser(input: {
+    username: string;
+    openId: string;
+    unionId?: string;
+    avatarUrl: string | null;
+    nickname?: string;
+  }): Promise<User> {
+    const id = randomUUID();
+    const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const [user] = await db.insert(users).values({
+      id,
+      username: input.username,
+      password: null,
+      wechatOpenId: input.openId,
+      wechatUnionId: input.unionId || null,
+      wechatNickname: input.nickname || null,
+      avatarUrl: input.avatarUrl,
+      trialExpiresAt,
+    }).returning();
+    return user;
+  }
+
+  async linkWechatToUser(
+    userId: string,
+    input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string },
+  ): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl, wechatNickname: input.nickname || null })
       .where(eq(users.id, userId))
       .returning();
     return user;
@@ -142,10 +198,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProjects(userId?: string): Promise<Project[]> {
-    if (userId) {
-      return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(projects.createdAt);
-    }
-    return db.select().from(projects).orderBy(projects.createdAt);
+    if (!userId) return [];
+    return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(projects.createdAt);
   }
 
   async createProject(project: InsertProject): Promise<Project> {
@@ -171,8 +225,50 @@ export class DatabaseStorage implements IStorage {
     await db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id));
   }
 
+  async updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void> {
+    await db.update(projects).set({
+      actionSequence,
+      ...(durationHint !== undefined ? { actionSequenceDuration: durationHint } : {}),
+    }).where(eq(projects.id, id));
+  }
+
   async deleteProject(id: string): Promise<void> {
     await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  // ─── Project memory ──────────────────────────────────────────────────────
+  // A single self-evolving knowledge doc per project, stored as a reserved
+  // projectSkills row named PROJECT_MEMORY_NAME. The agent reads it at the start
+  // of build/plan and rewrites it at the end (bugs+fixes, architecture, ideas),
+  // so it improves at THAT project over time. Bounded by PROJECT_MEMORY_MAX.
+
+  async getProjectMemory(projectId: string): Promise<string> {
+    if (!projectId) return "";
+    const [row] = await db
+      .select({ content: projectSkills.content })
+      .from(projectSkills)
+      .where(and(eq(projectSkills.projectId, projectId), eq(projectSkills.name, PROJECT_MEMORY_NAME)));
+    return row?.content ?? "";
+  }
+
+  async setProjectMemory(projectId: string, userId: string, content: string): Promise<void> {
+    if (!projectId) return;
+    const safe = stripNul(content).slice(0, PROJECT_MEMORY_MAX);
+    await db
+      .insert(projectSkills)
+      .values({
+        projectId,
+        userId: userId || "",
+        name: PROJECT_MEMORY_NAME,
+        description: "Self-evolving project memory (agent-maintained)",
+        type: "memory",
+        content: safe,
+        enabled: true,
+      })
+      .onConflictDoUpdate({
+        target: [projectSkills.projectId, projectSkills.name],
+        set: { content: safe },
+      });
   }
 
   async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
@@ -192,32 +288,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
-    const existing = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
-    const existingPaths = new Set(existing.map((f) => f.path));
-    const incomingPaths = new Set(files.map((f) => f.path));
+    // 用事务包裹，防止并发 build session 写同一 project 时的竞态：
+    // 旧的 read-then-write-then-delete 三步非原子，并发时一个 session 的 DELETE
+    // 可能删掉另一个 session 刚写进来的文件。事务加串行锁消除这个窗口。
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
+      const existingPaths = new Set(existing.map((f) => f.path));
+      const incomingPaths = new Set(files.map((f) => f.path));
 
-    const toDelete: string[] = [];
-    for (const existingPath of existingPaths) {
-      if (!incomingPaths.has(existingPath)) {
-        toDelete.push(existingPath);
+      const toDelete: string[] = [];
+      for (const existingPath of existingPaths) {
+        if (!incomingPaths.has(existingPath)) {
+          toDelete.push(existingPath);
+        }
       }
-    }
 
-    // Atomic per-row upsert keyed on the unique (project_id, path). Idempotent
-    // under concurrency — no duplicate rows, no read-then-write window.
-    if (files.length > 0) {
-      await db.insert(projectFiles)
-        .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
-        .onConflictDoUpdate({
-          target: [projectFiles.projectId, projectFiles.path],
-          set: { content: sql`excluded.content` },
-        });
-    }
+      if (files.length > 0) {
+        await tx.insert(projectFiles)
+          .values(files.map((f) => ({ projectId, path: stripNul(f.path), content: stripNul(f.content) })))
+          .onConflictDoUpdate({
+            target: [projectFiles.projectId, projectFiles.path],
+            set: { content: sql`excluded.content` },
+          });
+      }
 
-    for (const path of toDelete) {
-      await db.delete(projectFiles)
-        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
-    }
+      for (const path of toDelete) {
+        await tx.delete(projectFiles)
+          .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
+      }
+    });
   }
 
   async deleteProjectFile(projectId: string, path: string): Promise<void> {
@@ -233,12 +332,9 @@ export class DatabaseStorage implements IStorage {
     const conditions = [eq(chatMessages.projectId, projectId)];
     if (opts.kind) conditions.push(eq(chatMessages.kind, opts.kind));
     if (typeof opts.before === "number") conditions.push(lt(chatMessages.seq, opts.before));
-    // sessionId 过滤：undefined = 不过滤（主会话兼容旧数据），null = 主会话，string = 指定 session
-    if (opts.sessionId === null) {
-      conditions.push(isNull(chatMessages.sessionId));
-    } else if (typeof opts.sessionId === "string") {
-      conditions.push(eq(chatMessages.sessionId, opts.sessionId));
-    }
+    // sessionId：null/undefined 都归为主会话 "main"；其余按 session id 过滤
+    const sessionId = (opts.sessionId == null || opts.sessionId === "") ? "main" : opts.sessionId;
+    conditions.push(eq(chatMessages.sessionId, sessionId));
     const rows = await db.select().from(chatMessages)
       .where(and(...conditions))
       .orderBy(desc(chatMessages.seq))
@@ -259,7 +355,7 @@ export class DatabaseStorage implements IStorage {
       seq: m.seq,
       timestamp: m.timestamp,
       metadata: m.metadata ?? null,
-      sessionId: m.sessionId ?? null,
+      sessionId: (m.sessionId == null || m.sessionId === "") ? "main" : m.sessionId,
     }));
     // ON CONFLICT on (project_id, session_id, client_id) → update mutable fields.
     await db.insert(chatMessages).values(rows).onConflictDoUpdate({
@@ -275,9 +371,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async deleteChatMessagesAfter(projectId: string, afterSeq: number): Promise<void> {
+  async deleteChatMessagesAfter(projectId: string, afterSeq: number, sessionId?: string | null): Promise<void> {
+    const sid = (sessionId == null || sessionId === "") ? "main" : sessionId;
     await db.delete(chatMessages)
-      .where(and(eq(chatMessages.projectId, projectId), gt(chatMessages.seq, afterSeq)));
+      .where(and(
+        eq(chatMessages.projectId, projectId),
+        eq(chatMessages.sessionId, sid),
+        gt(chatMessages.seq, afterSeq),
+      ));
   }
 
   // ─── Manager Sessions ─────────────────────────────────────────────────
@@ -335,7 +436,32 @@ export class DatabaseStorage implements IStorage {
       .where(lt(managerSessions.startedAt, cutoff));
   }
 
-  // ─── Published Apps (Creator Square) ────────────────────────────────────────
+  // ─── Project Videos ──────────────────────────────────────────────────────
+
+  async createProjectVideo(video: InsertProjectVideo): Promise<ProjectVideo> {
+    const [row] = await db.insert(projectVideos).values(video).returning();
+    return row;
+  }
+
+  async getProjectVideo(id: string): Promise<ProjectVideo | undefined> {
+    const [row] = await db.select().from(projectVideos).where(eq(projectVideos.id, id));
+    return row;
+  }
+
+  async listProjectVideos(projectId: string): Promise<ProjectVideo[]> {
+    return db.select().from(projectVideos)
+      .where(eq(projectVideos.projectId, projectId))
+      .orderBy(desc(projectVideos.createdAt));
+  }
+
+  async updateProjectVideo(
+    id: string,
+    patch: Partial<Pick<ProjectVideo, "status" | "localPath" | "cosUrl" | "errorMessage" | "finishedAt">>,
+  ): Promise<void> {
+    await db.update(projectVideos).set(patch).where(eq(projectVideos.id, id));
+  }
+
+  // ─── Published Apps (Creator Square) ─────────────────────────────────────
 
   async getPublishedApp(id: string): Promise<(typeof publishedApps.$inferSelect) | undefined> {
     const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, id));
@@ -360,7 +486,12 @@ export class DatabaseStorage implements IStorage {
         isOpenSource: publishedApps.isOpenSource,
         visibility: publishedApps.visibility,
         previewScreenshot: publishedApps.previewScreenshot,
+        previewVideo: publishedApps.previewVideo,
         framework: publishedApps.framework,
+        viewCount: publishedApps.viewCount,
+        forkCount: publishedApps.forkCount,
+        likeCount: publishedApps.likeCount,
+        adminTakenDown: publishedApps.adminTakenDown,
         publishedAt: publishedApps.publishedAt,
         updatedAt: publishedApps.updatedAt,
         authorUsername: users.username,
@@ -370,7 +501,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         opts.framework
           ? and(eq(publishedApps.visibility, "public"), eq(publishedApps.framework, opts.framework))
-          : eq(publishedApps.visibility, "public")
+          : eq(publishedApps.visibility, "public"),
       )
       .orderBy(desc(publishedApps.publishedAt))
       .limit(limit)
@@ -386,17 +517,17 @@ export class DatabaseStorage implements IStorage {
 
   async upsertPublishedApp(app: InsertPublishedApp): Promise<typeof publishedApps.$inferSelect> {
     const now = new Date();
-    const [row] = await db
-      .insert(publishedApps)
+    const [row] = await db.insert(publishedApps)
       .values({ ...app, updatedAt: now })
       .onConflictDoUpdate({
-        target: [publishedApps.id],
+        target: [publishedApps.projectId],
         set: {
           title: sql`excluded.title`,
           description: sql`excluded.description`,
           isOpenSource: sql`excluded.is_open_source`,
           visibility: sql`excluded.visibility`,
           previewScreenshot: sql`excluded.preview_screenshot`,
+          previewVideo: sql`excluded.preview_video`,
           updatedAt: now,
         },
       })

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
+import { MediaPlanCard } from "./MediaPlanCard";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 import { BuildLivePanel } from "./BuildLivePanel";
 
@@ -638,6 +639,15 @@ export function ManagerMessageBubble({
   }
 
   if (message.plan) {
+    // Media plan — route to AIGC card instead of code build card
+    if (message.plan.mode === "media") {
+      return (
+        <MediaPlanCard
+          plan={message.plan}
+          onCancel={() => onRevise?.()}
+        />
+      );
+    }
     return (
       <TaskPlanCard
         plan={message.plan}

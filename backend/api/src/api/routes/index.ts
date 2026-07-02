@@ -1,16 +1,23 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import https from "https";
 import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import "express-session";
+import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
+import multer from "multer";
 import archiver from "archiver";
 import { z } from "zod";
+// @ts-ignore
+import helmet from "helmet";
+// @ts-ignore
+import rateLimit from "express-rate-limit";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
@@ -18,8 +25,8 @@ import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
 import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries } from "@cascade/database";
-import { db } from "../../infra/db";
+import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
+import { db, pool } from "../../infra/db";
 import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
@@ -27,7 +34,6 @@ import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/ca
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
-import { aigcSessions, type AigcSession, runAigcAgent } from "../../agent/aigc/aigc-agent";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   EDITOR_CHAT_SYSTEM_PROMPT,
@@ -51,7 +57,7 @@ import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
-import { detectCapabilitiesDetailed, loadCapabilities } from "../../skills/capability-loader";
+import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
@@ -62,11 +68,16 @@ import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } fr
 import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
 import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
-import { validateDslSequence, executeDslSequence } from "../../api/video/dsl-executor";
 import { videoStorage } from "../../infra/video-storage";
-import { addVideoWatermark } from "../../infra/watermark";
-import { projectVideos } from "@cascade/database";
-import { PROJECT_MEMORY_NAME, PROJECT_MEMORY_MAX } from "../../infra/storage";
+import { addVideoWatermark, addImageWatermark } from "../../infra/watermark";
+import { executeDslSequence, validateDslSequence } from "../video/dsl-executor";
+import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
+import { McpManager } from "../../agent/mcp/mcp-client";
+import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
+import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
+import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
+import { adminAuthMiddleware } from "../../auth/admin-auth.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -388,6 +399,7 @@ interface ManagerChatSession {
   done: boolean;
   doneAt?: number;
   startedAt: number;
+  _userId?: string;
   sseWriters: Set<(line: string) => void>;
 }
 
@@ -408,6 +420,8 @@ setInterval(() => {
     }
     if ((session as any)._startedAt && now - (session as any)._startedAt > maxAge) {
       session.aborted = true;
+      // Force-release session slot for stuck sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       buildSessions.delete(id);
     }
   });
@@ -419,6 +433,8 @@ setInterval(() => {
       return;
     }
     if (now - session.startedAt > maxAge) {
+      // Force-release session slot for stuck manager sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       managerChatSessions.delete(id);
     }
   });
@@ -431,6 +447,8 @@ setInterval(() => {
     }
     if (session._startedAt && now - session._startedAt > maxAge) {
       session.aborted = true;
+      // Force-release session slot for stuck review sessions
+      if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
       reviewSessions.delete(id);
     }
   });
@@ -566,6 +584,135 @@ export async function registerRoutes(
   checkSwiftCompilerOnStartup();
   checkFlutterOnStartup();
 
+  // ── Cookie parser (needed for JWT admin cookies) ────────────────────────────
+  app.use(cookieParser());
+
+  // ── Admin JWT auth routes + middleware ──────────────────────────────────────
+  registerAdminAuthRoutes(app);
+  app.use("/api/admin", adminAuthMiddleware);
+  app.use("/api/waitlist", adminAuthMiddleware);
+
+  // ── Security: Helmet ────────────────────────────────────────────────────────
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  }));
+
+  // ── Security: IP blocklist (in-memory) ──────────────────────────────────────
+  // Map<ip, { blockedUntil: number, reason: string, blockedAt: number }>
+  const ipBlocklist = new Map<string, { blockedUntil: number; reason: string; blockedAt: number }>();
+  // Track 429 hits per IP to auto-block after 3 strikes
+  const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
+
+  // IPs that are never auto-blocked (owner / admin access)
+  const IP_WHITELIST = new Set(["36.142.94.105", "113.87.160.120", "106.120.98.170", "127.0.0.1", "::1"]);
+
+  function getClientIp(req: any): string {
+    return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  }
+
+  function isIpBlocked(ip: string): boolean {
+    if (IP_WHITELIST.has(ip)) return false;
+    const entry = ipBlocklist.get(ip);
+    if (!entry) return false;
+    if (entry.blockedUntil > Date.now()) return true;
+    ipBlocklist.delete(ip);
+    return false;
+  }
+
+
+  function recordIpStrike(ip: string) {
+    if (IP_WHITELIST.has(ip)) return; // 白名单 IP 不计 strike
+    const now = Date.now();
+    const WINDOW = 10 * 60 * 1000; // 10 min window
+    const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
+    if (now - entry.windowStart > WINDOW) {
+      entry.count = 1; entry.windowStart = now;
+    } else {
+      entry.count++;
+    }
+    ipStrikeCount.set(ip, entry);
+    if (entry.count >= 3) {
+      ipBlocklist.set(ip, { blockedUntil: now + 60 * 60 * 1000, reason: "Auto: 3x rate-limit violations", blockedAt: now });
+      ipStrikeCount.delete(ip);
+    }
+  }
+
+  // Expose blocklist controls on app locals for admin routes
+  (app as any)._ipBlocklist = ipBlocklist;
+
+  // Middleware: reject blocked IPs (whitelist always passes)
+  app.use((req: any, res: any, next: any) => {
+    const ip = getClientIp(req);
+    if (IP_WHITELIST.has(ip)) { next(); return; }
+    if (isIpBlocked(ip)) {
+      return res.status(403).json({ error: "Your IP has been blocked. Contact support." });
+    }
+    next();
+  });
+
+  // ── Security: Account lockout (in-memory) ───────────────────────────────────
+  // Map<userId, { failCount: number; lockedUntil: number | null }>
+  const accountLockout = new Map<string, { failCount: number; lockedUntil: number | null; lockedAt: number | null }>();
+  const MAX_FAIL = 5;
+  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+  function recordLoginFail(userId: string) {
+    const entry = accountLockout.get(userId) ?? { failCount: 0, lockedUntil: null, lockedAt: null };
+    entry.failCount++;
+    if (entry.failCount >= MAX_FAIL) {
+      entry.lockedUntil = Date.now() + LOCKOUT_MS;
+      entry.lockedAt = Date.now();
+    }
+    accountLockout.set(userId, entry);
+  }
+
+  function isAccountLocked(userId: string): boolean {
+    const entry = accountLockout.get(userId);
+    if (!entry || !entry.lockedUntil) return false;
+    if (entry.lockedUntil > Date.now()) return true;
+    // Auto-unlock
+    accountLockout.delete(userId);
+    return false;
+  }
+
+  function clearAccountLockout(userId: string) {
+    accountLockout.delete(userId);
+  }
+
+  (app as any)._accountLockout = accountLockout;
+  (app as any)._clearAccountLockout = clearAccountLockout;
+
+  // ── Security: Rate limiters ─────────────────────────────────────────────────
+  function makeRateLimiter(max: number, windowMinutes: number, message: string) {
+    return rateLimit({
+      windowMs: windowMinutes * 60 * 1000,
+      max,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req: any) => getClientIp(req),
+      message: { error: message },
+      handler: (req: any, res: any, next: any, options: any) => {
+        recordIpStrike(getClientIp(req));
+        res.status(options.statusCode).json(options.message);
+      },
+      skip: (req: any) => {
+        // Never rate-limit already-blocked IPs (they get 403 earlier)
+        return false;
+      },
+    });
+  }
+
+  // 只对敏感认证操作限速，/api/auth/me 等轮询接口不受限
+  app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
+  app.use("/api/auth/register", makeRateLimiter(5, 60, "Too many registration attempts. Please wait before trying again."));
+  app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
+  app.use("/api/auth/otp/verify-login", makeRateLimiter(10, 15, "Too many attempts. Please wait 15 minutes."));
+  app.use("/api/auth/github", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/wechat", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
+  app.use("/api/auth/reset-password", makeRateLimiter(5, 60, "Too many attempts. Please wait before trying again."));
+
   app.get("/api/providers", (_req, res) => {
     res.json({
       doubao: !!process.env.DOUBAO_API_KEY,
@@ -593,6 +740,8 @@ export async function registerRoutes(
       if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
       const user = await storage.getUser(userId);
       if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+      // 手机号注册用户（phone_verified=true）直接放行，无需邀请码
+      if ((user as any).phoneVerified) { next(); return; }
       if (!(user as any).inviteCode) {
         res.status(403).json({ error: "Invite code required" });
         return;
@@ -604,7 +753,16 @@ export async function registerRoutes(
     }
   };
 
+  // Temporary debug endpoint — receives client-side trace from BuildStreamInstance
+  app.post("/api/_dbg", (req, res) => {
+    const msg = req.body?.msg || "";
+    console.log("[client-dbg]", msg);
+    res.status(204).end();
+  });
+
   app.post("/api/build-session", requireInviteCode, async (req, res) => {
+    let _userId: string | undefined;
+    let _sessionId: string | undefined;
     try {
       if (!process.env.DOUBAO_API_KEY) {
         res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
@@ -631,6 +789,8 @@ export async function registerRoutes(
       };
 
       // Per-user session cap
+      _userId = reqUserId;
+      _sessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
         res.status(429).json({ error: "Too many active sessions. Please wait for a running build to finish." });
         return;
@@ -728,6 +888,10 @@ export async function registerRoutes(
         .finally(() => {
           session.done = true;
           session.doneAt = Date.now();
+          // Send [DONE] frame and close all connected SSE writers so clients
+          // detect end-of-stream cleanly (matching what manager-chat does).
+          const doneLine = "data: [DONE]\n\n";
+          Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
           // Unregister from per-user session tracker
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           // Clean up session directory
@@ -747,6 +911,8 @@ export async function registerRoutes(
 
     } catch (error: any) {
       console.error("Build session error:", error?.message || error);
+      // Release session slot on setup errors — prevents permanent slot leak
+      if (_userId && _sessionId) userSessions.unregister(_userId, _sessionId);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Build session failed" });
       }
@@ -755,6 +921,7 @@ export async function registerRoutes(
 
   app.get("/api/build-session/:sessionId/status", (req, res) => {
     const session = buildSessions.get(req.params.sessionId);
+    console.log(`[build-status] sessionId=${req.params.sessionId} found=${!!session} done=${session?.done} aborted=${(session as any)?.aborted} mapSize=${buildSessions.size}`);
     if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
@@ -764,6 +931,34 @@ export async function registerRoutes(
       eventCount: session.events.length,
       done: session.done,
     });
+  });
+
+  // Pre-register a build session ID so that a page refresh during the main
+  // POST (which carries the full file payload) can still find the session via
+  // the status endpoint. The main POST will overwrite this placeholder with the
+  // real session data.
+  app.post("/api/build-session/pre-register", (req, res) => {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+    if (!buildSessions.has(sessionId)) {
+      buildSessions.set(sessionId, {
+        id: sessionId,
+        aborted: false,
+        files: new Map(),
+        plan: { steps: [] },
+        userRequest: "",
+        userLang: "English",
+        mode: "direct",
+        _startedAt: Date.now(),
+        events: [],
+        nextEventId: 0,
+        done: false,
+        sseWriters: new Set(),
+        parts: [],
+        status: { type: "idle" },
+      } as any);
+    }
+    res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/console-event", (req, res) => {
@@ -836,6 +1031,8 @@ export async function registerRoutes(
   // Mirrors /api/build-session but runs the verify→fix→re-verify loop quietly
   // (no needs_input) and reports once. See review-orchestrator.ts.
   app.post("/api/review-session", async (req, res) => {
+    let _reviewUserId: string | undefined;
+    let _reviewSessionId: string | undefined;
     try {
       const hasAnyProvider = !!(process.env.GLM_API_KEY || process.env.DOUBAO_API_KEY || process.env.KIMI_API_KEY || process.env.MINIMAX_API_KEY);
       if (!hasAnyProvider) {
@@ -863,6 +1060,8 @@ export async function registerRoutes(
       }
 
       const reqUserId = (req.session as any)?.userId as string | undefined;
+      _reviewUserId = reqUserId;
+      _reviewSessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
         res.status(429).json({ error: "Too many active sessions. Please wait for a running session to finish." });
         return;
@@ -925,6 +1124,8 @@ export async function registerRoutes(
           shellManager.destroyShell(session.id).catch(() => {});
         });
     } catch (error: any) {
+      // Release session slot on setup errors — prevents permanent slot leak
+      if (_reviewUserId && _reviewSessionId) userSessions.unregister(_reviewUserId, _reviewSessionId);
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Review session failed" });
       }
@@ -1098,15 +1299,19 @@ export async function registerRoutes(
         res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, or MINIMAX_API_KEY)" });
         return;
       }
-      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId } = req.body as {
+      const { messages, files, provider, framework: reqFramework, projectId: reqProjectId, chatSessionId: reqChatSessionId } = req.body as {
         messages: Array<{ role: "user" | "assistant"; content: string }>;
         files?: Array<{ path: string; content: string }>;
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
+        chatSessionId?: string;
       };
+      // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
+      const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
+      // Planning uses Kimi for stable task decomposition; fallback via getOptimalClient
+      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "kimi");
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -1128,6 +1333,7 @@ export async function registerRoutes(
         nextEventId: 0,
         done: false,
         startedAt: Date.now(),
+        _userId: reqUserId || undefined,
         sseWriters: new Set(),
       };
       managerChatSessions.set(mgrSessionId, mgrSession);
@@ -1217,6 +1423,23 @@ export async function registerRoutes(
         : `IMPORTANT: Write ALL narration, explanations, plan descriptions, and conversational text in ${langLabel}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
 
       let systemPrompt = `${langPrefix}${MANAGER_AGENT_SYSTEM_PROMPT}`;
+
+      // Inject current date so the model has accurate time awareness
+      const now = new Date();
+      systemPrompt += `\n\n## Current Date\n\nToday is ${now.toISOString().split("T")[0]} (${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}). Use this when making decisions about library versions, API compatibility, or anything time-sensitive.`;
+
+      // Per-project self-evolving memory — authoritative context from past sessions.
+      if (reqProjectId) {
+        try {
+          const memory = await storage.getProjectMemory(reqProjectId);
+          if (memory.trim()) {
+            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — past bugs and fixes, the architecture/tools in use, gotchas. Use it to plan better and avoid repeating mistakes. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
+          }
+        } catch (err) {
+          console.warn("[manager-chat] getProjectMemory failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const isNewProject = !files || files.length === 0;
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
@@ -1246,14 +1469,14 @@ This override applies to THIS message only — it does not change behavior for p
       if (detectedCapMatches.length > 0) {
         console.log(
           `[manager-chat] capability skills active: ${detectedCapMatches
-            .map((m) => `${m.name}(score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+            .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
             .join("; ")}`,
         );
-        const capContent = await loadCapabilities(detectedCapMatches.map((m) => m.name));
+        const capContent = await loadCapabilitiesTiered(detectedCapMatches);
         if (capContent) {
-          systemPrompt = `${systemPrompt}\n\n## Capability Skills (MANDATORY)\n\nThe following capability guidance is in scope for this request. You MUST apply these patterns in your plan and step descriptions — treat them as hard requirements, not suggestions. If a capability's checklist applies, every item must be addressed:\n\n${capContent}`;
+          systemPrompt = `${systemPrompt}\n\n## Capability Skills (MANDATORY)\n\nThe following capability guidance is in scope for this request. You MUST apply these patterns in your plan and step descriptions — treat them as hard requirements, not suggestions. Full entries give complete guidance; "(digest)" entries are supporting concerns — apply their checklist. If a capability's checklist applies, every item must be addressed:\n\n${capContent}`;
           // Surface which capabilities were activated so the client can show it.
-          emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score })) });
+          emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })) });
         }
       }
 
@@ -1281,7 +1504,7 @@ This override applies to THIS message only — it does not change behavior for p
       }
 
       const managerState: ManagerSessionState = {};
-      const managerTools = buildManagerTools(managerState);
+      const managerTools = buildManagerTools(managerState, { projectId: reqProjectId, userId: reqUserId });
 
       // Fast intent classification — use MiniMax if available (fastest), else active provider
       const fastClientForIntent = process.env.MINIMAX_API_KEY
@@ -1326,6 +1549,86 @@ This override applies to THIS message only — it does not change behavior for p
       const activeTools = managerTools.schemas;
       const activeHandlers = managerTools.handlers;
       const activeExitTools = ["submit_plan"];
+
+      // MCP: Always start built-in search; merge user config on top.
+      // Gives the planner access to web search and research capabilities.
+      let mgrMcpManager: McpManager | null = null;
+      try {
+        const builtinConfig = getBuiltinMcpConfig();
+        let userConfig: McpConfig | null = null;
+        if (files && files.length > 0) {
+          const filesMap = new Map(files.map(f => [f.path.replace(/^\/project\//, ""), f.content]));
+          userConfig = loadMcpConfig({ files: filesMap });
+        }
+        const mergedConfig: McpConfig = {
+          servers: { ...builtinConfig.servers, ...(userConfig?.servers ?? {}) },
+        };
+
+        mgrMcpManager = new McpManager();
+        await mgrMcpManager.connect(mergedConfig);
+        if (mgrMcpManager.getAvailableTools().length > 0) {
+          const mcpTools = buildMcpTools(mgrMcpManager, emit);
+          activeTools.push(...mcpTools.schemas);
+          Object.assign(activeHandlers, mcpTools.handlers);
+
+          // Register research tool for the manager
+          activeTools.push({
+            type: "function",
+            function: {
+              name: "research",
+              description: "Search the web for current information to inform your planning. Use when you need to look up latest APIs, library versions, best practices, or technical details before creating the plan.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "The research question — be specific.",
+                  },
+                },
+                required: ["query"],
+              },
+            },
+          });
+          const capturedMgr = mgrMcpManager;
+          activeHandlers["research"] = async (args, emitFn) => {
+            const query = args.query as string;
+            if (!query) return "Error: query is required";
+            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
+            const result = await runResearchAgent(query, capturedMgr, emitFn);
+            // Emit research result summary so the UI shows completion
+            const wordCount = result ? result.split(/\s+/).length : 0;
+            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
+            const summaryLine = sourceCount > 0
+              ? `Found ${sourceCount} source(s), ${wordCount} words`
+              : `${wordCount} words`;
+            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
+            const sanitized = sanitizeResearchResult(result);
+            return sanitized || "(No findings)";
+          };
+
+          // Add MCP guidance to system prompt
+          const mcpToolNames = getMcpToolNames(mgrMcpManager);
+          systemPrompt += `\n\n## External Research Tools (MCP)
+
+You have access to web research tools. **Use them proactively** — do NOT rely solely on your training data for version-specific or time-sensitive information.
+
+Available tools: ${mcpToolNames.join(", ")}, research
+
+### When to call research(query):
+- The user mentions a specific library/framework version (e.g. "Tailwind v4", "Next.js 15")
+- The user asks for "latest" or "newest" anything
+- You need to reference current API syntax, config formats, or install commands
+- You are unsure whether a package/API has changed since your training cutoff
+
+### CRITICAL: Research results are INTERNAL context only
+The output from research() is raw reference material for YOUR use only. NEVER paste, quote, or dump research results into your reply to the user. Instead, digest the findings silently and use them to produce a better plan. If you need to mention what you learned, summarize it in 1-2 sentences naturally within your response.
+
+**Your training data has a knowledge cutoff. Today is ${new Date().toISOString().split("T")[0]}.** If the user is asking about recent technology, ALWAYS research first before planning. A wrong plan based on outdated knowledge wastes the entire build cycle.`;
+        }
+      } catch (err) {
+        console.warn("[manager-chat] MCP setup failed:", err instanceof Error ? err.message : err);
+        mgrMcpManager = null;
+      }
 
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
@@ -1398,6 +1701,9 @@ This override applies to THIS message only — it does not change behavior for p
           // silently ending the chat with no plan card and no error.
           console.warn("[manager-chat] submit_plan exit but plan was rejected by handler");
           emit({ type: "manager_error", reason: "empty_plan" });
+          // manager_done must still be emitted so the client's parseSseStream
+          // receives [DONE] and the loading state is released.
+          emit({ type: "manager_done" });
         } else {
           emit({ type: "manager_done" });
         }
@@ -1405,6 +1711,8 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Clean up MCP connections
+        if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
         // Persist final state to DB (events + done flag)
         storage.upsertManagerSession({
           id: mgrSession.id,
@@ -1428,6 +1736,8 @@ This override applies to THIS message only — it does not change behavior for p
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
         if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Clean up MCP connections on error
+        if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
         // Persist error state to DB
         storage.upsertManagerSession({
           id: mgrSession.id,
@@ -1445,6 +1755,8 @@ This override applies to THIS message only — it does not change behavior for p
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
+      // Release session slot on error — prevents permanent slot leak
+      if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
       if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
         const s = managerChatSessions.get(mgrSessionId)!;
         s.done = true;
@@ -1452,13 +1764,15 @@ This override applies to THIS message only — it does not change behavior for p
       }
       if (!res.headersSent) {
         res.status(500).json({ error: error?.message || "Failed to get Manager response" });
-      } else if (!clientDisconnected) {
+      } else {
+        // Headers already sent — always write [DONE] so the client's parseSseStream
+        // terminates regardless of whether the browser connection is still open.
         try {
           res.write(`data: ${JSON.stringify({ type: "manager_error" })}\n\n`);
           (res as any).flush?.();
           res.write("data: [DONE]\n\n");
           (res as any).flush?.();
-          res.end();
+          if (!clientDisconnected) res.end();
         } catch {}
       }
     }
@@ -2212,6 +2526,7 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.get("/api/projects", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const allProjects = await storage.getProjects(userId);
       res.json({ projects: allProjects });
     } catch (error: any) {
@@ -2408,7 +2723,10 @@ Generate the cascade.md content for this project based on both the plan and the 
         res.status(400).json({ error: "afterSeq query param required" });
         return;
       }
-      await storage.deleteChatMessagesAfter(projectId, afterSeq);
+      // sessionId：传了就按 session 删，不传默认删 "main"
+      const sessionIdRaw = req.query.sessionId;
+      const sessionId = typeof sessionIdRaw === "string" ? sessionIdRaw : null;
+      await storage.deleteChatMessagesAfter(projectId, afterSeq, sessionId);
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete messages" });
@@ -3220,6 +3538,123 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // ── User Feedback ─────────────────────────────────────────────────────────
+  // POST /api/feedback — submit user suggestion
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { content, source } = req.body as { content?: string; source?: string };
+      if (!content?.trim()) return res.status(400).json({ error: "Content required" });
+      await db.insert(userFeedback).values({
+        userId,
+        content: content.trim().slice(0, 2000),
+        source: (source === "mobile" ? "mobile" : "pc"),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[feedback]", err);
+      res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
+  // GET /api/admin/feedback — list all feedback (admin only)
+  app.get("/api/admin/feedback", async (req, res) => {
+    try {
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
+      const rows = await db
+        .select({
+          id: userFeedback.id,
+          content: userFeedback.content,
+          source: userFeedback.source,
+          createdAt: userFeedback.createdAt,
+          repliedAt: userFeedback.repliedAt,
+          replyContent: userFeedback.replyContent,
+          username: users.username,
+          email: users.email,
+          phone: users.phone,
+        })
+        .from(userFeedback)
+        .leftJoin(users, eq(userFeedback.userId, users.id))
+        .orderBy(desc(userFeedback.createdAt))
+        .limit(500);
+      res.json({ feedback: rows });
+    } catch (err) {
+      console.error("[admin/feedback]", err);
+      res.status(500).json({ error: "Failed to fetch feedback" });
+    }
+  });
+
+  // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
+  app.post("/api/admin/feedback/:id/reply", async (req, res) => {
+    try {
+      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
+      const feedbackId = parseInt(req.params.id);
+      const { message } = req.body as { message?: string };
+      if (!message?.trim()) return res.status(400).json({ error: "Message required" });
+      const [fb] = await db.select({ userId: userFeedback.userId, content: userFeedback.content })
+        .from(userFeedback).where(eq(userFeedback.id, feedbackId));
+      if (!fb) return res.status(404).json({ error: "Feedback not found" });
+      // 写入 notifications
+      await db.insert(notifications).values({
+        userId: fb.userId,
+        type: "admin_reply",
+        title: "管理员回复了你的建议",
+        body: message.trim(),
+      });
+      // 标记 feedback 已回复
+      await db.update(userFeedback)
+        .set({ repliedAt: new Date(), replyContent: message.trim() })
+        .where(eq(userFeedback.id, feedbackId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/feedback/reply]", err);
+      res.status(500).json({ error: "Failed to send reply" });
+    }
+  });
+
+  // GET /api/notifications — 拉取当前用户通知列表
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const rows = await db.select().from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(50);
+      res.json({ notifications: rows });
+    } catch (err) {
+      console.error("[notifications]", err);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  // PATCH /api/notifications/:id/read — 标记单条已读
+  app.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const id = parseInt(req.params.id);
+      await db.update(notifications).set({ isRead: true })
+        .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to mark read" });
+    }
+  });
+
+  // PATCH /api/notifications/read-all — 全部标记已读
+  app.patch("/api/notifications/read-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to mark all read" });
+    }
+  });
+
   // === AUTH ===
 
   // Validate an invite code and atomically mark it redeemed by the given user.
@@ -3259,46 +3694,9 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
 
   app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { username, password, inviteCode } = req.body as {
-        username: string; password: string; inviteCode?: string;
-      };
-      if (typeof username !== "string" || typeof password !== "string" || !username.trim() || !password) {
-        return res.status(400).json({ error: "username and password required" });
-      }
-      if (typeof inviteCode !== "string" || !inviteCode.trim()) {
-        return res.status(400).json({ error: "Invite code required" });
-      }
-      const existing = await storage.getUserByUsername(username.trim());
-      if (existing) return res.status(409).json({ error: "Username already taken" });
-
-      const hashed = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ username: username.trim(), password: hashed });
-
-      const redeem = await redeemInviteCode(inviteCode, user.id);
-      if (!redeem.ok) {
-        // Roll back the user we just created so the username doesn't get
-        // burned on a bad invite code.
-        await db.delete(users).where(eq(users.id, user.id));
-        return res.status(400).json({ error: redeem.error });
-      }
-      await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
-        .where(eq(users.id, user.id));
-
-      (req.session as any).userId = user.id;
-      res.status(201).json({
-        id: user.id,
-        username: user.username,
-        experienceLevel: (user as any).experienceLevel,
-        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
-        inviteCode: redeem.code,
-        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
-      });
-    } catch (err) {
-      console.error("[auth/register]", err);
-      res.status(500).json({ error: "Registration failed" });
-    }
+    // Username-based registration is closed. New users must register via
+    // email OTP, phone OTP, or GitHub OAuth.
+    return res.status(403).json({ error: "Registration via username is not available. Please sign up with email, phone, or GitHub." });
   });
 
   app.post("/api/auth/invite-gate", async (req, res) => {
@@ -3336,15 +3734,39 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
         return res.status(400).json({ error: "username and password required" });
       }
-      const trimmed = username.trim();
-      const user = await storage.getUserByUsername(trimmed) ?? await storage.getUserByEmail(trimmed);
+      const identifier = username.trim();
+
+      // Resolve user by email, phone, or username — whichever matches first.
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.toLowerCase());
+      const isPhone = /^\+\d{8,15}$/.test(identifier);
+      let user =
+        isEmail ? await storage.getUserByEmail(identifier.toLowerCase())
+        : isPhone ? await storage.getUserByPhone(identifier)
+        : await storage.getUserByUsername(identifier);
+
       if (!user) return res.status(401).json({ error: "Invalid credentials" });
-      // GitHub-only users (created via OAuth) have no password — reject the
-      // password-based login path with the same generic error so we don't
-      // leak which accounts are GitHub-only.
       if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
+
+      // Account lockout check
+      if (isAccountLocked(user.id)) {
+        const entry = accountLockout.get(user.id);
+        const remainingSec = entry?.lockedUntil ? Math.ceil((entry.lockedUntil - Date.now()) / 1000) : 900;
+        return res.status(403).json({ error: "Account temporarily locked due to too many failed attempts.", remainingSec });
+      }
+
       const match = await bcrypt.compare(password, user.password);
-      if (!match) return res.status(401).json({ error: "Invalid credentials" });
+      if (!match) {
+        recordLoginFail(user.id);
+        const entry = accountLockout.get(user.id);
+        const remaining = MAX_FAIL - (entry?.failCount ?? 0);
+        const msg = remaining <= 0
+          ? "Account temporarily locked due to too many failed attempts."
+          : `Invalid credentials. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`;
+        return res.status(401).json({ error: msg });
+      }
+
+      // Success — clear any lockout
+      clearAccountLockout(user.id);
       (req.session as any).userId = user.id;
       await new Promise<void>((resolve, reject) =>
         req.session.save((err) => (err ? reject(err) : resolve()))
@@ -3352,10 +3774,10 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({
         id: user.id,
         username: user.username,
-        phoneVerified: (user as any).phoneVerified ?? false,
         experienceLevel: (user as any).experienceLevel,
         hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
         inviteCode: (user as any).inviteCode ?? null,
+        phoneVerified: !!(user as any).phoneVerified,
         trialExpiresAt: (user as any).trialExpiresAt
           ? ((user as any).trialExpiresAt as Date).toISOString()
           : null,
@@ -3376,11 +3798,114 @@ Generate the cascade.md content for this project based on both the plan and the 
       username: user.username,
       experienceLevel: (user as any).experienceLevel,
       hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
+      hasPassword: !!(user as any).password,
       inviteCode: (user as any).inviteCode ?? null,
+      phoneVerified: !!(user as any).phoneVerified,
+      email: (user as any).email ?? null,
+      phone: (user as any).phone ?? null,
+      githubId: (user as any).githubId ?? null,
+      githubLogin: (user as any).githubLogin ?? null,
+      wechatOpenId: (user as any).wechatOpenId ?? null,
+      wechatNickname: (user as any).wechatNickname ?? null,
+      firstName: (user as any).firstName ?? null,
+      lastName: (user as any).lastName ?? null,
+      bio: (user as any).bio ?? null,
       trialExpiresAt: (user as any).trialExpiresAt
         ? ((user as any).trialExpiresAt as Date).toISOString()
         : null,
+      avatarUrl: (user as any).avatarUrl ?? null,
     });
+  });
+
+  app.put("/api/auth/me/username", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { username } = req.body as { username?: string };
+      if (!username || typeof username !== "string" || !username.trim()) {
+        return res.status(400).json({ error: "Username required" });
+      }
+      const trimmed = username.trim();
+      if (trimmed.length < 2 || trimmed.length > 32) {
+        return res.status(400).json({ error: "Username must be 2–32 characters" });
+      }
+      if (!/^[a-zA-Z0-9_\-一-龥]+$/.test(trimmed)) {
+        return res.status(400).json({ error: "Username contains invalid characters" });
+      }
+      const existing = await storage.getUserByUsername(trimmed);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ error: "Username already taken" });
+      }
+      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
+      res.json({ ok: true, username: trimmed });
+    } catch (err) {
+      console.error("[auth/me/username]", err);
+      res.status(500).json({ error: "Failed to update username" });
+    }
+  });
+
+  app.get("/api/auth/me/username-cooldown", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
+      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const elapsed = Date.now() - lastChanged.getTime();
+      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
+      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.json({ canChange: false, remainingDays });
+    } catch (err) {
+      console.error("[auth/me/username-cooldown]", err);
+      res.status(500).json({ error: "Failed to check cooldown" });
+    }
+  });
+
+  app.put("/api/auth/me/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
+      const updates: Record<string, string> = {};
+      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
+      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
+      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
+      await db.update(users).set(updates as any).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/me/profile]", err);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Avatar upload
+  const avatarDir = join(resolve("."), "dist", "public", "avatars");
+  const avatarUpload = multer({
+    storage: multer.diskStorage({
+      destination: async (_req, _file, cb) => { await mkdir(avatarDir, { recursive: true }); cb(null, avatarDir); },
+      filename: (req, _file, cb) => { const userId = (req.session as any)?.userId ?? "unknown"; cb(null, `${userId}-${Date.now()}.jpg`); },
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only image files are allowed"));
+    },
+  });
+
+  app.post("/api/auth/me/avatar", avatarUpload.single("avatar"), async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const avatarUrl = `/avatars/${req.file.filename}`;
+      await db.update(users).set({ avatarUrl } as any).where(eq(users.id, userId));
+      res.json({ ok: true, avatarUrl });
+    } catch (err) {
+      console.error("[auth/me/avatar]", err);
+      res.status(500).json({ error: "Failed to upload avatar" });
+    }
   });
 
   app.put("/api/auth/me/experience", async (req, res) => {
@@ -3581,11 +4106,12 @@ Generate the cascade.md content for this project based on both the plan and the 
       if (!normalized) {
         return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
       }
-      const result = await sendOtp({ channel, target: normalized, purpose: "login" });
+      const purpose = rawPurpose === "bind_email" ? "bind_email" : rawPurpose === "bind_phone" ? "bind_phone" : "login";
+      const result = await sendOtp({ channel, target: normalized, purpose });
       if (!result.ok) {
         return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
       }
-      res.json({ ok: true, retryAfterSec: 60 });
+      res.json({ ok: true, retryAfterSec: result.retryAfterSec });
     } catch (err) {
       console.error("[auth/otp/send]", err);
       res.status(500).json({ error: "Failed to send code" });
@@ -3595,8 +4121,8 @@ Generate the cascade.md content for this project based on both the plan and the 
   app.post("/api/auth/otp/verify-login", async (req, res) => {
     try {
       if (!(await checkCaptcha(req, res))) return;
-      const { channel, target, code, inviteCode } = req.body as {
-        channel?: string; target?: string; code?: string; inviteCode?: string;
+      const { channel, target, code, inviteCode, referralCode } = req.body as {
+        channel?: string; target?: string; code?: string; inviteCode?: string; referralCode?: string;
       };
       if (channel !== "email" && channel !== "sms") {
         return res.status(400).json({ error: "Invalid channel" });
@@ -3641,8 +4167,76 @@ Generate the cascade.md content for this project based on both the plan and the 
         });
       }
 
-      // Auto-register: invite code required
-      if (!inviteCode?.trim()) {
+      // Auto-register: phone (SMS) users bypass invite code and get 30-day free trial.
+      // Email users require a manual invite code or a valid referral code.
+      if (channel === "sms") {
+        // Create phone user directly — no invite code needed
+        let username = "";
+        let createdUserId = "";
+        for (let i = 0; i < 5; i++) {
+          const candidate = `user_${randomBytes(4).toString("hex")}`;
+          try {
+            const id = randomBytes(16).toString("hex");
+            const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            const [row] = await db.insert(users).values({
+              id,
+              username: candidate,
+              password: null,
+              phone: normalized,
+              phoneVerified: true,
+              trialExpiresAt,
+            }).returning({ id: users.id, username: users.username });
+            createdUserId = row.id;
+            username = row.username;
+            break;
+          } catch (err: any) {
+            if (!String(err?.message ?? "").includes("users_username")) throw err;
+          }
+        }
+        if (!createdUserId) {
+          return res.status(500).json({ error: "Failed to create account" });
+        }
+        let newReferralCode: string | null = null;
+        try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
+        (req.session as any).userId = createdUserId;
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err) => (err ? reject(err) : resolve()))
+        );
+        return res.status(201).json({
+          id: createdUserId,
+          username,
+          experienceLevel: "intermediate",
+          hasSetExperienceLevel: false,
+          inviteCode: null,
+          trialExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          referralCode: newReferralCode,
+        });
+      }
+
+      // Email registration: either a manual invite code or a valid referral code is required.
+      let resolvedInviteCode = inviteCode;
+      let referrerId: string | null = null;
+      if (!resolvedInviteCode?.trim() && referralCode?.trim()) {
+        const ref = referralCode.trim().toUpperCase();
+        const [referrer] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.referralCode, ref));
+        if (!referrer) {
+          return res.status(400).json({ error: "Invalid invite code" });
+        }
+        referrerId = referrer.id;
+        // Generate a fresh single-use invite code tied to this registration.
+        const autoCode = `REFAUTO${randomSuffix()}`;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await db.insert(inviteCodes).values({
+          code: autoCode,
+          trialDays: 14,
+          expiresAt,
+        });
+        resolvedInviteCode = autoCode;
+      }
+      if (!resolvedInviteCode?.trim()) {
         return res.status(400).json({ error: "Invite code required" });
       }
 
@@ -3674,14 +4268,23 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(500).json({ error: "Failed to create account" });
       }
 
-      const redeem = await redeemInviteCode(inviteCode, createdUserId);
+      const redeem = await redeemInviteCode(resolvedInviteCode, createdUserId);
       if (!redeem.ok) {
         // Roll back the user so target isn't burned on a bad invite code.
         await db.delete(users).where(eq(users.id, createdUserId));
         return res.status(400).json({ error: redeem.error });
       }
+
+      // Generate a unique referral code for the new user
+      let newReferralCode: string | null = null;
+      try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
+
       await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
+        .set({
+          inviteCode: redeem.code,
+          trialExpiresAt: redeem.trialExpiresAt,
+          ...(referrerId ? { referredBy: referrerId } : {}),
+        })
         .where(eq(users.id, createdUserId));
 
       (req.session as any).userId = createdUserId;
@@ -3695,6 +4298,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         hasSetExperienceLevel: false,
         inviteCode: redeem.code,
         trialExpiresAt: redeem.trialExpiresAt.toISOString(),
+        referralCode: newReferralCode,
       });
     } catch (err) {
       console.error("[auth/otp/verify-login]", err);
@@ -3719,7 +4323,7 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.status(409).json({ error: "Email already in use" });
       }
 
-      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "login" });
+      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "bind_email" });
       if (!verify.ok) {
         const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
         return res.status(401).json({ error: errMsg });
@@ -3732,6 +4336,42 @@ Generate the cascade.md content for this project based on both the plan and the 
       res.json({ ok: true });
     } catch (err) {
       console.error("[auth/bind-email]", err);
+      res.status(500).json({ error: "Bind failed" });
+    }
+  });
+
+  app.post("/api/auth/bind-phone", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+
+      const { target, code } = req.body as { target?: string; code?: string };
+      const normalized = normalizeTarget("sms", target ?? "");
+      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
+      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
+
+      // 先验证 OTP，证明手机所有权
+      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" as any });
+      if (!verify.ok) {
+        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
+        return res.status(401).json({ error: errMsg });
+      }
+
+      // OTP 验证通过 = 证明了手机所有权，如果该手机被其他账号占用则自动转移
+      const existing = await storage.getUserByPhone(normalized);
+      if (existing && existing.id !== userId) {
+        await db.update(users)
+          .set({ phone: null, phoneVerified: false })
+          .where(eq(users.id, existing.id));
+      }
+
+      await db.update(users)
+        .set({ phone: normalized, phoneVerified: true })
+        .where(eq(users.id, userId));
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/bind-phone]", err);
       res.status(500).json({ error: "Bind failed" });
     }
   });
@@ -3767,91 +4407,139 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // 1) Kick off the OAuth dance: store a state token in the session and
   //    redirect the browser to GitHub's authorize URL.
-  app.get("/api/auth/github", (req, res) => {
+  app.get("/api/auth/github", async (req, res) => {
     const clientId = process.env.GITHUB_CLIENT_ID;
-    if (!clientId) {
-      res.status(500).json({ error: "GitHub OAuth not configured" });
-      return;
-    }
+    if (!clientId) { res.status(500).json({ error: "GitHub OAuth not configured" }); return; }
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const state = randomBytes(16).toString("hex");
-    (req.session as any).githubOAuthState = state;
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
+    await pool.query(
+      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
+      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state, mode }), expiresAt]
+    );
     const redirectUri = `${baseUrl}/api/auth/github/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: `${baseUrl}/api/auth/github/callback`,
       scope: "read:user user:email",
       state,
       allow_signup: "true",
     });
-    res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+    const authorizeUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
+    // ?mode=url — 前端 fetch 模式，返回 JSON 避免 302 被 SPA 路由拦截
+    if (req.query.mode === "url") {
+      res.json({ url: authorizeUrl });
+      return;
+    }
+    res.redirect(authorizeUrl);
   });
 
   // 2) Callback: exchange the code for an access token, fetch the user,
   //    then either link to an existing local user (matched by verified
   //    primary email) or create a new GitHub-only user. Finally seat the
   //    session and send the browser back to the SPA.
+  // callback：验证 state 后跳前端页面，token 交换由浏览器完成（服务器访问 github.com 被墙）
   app.get("/api/auth/github/callback", async (req, res) => {
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const failRedirect = (reason: string) => {
-      res.redirect(`${baseUrl}/auth?github_error=${encodeURIComponent(reason)}`);
-    };
+    const { code, state } = req.query as { code?: string; state?: string };
+    if (!code || !state) {
+      res.redirect(`${baseUrl}/login?github_error=missing_params`);
+      return;
+    }
+    // 验证 state 有效（防 CSRF），验完保留，让 exchange 接口再验一次后删除
+    const row = await pool.query(
+      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+      [`github_state:${state}`]
+    );
+    if (row.rows.length === 0) {
+      res.redirect(`${baseUrl}/login?github_error=bad_state`);
+      return;
+    }
+    // 跳前端 callback 页面，由浏览器完成 token 交换
+    res.redirect(`${baseUrl}/github-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  });
+
+  // exchange：前端发来 code+state，后端用固定 IP 换 token，建立 session
+  app.post("/api/auth/github/exchange", async (req, res) => {
     try {
-      const clientId = process.env.GITHUB_CLIENT_ID;
-      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-      if (!clientId || !clientSecret) {
-        failRedirect("not_configured");
-        return;
-      }
-      const { code, state } = req.query as { code?: string; state?: string };
-      const expectedState = (req.session as any)?.githubOAuthState;
-      (req.session as any).githubOAuthState = undefined;
-      if (!code || !state || !expectedState || state !== expectedState) {
-        failRedirect("bad_state");
-        return;
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
+      const row = await pool.query(
+        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+        [`github_state:${state}`]
+      );
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
+      await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
+
+      const clientId = process.env.GITHUB_CLIENT_ID!;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
+      const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
+      const GITHUB_IPS = ["20.205.243.166", "20.27.177.113", "140.82.112.4", "140.82.113.4", "140.82.114.4"];
+
+      function tryTokenExchange(ghIp: string, body: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+          const req2 = https.request({
+            hostname: ghIp,
+            port: 443,
+            path: "/login/oauth/access_token",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Host: "github.com",
+              "Content-Length": Buffer.byteLength(body),
+            },
+            rejectUnauthorized: false,
+            timeout: 8000,
+          }, (r) => {
+            let data = "";
+            r.on("data", (c) => data += c);
+            r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
+          });
+          req2.on("error", reject);
+          req2.on("timeout", () => { req2.destroy(); reject(new Error("timeout")); });
+          req2.write(body);
+          req2.end();
+        });
       }
 
-      // Exchange the temporary code for an access token.
-      const ghFetch = await getGithubFetch();
-      const tokenRes = await ghFetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          redirect_uri: `${baseUrl}/api/auth/github/callback`,
-        }),
+      const tokenBody = JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: `${baseUrl}/api/auth/github/callback`,
       });
-      if (!tokenRes.ok) {
-        failRedirect("token_exchange_failed");
-        return;
-      }
-      const tokenData = await tokenRes.json() as { access_token?: string; error?: string };
+
+      const tokenData: any = await Promise.any(
+        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
+      ).catch(() => { throw new Error("all_ips_failed"); });
+
       if (!tokenData.access_token) {
-        failRedirect(tokenData.error || "no_access_token");
+        console.error("[github/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.error || "no_access_token" });
         return;
       }
       const accessToken = tokenData.access_token;
 
-      // Fetch the GitHub user profile.
+      const ghFetch = await getGithubFetch();
       const userRes = await ghFetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
       });
       if (!userRes.ok) {
-        failRedirect("user_fetch_failed");
-        return;
+        const errBody = await userRes.text().catch(() => "");
+        console.error("[github/exchange] user fetch failed:", userRes.status, errBody);
+        res.status(400).json({ error: "user_fetch_failed" }); return;
       }
       const ghUser = await userRes.json() as {
         id: number; login: string; email: string | null; avatar_url: string | null;
       };
 
-      // The /user endpoint returns email = null when the user marks it
-      // private. Fetch /user/emails (which the user:email scope grants)
-      // to find the verified primary email for account merging.
-      // Normalize to trimmed lowercase everywhere: OTP signup stores emails
-      // lowercased, so without this an existing user is missed here and a
-      // duplicate GitHub-only account gets created.
       let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
       if (!primaryEmail) {
         const emailsRes = await ghFetch("https://api.github.com/user/emails", {
@@ -3860,30 +4548,40 @@ Generate the cascade.md content for this project based on both the plan and the 
         if (emailsRes.ok) {
           const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
           const picked = emails.find(e => e.primary && e.verified)?.email
-            ?? emails.find(e => e.verified)?.email
-            ?? null;
+            ?? emails.find(e => e.verified)?.email ?? null;
           primaryEmail = picked ? picked.trim().toLowerCase() : null;
         }
       }
 
       const githubId = String(ghUser.id);
 
-      // Resolve to a local user. Lookup priority:
-      //   1. existing user already linked to this GitHub id
-      //   2. existing user with matching verified email -> link the github id
-      //   3. otherwise create a new GitHub-only user with a unique username
+      // === BIND MODE: 将 GitHub 绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该 GitHub 账号是否已被其他用户占用
+        const existingGh = await storage.getUserByGithubId(githubId);
+        if (existingGh && existingGh.id !== userId) {
+          res.status(409).json({ error: "github_already_linked" });
+          return;
+        }
+        if (!existingGh || existingGh.id !== userId) {
+          await storage.linkGithubToUser(userId, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, githubLogin: ghUser.login });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
       let user = await storage.getUserByGithubId(githubId);
       if (!user && primaryEmail) {
         const matched = await storage.getUserByEmail(primaryEmail);
         if (matched) {
-          user = await storage.linkGithubToUser(matched.id, {
-            githubId,
-            avatarUrl: ghUser.avatar_url,
-          });
+          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
         }
       }
       if (!user) {
-        // Pick a username that doesn't collide with an existing local user.
         let candidate = ghUser.login;
         let suffix = 0;
         while (await storage.getUserByUsername(candidate)) {
@@ -3895,21 +4593,217 @@ Generate the cascade.md content for this project based on both the plan and the 
           githubId,
           email: primaryEmail,
           avatarUrl: ghUser.avatar_url,
+          githubLogin: ghUser.login,
         });
       }
 
       (req.session as any).userId = user.id;
-      // Users without a redeemed invite code (new GitHub-only signups, or any
-      // pre-existing user that was created before invite gating) must visit
-      // the invite gate before reaching the app.
-      const dest = (user as any).inviteCode ? "/app" : "/invite-gate?next=/app";
-      req.session.save((err) => {
-        if (err) console.error("[auth/github/callback] session save", err);
-        res.redirect(`${baseUrl}${dest}`);
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => err ? reject(err) : resolve())
+      );
+      res.json({
+        id: user.id,
+        username: user.username,
+        inviteCode: (user as any).inviteCode ?? null,
       });
     } catch (err) {
-      console.error("[auth/github/callback]", err);
-      failRedirect("server_error");
+      console.error("[auth/github/exchange]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // === WeChat OAuth (PC 扫码登录) ===
+
+  // 1) Initiate WeChat OAuth — redirect to WeChat QR code page
+  app.get("/api/auth/wechat", async (req, res) => {
+    const appId = process.env.WECHAT_APP_ID;
+    if (!appId) { res.status(500).json({ error: "WeChat OAuth not configured" }); return; }
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const state = randomBytes(16).toString("hex");
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const mode = req.query.mode === "bind" ? "bind" : "login";
+    await pool.query(
+      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
+       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
+      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state, mode }), expiresAt]
+    );
+    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/wechat/callback`);
+    const authorizeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
+    if (req.query.mode === "url") {
+      res.json({ url: authorizeUrl });
+      return;
+    }
+    res.redirect(authorizeUrl);
+  });
+
+  // 2) WeChat callback — redirect to frontend with code
+  app.get("/api/auth/wechat/callback", async (req, res) => {
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const { code, state } = req.query as { code?: string; state?: string };
+    if (!code || !state) {
+      res.redirect(`${baseUrl}/login?wechat_error=missing_params`);
+      return;
+    }
+    const row = await pool.query(
+      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+      [`wechat_state:${state}`]
+    );
+    if (row.rows.length === 0) {
+      res.redirect(`${baseUrl}/login?wechat_error=bad_state`);
+      return;
+    }
+    res.redirect(`${baseUrl}/wechat-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  });
+
+  // 3) Exchange code for access_token + user info, create/link user
+  app.post("/api/auth/wechat/exchange", async (req, res) => {
+    try {
+      const { code, state } = req.body as { code?: string; state?: string };
+      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
+
+      // Verify state
+      const row = await pool.query(
+        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
+        [`wechat_state:${state}`]
+      );
+      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
+      const stateData = row.rows[0].sess as { mode?: string };
+      const mode = stateData.mode || "login";
+      await pool.query(`DELETE FROM session WHERE sid = $1`, [`wechat_state:${state}`]);
+
+      const appId = process.env.WECHAT_APP_ID!;
+      const appSecret = process.env.WECHAT_APP_SECRET!;
+
+      // Exchange code for access_token
+      const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appId}&secret=${appSecret}&code=${code}&grant_type=authorization_code`;
+      const tokenRes = await fetch(tokenUrl);
+      const tokenData = await tokenRes.json() as {
+        access_token?: string;
+        openid?: string;
+        unionid?: string;
+        errcode?: number;
+        errmsg?: string;
+      };
+
+      if (!tokenData.access_token || !tokenData.openid) {
+        console.error("[wechat/exchange] token error:", tokenData);
+        res.status(400).json({ error: tokenData.errmsg || "no_access_token" });
+        return;
+      }
+
+      // Fetch user info
+      const userInfoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}`;
+      const userInfoRes = await fetch(userInfoUrl);
+      const wxUser = await userInfoRes.json() as {
+        openid: string;
+        nickname: string;
+        headimgurl: string;
+        unionid?: string;
+        errcode?: number;
+      };
+
+      if (wxUser.errcode) {
+        console.error("[wechat/exchange] userinfo error:", wxUser);
+        res.status(400).json({ error: "userinfo_failed" });
+        return;
+      }
+
+      const openId = wxUser.openid;
+      const unionId = wxUser.unionid || tokenData.unionid;
+      const nickname = wxUser.nickname || "微信用户";
+      const avatar = wxUser.headimgurl || null;
+
+      // === BIND MODE: 将微信绑定到已登录用户 ===
+      if (mode === "bind") {
+        const userId = (req.session as any)?.userId as string | undefined;
+        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+        // 检查该微信账号是否已被其他用户占用
+        const existingWx = await storage.getUserByWechatOpenId(openId);
+        if (existingWx && existingWx.id !== userId) {
+          res.status(409).json({ error: "wechat_already_linked" });
+          return;
+        }
+        if (!existingWx || existingWx.id !== userId) {
+          await storage.linkWechatToUser(userId, { openId, unionId, avatarUrl: avatar, nickname });
+        }
+        // 不覆盖 session，保持当前登录状态
+        res.json({ ok: true, bound: true, wechatNickname: nickname });
+        return;
+      }
+
+      // === LOGIN/REGISTER MODE (原有逻辑) ===
+      // Find or create user
+      let user = await storage.getUserByWechatOpenId(openId);
+      if (!user) {
+        // Generate unique username from nickname
+        let candidate = nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user";
+        let suffix = 0;
+        while (await storage.getUserByUsername(candidate)) {
+          suffix++;
+          candidate = `${nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user"}_${suffix}`;
+        }
+        user = await storage.createWechatUser({
+          username: candidate,
+          openId,
+          unionId,
+          avatarUrl: avatar,
+          nickname,
+        });
+      }
+
+      // Set session
+      (req.session as any).userId = user.id;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => err ? reject(err) : resolve())
+      );
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        inviteCode: (user as any).inviteCode ?? null,
+        avatarUrl: (user as any).avatarUrl ?? null,
+      });
+    } catch (err) {
+      console.error("[auth/wechat/exchange]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // === Unbind GitHub ===
+  app.post("/api/auth/unbind-github", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).githubId) return res.status(400).json({ error: "GitHub not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).wechatOpenId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ githubId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-github]", err);
+      res.status(500).json({ error: "Unbind failed" });
+    }
+  });
+
+  // === Unbind WeChat ===
+  app.post("/api/auth/unbind-wechat", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) return res.status(401).json({ error: "not_logged_in" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!(user as any).wechatOpenId) return res.status(400).json({ error: "WeChat not linked" });
+      // 至少保留一种登录方式
+      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).githubId;
+      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
+      await db.update(users).set({ wechatOpenId: null, wechatUnionId: null }).where(eq(users.id, userId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[auth/unbind-wechat]", err);
+      res.status(500).json({ error: "Unbind failed" });
     }
   });
 
@@ -4178,11 +5072,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     return `${inviteCodePrefix(email)}${randomSuffix()}`;
   }
   function checkAdmin(req: any, res: any): boolean {
-    if (!ADMIN_SECRET) {
-      res.status(503).json({ error: "Admin access not configured" });
-      return false;
-    }
-    if (req.headers["x-admin-secret"] !== ADMIN_SECRET) {
+    if (!req.adminUser) {
       res.status(401).json({ error: "Unauthorized" });
       return false;
     }
@@ -4204,20 +5094,65 @@ Generate the cascade.md content for this project based on both the plan and the 
         return res.json({ queued: true, alreadyOnList: true });
       }
 
-      await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu });
+      const [sub] = await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu }).returning();
 
-      // Fire-and-forget: send confirmation email to the subscriber.
-      sendWaitlistConfirmationEmail(email).catch((err) => console.error("[waitlist/confirm-email]", err));
-
-      // Send batch alert when pending count crosses a multiple of BATCH_SIZE.
-      const [{ pending }] = await db
-        .select({ pending: count() })
-        .from(waitlistSubscribers)
-        .where(eq(waitlistSubscribers.status, "pending"));
-      if (pending > 0 && pending % BATCH_SIZE === 0) {
-        // Fire-and-forget; don't block the request on the email send.
-        notifyAdminOfBatch(pending).catch((err) => console.error("[waitlist/notify]", err));
-      }
+      // Immediately allocate an invite code and send the invite email.
+      (async () => {
+        try {
+          const { trialDays, codeExpiresAt, label: trialLabel } = getTrialInfo(email, isEdu);
+          let code = "";
+          let allocated = false;
+          for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
+            try {
+              await db.transaction(async (tx) => {
+                code = formatInviteCode(email);
+                await tx.insert(inviteCodes).values({
+                  code,
+                  isEdu,
+                  trialDays,
+                  expiresAt: codeExpiresAt,
+                  waitlistSubscriberId: sub.id,
+                });
+              });
+              allocated = true;
+            } catch (err: any) {
+              const msg: string = err?.message ?? "";
+              if (!msg.includes("unique") && !msg.includes("duplicate")) throw err;
+            }
+          }
+          if (!allocated) {
+            console.error(`[waitlist/invite] failed to allocate code for ${email}`);
+            return;
+          }
+          const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+          const html = `
+            <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+              <p style="margin-bottom:24px">您好！</p>
+              <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
+              <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
+                <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
+              </div>
+              <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
+                <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
+                <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
+              </div>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+              <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+            </div>
+          `;
+          await sendEmail({
+            to: email,
+            subject: `您的 Cascade AI 邀请码`,
+            html,
+            text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
+          });
+          await db.update(waitlistSubscribers).set({ status: "invited" }).where(eq(waitlistSubscribers.id, sub.id));
+        } catch (err) {
+          console.error("[waitlist/invite]", err);
+          await db.update(waitlistSubscribers).set({ status: "email_failed" }).where(eq(waitlistSubscribers.id, sub.id));
+        }
+      })();
 
       res.json({ queued: true });
     } catch (err) {
@@ -4255,12 +5190,232 @@ Generate the cascade.md content for this project based on both the plan and the 
             invitedAt: c?.createdAt ?? null,
             expiresAt: c?.expiresAt ?? null,
             seqNum: c?.id ?? null,
+            registeredAt: c?.redeemedAt ?? null,
           };
         }),
       });
     } catch (err) {
       console.error("[waitlist/list]", err);
       res.status(500).json({ error: "Failed to fetch waitlist" });
+    }
+  });
+
+  // ── Admin: IP blocklist management ─────────────────────────────────────────
+
+  // GET /api/admin/blocklist/ip — list all blocked IPs
+  app.get("/api/admin/blocklist/ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const now = Date.now();
+    const list = Array.from((app as any)._ipBlocklist.entries())
+      .filter(([, v]: [string, any]) => v.blockedUntil > now)
+      .map(([ip, v]: [string, any]) => ({
+        ip,
+        reason: v.reason,
+        blockedAt: new Date(v.blockedAt).toISOString(),
+        blockedUntil: new Date(v.blockedUntil).toISOString(),
+        remainingSec: Math.ceil((v.blockedUntil - now) / 1000),
+      }));
+    res.json({ total: list.length, items: list });
+  });
+
+  // DELETE /api/admin/blocklist/ip/:ip — unblock an IP
+  app.delete("/api/admin/blocklist/ip/:ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const ip = decodeURIComponent(req.params.ip);
+    const existed = (app as any)._ipBlocklist.has(ip);
+    (app as any)._ipBlocklist.delete(ip);
+    res.json({ ok: true, ip, unblocked: existed });
+  });
+
+  // POST /api/admin/blocklist/ip — manually block an IP
+  app.post("/api/admin/blocklist/ip", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { ip, durationHours = 1, reason = "Manual block" } = req.body as {
+      ip?: string; durationHours?: number; reason?: string;
+    };
+    if (!ip || typeof ip !== "string") return res.status(400).json({ error: "ip required" });
+    const now = Date.now();
+    (app as any)._ipBlocklist.set(ip.trim(), {
+      blockedUntil: now + durationHours * 60 * 60 * 1000,
+      reason,
+      blockedAt: now,
+    });
+    res.json({ ok: true, ip: ip.trim(), durationHours });
+  });
+
+  // ── Admin: Account lockout management ──────────────────────────────────────
+
+  // GET /api/admin/blocklist/users — list locked accounts
+  app.get("/api/admin/blocklist/users", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const now = Date.now();
+    const locked: any[] = [];
+    for (const [userId, entry] of (app as any)._accountLockout.entries()) {
+      if (entry.lockedUntil && entry.lockedUntil > now) {
+        // fetch username
+        const user = await storage.getUser(userId).catch(() => null);
+        locked.push({
+          userId,
+          username: (user as any)?.username ?? "unknown",
+          email: (user as any)?.email ?? null,
+          failCount: entry.failCount,
+          lockedAt: entry.lockedAt ? new Date(entry.lockedAt).toISOString() : null,
+          lockedUntil: new Date(entry.lockedUntil).toISOString(),
+          remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
+        });
+      }
+    }
+    res.json({ total: locked.length, items: locked });
+  });
+
+  // DELETE /api/admin/blocklist/users/:userId — unlock an account
+  app.delete("/api/admin/blocklist/users/:userId", (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { userId } = req.params;
+    const existed = (app as any)._accountLockout.has(userId);
+    (app as any)._clearAccountLockout(userId);
+    res.json({ ok: true, userId, unlocked: existed });
+  });
+
+  // GET /api/admin/blocklist/users/:userId — check a specific user's lockout
+  app.get("/api/admin/blocklist/users/:userId", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    const { userId } = req.params;
+    const entry = (app as any)._accountLockout.get(userId);
+    const now = Date.now();
+    if (!entry || !entry.lockedUntil || entry.lockedUntil <= now) {
+      return res.json({ locked: false, userId });
+    }
+    const user = await storage.getUser(userId).catch(() => null);
+    res.json({
+      locked: true,
+      userId,
+      username: (user as any)?.username ?? "unknown",
+      failCount: entry.failCount,
+      lockedUntil: new Date(entry.lockedUntil).toISOString(),
+      remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
+    });
+  });
+
+  // ── Admin: Creator Square dashboard ────────────────────────────────────────
+
+  // GET /api/admin/square — aggregate stats + per-user breakdown
+  // Query param: ?filter=all|active|takendown (default: all)
+  app.get("/api/admin/square", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const filter = (req.query.filter as string) ?? "all";
+      const filterCond =
+        filter === "active" ? eq(publishedApps.adminTakenDown, false) :
+        filter === "takendown" ? eq(publishedApps.adminTakenDown, true) :
+        undefined;
+
+      // Total (all records regardless of filter)
+      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
+      const [{ totalActive }] = await db.select({ totalActive: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, false));
+      const [{ totalTakenDown }] = await db.select({ totalTakenDown: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, true));
+
+      // By framework (active only for stats)
+      const byFramework = await db
+        .select({ framework: publishedApps.framework, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.framework)
+        .orderBy(desc(count()));
+
+      // By visibility (active only)
+      const byVisibility = await db
+        .select({ visibility: publishedApps.visibility, cnt: count() })
+        .from(publishedApps)
+        .where(eq(publishedApps.adminTakenDown, false))
+        .groupBy(publishedApps.visibility);
+
+      // Top view_count (active only)
+      const topViewed = await db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.adminTakenDown, false))
+        .orderBy(desc(publishedApps.viewCount))
+        .limit(10);
+
+      // Per-user breakdown (all records)
+      const perUser = await db
+        .select({
+          userId: publishedApps.userId,
+          authorUsername: users.username,
+          appCount: count(),
+          totalViews: sql<number>`sum(${publishedApps.viewCount})`,
+          totalForks: sql<number>`sum(${publishedApps.forkCount})`,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .groupBy(publishedApps.userId, users.username)
+        .orderBy(desc(count()));
+
+      // All apps with filter applied, up to 100
+      const recentQuery = db
+        .select({
+          id: publishedApps.id,
+          title: publishedApps.title,
+          framework: publishedApps.framework,
+          visibility: publishedApps.visibility,
+          isOpenSource: publishedApps.isOpenSource,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          adminTakenDown: publishedApps.adminTakenDown,
+          authorUsername: users.username,
+          publishedAt: publishedApps.publishedAt,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .orderBy(desc(publishedApps.publishedAt))
+        .limit(100);
+
+      const recent = filterCond
+        ? await recentQuery.where(filterCond)
+        : await recentQuery;
+
+      res.json({ total, totalActive, totalTakenDown, byFramework, byVisibility, topViewed, perUser, recent });
+    } catch (err) {
+      console.error("[admin/square]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/takedown — admin soft takedown
+  app.patch("/api/admin/square/:id/takedown", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: true, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/takedown]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // PATCH /api/admin/square/:id/restore — admin restore a taken-down app
+  app.patch("/api/admin/square/:id/restore", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      await db.update(publishedApps)
+        .set({ adminTakenDown: false, updatedAt: new Date() })
+        .where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin/square/restore]", err);
+      res.status(500).json({ error: "failed" });
     }
   });
 
@@ -4420,16 +5575,16 @@ Generate the cascade.md content for this project based on both the plan and the 
       const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
       const html = `
         <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:8px">您的 CascadeAI 邀请码</h2>
-          <p style="color:#6b7280;margin-bottom:32px">感谢您申请 CascadeAI，您的专属邀请码如下：</p>
+          <p style="margin-bottom:24px">您好！</p>
+          <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
           <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
             <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
           </div>
+          <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
           <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
             <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
             <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
           </div>
-          <p style="color:#6b7280;font-size:14px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</a> 注册时填写邀请码。</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
           <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
         </div>
@@ -4441,19 +5596,23 @@ Generate the cascade.md content for this project based on both the plan and the 
       try {
         await sendEmail({
           to: sub.email,
-          subject: `您的 CascadeAI 邀请码：${code}`,
+          subject: `您的 Cascade AI 邀请码`,
           html,
-          text: `您的 CascadeAI 邀请码：${code}\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。\n邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。\n\n请前往 ${WAITLIST_BASE_URL} 注册时填写。`,
+          text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
         });
         await db.update(waitlistSubscribers)
           .set({ status: "invited" })
           .where(eq(waitlistSubscribers.id, sub.id));
         sent++;
+        // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
+        await new Promise(r => setTimeout(r, 600));
       } catch (err) {
         console.error("[invite-email] send failed, marking email_failed", err, sub.email);
         await db.update(waitlistSubscribers)
           .set({ status: "email_failed" })
           .where(eq(waitlistSubscribers.id, sub.id));
+        // 失败后也等一下再继续，避免连续触发限速
+        await new Promise(r => setTimeout(r, 600));
       }
     }
     return sent;
@@ -4601,9 +5760,11 @@ Generate the cascade.md content for this project based on both the plan and the 
           username: u.username,
           email: u.email,
           phone: u.phone,
+          githubId: u.githubId ?? null,
+          wechatOpenId: u.wechatOpenId ?? null,
           // 已激活 = 已兑换邀请码（通过邀请码门）。
           activated: !!u.inviteCode,
-          authMethod: u.githubId ? "github" : u.email ? "email" : u.phone ? "phone" : "other",
+          authMethod: u.githubId ? "github" : u.wechatOpenId ? "wechat" : u.email ? "email" : u.phone ? "phone" : "other",
           projectCount: projectCountMap.get(u.id) ?? 0,
           lastActiveAt: lastActiveTs ? new Date(lastActiveTs).toISOString() : null,
           trialExpiresAt: u.trialExpiresAt ? new Date(u.trialExpiresAt).toISOString() : null,
@@ -4690,13 +5851,15 @@ Generate the cascade.md content for this project based on both the plan and the 
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
-    let browser: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
-    let context: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let browser: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let context: any = null;
     let previewToken: string | null = null;
     let aborted = false;
 
-    const updateDb = (patch: Partial<{ status: string; localPath: string; errorMessage: string; finishedAt: Date }>) => {
-      if (videoDbId) db.update(projectVideos).set(patch).where(eq(projectVideos.id, videoDbId)).catch(() => {});
+    const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
+      if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
     };
 
     const stopPreview = () => {
@@ -4713,7 +5876,9 @@ Generate the cascade.md content for this project based on both the plan and the 
       aborted = true;
       try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      job.status = "error"; job.error = "timeout"; job.finishedAt = Date.now();
+      job.status = "error";
+      job.error = "timeout";
+      job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
       updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
       stopPreview();
@@ -4722,12 +5887,14 @@ Generate the cascade.md content for this project based on both the plan and the 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // ── Step 1: Start preview-serve (no login required, guaranteed) ──
+      // ── Step 1: Start preview-serve (NO login required, 100% reliable) ──
       const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
-      if (projectFiles.length === 0) throw new Error("Project has no files to preview");
-
+      if (projectFiles.length === 0) {
+        throw new Error("Project has no files to preview");
+      }
       const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
       });
       if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
@@ -4735,26 +5902,31 @@ Generate the cascade.md content for this project based on both the plan and the 
       previewToken = startData.token;
       const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
 
-      // ── Step 2: Launch Playwright with native video recording ──
+      // ── Step 2: Launch Playwright ──
       const pwModule = "playwright";
-      const { chromium } = await import(/* @vite-ignore */ pwModule) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
       context = await browser.newContext({
         viewport: { width: 390, height: 844 },
         recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
       });
       const page = await context.newPage();
-      job.status = "running"; job.progress = 5;
+      job.status = "running";
+      job.progress = 5;
 
-      // ── Step 3: Load App (use "load" not "networkidle" for reliability) ──
+      // ── Step 3: Load App — use "load" not "networkidle" for reliability ──
       await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
-      await new Promise<void>((r) => setTimeout(r, 3000)); // wait for JS frameworks
+      // Extra wait for JS frameworks to finish rendering
+      await new Promise<void>((r) => setTimeout(r, 3000));
       job.progress = 15;
 
       // ── Step 4: Interactions ──
       const projectRow = await storage.getProject(projectId).catch(() => null);
       const rawSequence = projectRow?.actionSequence;
+
       if (rawSequence) {
+        // Use Builder-generated DSL script (precise, app-specific)
         try {
           const parsed = JSON.parse(rawSequence);
           const validation = validateDslSequence(parsed);
@@ -4763,34 +5935,43 @@ Generate the cascade.md content for this project based on both the plan and the 
             const result = await executeDslSequence(page, validation.actions);
             if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
           }
-        } catch (e) { console.warn("[video] DSL error:", e instanceof Error ? e.message : e); }
+        } catch (e) {
+          console.warn("[video] DSL error:", e instanceof Error ? e.message : e);
+        }
       } else {
         // Generic fallback: scroll + click visible buttons
         try {
-          await page.mouse.wheel(0, 300); await new Promise<void>((r) => setTimeout(r, 1000));
-          await page.mouse.wheel(0, 300); await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+          await page.mouse.wheel(0, 300);
+          await new Promise<void>((r) => setTimeout(r, 1000));
           const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
-          for (const btn of (buttons as any[]).slice(0, 3)) {
+          for (const btn of buttons.slice(0, 3)) {
             try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
           }
-          await page.mouse.wheel(0, -600); await new Promise<void>((r) => setTimeout(r, 1000));
-        } catch (e) { console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e); }
+          await page.mouse.wheel(0, -600);
+          await new Promise<void>((r) => setTimeout(r, 1000));
+        } catch (e) {
+          console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e);
+        }
       }
 
       job.progress = 60;
 
       // ── Step 5: Fill remaining time precisely ──
       const usedMs = 3000 + (rawSequence ? 15000 : 8000);
-      await new Promise<void>((r) => setTimeout(r, Math.max(2000, duration * 1000 - usedMs)));
+      const remainingMs = Math.max(2000, duration * 1000 - usedMs);
+      await new Promise<void>((r) => setTimeout(r, remainingMs));
       job.progress = 80;
 
-      // ── Step 6: Flush video ──
+      // ── Step 6: Flush video file ──
       const videoHandle = await page.video();
       await context.close(); context = null;
       await browser.close(); browser = null;
       stopPreview();
 
       if (aborted) return;
+
       const rawVideoPath = await videoHandle?.path();
       if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
 
@@ -4806,15 +5987,19 @@ Generate the cascade.md content for this project based on both the plan and the 
       }
 
       // ── Step 8: Persist ──
-      // videoStorage singleton already imported
       const storagePath = await videoStorage.save(jobId, watermarkedPath);
-      job.outputPath = storagePath; job.progress = 100; job.status = "done"; job.finishedAt = Date.now();
+      job.outputPath = storagePath;
+      job.progress = 100;
+      job.status = "done";
+      job.finishedAt = Date.now();
       updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
 
     } catch (err: unknown) {
       if (!aborted) {
         const msg = err instanceof Error ? err.message : "unknown";
-        job.status = "error"; job.error = msg; job.finishedAt = Date.now();
+        job.status = "error";
+        job.error = msg;
+        job.finishedAt = Date.now();
         updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
@@ -4828,13 +6013,22 @@ Generate the cascade.md content for this project based on both the plan and the 
   }
 
   app.post("/api/video/generate", async (req, res) => {
-    const { projectId, duration } = req.body as { projectId?: string; duration?: number };
-    if (!projectId || !duration || !ALLOWED_DURATIONS.has(duration)) {
-      res.status(400).json({ error: "invalid_duration" });
+    const { projectId, duration: rawDuration } = req.body as { projectId?: string; duration?: number };
+    // Default to 30s if not specified or invalid
+    const duration = (!rawDuration || !ALLOWED_DURATIONS.has(rawDuration)) ? 30 : rawDuration;
+    if (!projectId) {
+      res.status(400).json({ error: "projectId required" });
       return;
     }
     if (activeVideoJobs >= MAX_VIDEO_JOBS) {
       res.status(429).json({ error: "too_many_jobs" });
+      return;
+    }
+
+    // Only Web framework previews are stable enough for recording
+    const project = await storage.getProject(projectId).catch(() => null);
+    if (project && project.framework && project.framework !== "web") {
+      res.status(422).json({ error: "unsupported_framework", framework: project.framework });
       return;
     }
 
@@ -4849,8 +6043,26 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
     activeVideoJobs++;
 
-    recordPreview(jobId, projectId, duration as 10 | 20 | 30).catch(() => {});
-    res.json({ jobId });
+    // Create persistent DB record
+    const userId = (req.session as any)?.userId as string | undefined;
+    let videoDbId: string | undefined;
+    try {
+      const { randomUUID } = await import("crypto");
+      const dbRecord = await storage.createProjectVideo({
+        id: randomUUID(),
+        projectId,
+        userId: userId ?? null,
+        status: "pending",
+        duration: duration as number,
+        style: "raw",
+      });
+      videoDbId = dbRecord.id;
+    } catch (e) {
+      console.warn("[video/generate] DB record failed:", e);
+    }
+
+    recordPreview(jobId, projectId, duration as 10 | 20 | 30, videoDbId).catch(() => {});
+    res.json({ jobId, videoId: videoDbId });
   });
 
   app.get("/api/video/status/:jobId", (req, res) => {
@@ -4859,34 +6071,27 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.json({ status: job.status, progress: job.progress, error: job.error ?? undefined });
   });
 
-  app.get("/api/video/download/:jobId", (req, res) => {
-    const job = videoJobs.get(req.params.jobId);
-    if (!job || job.status !== "done" || !job.outputPath || !existsSync(job.outputPath)) {
-      res.status(404).end();
-      return;
-    }
-    const filePath = job.outputPath;
+  // Persistent file download by DB videoId
+  app.get("/api/video/file/:videoId", async (req, res) => {
+    const record = await storage.getProjectVideo(req.params.videoId).catch(() => null);
+    if (!record || record.status !== "done") { res.status(404).end(); return; }
+    if (record.cosUrl) { res.redirect(302, record.cosUrl); return; }
+    const localPath = record.localPath;
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
-
-    // clean up after response finishes
-    res.on("finish", () => {
-      rm(filePath, { force: true }).catch(() => {});
-      videoJobs.delete(req.params.jobId);
-    });
-
-    res.sendFile(filePath);
+    res.setHeader("Content-Disposition", `attachment; filename="demo.mp4"`);
+    res.sendFile(localPath);
   });
 
-  // Serve video file by DB record ID (persistent, survives job cleanup)
-  app.get("/api/video/file/:videoId", async (req, res) => {
-    try {
-      const row = await db.select().from(projectVideos).where(eq(projectVideos.id, req.params.videoId)).limit(1);
-      if (!row.length || !row[0].localPath || !existsSync(row[0].localPath)) { res.status(404).end(); return; }
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename="demo-${row[0].duration}s.mp4"`);
-      res.sendFile(row[0].localPath);
-    } catch { res.status(500).end(); }
+  // Legacy download by in-memory jobId (kept for compatibility)
+  app.get("/api/video/download/:jobId", (req, res) => {
+    const job = videoJobs.get(req.params.jobId);
+    if (!job || job.status !== "done" || !job.outputPath) { res.status(404).end(); return; }
+    const localPath = videoStorage.getLocalPath(job.outputPath);
+    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
+    res.sendFile(localPath);
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
@@ -4934,9 +6139,332 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // ── Creator Square ────────────────────────────────────────────────────────────
+
+  // GET /api/square — list published apps
+  app.get("/api/square", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const framework = req.query.framework as string | undefined;
+      const category = req.query.category as string | undefined;
+      const sort = (req.query.sort as string) || "latest";
+      const q = (req.query.q as string | undefined)?.trim() || "";
+      const author = (req.query.author as string | undefined)?.trim() || "";
+      const currentUserId = (req.session as any)?.userId as string | undefined;
+
+      // Visibility rule:
+      //   - public: visible to everyone
+      //   - link_only: NOT listed publicly, BUT always visible to the owner regardless of filter
+      //   - private: never listed
+      const visibilityWhere = currentUserId
+        ? sql`(${publishedApps.visibility} = 'public' OR (${publishedApps.userId} = ${currentUserId} AND ${publishedApps.visibility} = 'link_only'))`
+        : eq(publishedApps.visibility, "public");
+
+      const baseWhere = and(
+        visibilityWhere,
+        eq(publishedApps.adminTakenDown, false),
+        ...(framework ? [eq(publishedApps.framework, framework)] : []),
+        ...(category ? [eq(publishedApps.category, category)] : []),
+        ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
+      );
+
+      const fullWhere = q
+        ? and(baseWhere, or(
+            sql`lower(${publishedApps.title}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${publishedApps.description}) like ${"%" + q.toLowerCase() + "%"}`,
+            sql`lower(${users.username}) like ${"%" + q.toLowerCase() + "%"}`,
+          ))
+        : baseWhere;
+
+      const orderBy = sort === "hottest"
+        ? desc(publishedApps.viewCount)
+        : desc(publishedApps.publishedAt);
+
+      const rows = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          category: publishedApps.category,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(fullWhere);
+
+      res.json({ apps: rows, total });
+    } catch (err) {
+      console.error("[square/list]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id — get single app (public or link_only allows direct access, private = owner only)
+  app.get("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      const [row] = await db
+        .select({
+          id: publishedApps.id,
+          projectId: publishedApps.projectId,
+          userId: publishedApps.userId,
+          title: publishedApps.title,
+          description: publishedApps.description,
+          isOpenSource: publishedApps.isOpenSource,
+          visibility: publishedApps.visibility,
+          previewScreenshot: publishedApps.previewScreenshot,
+          framework: publishedApps.framework,
+          viewCount: publishedApps.viewCount,
+          forkCount: publishedApps.forkCount,
+          likeCount: publishedApps.likeCount,
+          publishedAt: publishedApps.publishedAt,
+          updatedAt: publishedApps.updatedAt,
+          authorUsername: users.username,
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(eq(publishedApps.id, req.params.id));
+
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      // private: only owner can view
+      // link_only: anyone with the link can view (not listed in square, but direct access allowed)
+      // public: anyone can view
+      if (row.visibility === "private" && row.userId !== userId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Increment view count asynchronously (non-blocking, fire-and-forget)
+      db.update(publishedApps)
+        .set({ viewCount: sql`${publishedApps.viewCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ app: row });
+    } catch (err) {
+      console.error("[square/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square — publish or update (auth required)
+  app.post("/api/square", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+
+      const { projectId, title, description, isOpenSource, visibility, previewScreenshot, framework: fw } = req.body as {
+        projectId?: string; title?: string; description?: string;
+        isOpenSource?: boolean; visibility?: string; previewScreenshot?: string; framework?: string;
+      };
+      if (!projectId || !title?.trim()) { res.status(400).json({ error: "missing_fields" }); return; }
+
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) { res.status(403).json({ error: "forbidden" }); return; }
+
+      // Auto-classify app category based on title + description
+      const classifyCategory = (t: string, d: string): string => {
+        const text = (t + " " + d).toLowerCase();
+        if (/游戏|game|play|棋|snake|tetris|puzzle|quiz/.test(text)) return "games";
+        if (/学习|learn|教|study|单词|quiz|课|exam|test|知识/.test(text)) return "education";
+        if (/图表|chart|dashboard|可视化|visual|数据|data|统计|report/.test(text)) return "data-viz";
+        if (/画|draw|write|写作|生成|create|art|design|音乐|video/.test(text)) return "creative";
+        if (/聊天|chat|社交|social|message|留言|论坛|community/.test(text)) return "social";
+        if (/商|shop|finance|金融|支付|pay|电商|订单|invoice/.test(text)) return "business";
+        if (/天气|weather|食谱|cook|健康|health|生活|日历|calendar|todo|habit/.test(text)) return "lifestyle";
+        if (/工具|tool|util|convert|计算|calc|timer|clock|效率|productivity/.test(text)) return "tools";
+        return "other";
+      };
+      const autoCategory = classifyCategory(title.trim(), description?.trim() ?? "");
+
+      // Scope lookup to (projectId + userId) — prevents cross-user collisions
+      const [existing] = await db.select().from(publishedApps)
+        .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
+
+      const appId = existing?.id ?? randomBytes(8).toString("hex");
+      const detectedFramework = fw ?? (project as any).framework ?? "web";
+
+      if (existing) {
+        await db.update(publishedApps).set({
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          category: autoCategory,
+          updatedAt: new Date(),
+        }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
+      } else {
+        await db.insert(publishedApps).values({
+          id: appId,
+          projectId,
+          userId,
+          title: title.trim(),
+          description: description?.trim() ?? null,
+          isOpenSource: isOpenSource ?? false,
+          visibility: (visibility ?? "public") as any,
+          previewScreenshot: previewScreenshot ?? null,
+          framework: detectedFramework,
+          category: autoCategory,
+        });
+      }
+
+      const [app] = await db.select().from(publishedApps).where(eq(publishedApps.id, appId));
+      res.json({ app });
+    } catch (err) {
+      console.error("[square/publish]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // DELETE /api/square/:id — unpublish (auth required, owner only)
+  app.delete("/api/square/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [row] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!row) { res.status(404).json({ error: "not_found" }); return; }
+      if (row.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      await db.delete(publishedApps).where(eq(publishedApps.id, req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[square/delete]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/fork — fork open-source app into user's projects (auth required)
+  app.post("/api/square/:id/fork", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+
+      const sourceFiles = await storage.getProjectFiles(sourceApp.projectId);
+      const newProjectId = randomBytes(8).toString("hex");
+      await storage.createProject({ id: newProjectId, userId, name: `Fork of ${sourceApp.title}`, framework: sourceApp.framework as any });
+      if (sourceFiles.length > 0) {
+        await storage.upsertProjectFiles(newProjectId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
+      }
+      // Increment fork count asynchronously
+      db.update(publishedApps)
+        .set({ forkCount: sql`${publishedApps.forkCount} + 1` })
+        .where(eq(publishedApps.id, req.params.id))
+        .catch(() => {});
+      res.json({ projectId: newProjectId });
+    } catch (err) {
+      console.error("[square/fork]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/files — get app source files (open-source only)
+  app.get("/api/square/:id/files", async (req, res) => {
+    try {
+      const [sourceApp] = await db.select().from(publishedApps).where(eq(publishedApps.id, req.params.id));
+      if (!sourceApp) { res.status(404).json({ error: "not_found" }); return; }
+      if (!sourceApp.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
+      const files = await storage.getProjectFiles(sourceApp.projectId);
+      res.json({ files: files.map((f) => ({ path: f.path, content: f.content })) });
+    } catch (err) {
+      console.error("[square/files]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/:id/preview-session — start a preview session for the app's files (web only)
+  // Returns a short-lived token; the client loads /preview-serve/:token/ in an iframe.
+  app.get("/api/square/:id/preview-session", async (req, res) => {
+    try {
+      const [app] = await db
+        .select({ id: publishedApps.id, projectId: publishedApps.projectId, framework: publishedApps.framework, adminTakenDown: publishedApps.adminTakenDown, visibility: publishedApps.visibility, userId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id));
+      if (!app) { res.status(404).json({ error: "not_found" }); return; }
+      if (app.adminTakenDown) { res.status(403).json({ error: "taken_down" }); return; }
+      // Only private apps restrict access (link_only is fine for direct link)
+      const sessionUserId = (req.session as any)?.userId as string | undefined;
+      if (app.visibility === "private" && app.userId !== sessionUserId) {
+        res.status(403).json({ error: "forbidden" }); return;
+      }
+      // Only web apps can be previewed in an iframe
+      if (app.framework !== "web") {
+        res.status(422).json({ error: "not_web", framework: app.framework }); return;
+      }
+
+      const files = await storage.getProjectFiles(app.projectId);
+      if (!files || files.length === 0) {
+        res.status(422).json({ error: "no_files" }); return;
+      }
+
+      const startResp = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ path: f.path, content: f.content })) }),
+      });
+      if (!startResp.ok) { res.status(500).json({ error: "preview_start_failed" }); return; }
+      const { token } = await startResp.json() as { token: string };
+      res.json({ token, previewUrl: `/preview-serve/${token}/` });
+    } catch (err) {
+      console.error("[square/preview-session]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
 
 
-  // ─── Creator Square ───────────────────────────────────────────────────────────
+  // GET /api/square/authors — list all users who have public published apps
+  app.get("/api/square/authors", async (req, res) => {
+    try {
+      const rows = await db
+        .selectDistinct({
+          username: users.username,
+          appCount: count(),
+        })
+        .from(publishedApps)
+        .innerJoin(users, eq(publishedApps.userId, users.id))
+        .where(and(eq(publishedApps.visibility, "public"), eq(publishedApps.adminTakenDown, false)))
+        .groupBy(users.username)
+        .orderBy(desc(count()));
+      res.json({ authors: rows });
+    } catch (err) {
+      console.error("[square/authors]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // GET /api/square/my/apps — list current user's published apps
+  app.get("/api/square/my/apps", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId as string | undefined;
+      if (!userId) { res.status(401).json({ error: "not_authenticated" }); return; }
+      const rows = await db.select().from(publishedApps).where(eq(publishedApps.userId, userId)).orderBy(desc(publishedApps.publishedAt));
+      res.json({ apps: rows });
+    } catch (err) {
+      console.error("[square/my]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
 
   // POST /api/square/screenshot — take a screenshot of the project preview (auth required)
   app.post("/api/square/screenshot", async (req, res) => {
@@ -4990,59 +6518,119 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
-  app.get("/api/square", async (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 20, 50);
-    const offset = Number(req.query.offset) || 0;
-    const framework = typeof req.query.framework === "string" ? req.query.framework : undefined;
-    const apps = await storage.listPublishedApps({ limit, offset, framework });
-    res.json({ apps });
-  });
+  // ── Likes ────────────────────────────────────────────────────────────────
 
-  app.get("/api/square/my", async (req, res) => {
+  // POST /api/square/:id/like — toggle like (auth required)
+  app.post("/api/square/:id/like", async (req, res) => {
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    const apps = await storage.listUserPublishedApps(userId);
-    res.json({ apps });
-  });
+    const appId = req.params.id;
+    try {
+      const { randomUUID } = await import("crypto");
+      const existing = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)))
+        .limit(1);
 
-  app.get("/api/square/:id", async (req, res) => {
-    const app = await storage.getPublishedApp(req.params.id);
-    if (!app) { res.status(404).json({ error: "not_found" }); return; }
-    if (app.visibility === "private") {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (app.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
+      if (existing.length > 0) {
+        // already liked — unlike
+        await db.delete(appLikes).where(and(eq(appLikes.appId, appId), eq(appLikes.userId, userId)));
+        await db.update(publishedApps)
+          .set({ likeCount: sql`greatest(${publishedApps.likeCount} - 1, 0)` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: false });
+      } else {
+        // not liked — like
+        await db.insert(appLikes).values({ id: randomUUID(), appId, userId });
+        await db.update(publishedApps)
+          .set({ likeCount: sql`${publishedApps.likeCount} + 1` })
+          .where(eq(publishedApps.id, appId));
+        res.json({ liked: true });
+
+        // Send notification to app owner (fire-and-forget, don't block response)
+        db.select({
+          appTitle: publishedApps.title,
+          ownerId: publishedApps.userId,
+          likerUsername: users.username,
+        })
+          .from(publishedApps)
+          .innerJoin(users, eq(users.id, userId))
+          .where(eq(publishedApps.id, appId))
+          .limit(1)
+          .then(([row]) => {
+            if (!row || row.ownerId === userId) return; // don't notify self-like
+            return db.insert(notifications).values({
+              userId: row.ownerId,
+              type: "app_like",
+              title: "有人点赞了你的应用",
+              body: `@${row.likerUsername} 点赞了你分享的「${row.appTitle}」`,
+              isRead: false,
+            });
+          })
+          .catch((err) => { console.error("[square/like/notif]", err); });
+      }
+    } catch (err) {
+      console.error("[square/like]", err);
+      res.status(500).json({ error: "failed" });
     }
-    const author = await storage.getUser(app.userId);
-    res.json({ app: { ...app, authorUsername: author?.username ?? "anonymous" } });
   });
 
-  app.post("/api/square", async (req, res) => {
+  // GET /api/square/:id/like — check if current user liked this app
+  app.get("/api/square/:id/like", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.json({ liked: false }); return; }
+    try {
+      const rows = await db
+        .select({ id: appLikes.id })
+        .from(appLikes)
+        .where(and(eq(appLikes.appId, req.params.id), eq(appLikes.userId, userId)))
+        .limit(1);
+      res.json({ liked: rows.length > 0 });
+    } catch (err) {
+      console.error("[square/like/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  // GET /api/square/:id/comments — list comments (public)
+  app.get("/api/square/:id/comments", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const offset = parseInt(req.query.offset as string) || 0;
+    try {
+      const rows = await db
+        .select({
+          id: appComments.id,
+          content: appComments.content,
+          createdAt: appComments.createdAt,
+          userId: appComments.userId,
+          authorUsername: users.username,
+        })
+        .from(appComments)
+        .innerJoin(users, eq(appComments.userId, users.id))
+        .where(eq(appComments.appId, req.params.id))
+        .orderBy(desc(appComments.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(appComments)
+        .where(eq(appComments.appId, req.params.id));
+
+      res.json({ comments: rows, total });
+    } catch (err) {
+      console.error("[square/comments/get]", err);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // POST /api/square/:id/comments — add a comment (auth required)
+  app.post("/api/square/:id/comments", async (req, res) => {
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    const bodySchema = z.object({
-      projectId: z.string(),
-      title: z.string().min(1).max(100),
-      description: z.string().max(500).optional(),
-      isOpenSource: z.boolean().default(false),
-      visibility: z.enum(["public", "link_only", "private"]).default("public"),
-      previewScreenshot: z.string().optional(),
-    });
-    const parsed = bodySchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
-    const { projectId, title, description, isOpenSource, visibility, previewScreenshot } = parsed.data;
-    const project = await storage.getProject(projectId);
-    if (!project || project.userId !== userId) { res.status(403).json({ error: "forbidden" }); return; }
-    const existing = await storage.getPublishedAppByProject(projectId);
-    const { randomUUID } = await import("crypto");
-    const id = existing?.id ?? randomUUID();
-    const saved = await storage.upsertPublishedApp({
-      id, projectId, userId, title,
-      description: description ?? null,
-      isOpenSource, visibility,
-      previewScreenshot: previewScreenshot ?? null,
-      framework: project.framework ?? "web",
-    });
-    res.json({ app: saved });
     const content = ((req.body as any)?.content ?? "").trim();
     if (!content || content.length > 500) {
       res.status(400).json({ error: "invalid_content" }); return;
@@ -5113,7 +6701,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
-  // POST /api/aigc/classify-intent — LLM-based media intent classification (level-2 fallback)
+  // POST /api/aigc/classify-intent — LLM-based media intent classification
   app.post("/api/aigc/classify-intent", async (req, res) => {
     const { text } = req.body as { text?: string };
     if (!text?.trim()) { res.json({ intent: "none" }); return; }
@@ -5147,20 +6735,24 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // GET /api/aigc/preferences — get current user's style preferences
+  app.get("/api/aigc/preferences", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    try {
+      const prefs = await storage.getAigcPreferences(userId);
+      res.json(prefs ?? { styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    } catch {
+      res.json({ styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
+    }
+  });
+
   // POST /api/aigc/session — create a new AIGC session
   app.post("/api/aigc/session", async (req, res) => {
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
     const { projectId } = req.body as { projectId?: string };
     if (!projectId) { res.status(400).json({ error: "projectId_required" }); return; }
-
-    // Daily quota check
-    const { checkDailyQuota } = await import("../../infra/aigc-evaluator");
-    const quota = checkDailyQuota(userId);
-    if (!quota.allowed) {
-      res.status(429).json({ error: "daily_quota_exceeded", remaining: 0 });
-      return;
-    }
 
     const { randomUUID } = await import("crypto");
     const sessionId = randomUUID();
@@ -5175,44 +6767,46 @@ Generate the cascade.md content for this project based on both the plan and the 
       sseWriters: new Set(),
     };
     aigcSessions.set(sessionId, session);
-    res.json({ sessionId, quotaRemaining: quota.remaining });
+    res.json({ sessionId });
   });
 
   // POST /api/aigc/session/:id/message — send a message to the AIGC agent
   app.post("/api/aigc/session/:id/message", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
     const session = aigcSessions.get(req.params.id);
     if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
     const { message } = req.body as { message?: string };
     if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
-    res.json({ ok: true });
-    // Run agent in background (non-blocking)
+
+    // Fire-and-forget — client polls via SSE
     runAigcAgent(session, message.trim()).catch((err) => {
       console.error("[aigc/session] agent error:", err);
-      const line = `data:${JSON.stringify({ type: "aigc_error", message: err instanceof Error ? err.message : "Agent failed" })}\n\n`;
-      for (const writer of session.sseWriters) { try { writer(line); } catch {} }
     });
+    res.json({ ok: true });
   });
 
   // GET /api/aigc/session/:id/stream — SSE stream of AIGC events
   app.get("/api/aigc/session/:id/stream", (req, res) => {
     const session = aigcSessions.get(req.params.id);
-    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    if (!session) { res.status(404).end(); return; }
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Replay existing events
+    // Replay missed events
+    const lastId = parseInt(req.headers["last-event-id"] as string ?? "-1", 10);
     for (const ev of session.events) {
-      res.write(`data:${JSON.stringify(ev)}\n\n`);
+      if ((ev.eventId as number) > lastId) {
+        res.write(`id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`);
+      }
     }
 
-    // Register writer for future events
-    const writer = (line: string) => { res.write(line); };
+    const writer = (line: string) => { try { res.write(line); } catch {} };
     session.sseWriters.add(writer);
-
-    req.on("close", () => { session.sseWriters.delete(writer); });
+    req.on("close", () => session.sseWriters.delete(writer));
   });
 
   // GET /api/aigc/session/:id — get session state
@@ -5225,183 +6819,6 @@ Generate the cascade.md content for this project based on both the plan and the 
       done: session.done,
       messageCount: session.messages.length,
     });
-  });
-
-  app.delete("/api/square/:id", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    await storage.deletePublishedApp(req.params.id, userId);
-    res.json({ ok: true });
-  });
-
-  app.post("/api/square/:id/fork", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    const published = await storage.getPublishedApp(req.params.id);
-    if (!published) { res.status(404).json({ error: "not_found" }); return; }
-    if (!published.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
-    if (published.visibility === "private") { res.status(403).json({ error: "forbidden" }); return; }
-    const sourceProject = await storage.getProject(published.projectId);
-    if (!sourceProject) { res.status(404).json({ error: "source_project_not_found" }); return; }
-    const { randomUUID } = await import("crypto");
-    const newId = randomUUID();
-    const forkedProject = await storage.createProject({
-      id: newId, userId,
-      name: `${published.title} (Fork)`,
-      emoji: sourceProject.emoji ?? undefined,
-      framework: (sourceProject.framework ?? "web") as any,
-      language: (sourceProject.language ?? "html") as any,
-      targetPlatform: (sourceProject.targetPlatform ?? undefined) as any,
-    });
-    const sourceFiles = await storage.getProjectFiles(published.projectId);
-    if (sourceFiles.length > 0) {
-      await storage.upsertProjectFiles(newId, sourceFiles.map((f) => ({ path: f.path, content: f.content })));
-    }
-    res.json({ project: forkedProject });
-  });
-
-  app.get("/api/square/:id/files", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    const published = await storage.getPublishedApp(req.params.id);
-    if (!published) { res.status(404).json({ error: "not_found" }); return; }
-    if (!published.isOpenSource) { res.status(403).json({ error: "not_open_source" }); return; }
-    if (published.visibility === "private") { res.status(403).json({ error: "forbidden" }); return; }
-    const files = await storage.getProjectFiles(published.projectId);
-    res.json({ files });
-  });
-
-  // ── Feedback ──────────────────────────────────────────────────────────────────
-
-  const feedbackRateLimit = new Map<string, number[]>();
-
-  app.post("/api/feedback", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
-    const now = Date.now();
-    const windowMs = 60 * 60 * 1000;
-    const hits = (feedbackRateLimit.get(ip) ?? []).filter((t) => now - t < windowMs);
-    if (hits.length >= 5) { res.status(429).json({ error: "rate_limited" }); return; }
-    hits.push(now);
-    feedbackRateLimit.set(ip, hits);
-
-    const bodySchema = z.object({
-      content: z.string().min(1).max(2000),
-      email: z.string().email().optional(),
-    });
-    const parsed = bodySchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
-
-    const userId = (req.session as any)?.userId as string | undefined;
-    await db.insert(userFeedback).values({
-      userId: userId ?? null,
-      email: parsed.data.email ?? null,
-      content: parsed.data.content,
-      ipAddress: ip,
-      status: "new",
-    });
-    res.json({ ok: true });
-  });
-
-  app.get("/api/admin/feedback", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const status = typeof req.query.status === "string" && req.query.status !== "all" ? req.query.status : undefined;
-    const rows = await db
-      .select({
-        id: userFeedback.id,
-        content: userFeedback.content,
-        email: userFeedback.email,
-        ipAddress: userFeedback.ipAddress,
-        status: userFeedback.status,
-        createdAt: userFeedback.createdAt,
-        userId: userFeedback.userId,
-        username: users.username,
-        userEmail: users.email,
-      })
-      .from(userFeedback)
-      .leftJoin(users, eq(userFeedback.userId, users.id))
-      .where(status ? eq(userFeedback.status, status) : undefined)
-      .orderBy(desc(userFeedback.createdAt));
-    res.json({ feedback: rows });
-  });
-
-  app.patch("/api/admin/feedback/:id", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
-    await db.update(userFeedback).set({ status: "reviewed" }).where(eq(userFeedback.id, id));
-    res.json({ ok: true });
-  });
-
-  // ── Changelog ─────────────────────────────────────────────────────────────────
-
-  app.get("/api/changelog", async (_req, res) => {
-    const entries = await db
-      .select()
-      .from(changelogEntries)
-      .where(eq(changelogEntries.isPublished, true))
-      .orderBy(desc(changelogEntries.publishedAt));
-    res.json({ entries });
-  });
-
-  app.get("/api/admin/changelog", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const entries = await db.select().from(changelogEntries).orderBy(desc(changelogEntries.publishedAt));
-    res.json({ entries });
-  });
-
-  app.post("/api/admin/changelog", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const bodySchema = z.object({
-      version: z.string().max(50).optional(),
-      title: z.string().min(1).max(200),
-      content: z.string().min(1),
-      isPublished: z.boolean().default(true),
-    });
-    const parsed = bodySchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
-    const [entry] = await db.insert(changelogEntries).values({
-      version: parsed.data.version ?? null,
-      title: parsed.data.title,
-      content: parsed.data.content,
-      isPublished: parsed.data.isPublished,
-    }).returning();
-    res.json({ entry });
-  });
-
-  app.patch("/api/admin/changelog/:id", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
-    const bodySchema = z.object({
-      version: z.string().max(50).optional().nullable(),
-      title: z.string().min(1).max(200).optional(),
-      content: z.string().min(1).optional(),
-      isPublished: z.boolean().optional(),
-    });
-    const parsed = bodySchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues }); return; }
-    const [entry] = await db.update(changelogEntries).set(parsed.data).where(eq(changelogEntries.id, id)).returning();
-    res.json({ entry });
-  });
-
-  app.delete("/api/admin/changelog/:id", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: "invalid_id" }); return; }
-    await db.delete(changelogEntries).where(eq(changelogEntries.id, id));
-    res.json({ ok: true });
-  });
-
-  // GET /api/aigc/preferences — get current user's style preferences
-  app.get("/api/aigc/preferences", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-    try {
-      const prefs = await storage.getAigcPreferences(userId);
-      res.json(prefs ?? { styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
-    } catch {
-      res.json({ styleHistory: [], colorTone: null, lastStyle: null, generationCount: 0 });
-    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

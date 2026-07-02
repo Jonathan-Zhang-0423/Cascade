@@ -32,7 +32,7 @@ export function MediaSharePanel({ onClose, publishedAppId, projectId }: Props) {
   const [nativeShareDone, setNativeShareDone] = useState(false);
 
   const shareUrl = publishedAppId
-    ? `${window.location.origin}/CreateSquare/app/${publishedAppId}`
+    ? `${window.location.origin}/BuilderSquare/app/${publishedAppId}`
     : `${window.location.origin}/preview/${projectId}`;
 
   const handleCopy = useCallback(async () => {
