@@ -56,6 +56,12 @@ export interface AgentLoopOpts {
   /** Session ID for part creation. Required when partCtx is provided. */
   sessionId?: string;
   /**
+   * When true, emit build_error to the client if maxIterations is reached
+   * without a proper exit. Only enable for the main builder loop — sub-agents
+   * (manager, explore) should not surface this as a user-visible error.
+   */
+  emitOnIterationExhausted?: boolean;
+  /**
    * Shared exit signal. A tool handler can set `.exit = true` to force the loop
    * to stop after the current tool round, even if no exitTool was called. Used
    * by the builder so completing the last plan step ends the loop deterministically
@@ -97,6 +103,7 @@ export async function runAgentLoop(
   const isKimiModel = activeModel.toLowerCase().includes("kimi");
   const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
   const isGLMModel = activeModel.toLowerCase().startsWith("glm");
+  const isGLM52 = activeModel.toLowerCase().includes("glm-5.2");
   const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
   const thinkingParam = opts.disableThinking
     ? {}
@@ -107,15 +114,40 @@ export async function runAgentLoop(
         : isDeepseekModel
           ? { reasoning_effort: "high" }
           : {};
-  const extraBody = opts.disableThinking
-    ? undefined
-    : isMinimaxModel
-      ? { reasoning_split: true }
-      : isGLMModel
-        ? { thinking: { type: "enabled" } }
-        : isDeepseekModel
-          ? { thinking: { type: "enabled" } }
-          : undefined;
+
+  // GLM-5.2 dynamic thinking budget: starts generous and shrinks as context
+  // grows, ensuring there's always room for narration + tool calls. The problem:
+  // GLM-5.2's deep thinking can consume the entire output budget, leaving zero
+  // tokens for narration/tool_calls, which triggers an early loop exit.
+  //
+  // Strategy: reserve at least 4096 tokens for non-thinking output. As
+  // totalOutputTokens accumulates, reduce the thinking budget proportionally.
+  const GLM52_MAX_THINKING = 4096;
+  const GLM52_MIN_THINKING = 1024;
+  const GLM52_OUTPUT_CAP = 16384; // max_tokens per request
+  const GLM52_NARRATION_RESERVE = 4096; // always keep this much for narration+tools
+
+  function getGlm52ThinkingBudget(): number {
+    // As output tokens accumulate across iterations, the context grows and
+    // available output budget effectively shrinks. Scale thinking budget down.
+    const pressure = Math.min(totalOutputTokens / (GLM52_OUTPUT_CAP * 3), 1);
+    const budget = Math.round(GLM52_MAX_THINKING - pressure * (GLM52_MAX_THINKING - GLM52_MIN_THINKING));
+    return Math.max(GLM52_MIN_THINKING, Math.min(GLM52_MAX_THINKING, budget));
+  }
+
+  function getGlmExtraBody() {
+    if (opts.disableThinking) return undefined;
+    if (isGLM52) {
+      return { thinking: { type: "enabled", budget_tokens: getGlm52ThinkingBudget() } };
+    }
+    if (isGLMModel) {
+      return { thinking: { type: "enabled", budget_tokens: 2048 } };
+    }
+    if (isMinimaxModel) return { reasoning_split: true };
+    if (isDeepseekModel) return { thinking: { type: "enabled" } };
+    return undefined;
+  }
+
   const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
@@ -131,8 +163,9 @@ export async function runAgentLoop(
     const response = await aiSemaphore.run(
       () => withRetry(
         `runAgentLoop iteration ${iteration + 1}`,
-        () =>
-          activeClient.chat.completions.create(
+        () => {
+          const extraBody = getGlmExtraBody();
+          return activeClient.chat.completions.create(
             {
               model: activeModel,
               messages,
@@ -145,7 +178,8 @@ export async function runAgentLoop(
               max_tokens: 16384,
             } as any,
             { timeout: timeoutMs },
-          ),
+          );
+        },
       ),
       CONCURRENCY_QUEUE_TIMEOUT,
     );
@@ -157,6 +191,7 @@ export async function runAgentLoop(
     // Track Parts for this iteration (for in-place updates)
     let textPart: Part | undefined;
     let reasoningPart: Part | undefined;
+    let inThinkTag = false; // Filter <think> blocks from narration stream
 
     for await (const chunk of response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
       const choice = chunk.choices[0];
@@ -219,17 +254,25 @@ export async function runAgentLoop(
         }
         assistantText += delta.content;
 
-        if (partCtx) {
-          if (!textPart) {
-            textPart = createPart("text", sessionId, messageId, { text: assistantText });
-            emitPart(partCtx, emit, textPart, delta.content);
+        // Filter out <think> blocks from narration stream — some models
+        // (DeepSeek, etc.) emit reasoning inside content instead of
+        // reasoning_content, causing raw <think> tags in the UI.
+        // We buffer and suppress content inside <think>...</think>.
+        if (delta.content.includes("<think>")) inThinkTag = true;
+        if (!inThinkTag) {
+          if (partCtx) {
+            if (!textPart) {
+              textPart = createPart("text", sessionId, messageId, { text: assistantText });
+              emitPart(partCtx, emit, textPart, delta.content);
+            } else {
+              (textPart as any).text = assistantText;
+              emit({ type: "narration_token", token: delta.content });
+            }
           } else {
-            (textPart as any).text = assistantText;
             emit({ type: "narration_token", token: delta.content });
           }
-        } else {
-          emit({ type: "narration_token", token: delta.content });
         }
+        if (delta.content.includes("</think>")) inThinkTag = false;
       }
 
       // ── Tool calls (accumulate) ─────────────────────────────────
@@ -261,6 +304,19 @@ export async function runAgentLoop(
 
     if (toolCalls.length === 0) {
       // ── Step Finish (no tool calls → stop) ──────────────────────
+      console.warn(`[agent-loop] iteration ${iteration + 1} ended with NO tool_calls. assistantText.length=${assistantText.length} reasoningContent.length=${reasoningContent.length} model=${activeModel} sessionId=${sessionId} inputTokens=${totalInputTokens} outputTokens=${totalOutputTokens}`);
+
+      // GLM and some models sometimes fail to emit tool_calls on large contexts.
+      // If we got thinking but no text and no tools, and we haven't exhausted
+      // retries, nudge the model to continue by injecting a reminder.
+      if (assistantText.length === 0 && reasoningContent.length > 0 && iteration < maxIterations - 1 && tools.length > 0) {
+        console.log(`[agent-loop] Empty response with reasoning — nudging model to use tools. iteration=${iteration + 1}`);
+        // Push the empty assistant message and a nudge
+        messages.push({ role: "assistant", content: reasoningContent } as any);
+        messages.push({ role: "user", content: "Please continue with the implementation. Use your tools (write_file, mark_step_complete) to make progress on the plan. Do not just describe what you would do — actually do it by calling the appropriate tool." } as any);
+        continue; // retry this iteration
+      }
+
       finalText = assistantText;
       if (partCtx) {
         const stepFinish = createPart("step-finish", sessionId, messageId, {
@@ -402,6 +458,14 @@ export async function runAgentLoop(
     }
 
     if (shouldExit) break;
+  }
+
+  // 迭代耗尽但没有正常退出 — 只对 builder 主循环 emit 错误，子 agent 静默退出
+  if (!exitTool && !opts.exitSignal?.exit) {
+    console.warn(`[agent-loop] maxIterations (${maxIterations}) reached without exit signal. sessionId=${sessionId}`);
+    if (opts.emitOnIterationExhausted) {
+      emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
+    }
   }
 
   return {
