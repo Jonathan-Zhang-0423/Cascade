@@ -82,9 +82,9 @@ describe("Glm52Adapter", () => {
     expect((extraBody as any).reasoning_effort).toBe("high");
     expect((extraBody as any).thinking.type).toBe("enabled");
   });
-  it("drops to 'low' reasoning_effort on subsequent iterations", () => {
+  it("DISABLES thinking on subsequent iterations (prevents 60K thinking loops)", () => {
     const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 5000 });
-    expect((extraBody as any).reasoning_effort).toBe("low");
+    expect((extraBody as any).thinking.type).toBe("disabled");
   });
   it("returns disabled when opts.disabled is true", () => {
     const { extraBody } = adapter.getThinkingConfig({ disabled: true });

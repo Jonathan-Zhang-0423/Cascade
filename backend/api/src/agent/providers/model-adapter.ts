@@ -157,13 +157,16 @@ export class Glm52Adapter implements ModelAdapter {
 
   getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
-    // Adaptive effort: 'high' for first iteration (plan comprehension),
-    // 'low' for subsequent iterations (mechanical file writes — fast). Per GLM
-    // docs, low/medium map to high internally, but signal intent + future-proof.
-    const effort = (opts.outputTokensSoFar ?? 0) > 0 ? "low" : "high";
+    // GLM-5.2 burns 30-60K chars of reasoning per iteration even on "low" effort,
+    // consuming the entire token budget without producing tool calls. Only enable
+    // thinking for the FIRST iteration (plan comprehension). After that, DISABLE
+    // it entirely so the model focuses on tool execution, not internal monologue.
+    if ((opts.outputTokensSoFar ?? 0) > 0) {
+      return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
+    }
     return {
       thinkingParam: {},
-      extraBody: { thinking: { type: "enabled" }, reasoning_effort: effort },
+      extraBody: { thinking: { type: "enabled" }, reasoning_effort: "high" },
     };
   }
 
