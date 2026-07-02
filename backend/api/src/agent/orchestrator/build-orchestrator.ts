@@ -668,7 +668,9 @@ Examples of when to call research:
         event: "all_complete",
         userLanguage: session.userLang || "English",
         changedFiles,
-        planSummary: plan.summary ?? "",
+        planSummary: plan.summary ?? session.userRequest ?? "",
+        totalSteps: normalizedSteps.length,
+        stepTitles: normalizedSteps.map(s => s.title),
       } as CommunicatorEvent);
       const { client, model } = getFastClient();
       const summaryCompletion = await client.chat.completions.create({
