@@ -5178,6 +5178,55 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.json({ sessionId, quotaRemaining: quota.remaining });
   });
 
+  // POST /api/aigc/session/:id/message — send a message to the AIGC agent
+  app.post("/api/aigc/session/:id/message", async (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    const { message } = req.body as { message?: string };
+    if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
+    res.json({ ok: true });
+    // Run agent in background (non-blocking)
+    runAigcAgent(session, message.trim()).catch((err) => {
+      console.error("[aigc/session] agent error:", err);
+      const line = `data:${JSON.stringify({ type: "aigc_error", message: err instanceof Error ? err.message : "Agent failed" })}\n\n`;
+      for (const writer of session.sseWriters) { try { writer(line); } catch {} }
+    });
+  });
+
+  // GET /api/aigc/session/:id/stream — SSE stream of AIGC events
+  app.get("/api/aigc/session/:id/stream", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Replay existing events
+    for (const ev of session.events) {
+      res.write(`data:${JSON.stringify(ev)}\n\n`);
+    }
+
+    // Register writer for future events
+    const writer = (line: string) => { res.write(line); };
+    session.sseWriters.add(writer);
+
+    req.on("close", () => { session.sseWriters.delete(writer); });
+  });
+
+  // GET /api/aigc/session/:id — get session state
+  app.get("/api/aigc/session/:id", (req, res) => {
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "not_found" }); return; }
+    res.json({
+      id: session.id,
+      projectId: session.projectId,
+      done: session.done,
+      messageCount: session.messages.length,
+    });
+  });
+
   app.delete("/api/square/:id", async (req, res) => {
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
