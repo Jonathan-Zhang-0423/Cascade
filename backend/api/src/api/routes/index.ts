@@ -519,13 +519,20 @@ export async function registerRoutes(
         return;
       }
 
-      // Abort any existing active build for the SAME project (prevents stale
-      // sessions from running forever and interfering with the new build).
+      // Abort any existing active build for the SAME project ONLY if it's been
+      // running for a long time (> 5 min). This prevents stale 90+ iteration
+      // sessions from interfering, but does NOT kill a build that was started
+      // moments ago (e.g. user switches projects and comes back, triggering a
+      // duplicate build from autoExecutePlan).
       if (reqProjectId) {
+        const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
         for (const [id, s] of buildSessions) {
           if (s.projectId === reqProjectId && !s.done && !s.aborted && id !== sessionId) {
-            s.aborted = true;
-            console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} (new build starting)`);
+            const age = Date.now() - ((s as any)._startedAt || 0);
+            if (age > STALE_THRESHOLD_MS) {
+              s.aborted = true;
+              console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} (age: ${Math.round(age/1000)}s, new build starting)`);
+            }
           }
         }
       }
