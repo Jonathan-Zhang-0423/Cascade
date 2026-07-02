@@ -1230,9 +1230,17 @@ export async function registerRoutes(
       }
 
       const isNewProject = !files || files.length === 0;
+
+      // CRITICAL: Inject project identity into system prompt so the LLM never
+      // confuses this project with another. Also filter any stale messages from
+      // a different project that leaked through the frontend's global store.
+      const projectIdentity = files && files.length > 0
+        ? `\n\n## CURRENT PROJECT IDENTITY\nYou are working on the project with these files: ${files.map(f => f.path).join(", ")}.\nDo NOT reference or discuss any other project, app, or game that is not represented by these files. If the conversation history mentions a different project, IGNORE those references — they are from a previous session and do not apply here.`
+        : "";
+
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
-        systemPrompt = `${systemPrompt}\n\n${contextMsg}`;
+        systemPrompt = `${systemPrompt}${projectIdentity}\n\n${contextMsg}`;
       } else {
         systemPrompt = `${systemPrompt}\n\nThe project currently has no files.
 
