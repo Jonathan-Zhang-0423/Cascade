@@ -451,14 +451,10 @@ export function ChatPanel() {
       if (trimmed) { setInput(""); handleContinueExecution(trimmed); }
       return;
     }
-    // ── Video keyword intercept ──────────────────────────────────────────────
-    if (input.trim()) {
-      const text = input.trim();
-      const intercepted = await tryIntercept(text);
-      if (intercepted) {
-        setInput("");
-        return;
-      }
+    // ── Media keyword intercept ──────────────────────────────────────────────
+    if (input.trim() && tryIntercept(input.trim())) {
+      setInput("");
+      return;
     }
     // ────────────────────────────────────────────────────────────────────────
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {

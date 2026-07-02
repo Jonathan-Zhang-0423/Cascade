@@ -174,16 +174,14 @@ export function useMediaTrigger({ projectId, onStatus, onMessage, onUserMessage 
     }
   }, [projectId, update, onMessage, onUserMessage]);
 
-  // ── Main intercept ─────────────────────────────────────────────────────────
-  const tryIntercept = useCallback(async (text: string): Promise<boolean> => {
-    // Level 1: keyword — fast, no LLM cost
+  // ── Main intercept (synchronous like MVP's useVideoTrigger) ─────────────────
+  const tryIntercept = useCallback((text: string): boolean => {
+    // Level 1: keyword — fast, synchronous
     const kw = keywordDetect(text);
     if (kw === "video") { triggerVideo(20); return true; }
     if (kw === "poster") { triggerPoster(text); return true; }
 
-    // Level 2: LLM classify — only when text strongly suggests media intent.
-    // Skip if: too short (<6 chars), looks like a build/code request, or
-    // contains common non-media verbs that would never be media intent.
+    // Level 2: LLM classify — fire-and-forget in background, don't block send
     const SKIP_PATTERNS = [
       /做.*游戏|写.*代码|开发|实现|帮我做|帮我写|帮我建|帮我搭|创建|新建|生成.*页面|生成.*功能|生成.*组件|修复|debug|fix|build|create.*app|make.*app/i,
     ];
@@ -192,19 +190,17 @@ export function useMediaTrigger({ projectId, onStatus, onMessage, onUserMessage 
     const likelyMedia = MEDIA_HINTS.test(text);
     const likelyBuild = SKIP_PATTERNS.some((p) => p.test(text));
 
-    if (!likelyMedia || likelyBuild || text.length < 6) {
-      return false;
+    if (likelyMedia && !likelyBuild && text.length >= 6) {
+      // Async LLM classify in background — if it detects media, trigger next time
+      llmDetect(text).then((intent) => {
+        if (intent === "video") triggerVideo(20);
+        else if (intent === "poster") triggerPoster(text);
+      }).catch(() => {});
     }
 
-    // Only reach LLM when text has media-related words but no keyword matched
-    update({ phase: "classifying" });
-    const llm = await llmDetect(text);
-    if (llm === "video") { triggerVideo(20); return true; }
-    if (llm === "poster") { triggerPoster(text); return true; }
-
-    update({ phase: "idle" });
+    // Don't block — let normal send flow proceed
     return false;
-  }, [triggerVideo, triggerPoster, update]);
+  }, [triggerVideo, triggerPoster]);
 
   const reset = useCallback(() => update({ phase: "idle" }), [update]);
 
