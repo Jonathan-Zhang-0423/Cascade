@@ -2,6 +2,17 @@ import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useLanguageStore } from "@/stores/language-store";
 
+/** HTTP-safe UUID generator (crypto.randomUUID requires HTTPS) */
+function genId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 function getWelcomeMessage(): string {
   const lang = useLanguageStore.getState().lang;
   return lang === "en"
@@ -1323,7 +1334,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     if (!state.projectId) return;
 
     const currentFlat = flattenToFlatFiles(state.files);
-    const checkpointId = crypto.randomUUID();
+    const checkpointId = genId();
     const now = Date.now();
     const newCheckpoint: Checkpoint = {
       id: checkpointId,
@@ -1352,7 +1363,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set((prev) => {
       const seq = prev._nextSeq;
       const checkpointMessage: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: genId(),
         role: "checkpoint",
         content: label,
         timestamp: now,
@@ -1361,7 +1372,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       const nextManagerMessages = options?.includeManagerThread
         ? [...prev.managerMessages, {
-            id: crypto.randomUUID(),
+            id: genId(),
             role: "checkpoint" as const,
             content: label,
             timestamp: now,
@@ -1474,7 +1485,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const seq = state._nextSeq;
       const newMsg: ChatMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: genId(),
         timestamp: Date.now(),
         seq,
       };
@@ -1515,7 +1526,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state.consoleEntries,
         {
           ...entry,
-          id: crypto.randomUUID(),
+          id: genId(),
           timestamp: Date.now(),
         },
       ],
@@ -1661,7 +1672,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const seq = state._nextSeq;
       const newMsg: ManagerMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: genId(),
         timestamp: Date.now(),
         seq,
       };
