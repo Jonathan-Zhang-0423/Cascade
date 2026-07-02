@@ -9,7 +9,7 @@ export type MediaIntent = "poster" | "video";
 // ── Level 1: keyword lists ────────────────────────────────────────────────────
 
 const POSTER_KW_ZH = ["生图", "生成图片", "做海报", "生成海报", "宣传图", "宣传海报", "设计海报", "推广图", "封面图", "做张图", "生成封面", "帮我画", "生成宣传", "做个海报", "app海报", "应用海报", "产品海报", "生成poster"];
-const POSTER_KW_REGEX = /生成.{0,6}海报|做.{0,4}海报/;
+const POSTER_KW_REGEX = /生成.{0,10}海报|做.{0,6}海报|设计.{0,6}海报|来.{0,4}海报/;
 const POSTER_KW_EN = ["generate image", "create poster", "make poster", "promotional image", "create image", "make image", "design poster"];
 
 const VIDEO_KW_ZH = ["生成视频", "录制视频", "录视频", "生成演示", "录制演示", "分享视频", "生成分享视频", "视频分享", "做个视频", "录个视频", "生成一段视频", "演示视频"];
