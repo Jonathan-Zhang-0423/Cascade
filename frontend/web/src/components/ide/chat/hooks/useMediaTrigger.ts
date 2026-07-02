@@ -57,11 +57,13 @@ export type MediaTriggerStatus =
 interface UseMediaTriggerOptions {
   projectId: string | undefined;
   onStatus?: (status: MediaTriggerStatus) => void;
+  /** Push AIGC progress/result as chat messages into the conversation flow */
+  onMessage?: (content: string, role?: "assistant" | "system") => void;
 }
 
 const POLL_MS = 1500;
 
-export function useMediaTrigger({ projectId, onStatus }: UseMediaTriggerOptions) {
+export function useMediaTrigger({ projectId, onStatus, onMessage }: UseMediaTriggerOptions) {
   const [status, setStatus] = useState<MediaTriggerStatus>({ phase: "idle" });
 
   const update = useCallback((s: MediaTriggerStatus) => {
@@ -114,33 +116,46 @@ export function useMediaTrigger({ projectId, onStatus }: UseMediaTriggerOptions)
   const triggerPoster = useCallback(async (prompt: string) => {
     if (!projectId) { update({ phase: "error", message: "No active project" }); return; }
     update({ phase: "generating", type: "poster", label: "启动 AIGC 会话…" });
+    onMessage?.("🎨 正在为你生成宣传海报…", "assistant");
     try {
       const res = await fetch("/api/aigc/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
       });
-      if (!res.ok) { update({ phase: "error", message: "AIGC 会话启动失败" }); return; }
+      if (!res.ok) {
+        update({ phase: "error", message: "AIGC 会话启动失败" });
+        onMessage?.("❌ AIGC 会话启动失败", "assistant");
+        return;
+      }
       const { sessionId } = await res.json() as { sessionId: string };
 
       // Listen for SSE events
       const es = new EventSource(`/api/aigc/session/${sessionId}/stream`);
       es.onmessage = (ev) => {
         try {
-          const event = JSON.parse(ev.data) as { type: string; label?: string; dataUrl?: string; downloadUrl?: string };
+          const event = JSON.parse(ev.data) as { type: string; label?: string; dataUrl?: string; score?: number; qualityHint?: string };
           if (event.type === "aigc_action") {
             update({ phase: "generating", type: "poster", label: event.label ?? "生成中…" });
           } else if (event.type === "aigc_poster_ready" && event.dataUrl) {
             es.close();
             update({ phase: "done", type: "poster", downloadUrl: event.dataUrl });
+            // Push image result as a chat message with markdown image
+            const scoreText = event.score ? ` (质量评分: ${event.score}/100)` : "";
+            onMessage?.(`宣传海报已生成${scoreText}：\n\n![海报](${event.dataUrl})`, "assistant");
           } else if (event.type === "aigc_done") {
             es.close();
+          } else if (event.type === "aigc_error") {
+            es.close();
+            update({ phase: "error", message: (event as any).message ?? "生成失败" });
+            onMessage?.(`❌ 海报生成失败: ${(event as any).message ?? "未知错误"}`, "assistant");
           }
         } catch {}
       };
       es.onerror = () => {
         es.close();
         update((prev) => prev.phase === "generating" ? { phase: "error", message: "连接中断" } : prev);
+        onMessage?.("❌ AIGC 连接中断，请重试", "assistant");
       };
 
       // Send the message
@@ -149,8 +164,11 @@ export function useMediaTrigger({ projectId, onStatus }: UseMediaTriggerOptions)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: `请为这个 App 生成宣传海报。风格要求：${prompt}` }),
       });
-    } catch { update({ phase: "error", message: "海报生成请求异常" }); }
-  }, [projectId, update]);
+    } catch {
+      update({ phase: "error", message: "海报生成请求异常" });
+      onMessage?.("❌ 海报生成请求异常", "assistant");
+    }
+  }, [projectId, update, onMessage]);
 
   // ── Main intercept ─────────────────────────────────────────────────────────
   const tryIntercept = useCallback(async (text: string): Promise<boolean> => {
