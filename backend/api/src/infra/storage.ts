@@ -261,9 +261,9 @@ export class DatabaseStorage implements IStorage {
       metadata: m.metadata ?? null,
       sessionId: m.sessionId ?? null,
     }));
-    // ON CONFLICT on (project_id, client_id) → update mutable fields.
+    // ON CONFLICT on (project_id, session_id, client_id) → update mutable fields.
     await db.insert(chatMessages).values(rows).onConflictDoUpdate({
-      target: [chatMessages.projectId, chatMessages.clientId],
+      target: [chatMessages.projectId, chatMessages.sessionId, chatMessages.clientId],
       set: {
         content: sql`excluded.content`,
         thinking: sql`excluded.thinking`,
