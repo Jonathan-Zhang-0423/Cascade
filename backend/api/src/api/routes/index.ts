@@ -338,6 +338,8 @@ const videoJobs = new Map<string, VideoJobState>();
 interface ManagerChatSession {
   id: string;
   projectId?: string;
+  /** Chat session this manager run belongs to (isolates concurrent sessions within same project). */
+  _chatSessionId?: string;
   events: Array<{ eventId: number; data: Record<string, unknown> }>;
   nextEventId: number;
   done: boolean;
@@ -379,7 +381,15 @@ setInterval(() => {
     if (now - session.startedAt > maxAge) {
       // Force-release session slot for stuck manager sessions
       if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
-      managerChatSessions.delete(id);
+      // Mark done so SSE writers see closure, then let SessionManager do proper cleanup
+      session.done = true;
+      session.doneAt = now;
+      // Send [DONE] to any connected clients so they stop waiting
+      const doneLine = "data: [DONE]\n\n";
+      Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
+      // Unified cleanup via SessionManager (transition + resource disposal + slot release)
+      sessionManager.transition(id, "aborted").catch(() => {});
+      sessionManager.cleanup(id).catch(() => {});
     }
   });
   Array.from(reviewSessions.entries()).forEach(([id, session]) => {
@@ -493,7 +503,7 @@ export async function registerRoutes(
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
         provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage, consoleErrors,
+        mode: reqMode, userMessage, consoleErrors, chatSessionId: reqChatSessionId,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -509,7 +519,10 @@ export async function registerRoutes(
         mode?: "plan" | "direct";
         userMessage?: string;
         consoleErrors?: string[];
+        chatSessionId?: string;
       };
+      // chatSessionId: 前端传的当前 chat 会话 id，用于隔离同项目不同会话的 build
+      const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
 
       // Per-user session cap
       _userId = reqUserId;
@@ -519,19 +532,24 @@ export async function registerRoutes(
         return;
       }
 
-      // Abort any existing active build for the SAME project ONLY if it's been
-      // running for a long time (> 5 min). This prevents stale 90+ iteration
-      // sessions from interfering, but does NOT kill a build that was started
-      // moments ago (e.g. user switches projects and comes back, triggering a
-      // duplicate build from autoExecutePlan).
+      // Abort any existing active build for the SAME project AND SAME chat session
+      // ONLY if it's been running for a long time (> 5 min). This prevents stale
+      // 90+ iteration sessions from interfering, but does NOT kill a build that was
+      // started moments ago (e.g. user switches projects and comes back, triggering
+      // a duplicate build from autoExecutePlan).
+      // IMPORTANT: Only abort builds belonging to the same chatSession — different
+      // chat sessions within the same project must be allowed to run concurrently.
       if (reqProjectId) {
         const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
         for (const [id, s] of buildSessions) {
           if (s.projectId === reqProjectId && !s.done && !s.aborted && id !== sessionId) {
+            // Only abort if the stale build belongs to the SAME chat session
+            const staleChatSession = (s as any)._chatSessionId || "main";
+            if (staleChatSession !== reqChatSession) continue;
             const age = Date.now() - ((s as any)._startedAt || 0);
             if (age > STALE_THRESHOLD_MS) {
               s.aborted = true;
-              console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} (age: ${Math.round(age/1000)}s, new build starting)`);
+              console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} chatSession ${reqChatSession} (age: ${Math.round(age/1000)}s, new build starting)`);
             }
           }
         }
@@ -611,7 +629,7 @@ export async function registerRoutes(
         resolvedUserRequest = userMessage!;
       }
 
-      const session: BuildSessionState & { _startedAt: number } = {
+      const session: BuildSessionState & { _startedAt: number; _chatSessionId: string } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
         userId: reqUserId || undefined,
@@ -626,6 +644,7 @@ export async function registerRoutes(
         framework: resolvedFramework,
         mode: resolvedMode,
         _startedAt: Date.now(),
+        _chatSessionId: reqChatSession,
         events: [],
         nextEventId: 0,
         done: false,
@@ -766,8 +785,17 @@ export async function registerRoutes(
 
   app.get("/api/build-session/active/:projectId", (req, res) => {
     const projectId = req.params.projectId;
+    const chatSessionId = (req.query.chatSessionId as string) || undefined;
     const entries = Array.from(buildSessions.entries());
-    const active = entries.find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+    const active = entries.find(([, s]) => {
+      if (s.projectId !== projectId || s.done || s.aborted) return false;
+      // If chatSessionId is provided, only match builds from the same chat session
+      if (chatSessionId) {
+        const buildChatSession = (s as any)._chatSessionId || "main";
+        return buildChatSession === chatSessionId;
+      }
+      return true;
+    });
     if (active) {
       res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
       return;
@@ -988,9 +1016,18 @@ export async function registerRoutes(
 
   app.get("/api/manager-chat/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    const chatSessionId = (req.query.chatSessionId as string) || undefined;
     // Check in-memory first (fast path)
     const entries = Array.from(managerChatSessions.entries());
-    const active = entries.find(([, s]) => s.projectId === projectId && !s.done);
+    const active = entries.find(([, s]) => {
+      if (s.projectId !== projectId || s.done) return false;
+      // If chatSessionId is provided, only match sessions from the same chat session
+      if (chatSessionId) {
+        const sessChatSession = s._chatSessionId || "main";
+        return sessChatSession === chatSessionId;
+      }
+      return true;
+    });
     if (active) {
       res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
       return;
@@ -1141,6 +1178,7 @@ export async function registerRoutes(
       const mgrSession: ManagerChatSession = {
         id: mgrSessionId,
         projectId: reqProjectId,
+        _chatSessionId: reqChatSession,
         events: agentSession.events,
         get nextEventId() { return agentSession.nextEventId; },
         set nextEventId(v: number) { agentSession.nextEventId = v; },

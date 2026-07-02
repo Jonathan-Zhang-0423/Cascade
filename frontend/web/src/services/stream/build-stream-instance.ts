@@ -224,6 +224,7 @@ export class BuildStreamInstance {
           taskStatuses,
           userConfirmation: userConfirmation || undefined,
           projectId: this.projectId || undefined,
+          chatSessionId: this.chatSessionId || undefined,
           framework: framework || undefined,
           // Include recent console errors for bug-fix context (direct mode only)
           ...(isDirect ? { consoleErrors: this.actions.getConsoleErrors?.() } : {}),
