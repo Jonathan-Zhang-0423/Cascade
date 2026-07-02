@@ -93,16 +93,21 @@ export function registerProjectsRoutes(app: Express): void {
               model: nameModel,
               messages: [{
                 role: "user",
-                content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${initialPrompt.slice(0, 200)}"\n\nRespond with ONLY the project name, nothing else.`,
+                content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${initialPrompt.slice(0, 200)}"\n\nRespond with ONLY the project name, nothing else. No explanations, no quotes, no thinking.`,
               }],
-              max_tokens: 20,
+              max_tokens: 100, // enough for think block + actual name
             });
             let generatedName = (completion.choices[0]?.message?.content ?? "").trim();
-            // Strip <think>...</think> blocks that some models emit before the answer
+            // Strip <think>...</think> blocks (closed)
             generatedName = generatedName.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+            // Strip unclosed <think> blocks (truncated output)
+            generatedName = generatedName.replace(/<think>[\s\S]*/gi, "").trim();
+            // Strip orphan </think> or <think> tags
+            generatedName = generatedName.replace(/<\/?think>/gi, "").trim();
             // Strip quotes
-            generatedName = generatedName.replace(/^["']|["']$/g, "");
-            if (generatedName && generatedName !== name && !generatedName.includes("<")) {
+            generatedName = generatedName.replace(/^["']|["']$/g, "").trim();
+            // Final validation: must be short, no HTML, non-empty
+            if (generatedName && generatedName.length <= 30 && generatedName !== name && !generatedName.includes("<")) {
               await storage.updateProjectName(id, generatedName);
               console.log(`[auto-name] project ${id}: "${name}" → "${generatedName}"`);
             }
