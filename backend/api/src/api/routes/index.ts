@@ -27,6 +27,7 @@ import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/ca
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
+import { aigcSessions, type AigcSession, runAigcAgent } from "../../agent/aigc/aigc-agent";
 import {
   EDITOR_AGENT_SYSTEM_PROMPT,
   EDITOR_CHAT_SYSTEM_PROMPT,
@@ -5117,7 +5118,7 @@ Generate the cascade.md content for this project based on both the plan and the 
     const { text } = req.body as { text?: string };
     if (!text?.trim()) { res.json({ intent: "none" }); return; }
     try {
-      const { getFastClient } = await import("../agent/providers/kimi-client");
+      const { getFastClient } = await import("../../agent/providers/kimi-client");
       const { client, model } = getFastClient();
       const completion = await client.chat.completions.create({
         model,
