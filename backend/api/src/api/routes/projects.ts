@@ -97,8 +97,12 @@ export function registerProjectsRoutes(app: Express): void {
               }],
               max_tokens: 20,
             });
-            const generatedName = (completion.choices[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "");
-            if (generatedName && generatedName !== name) {
+            let generatedName = (completion.choices[0]?.message?.content ?? "").trim();
+            // Strip <think>...</think> blocks that some models emit before the answer
+            generatedName = generatedName.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+            // Strip quotes
+            generatedName = generatedName.replace(/^["']|["']$/g, "");
+            if (generatedName && generatedName !== name && !generatedName.includes("<")) {
               await storage.updateProjectName(id, generatedName);
               console.log(`[auto-name] project ${id}: "${name}" → "${generatedName}"`);
             }
