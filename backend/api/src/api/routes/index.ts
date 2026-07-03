@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import https from "https";
 import OpenAI from "openai";
 import "express-session";
+import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
@@ -80,6 +81,7 @@ import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
 import { isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
+import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -462,6 +464,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+
+  // Admin JWT cookies must be parsed before admin auth middleware/routes run.
+  app.use(cookieParser());
+  registerAdminAuthRoutes(app);
 
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({

@@ -551,18 +551,18 @@ export function PreviewPanel({
       {toolsPanelOpenState && (
         <div className="absolute top-[38px] left-0 right-0 bottom-0 z-40 flex flex-col overflow-hidden" style={{ background: "var(--panel-right-bg, #fff)" }}>
           {/* 搜索框 */}
-          <div className="px-4 pt-2 pb-2 border-b border-[#F5F5F5] shrink-0">
-            <div className="flex items-center gap-2 h-9 px-3 bg-[#F5F5F5] rounded-lg border border-transparent focus-within:border-[#BFD9F2] focus-within:bg-white transition-colors">
-              <Search className="w-3.5 h-3.5 text-[#999999] shrink-0" />
+          <div className="px-4 pt-2 pb-2 border-b border-border shrink-0">
+            <div className="flex items-center gap-2 h-9 px-3 bg-muted rounded-lg border border-transparent focus-within:border-blue-300 focus-within:bg-background transition-colors">
+              <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <input
                 ref={toolsSearchRef}
-                className="flex-1 bg-transparent text-[13px] text-[#1A1A1A] placeholder-[#999999] outline-none"
+                className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none"
                 placeholder={t("tools.searchPlaceholder")}
                 value={toolsSearch}
                 onChange={(e) => setToolsSearch(e.target.value)}
               />
               {toolsSearch && (
-                <button onClick={() => setToolsSearch("")} className="text-[#999999] hover:text-[#666666]">
+                <button onClick={() => setToolsSearch("")} className="text-muted-foreground hover:text-foreground">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -573,42 +573,42 @@ export function PreviewPanel({
           <div className="flex-1 overflow-y-auto pb-2 scrollbar-auto">
             {filteredSections.map((section) => (
               <div key={section.title}>
-                <div className="px-4 pt-4 pb-1.5 text-[11px] font-semibold text-[#999999] uppercase tracking-wider">
+                <div className="px-4 pt-4 pb-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   {section.title}
                 </div>
                 {section.items.map((item) => (
                   <button
                     key={`${item.label}-${item.desc}`}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-[#FAFAFA] transition-colors group text-left"
+                    className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-muted/60 transition-colors group text-left"
                     onClick={() => { item.action?.(); }}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[#F5F5F5] group-hover:bg-[#ECEEF0] flex items-center justify-center shrink-0 transition-colors text-[#666666]">
+                    <div className="w-8 h-8 rounded-lg bg-muted group-hover:bg-muted/80 flex items-center justify-center shrink-0 transition-colors text-muted-foreground">
                       {item.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-medium text-[#1A1A1A] leading-tight">{item.label}</div>
+                      <div className="text-[13px] font-medium text-foreground leading-tight">{item.label}</div>
                       {item.desc && (
-                        <div className="text-[11px] text-[#999999] mt-0.5 truncate">{item.desc}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{item.desc}</div>
                       )}
                     </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-[#CCCCCC] group-hover:text-[#999999] shrink-0 transition-colors" />
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0 transition-colors" />
                   </button>
                 ))}
               </div>
             ))}
             {filteredSections.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <Search className="w-6 h-6 text-[#CCCCCC]" />
-                <p className="text-[13px] text-[#999999]">No results for "{toolsSearch}"</p>
+                <Search className="w-6 h-6 text-muted-foreground/40" />
+                <p className="text-[13px] text-muted-foreground">No results for "{toolsSearch}"</p>
               </div>
             )}
           </div>
 
           {/* 底部关闭 */}
-          <div className="border-t border-[#F5F5F5] px-4 py-2.5 shrink-0 flex items-center justify-between">
-            <span className="text-[11px] text-[#999999]">{TOOLS_SECTIONS.reduce((n, s) => n + s.items.length, 0)} tools available</span>
+          <div className="border-t border-border px-4 py-2.5 shrink-0 flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">{TOOLS_SECTIONS.reduce((n, s) => n + s.items.length, 0)} tools available</span>
             <button
-              className="flex items-center gap-1.5 text-[12px] text-[#999999] hover:text-[#666666] transition-colors"
+              className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setToolsPanelOpenState(false)}
             >
               <X className="w-3.5 h-3.5" />

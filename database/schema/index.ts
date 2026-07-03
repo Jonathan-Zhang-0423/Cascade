@@ -18,3 +18,5 @@ export * from './published-apps';
 export * from './project-videos';
 export * from './app-likes';
 export * from './app-comments';
+export * from './admin-users';
+export * from './admin-audit-log';

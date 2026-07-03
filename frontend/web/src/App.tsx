@@ -12,12 +12,15 @@ import SetPasswordPage from "@/pages/set-password";
 import OnboardingPage from "@/pages/onboarding";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
+import AdminLoginPage from "@/pages/admin-login";
+import AdminTotpSetupPage from "@/pages/admin-totp-setup";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
 import CreateSquarePage from "@/pages/create-square";
 import AppDetailPage from "@/pages/app-detail";
 import AigcPage from "@/pages/aigc";
 import WechatCallbackPage from "@/pages/wechat-callback";
+import ProfileSettingsPage from "@/pages/profile-settings";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useIDEStore } from "@/stores/ide-store";
 
@@ -26,7 +29,7 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // Paths that don't require an authenticated session. Landing is public; login
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
-const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin", "/invite-gate", "/github-callback", "/wechat-callback", "/CreateSquare", "/onboarding", "/set-password"];
+const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin/login", "/admin/setup-totp", "/invite-gate", "/github-callback", "/wechat-callback", "/BuilderSquare", "/onboarding", "/set-password"];
 
 function Router() {
   return (
@@ -40,11 +43,14 @@ function Router() {
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
-      <Route path="/CreateSquare" component={CreateSquarePage} />
-      <Route path="/CreateSquare/app/:id" component={AppDetailPage} />
+      <Route path="/BuilderSquare" component={CreateSquarePage} />
+      <Route path="/BuilderSquare/app/:id" component={AppDetailPage} />
       <Route path="/aigc" component={AigcPage} />
+      <Route path="/admin/login" component={AdminLoginPage} />
+      <Route path="/admin/setup-totp" component={AdminTotpSetupPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
+      <Route path="/profile" component={ProfileSettingsPage} />
       <Route path="/project/:id" component={IDEPage} />
       {import.meta.env.DEV && (
         <Route path="/ab-test">
@@ -61,6 +67,7 @@ function App() {
   const setUserId = useIDEStore((s) => s.setUserId);
   const setUsername = useIDEStore((s) => s.setUsername);
   const [authChecked, setAuthChecked] = useState(false);
+  const [ipBlocked, setIpBlocked] = useState(false);
 
   useEffect(() => {
     const path = window.location.pathname;
@@ -77,7 +84,7 @@ function App() {
       setAuthChecked(true);
       return;
     }
-    fetch("/api/auth/me").then((r) => {
+    fetch("/api/auth/me").then(async (r) => {
       if (r.ok) {
         r.json().then((u) => {
           setUserId(u.id);
@@ -88,6 +95,15 @@ function App() {
             return;
           }
         });
+      } else if (r.status === 403) {
+        const body = await r.json().catch(() => ({}));
+        if ((body as any).error?.includes("blocked")) {
+          setIpBlocked(true);
+          setAuthChecked(true);
+        } else {
+          window.location.href = "/login";
+          setAuthChecked(true);
+        }
       } else {
         window.location.href = "/login";
         setAuthChecked(true);
@@ -99,6 +115,26 @@ function App() {
   }, []);
 
   if (!authChecked && !UNGUARDED_PATHS.some(p => window.location.pathname === p || window.location.pathname.startsWith(p + "/"))) return null;
+
+  if (ipBlocked) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", background: "#fafafa", color: "#111" }}>
+        <div style={{ maxWidth: 420, textAlign: "center", padding: "40px 24px" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>访问受限</h1>
+          <p style={{ fontSize: 14, color: "#666", lineHeight: 1.6, marginBottom: 24 }}>
+            您的 IP 地址因频繁请求已被临时封禁（1小时），登录状态仍然保留，解封后刷新页面即可继续使用。
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ padding: "10px 24px", background: "#3a6ea8", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, cursor: "pointer" }}
+          >
+            刷新重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ThemeProvider>

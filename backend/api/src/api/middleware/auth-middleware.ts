@@ -53,6 +53,9 @@ export async function checkCaptcha(req: Request, res: Response): Promise<boolean
  * error response) when not configured or the secret doesn't match.
  */
 export function checkAdmin(req: Request, res: Response): boolean {
+  if ((req as any).adminUser) {
+    return true;
+  }
   if (!ADMIN_SECRET) {
     res.status(503).json({ error: "Admin access not configured" });
     return false;

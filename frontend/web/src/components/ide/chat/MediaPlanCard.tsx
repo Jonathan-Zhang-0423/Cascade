@@ -154,7 +154,7 @@ export function MediaPlanCard({ plan, onCancel }: Props) {
 
   const handleCopyLink = useCallback(async () => {
     const url = publishedAppId
-      ? `${window.location.origin}/CreateSquare/app/${publishedAppId}`
+      ? `${window.location.origin}/BuilderSquare/app/${publishedAppId}`
       : window.location.href;
     await navigator.clipboard.writeText(url).catch(() => {});
     toast({ description: "链接已复制", duration: 1500 });

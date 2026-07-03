@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Code2, Lock, Globe, Link2, Camera, RefreshCw, ChevronRight, ChevronLeft } from "lucide-react";
+import { Code2, Lock, Globe, Link2, Camera, RefreshCw, Copy, Check, Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
@@ -24,43 +24,6 @@ interface PublishDialogProps {
   onUnpublished?: () => void;
 }
 
-// ─── Step indicator ──────────────────────────────────────────────────────────
-
-function StepIndicator({ current }: { current: number }) {
-  const steps = [
-    { label: "截图" },
-    { label: "信息" },
-    { label: "发布" },
-  ];
-  return (
-    <div className="flex items-center justify-center gap-6 py-4" style={{ fontFamily: FONT }}>
-      {steps.map((s, i) => {
-        const done = i <= current;
-        return (
-          <div key={i} className="flex flex-col items-center gap-1.5">
-            <div
-              className={cn(
-                "w-2.5 h-2.5 rounded-full transition-colors duration-200",
-                done ? "bg-black" : "bg-gray-200",
-              )}
-            />
-            <span
-              className={cn(
-                "text-[11px] transition-colors duration-200",
-                done ? "text-gray-900 font-medium" : "text-gray-400",
-              )}
-            >
-              {s.label}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Main dialog ─────────────────────────────────────────────────────────────
-
 export function PublishDialog({
   open,
   onClose,
@@ -70,38 +33,42 @@ export function PublishDialog({
   onPublished,
   onUnpublished,
 }: PublishDialogProps) {
-  const [step, setStep] = useState(0);
-
-  // Step 1 — screenshot
-  const [screenshot, setScreenshot] = useState<string | null>(existing?.previewScreenshot ?? null);
+  const [screenshot, setScreenshot] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
-
-  // Step 2 — app info
-  const [title, setTitle] = useState(existing?.title ?? projectName);
-  const [description, setDescription] = useState(existing?.description ?? "");
-  const [isOpenSource, setIsOpenSource] = useState(existing?.isOpenSource ?? false);
-
-  // Step 3 — visibility & publish
-  const [visibility, setVisibility] = useState<Visibility>(existing?.visibility ?? "public");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [isOpenSource, setIsOpenSource] = useState<boolean | null>(null);   // null = not chosen yet
+  const [visibility, setVisibility] = useState<Visibility | null>(null);     // null = not chosen yet
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [publishedId, setPublishedId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [imgZoom, setImgZoom] = useState(false);
 
-  // Reset on open
+  // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      setStep(0);
       setScreenshot(existing?.previewScreenshot ?? null);
       setTitle(existing?.title ?? projectName);
       setDescription(existing?.description ?? "");
-      setIsOpenSource(existing?.isOpenSource ?? false);
-      setVisibility(existing?.visibility ?? "public");
+      setIsOpenSource(existing ? existing.isOpenSource : null);
+      setVisibility(existing ? existing.visibility : null);
       setError("");
       setSubmitting(false);
-      setScreenshotLoading(false);
+      setPublishedId(existing?.id ?? null);
+      setCopied(false);
     }
   }, [open, existing, projectName]);
 
-  async function handleScreenshot() {
+  const publishedUrl =
+    publishedId && visibility !== "private"
+      ? `${window.location.origin}/BuilderSquare/app/${publishedId}`
+      : null;
+
+  // First-time publish requires both fields explicitly chosen
+  const canPublish = !!(title.trim() && isOpenSource !== null && visibility !== null);
+
+  const handleScreenshot = useCallback(async () => {
     setScreenshotLoading(true);
     try {
       const res = await fetch("/api/square/screenshot", {
@@ -111,16 +78,16 @@ export function PublishDialog({
       });
       if (!res.ok) throw new Error("screenshot failed");
       const data = await res.json();
-      setScreenshot(data.screenshot ?? data.dataUrl ?? data.url ?? null);
+      setScreenshot(data.screenshot ?? null);
     } catch {
-      // silently ignore — user can retry
+      // silently ignore
     } finally {
       setScreenshotLoading(false);
     }
-  }
+  }, [projectId]);
 
   async function handlePublish() {
-    if (!title.trim()) return;
+    if (!canPublish) return;
     setSubmitting(true);
     setError("");
     try {
@@ -131,15 +98,15 @@ export function PublishDialog({
           projectId,
           title: title.trim(),
           description: description.trim() || undefined,
-          isOpenSource,
-          visibility,
+          isOpenSource: isOpenSource!,
+          visibility: visibility!,
           previewScreenshot: screenshot ?? undefined,
         }),
       });
       if (!res.ok) throw new Error("failed");
       const data = await res.json();
+      setPublishedId(data.app.id);
       onPublished?.(data.app);
-      onClose();
     } catch {
       setError("发布失败，请稍后重试。");
     } finally {
@@ -147,128 +114,96 @@ export function PublishDialog({
     }
   }
 
-  async function handleUnpublish() {
-    if (!existing) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      await fetch(`/api/square/${existing.id}`, { method: "DELETE" });
-      onUnpublished?.();
-      onClose();
-    } catch {
-      setError("操作失败，请稍后重试。");
-    } finally {
-      setSubmitting(false);
-    }
+  function copyUrl() {
+    if (!publishedUrl) return;
+    navigator.clipboard?.writeText(publishedUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = publishedUrl;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
-  // ── Shared button styles ──────────────────────────────────────────────────
-  const btnPrimary =
-    "w-full py-2.5 rounded-xl bg-black text-white text-[14px] font-medium hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed";
-  const btnSecondary =
-    "flex items-center gap-1.5 text-[13px] text-gray-500 hover:text-gray-800 transition-colors";
+  const isUpdate = !!existing;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent
-        className="max-w-md w-full p-0 overflow-hidden rounded-2xl border border-gray-100 shadow-xl bg-white"
-        style={{ fontFamily: FONT }}
-      >
-        {/* Step indicator */}
-        <div className="border-b border-gray-100">
-          <StepIndicator current={step} />
-        </div>
+    <>
+      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent
+          className="flex flex-col gap-0 max-w-none w-full h-full sm:max-w-md sm:w-[calc(100vw-2rem)] sm:h-auto p-0 overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-border shadow-none sm:shadow-xl bg-background fixed inset-0 translate-x-0 translate-y-0 sm:inset-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] max-h-full sm:max-h-[90vh]"
+          style={{ fontFamily: FONT }}
+        >
+          {/* Header */}
+          <div className="shrink-0 flex items-center justify-between px-5 sm:px-6 pt-5 pb-4 border-b border-border">
+            <h2 className="text-[17px] font-semibold text-foreground">
+              {isUpdate ? "更新发布" : "发布到创造者广场"}
+            </h2>
+          </div>
 
-        {/* ── Step 1: Cover screenshot ──────────────────────────────────── */}
-        {step === 0 && (
-          <div className="px-6 py-5 space-y-5">
-            <h2 className="text-[17px] font-semibold text-gray-900">封面截图</h2>
+          <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto flex-1 min-h-0">
 
-            {/* 16:9 preview area */}
-            <div
-              className={cn(
-                "w-full rounded-xl overflow-hidden",
-                !screenshot && "border-2 border-dashed border-gray-200 bg-gray-50",
-              )}
-              style={{ aspectRatio: "16/9" }}
-            >
-              {screenshot ? (
-                <img
-                  src={screenshot}
-                  alt="cover"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                  <Camera className="w-8 h-8 text-gray-300" />
-                  <span className="text-[12px] text-gray-400">暂无截图</span>
-                </div>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleScreenshot}
-                disabled={screenshotLoading}
-                className={cn(btnPrimary, "flex items-center justify-center gap-2")}
-              >
-                {screenshotLoading ? (
+            {/* ── Cover screenshot ── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[13px] font-medium text-foreground">封面截图</label>
+                <button
+                  type="button"
+                  onClick={handleScreenshot}
+                  disabled={screenshotLoading}
+                  className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", screenshotLoading && "animate-spin")} />
+                  {screenshotLoading ? "截图中…" : screenshot ? "重新截图" : "自动截图"}
+                </button>
+              </div>
+              {/* Small 16:9 preview with zoom button */}
+              <div className="relative w-full rounded-xl overflow-hidden bg-muted border border-border" style={{ aspectRatio: "16/9", maxHeight: 160 }}>
+                {screenshot ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    截图中…
-                  </>
-                ) : screenshot ? (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    重新截图
+                    <img src={screenshot} alt="cover" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setImgZoom(true)}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5 text-white" />
+                    </button>
                   </>
                 ) : (
-                  <>
-                    <Camera className="w-4 h-4" />
-                    自动截图
-                  </>
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+                    <Camera className="w-6 h-6 text-muted-foreground/50" />
+                    <span className="text-[11px] text-muted-foreground">点击右上角「自动截图」</span>
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
 
-            {/* Next */}
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className={cn(btnPrimary, "flex items-center justify-center gap-1")}
-            >
-              下一步
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 2: App info ──────────────────────────────────────────── */}
-        {step === 1 && (
-          <div className="px-6 py-5 space-y-5">
-            <h2 className="text-[17px] font-semibold text-gray-900">应用信息</h2>
-
-            {/* App name */}
+            {/* ── App name ── */}
             <div className="space-y-1.5">
-              <label className="text-[13px] font-medium text-gray-700">应用名称</label>
+              <label className="text-[13px] font-medium text-foreground">应用名称</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={80}
                 placeholder="给你的应用起个名字"
-                className="w-full h-10 px-3 text-[14px] text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl outline-none focus:border-gray-400 transition-colors"
+                className="w-full h-10 px-3 text-[14px] text-foreground placeholder:text-muted-foreground border border-input rounded-xl outline-none focus:border-ring bg-background transition-colors"
               />
-              <p className="text-[11px] text-gray-400 text-right">{title.length}/80</p>
+              <p className="text-[11px] text-muted-foreground text-right">{title.length}/80</p>
             </div>
 
-            {/* Description */}
+            {/* ── Description ── */}
             <div className="space-y-1.5">
-              <label className="text-[13px] font-medium text-gray-700">
+              <label className="text-[13px] font-medium text-foreground">
                 简介
-                <span className="ml-1 font-normal text-gray-400">（可选）</span>
+                <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
               </label>
               <textarea
                 value={description}
@@ -276,28 +211,18 @@ export function PublishDialog({
                 maxLength={300}
                 rows={3}
                 placeholder="简单描述一下这个应用的功能…"
-                className="w-full px-3 py-2.5 text-[14px] text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl outline-none focus:border-gray-400 transition-colors resize-none"
+                className="w-full px-3 py-2.5 text-[14px] text-foreground placeholder:text-muted-foreground border border-input rounded-xl outline-none focus:border-ring bg-background transition-colors resize-none"
               />
-              <p className="text-[11px] text-gray-400 text-right">{description.length}/300</p>
+              <p className="text-[11px] text-muted-foreground text-right">{description.length}/300</p>
             </div>
 
-            {/* Open source toggle */}
+            {/* ── Code visibility ── */}
             <div className="space-y-2">
-              <label className="text-[13px] font-medium text-gray-700">代码可见性</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="text-[13px] font-medium text-foreground">代码可见性</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
-                  {
-                    value: true,
-                    icon: <Code2 className="w-4 h-4" />,
-                    label: "开源",
-                    desc: "他人可以 Fork 你的代码",
-                  },
-                  {
-                    value: false,
-                    icon: <Lock className="w-4 h-4" />,
-                    label: "私有",
-                    desc: "仅供展示，不可 Fork",
-                  },
+                  { value: true, icon: <Code2 className="w-4 h-4" />, label: "开源", desc: "他人可以 Fork 你的代码" },
+                  { value: false, icon: <Lock className="w-4 h-4" />, label: "私有", desc: "仅供展示，不可 Fork" },
                 ].map((opt) => {
                   const selected = isOpenSource === opt.value;
                   return (
@@ -307,102 +232,25 @@ export function PublishDialog({
                       onClick={() => setIsOpenSource(opt.value)}
                       className={cn(
                         "flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all duration-150",
-                        selected
-                          ? "border-black bg-black text-white"
-                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300",
+                        selected ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground hover:border-muted-foreground",
                       )}
                     >
-                      <div className="flex items-center gap-1.5 font-medium text-[13px]">
-                        {opt.icon}
-                        {opt.label}
-                      </div>
-                      <p
-                        className={cn(
-                          "text-[11px] leading-snug",
-                          selected ? "text-white/70" : "text-gray-400",
-                        )}
-                      >
-                        {opt.desc}
-                      </p>
+                      <div className="flex items-center gap-1.5 font-medium text-[13px]">{opt.icon}{opt.label}</div>
+                      <p className={cn("text-[11px] leading-snug", selected ? "text-background/70" : "text-muted-foreground")}>{opt.desc}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Navigation */}
-            <div className="flex items-center justify-between pt-1">
-              <button type="button" onClick={() => setStep(0)} className={btnSecondary}>
-                <ChevronLeft className="w-4 h-4" />
-                返回
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                disabled={!title.trim()}
-                className="flex items-center gap-1 py-2.5 px-5 rounded-xl bg-black text-white text-[14px] font-medium hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                下一步
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: Visibility & publish ─────────────────────────────── */}
-        {step === 2 && (
-          <div className="px-6 py-5 space-y-5">
-            <h2 className="text-[17px] font-semibold text-gray-900">发布设置</h2>
-
-            {/* Preview card */}
-            <div className="rounded-xl border border-gray-100 overflow-hidden bg-gray-50">
-              {screenshot ? (
-                <img
-                  src={screenshot}
-                  alt="preview"
-                  className="w-full object-cover"
-                  style={{ aspectRatio: "16/9" }}
-                />
-              ) : (
-                <div
-                  className="w-full bg-gray-100 flex items-center justify-center"
-                  style={{ aspectRatio: "16/9" }}
-                >
-                  <Camera className="w-6 h-6 text-gray-300" />
-                </div>
-              )}
-              <div className="px-3 py-2.5">
-                <p className="text-[13px] font-semibold text-gray-900 truncate">{title || "（未命名）"}</p>
-                {description && (
-                  <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{description}</p>
-                )}
-                <p className="text-[11px] text-gray-400 mt-1">你</p>
-              </div>
-            </div>
-
-            {/* Visibility options */}
+            {/* ── Visibility scope ── */}
             <div className="space-y-2">
-              <label className="text-[13px] font-medium text-gray-700">可见范围</label>
+              <label className="text-[13px] font-medium text-foreground">可见范围</label>
               <div className="space-y-1.5">
                 {[
-                  {
-                    value: "public" as Visibility,
-                    icon: <Globe className="w-4 h-4" />,
-                    label: "公开广场",
-                    desc: "所有人都能在广场中发现你的应用",
-                  },
-                  {
-                    value: "link_only" as Visibility,
-                    icon: <Link2 className="w-4 h-4" />,
-                    label: "仅链接可访问",
-                    desc: "拥有链接的人才能访问",
-                  },
-                  {
-                    value: "private" as Visibility,
-                    icon: <Lock className="w-4 h-4" />,
-                    label: "私有",
-                    desc: "仅自己可见",
-                  },
+                  { value: "public" as Visibility, icon: <Globe className="w-4 h-4" />, label: "公开广场", desc: "所有人都能在广场中发现你的应用" },
+                  { value: "link_only" as Visibility, icon: <Link2 className="w-4 h-4" />, label: "仅链接可访问", desc: "拥有链接的人才能访问" },
+                  { value: "private" as Visibility, icon: <Lock className="w-4 h-4" />, label: "私有", desc: "仅自己可见" },
                 ].map((opt) => {
                   const selected = visibility === opt.value;
                   return (
@@ -412,24 +260,13 @@ export function PublishDialog({
                       onClick={() => setVisibility(opt.value)}
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all duration-150",
-                        selected
-                          ? "border-l-4 border-l-black border-t-gray-200 border-r-gray-200 border-b-gray-200 bg-gray-50"
-                          : "border-gray-200 bg-white hover:bg-gray-50",
+                        selected ? "border-l-4 border-l-foreground border-t-border border-r-border border-b-border bg-muted" : "border-border bg-background hover:bg-muted/50",
                       )}
                     >
-                      <div className={cn("shrink-0", selected ? "text-black" : "text-gray-400")}>
-                        {opt.icon}
-                      </div>
+                      <div className={cn("shrink-0", selected ? "text-foreground" : "text-muted-foreground")}>{opt.icon}</div>
                       <div className="flex-1 min-w-0">
-                        <p
-                          className={cn(
-                            "text-[13px]",
-                            selected ? "font-bold text-gray-900" : "font-medium text-gray-600",
-                          )}
-                        >
-                          {opt.label}
-                        </p>
-                        <p className="text-[11px] text-gray-400 leading-snug">{opt.desc}</p>
+                        <p className={cn("text-[13px]", selected ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>{opt.label}</p>
+                        <p className="text-[11px] text-muted-foreground leading-snug">{opt.desc}</p>
                       </div>
                     </button>
                   );
@@ -437,41 +274,70 @@ export function PublishDialog({
               </div>
             </div>
 
-            {/* Error */}
-            {error && <p className="text-[12px] text-red-500">{error}</p>}
-
-            {/* Navigation + publish */}
-            <div className="flex items-center justify-between pt-1">
-              <button type="button" onClick={() => setStep(1)} className={btnSecondary}>
-                <ChevronLeft className="w-4 h-4" />
-                返回
-              </button>
-              <button
-                type="button"
-                onClick={handlePublish}
-                disabled={submitting || !title.trim()}
-                className="flex items-center gap-1.5 py-2.5 px-5 rounded-xl bg-black text-white text-[14px] font-medium hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {submitting ? "发布中…" : existing ? "更新发布" : "发布"}
-              </button>
-            </div>
-
-            {/* Unpublish */}
-            {existing && (
-              <div className="flex justify-center pt-1">
-                <button
-                  type="button"
-                  onClick={handleUnpublish}
-                  disabled={submitting}
-                  className="text-[12px] text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
-                >
-                  取消发布
-                </button>
+            {/* ── Published URL bar (shown after publishing or if existing) ── */}
+            {publishedId && (
+              <div className="rounded-xl border border-border bg-muted px-3 py-2.5 flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-muted-foreground mb-0.5">项目链接</p>
+                  {publishedUrl ? (
+                    <p className="text-[12px] text-foreground truncate font-mono">{publishedUrl}</p>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground italic">私有项目，仅自己可见</p>
+                  )}
+                </div>
+                {publishedUrl && (
+                  <button
+                    type="button"
+                    onClick={copyUrl}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-background border border-border text-[12px] text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? "已复制" : "复制"}
+                  </button>
+                )}
               </div>
             )}
+
+            {/* ── Error / validation hint ── */}
+            {!canPublish && !existing && title.trim() && (
+              <p className="text-[12px] text-amber-500">请选择代码可见性和可见范围后再发布</p>
+            )}
+            {error && <p className="text-[12px] text-red-500">{error}</p>}
+
+            {/* ── Publish button ── */}
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={submitting || !canPublish}
+              className="w-full py-2.5 rounded-xl bg-foreground text-background text-[14px] font-medium hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {submitting ? "发布中…" : publishedId ? "更新发布" : "发布"}
+            </button>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Image zoom overlay ── */}
+      {imgZoom && screenshot && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
+          onClick={() => { setImgZoom(false); onClose(); window.location.href = "/app"; }}
+        >
+          <button
+            type="button"
+            onClick={() => { setImgZoom(false); onClose(); window.location.href = "/app"; }}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+          <img
+            src={screenshot}
+            alt="cover fullscreen"
+            className="max-w-[90vw] max-h-[85vh] rounded-xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   );
 }

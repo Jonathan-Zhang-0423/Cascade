@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { Search, ChevronDown, X } from "lucide-react";
@@ -46,6 +47,19 @@ const FRAMEWORKS = [
   { value: "rn-expo", label: "React Native" },
 ];
 
+const APP_CATEGORIES = [
+  { value: "", label: "全部类型" },
+  { value: "tools", label: "工具效率" },
+  { value: "games", label: "游戏娱乐" },
+  { value: "education", label: "教育学习" },
+  { value: "data-viz", label: "数据可视化" },
+  { value: "creative", label: "内容创作" },
+  { value: "social", label: "社交通讯" },
+  { value: "business", label: "商业金融" },
+  { value: "lifestyle", label: "生活服务" },
+  { value: "other", label: "其它" },
+];
+
 type SortMode = "latest" | "hottest";
 
 interface Author {
@@ -66,6 +80,8 @@ export default function CreateSquarePage() {
   const [searchInput, setSearchInput] = useState(""); // what user types
   const [search, setSearch] = useState("");            // debounced, sent to API
   const [framework, setFramework] = useState("");
+  const [category, setCategory] = useState("");
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [author, setAuthor] = useState("");            // username filter
   const [sort, setSort] = useState<SortMode>("latest");
   const [offset, setOffset] = useState(0);
@@ -74,6 +90,9 @@ export default function CreateSquarePage() {
   const [authors, setAuthors] = useState<Author[]>([]);
   const [authorDropOpen, setAuthorDropOpen] = useState(false);
   const authorDropRef = useRef<HTMLDivElement>(null);
+  const categoryDropRef = useRef<HTMLDivElement>(null);
+  const categoryPortalRef = useRef<HTMLDivElement>(null);
+  const [categoryDropPos, setCategoryDropPos] = useState<{ top: number; left: number } | null>(null);
 
   // keep offset in a ref so fetchApps closure stays stable when loading more
   const offsetRef = useRef(0);
@@ -104,6 +123,39 @@ export default function CreateSquarePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [authorDropOpen]);
 
+  // Close category dropdown when clicking outside (check both trigger and portal)
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inTrigger = categoryDropRef.current?.contains(target);
+      const inPortal = categoryPortalRef.current?.contains(target);
+      if (!inTrigger && !inPortal) {
+        setCategoryOpen(false);
+        setCategoryDropPos(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [categoryOpen]);
+
+  // Close category dropdown on scroll — the portal's position is computed once at open time
+  // (absolute coords, not re-measured), so if the horizontal filter row scrolls (common on
+  // mobile touch drag) or the page scrolls, the trigger button moves but the dropdown doesn't,
+  // leaving them visually detached. Closing on any scroll is simpler and more robust than
+  // tracking position continuously.
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const closeIt = () => { setCategoryOpen(false); setCategoryDropPos(null); };
+    const filterRow = categoryDropRef.current?.closest(".overflow-x-auto");
+    window.addEventListener("scroll", closeIt, { passive: true });
+    filterRow?.addEventListener("scroll", closeIt, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", closeIt);
+      filterRow?.removeEventListener("scroll", closeIt);
+    };
+  }, [categoryOpen]);
+
   // Fetch authors list on mount
   useEffect(() => {
     fetch("/api/square/authors")
@@ -122,6 +174,7 @@ export default function CreateSquarePage() {
         offset: String(off),
         sort,
         ...(framework ? { framework } : {}),
+        ...(category ? { category } : {}),
         ...(author ? { author } : {}),
         ...(search ? { q: search } : {}),
       });
@@ -140,12 +193,12 @@ export default function CreateSquarePage() {
       setHasMore(newApps.length === LIMIT);
     } catch { /* silent */ }
     finally { setLoading(false); setLoadingMore(false); }
-  }, [framework, sort, search, author]);
+  }, [framework, category, sort, search, author]);
 
   useEffect(() => {
     fetchApps(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [framework, sort, search, author]);
+  }, [framework, category, sort, search, author]);
 
   async function handleFork(id: string) {
     if (!userId) { navigate("/login"); return; }
@@ -164,6 +217,7 @@ export default function CreateSquarePage() {
   const filtered = apps;
 
   return (
+    <>
     <div className="min-h-screen w-full overflow-x-hidden bg-white" style={{ fontFamily: FONT }}>
 
       {/* ── Navbar — exact same pattern as landing ── */}
@@ -206,16 +260,6 @@ export default function CreateSquarePage() {
           variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
           className="max-w-3xl mx-auto"
         >
-          <motion.p
-            variants={fadeUp}
-            custom={0}
-            className="text-[11px] sm:text-[13px] font-semibold tracking-[0.18em] text-gray-400 mb-4 sm:mb-5 uppercase"
-          >
-            {/* 移动端分三行，桌面端一行 */}
-            <span className="sm:hidden">COMMUNITY<br />OPEN SOURCE<br />AI-BUILT</span>
-            <span className="hidden sm:inline">COMMUNITY · OPEN SOURCE · AI-BUILT</span>
-          </motion.p>
-
           <motion.h1
             variants={fadeUp}
             custom={1}
@@ -230,7 +274,7 @@ export default function CreateSquarePage() {
             custom={2}
             className="text-[15px] sm:text-[19px] md:text-[22px] text-gray-800 mb-7 sm:mb-10 leading-relaxed"
           >
-            浏览社区发布的应用，一键 Fork 开源项目，用 Cascade AI 继续创作。
+            浏览社区发布的应用，一键 Fork 开源项目。
           </motion.p>
 
           {/* Search input */}
@@ -260,26 +304,29 @@ export default function CreateSquarePage() {
       {/* ── Horizontal tag filter bar + sort tabs ── */}
       <div className="sticky top-14 sm:top-20 z-40 bg-white/90 backdrop-blur-sm border-b border-black/[0.06]">
         <div className="max-w-5xl mx-auto px-4 sm:px-16">
-          {/* Mobile: one scrollable row for pills + sort together */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-3 sm:py-4">
-            {/* Framework pills */}
-            {FRAMEWORKS.map((f) => {
-              const selected = framework === f.value;
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setFramework(f.value)}
-                  className={`shrink-0 rounded-full px-3.5 sm:px-4 py-1.5 text-[12px] sm:text-[13px] font-medium transition-all duration-150 ${
-                    selected
-                      ? "bg-black text-white"
-                      : "text-gray-500 hover:text-gray-900 border border-gray-200"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
+            {/* Category dropdown — portal-rendered to avoid overflow clipping */}
+            <div className="relative shrink-0" ref={categoryDropRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (categoryOpen) {
+                    setCategoryOpen(false);
+                    setCategoryDropPos(null);
+                  } else {
+                    const rect = categoryDropRef.current?.getBoundingClientRect();
+                    if (rect) setCategoryDropPos({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX });
+                    setCategoryOpen(true);
+                  }
+                }}
+                className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] sm:text-[13px] font-medium transition-all duration-150 border ${
+                  category ? "bg-black text-white border-black" : "text-gray-500 hover:text-gray-900 border-gray-200"
+                }`}
+              >
+                <span>{category ? APP_CATEGORIES.find(c => c.value === category)?.label : "应用类型"}</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${categoryOpen ? "rotate-180" : ""}`} />
+              </button>
+            </div>
 
             {/* Divider — hidden on mobile to save space */}
             {authors.length > 0 && (
@@ -445,7 +492,7 @@ export default function CreateSquarePage() {
                     key={app.id}
                     app={app}
                     index={i}
-                    onClick={() => navigate(`/CreateSquare/app/${app.id}`)}
+                    onClick={() => navigate(`/BuilderSquare/app/${app.id}`)}
                     onFork={forkingId === app.id ? undefined : handleFork}
                   />
                 ))}
@@ -483,5 +530,46 @@ export default function CreateSquarePage() {
         <SiteBeian className="mt-3" />
       </footer>
     </div>
+
+    {/* Category dropdown portal — renders above everything */}
+    {categoryOpen && categoryDropPos && createPortal(
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, y: 6, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 4, scale: 0.97 }}
+          transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          ref={categoryPortalRef}
+          style={{
+            position: "absolute",
+            top: categoryDropPos.top,
+            left: categoryDropPos.left,
+            width: 128,
+            background: "white",
+            border: "1px solid rgba(0,0,0,0.1)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
+            borderRadius: 12,
+            overflow: "hidden",
+            zIndex: 99999,
+          }}
+        >
+          {APP_CATEGORIES.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => { setCategory(c.value); setCategoryOpen(false); setCategoryDropPos(null); }}
+              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+              className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-gray-50 ${
+                category === c.value ? "font-semibold text-black bg-gray-50" : "text-gray-700"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </motion.div>
+      </AnimatePresence>,
+      document.body
+    )}
+    </>
   );
 }

@@ -18,6 +18,7 @@ export const publishedApps = pgTable("published_apps", {
   forkCount: integer("fork_count").notNull().default(0),
   likeCount: integer("like_count").notNull().default(0),
   adminTakenDown: boolean("admin_taken_down").notNull().default(false),
+  category: text("category").notNull().default("tools"),
   publishedAt: timestamp("published_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 }, (table) => [

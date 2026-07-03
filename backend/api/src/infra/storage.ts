@@ -44,10 +44,11 @@ export interface IStorage {
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User>;
-  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null }): Promise<User>;
-  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
-  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null }): Promise<User>;
+  linkGithubToUser(userId: string, input: { githubId: string; avatarUrl: string | null; githubLogin?: string }): Promise<User>;
+  createWechatUser(input: { username: string; openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
+  linkWechatToUser(userId: string, input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string }): Promise<User>;
 
   getProject(id: string): Promise<Project | undefined>;
   getProjects(userId?: string): Promise<Project[]>;
@@ -122,6 +123,7 @@ export class DatabaseStorage implements IStorage {
     githubId: string;
     email: string | null;
     avatarUrl: string | null;
+    githubLogin?: string;
   }): Promise<User> {
     const id = randomUUID();
     const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 天
@@ -130,6 +132,7 @@ export class DatabaseStorage implements IStorage {
       username: input.username,
       password: null,
       githubId: input.githubId,
+      githubLogin: input.githubLogin || null,
       email: input.email,
       avatarUrl: input.avatarUrl,
       trialExpiresAt,
@@ -139,10 +142,10 @@ export class DatabaseStorage implements IStorage {
 
   async linkGithubToUser(
     userId: string,
-    input: { githubId: string; avatarUrl: string | null },
+    input: { githubId: string; avatarUrl: string | null; githubLogin?: string },
   ): Promise<User> {
     const [user] = await db.update(users)
-      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl })
+      .set({ githubId: input.githubId, avatarUrl: input.avatarUrl, githubLogin: input.githubLogin || null })
       .where(eq(users.id, userId))
       .returning();
     return user;
@@ -158,6 +161,7 @@ export class DatabaseStorage implements IStorage {
     openId: string;
     unionId?: string;
     avatarUrl: string | null;
+    nickname?: string;
   }): Promise<User> {
     const id = randomUUID();
     const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -167,6 +171,7 @@ export class DatabaseStorage implements IStorage {
       password: null,
       wechatOpenId: input.openId,
       wechatUnionId: input.unionId || null,
+      wechatNickname: input.nickname || null,
       avatarUrl: input.avatarUrl,
       trialExpiresAt,
     }).returning();
@@ -175,10 +180,10 @@ export class DatabaseStorage implements IStorage {
 
   async linkWechatToUser(
     userId: string,
-    input: { openId: string; unionId?: string; avatarUrl: string | null },
+    input: { openId: string; unionId?: string; avatarUrl: string | null; nickname?: string },
   ): Promise<User> {
     const [user] = await db.update(users)
-      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl })
+      .set({ wechatOpenId: input.openId, wechatUnionId: input.unionId || null, avatarUrl: input.avatarUrl, wechatNickname: input.nickname || null })
       .where(eq(users.id, userId))
       .returning();
     return user;
@@ -484,6 +489,7 @@ export class DatabaseStorage implements IStorage {
         forkCount: publishedApps.forkCount,
         likeCount: publishedApps.likeCount,
         adminTakenDown: publishedApps.adminTakenDown,
+        category: publishedApps.category,
         publishedAt: publishedApps.publishedAt,
         updatedAt: publishedApps.updatedAt,
         authorUsername: users.username,

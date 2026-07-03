@@ -23,8 +23,7 @@ export function registerAdminRoutes(app: Express): void {
   // GET /api/admin/feedback — list all feedback (admin only)
   app.get("/api/admin/feedback", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!checkAdmin(req, res)) return;
       const rows = await db
         .select({
           id: userFeedback.id,
@@ -51,8 +50,7 @@ export function registerAdminRoutes(app: Express): void {
   // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
   app.post("/api/admin/feedback/:id/reply", async (req, res) => {
     try {
-      const secret = req.headers["x-admin-secret"] as string | undefined;
-      if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: "Forbidden" });
+      if (!checkAdmin(req, res)) return;
       const feedbackId = parseInt(req.params.id);
       const { message } = req.body as { message?: string };
       if (!message?.trim()) return res.status(400).json({ error: "Message required" });
