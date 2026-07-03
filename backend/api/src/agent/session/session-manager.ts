@@ -35,6 +35,9 @@ export interface AgentSession extends SseCapableSession {
   resources: Disposable[];
   /** Tracks whether events have been flushed since last modification. */
   _dirty: boolean;
+  /** Backoff state for transient DB flush failures. */
+  _flushRetryCount?: number;
+  _nextFlushAt?: number;
 }
 
 export interface CreateSessionOpts {
@@ -239,8 +242,15 @@ export class SessionManager {
   async flushEvents(id: string): Promise<void> {
     const session = this.live.get(id);
     if (!session || !session._dirty) return;
-    await this.store.flushEvents(id, session.events, session.nextEventId);
-    session._dirty = false;
+    try {
+      await this.store.flushEvents(id, session.events, session.nextEventId);
+      session._dirty = false;
+      session._flushRetryCount = 0;
+      session._nextFlushAt = undefined;
+    } catch (err) {
+      this.scheduleFlushRetry(session, err);
+      throw err;
+    }
   }
 
   /**
@@ -311,16 +321,32 @@ export class SessionManager {
    * Periodic flush: persist events for all dirty active sessions.
    */
   private async flushAll(): Promise<void> {
+    const now = Date.now();
     for (const [id, session] of this.live) {
+      if (session._nextFlushAt && session._nextFlushAt > now) continue;
       if (session._dirty && !session.done) {
         try {
           await this.store.flushEvents(id, session.events, session.nextEventId);
           session._dirty = false;
+          session._flushRetryCount = 0;
+          session._nextFlushAt = undefined;
         } catch (err) {
           console.warn(`[SessionManager] flush failed for ${id}:`, err instanceof Error ? err.message : err);
+          this.scheduleFlushRetry(session, err);
         }
       }
     }
+  }
+
+  private scheduleFlushRetry(session: AgentSession, err: unknown): void {
+    const retryCount = Math.min((session._flushRetryCount ?? 0) + 1, 6);
+    session._flushRetryCount = retryCount;
+    const delay = Math.min(60_000, 5_000 * Math.pow(2, retryCount - 1));
+    session._nextFlushAt = Date.now() + delay;
+    console.warn(
+      `[SessionManager] next flush retry for ${session.id} in ${Math.round(delay / 1000)}s:`,
+      err instanceof Error ? err.message : err,
+    );
   }
 
   /**

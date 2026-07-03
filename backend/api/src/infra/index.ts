@@ -41,6 +41,12 @@ app.use(session({
     // 复用现有 pg 连接池，session 落库而非进程内存——避免 MemoryStore 内存泄漏，
     // 进程重启也不丢登录态。表不存在时自动创建（单表 "session"）。
     createTableIfMissing: true,
+    // Long SSE/build requests do not need to refresh session TTL on every
+    // response. Avoid background touch queries competing with build persistence.
+    disableTouch: true,
+    errorLog: (err: unknown) => {
+      console.warn("[pg-session] store error:", err instanceof Error ? err.message : err);
+    },
   }),
   secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   resave: false,

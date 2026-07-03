@@ -1,5 +1,5 @@
 import { eq, and, lt, inArray } from "drizzle-orm";
-import { db } from "../../infra/db";
+import { db, withDbRetry } from "../../infra/db";
 import { agentSessions, type AgentSessionRow } from "@cascade/database";
 import type { BufferedEvent } from "../../infra/sse";
 
@@ -60,7 +60,7 @@ export class SessionStore {
     createdAt: number;
     payload?: Record<string, unknown>;
   }): Promise<void> {
-    await db.insert(agentSessions).values({
+    await withDbRetry("agent session create", () => db.insert(agentSessions).values({
       id: session.id,
       type: session.type,
       projectId: session.projectId ?? null,
@@ -70,16 +70,16 @@ export class SessionStore {
       nextEventId: 0,
       events: "[]",
       payload: JSON.stringify(session.payload ?? {}),
-    });
+    }));
   }
 
   /**
    * Update session status (state machine transition).
    */
   async updateStatus(id: string, status: SessionStatus, doneAt?: number): Promise<void> {
-    await db.update(agentSessions)
+    await withDbRetry("agent session updateStatus", () => db.update(agentSessions)
       .set({ status, doneAt: doneAt ?? null })
-      .where(eq(agentSessions.id, id));
+      .where(eq(agentSessions.id, id)));
   }
 
   /**
@@ -87,19 +87,21 @@ export class SessionStore {
    * Called every ~5s for active sessions and immediately on milestones.
    */
   async flushEvents(id: string, events: BufferedEvent[], nextEventId: number): Promise<void> {
-    await db.update(agentSessions)
+    await withDbRetry("agent session flushEvents", () => db.update(agentSessions)
       .set({
         events: JSON.stringify(events),
         nextEventId,
       })
-      .where(eq(agentSessions.id, id));
+      .where(eq(agentSessions.id, id)));
   }
 
   /**
    * Load a session from DB (for rehydration after restart / reconnect).
    */
   async load(id: string): Promise<PersistedSession | null> {
-    const [row] = await db.select().from(agentSessions).where(eq(agentSessions.id, id));
+    const [row] = await withDbRetry("agent session load", () =>
+      db.select().from(agentSessions).where(eq(agentSessions.id, id)),
+    );
     return row ? this.rowToSession(row) : null;
   }
 
@@ -107,11 +109,11 @@ export class SessionStore {
    * Load all non-terminal sessions for a project (for reconnection after restart).
    */
   async loadActiveForProject(projectId: string): Promise<PersistedSession[]> {
-    const rows = await db.select().from(agentSessions)
+    const rows = await withDbRetry("agent session loadActiveForProject", () => db.select().from(agentSessions)
       .where(and(
         eq(agentSessions.projectId, projectId),
         inArray(agentSessions.status, ["pending", "running"]),
-      ));
+      )));
     return rows.map(r => this.rowToSession(r));
   }
 
@@ -126,13 +128,13 @@ export class SessionStore {
   async markInterruptedOnStartup(): Promise<number> {
     const safetyWindowMs = 10_000; // 10 seconds
     const cutoff = Date.now() - safetyWindowMs;
-    const result = await db.update(agentSessions)
+    const result = await withDbRetry("agent session markInterruptedOnStartup", () => db.update(agentSessions)
       .set({ status: "interrupted", doneAt: Date.now() })
       .where(and(
         inArray(agentSessions.status, ["pending", "running"]),
         lt(agentSessions.createdAt, cutoff),
       ))
-      .returning({ id: agentSessions.id });
+      .returning({ id: agentSessions.id }));
     return result.length;
   }
 
@@ -141,14 +143,18 @@ export class SessionStore {
    */
   async deleteOld(maxAgeMs: number): Promise<void> {
     const cutoff = Date.now() - maxAgeMs;
-    await db.delete(agentSessions).where(lt(agentSessions.createdAt, cutoff));
+    await withDbRetry("agent session deleteOld", () =>
+      db.delete(agentSessions).where(lt(agentSessions.createdAt, cutoff)),
+    );
   }
 
   /**
    * Delete a specific session by ID.
    */
   async delete(id: string): Promise<void> {
-    await db.delete(agentSessions).where(eq(agentSessions.id, id));
+    await withDbRetry("agent session delete", () =>
+      db.delete(agentSessions).where(eq(agentSessions.id, id)),
+    );
   }
 
   // ─── Internal ──────────────────────────────────────────────────────────────
