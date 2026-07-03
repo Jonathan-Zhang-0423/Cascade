@@ -4,7 +4,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "../api/routes/index.js";
 import { serveStatic } from "./static";
-import { pool } from "./db.js";
+import { isTransientDbError, pool } from "./db.js";
 import { startFeishuSync } from "./feishu-sync.js";
 import { startSheetsSync } from "./sheets-sync.js";
 import { createServer } from "http";
@@ -35,19 +35,51 @@ app.use(express.urlencoded({ extended: false }));
 
 const PgSession = connectPgSimple(session);
 
-app.use(session({
-  store: new PgSession({
-    pool,
-    // 复用现有 pg 连接池，session 落库而非进程内存——避免 MemoryStore 内存泄漏，
-    // 进程重启也不丢登录态。表不存在时自动创建（单表 "session"）。
-    createTableIfMissing: true,
-    // Long SSE/build requests do not need to refresh session TTL on every
-    // response. Avoid background touch queries competing with build persistence.
-    disableTouch: true,
-    errorLog: (err: unknown) => {
-      console.warn("[pg-session] store error:", err instanceof Error ? err.message : err);
-    },
-  }),
+const sessionStore = new PgSession({
+  pool,
+  // The session table is owned by the database schema. Avoid an extra
+  // to_regclass query on the first request; when DB is waking up that query can
+  // turn an otherwise healthy frontend page load into a 500.
+  createTableIfMissing: false,
+  // Long SSE/build requests do not need to refresh session TTL on every
+  // response. Avoid background touch queries competing with build persistence.
+  disableTouch: true,
+  errorLog: (err: unknown) => {
+    console.warn("[pg-session] store error:", err instanceof Error ? err.message : err);
+  },
+});
+
+// Degrade session reads/touches on transient DB disconnects. Authenticated
+// calls may become 401 until DB recovers, but the entire app should not 500
+// just because a stale cookie could not be loaded.
+const originalSessionGet = sessionStore.get.bind(sessionStore);
+sessionStore.get = ((sid: string, cb: (err?: unknown, session?: unknown) => void) => {
+  originalSessionGet(sid, (err: unknown, data: unknown) => {
+    if (err && isTransientDbError(err)) {
+      console.warn("[pg-session] transient get failure; treating request as unauthenticated:", err instanceof Error ? err.message : err);
+      cb(null, null);
+      return;
+    }
+    cb(err, data);
+  });
+}) as typeof sessionStore.get;
+
+const originalSessionTouch = sessionStore.touch?.bind(sessionStore);
+if (originalSessionTouch) {
+  sessionStore.touch = ((sid: string, sess: session.SessionData, cb?: () => void) => {
+    (originalSessionTouch as any)(sid, sess, (err: unknown) => {
+      if (err && isTransientDbError(err)) {
+        console.warn("[pg-session] transient touch failure ignored:", err instanceof Error ? err.message : err);
+        cb?.();
+        return;
+      }
+      (cb as ((err?: unknown) => void) | undefined)?.(err);
+    });
+  }) as typeof sessionStore.touch;
+}
+
+const sessionMiddleware = session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   resave: false,
   saveUninitialized: false,
@@ -59,7 +91,19 @@ app.use(session({
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     secure: process.env.NODE_ENV === "production",
   },
-}));
+});
+
+function shouldUseSession(path: string): boolean {
+  if (!path.startsWith("/api")) return false;
+  if (path === "/api/config/captcha") return false;
+  if (path === "/api/_dbg") return false;
+  return true;
+}
+
+app.use((req, res, next) => {
+  if (!shouldUseSession(req.path)) return next();
+  return sessionMiddleware(req, res, next);
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
