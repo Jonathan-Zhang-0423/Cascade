@@ -86,6 +86,15 @@ export function useActiveStream() {
     slot.manager.resetLive();
   }, [slot]);
 
+  const clearManagerLiveState = useCallback(() => {
+    slot.manager.state.set({
+      thinkingText: "",
+      narrationText: "",
+      actionLog: [],
+      preparingPlan: false,
+    });
+  }, [slot]);
+
   const resetBuildLiveState = useCallback(() => {
     slot.build.state.set({
       thinkingText: "",
@@ -107,6 +116,7 @@ export function useActiveStream() {
       isMgrReconnecting: mgrState.isReconnecting,
       autoExecutePlanRef: { current: slot.manager.autoExecutePlan },
       resetLiveState: resetManagerLiveState,
+      clearLiveState: clearManagerLiveState,
     },
     // Build stream
     build: {

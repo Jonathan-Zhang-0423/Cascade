@@ -21,8 +21,10 @@ import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-d
 import { loadUserSkills } from "../../skills/user-skill-loader";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../mcp/mcp-config";
 import { McpManager } from "../mcp/mcp-client";
-import { buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
+import { buildMcpAliasTools, buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
+import { ToolRegistry } from "../tools/tool-registry";
+import type { ToolHandler, ToolSchema } from "../loop/agent-loop";
 
 export interface BuildFile {
   path: string;
@@ -86,6 +88,85 @@ export interface BuildSessionState {
 function normalizeSteps(plan: BuildPlan): BuildStep[] {
   const raw = plan.steps ?? plan.sub_tasks ?? [];
   return raw.map((s, i) => ({ ...s, step: s.step ?? i + 1 }));
+}
+
+export function buildResearchTool(mcpManager: McpManager): {
+  schemas: ToolSchema[];
+  handlers: Record<string, ToolHandler>;
+} {
+  const schemas: ToolSchema[] = [
+    {
+      type: "function",
+      function: {
+        name: "research",
+        description: "Run a focused research sub-agent to find external information from the web. Use this when you need current docs, API references, best practices, version numbers, or any information not available in the project files. The sub-agent will search the web and return a synthesized answer.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The research question - be specific. E.g. 'What is the latest TailwindCSS v4 configuration format?' or 'How to configure ESLint flat config for TypeScript?'",
+            },
+          },
+          required: ["query"],
+        },
+      },
+    },
+  ];
+  const handlers: Record<string, ToolHandler> = {
+    research: async (args, emitFn) => {
+      const query = args.query as string;
+      if (!query) return "Error: query is required";
+      emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
+      const result = await runResearchAgent(query, mcpManager, emitFn);
+      const wordCount = result ? result.split(/\s+/).length : 0;
+      const sourceCount = (result?.match(/https?:\/\//g) || []).length;
+      const summaryLine = sourceCount > 0
+        ? `Found ${sourceCount} source(s), ${wordCount} words`
+        : `${wordCount} words`;
+      emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
+      const sanitized = sanitizeResearchResult(result);
+      return sanitized || "(No findings)";
+    },
+  };
+  return { schemas, handlers };
+}
+
+function buildEditorToolset(
+  session: BuildSessionState,
+  steps: BuildStep[],
+  emit: SseEmit,
+  userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
+  options?: {
+    telemetry?: BuildTelemetry;
+    exitSignal?: { exit: boolean; reason?: string };
+    mcpManager?: McpManager | null;
+  },
+): {
+  schemas: ToolSchema[];
+  handlers: Record<string, ToolHandler>;
+  sources: string[];
+} {
+  const registry = new ToolRegistry();
+  const builtinTools = buildBuilderTools(session, steps, options?.telemetry, options?.exitSignal);
+  registry.register("builder", builtinTools.schemas, builtinTools.handlers);
+
+  if (userSkillsLoaded.toolSchemas.length > 0 || Object.keys(userSkillsLoaded.toolHandlers).length > 0) {
+    registry.register("user-skills", userSkillsLoaded.toolSchemas, userSkillsLoaded.toolHandlers);
+  }
+
+  const mcpManager = options?.mcpManager;
+  if (mcpManager && mcpManager.getAvailableTools().length > 0) {
+    const mcpTools = buildMcpTools(mcpManager, emit);
+    registry.register("mcp", mcpTools.schemas, mcpTools.handlers);
+    const mcpAliasTools = buildMcpAliasTools(mcpManager);
+    registry.register("mcp-aliases", mcpAliasTools.schemas, mcpAliasTools.handlers);
+    const researchTools = buildResearchTool(mcpManager);
+    registry.register("research", researchTools.schemas, researchTools.handlers);
+  }
+
+  const built = registry.build();
+  return { ...built, sources: registry.listSources() };
 }
 
 export function filesMapToArray(files: Map<string, string>): BuildFile[] {
@@ -335,9 +416,7 @@ async function runBuilderParallelWaves(
         const subInitialMessage = buildBuilderInitialMessage(session, [step], "build");
         // Each sub-loop gets tools scoped to just this step, so mark_step_complete
         // does not try to auto-advance to a different wave's step.
-        const subTools = buildBuilderTools(session, [step]);
-        subTools.schemas.push(...userSkillsLoaded.toolSchemas);
-        Object.assign(subTools.handlers, userSkillsLoaded.toolHandlers);
+        const subTools = buildEditorToolset(session, [step], emit, userSkillsLoaded);
         await withFallback(providerChainEditor, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,
@@ -564,53 +643,14 @@ Examples of when to call research:
         // builder loop ends deterministically (instead of waiting on the model
         // to emit finish_build, which it sometimes only narrates).
         const builderExitSignal = { exit: false, reason: undefined as string | undefined };
-        const builderTools = buildBuilderTools(session, normalizedSteps, telemetry, builderExitSignal);
-        // Merge user-defined tool plugins into builder tools
-        builderTools.schemas.push(...userSkillsLoaded.toolSchemas);
-        Object.assign(builderTools.handlers, userSkillsLoaded.toolHandlers);
-        // Merge MCP tools into builder tools
-        if (mcpManager && mcpManager.getAvailableTools().length > 0) {
-          const mcpTools = buildMcpTools(mcpManager, emit);
-          builderTools.schemas.push(...mcpTools.schemas);
-          Object.assign(builderTools.handlers, mcpTools.handlers);
-
-          // Register the research sub-agent tool — lets the builder spawn a
-          // focused research agent that uses MCP tools to gather external info.
-          builderTools.schemas.push({
-            type: "function",
-            function: {
-              name: "research",
-              description: "Run a focused research sub-agent to find external information from the web. Use this when you need current docs, API references, best practices, version numbers, or any information not available in the project files. The sub-agent will search the web and return a synthesized answer.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "The research question — be specific. E.g. 'What is the latest TailwindCSS v4 configuration format?' or 'How to configure ESLint flat config for TypeScript?'",
-                  },
-                },
-                required: ["query"],
-              },
-            },
-          });
-          const capturedMcpManager = mcpManager;
-          builderTools.handlers["research"] = async (args, emitFn) => {
-            const query = args.query as string;
-            if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-            const result = await runResearchAgent(query, capturedMcpManager, emitFn);
-            // Emit research result summary so the UI shows completion
-            const wordCount = result ? result.split(/\s+/).length : 0;
-            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
-            const summaryLine = sourceCount > 0
-              ? `Found ${sourceCount} source(s), ${wordCount} words`
-              : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            // Sanitize: strip think tags, URLs, collapse whitespace, cap length
-            const sanitized = sanitizeResearchResult(result);
-            return sanitized || "(No findings)";
-          };
-        }
+        const builderTools = buildEditorToolset(session, normalizedSteps, emit, userSkillsLoaded, {
+          telemetry,
+          exitSignal: builderExitSignal,
+          mcpManager,
+        });
+        console.log(
+          `[BuildSession ${session.id}] Tool registry sources: ${builderTools.sources.join(", ") || "(none)"}; tools=${builderTools.schemas.length}`,
+        );
         await withFallback(providerChainEditor, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,

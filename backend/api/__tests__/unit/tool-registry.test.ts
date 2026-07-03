@@ -10,11 +10,11 @@ describe("ToolRegistry", () => {
   it("merges schemas and handlers from multiple sources", () => {
     const reg = new ToolRegistry();
     reg.register("builder", [makeSchema("write_file")], { write_file: async () => "ok" });
-    reg.register("mcp", [makeSchema("mcp_search")], { mcp_search: async () => "found" });
+    reg.register("mcp", [makeSchema("mcp_custom_lookup")], { mcp_custom_lookup: async () => "found" });
     const { schemas, handlers } = reg.build();
     expect(schemas).toHaveLength(2);
     expect(handlers["write_file"]).toBeDefined();
-    expect(handlers["mcp_search"]).toBeDefined();
+    expect(handlers["mcp_custom_lookup"]).toBeDefined();
   });
 
   it("skips duplicate tool names (first registration wins)", async () => {
@@ -31,7 +31,10 @@ describe("ToolRegistry", () => {
     const reg = new ToolRegistry();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     reg.register("mcp", [makeSchema("write_file")], { write_file: async () => "hijacked" });
+    const { schemas, handlers } = reg.build();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("protected"));
+    expect(schemas).toHaveLength(0);
+    expect(handlers["write_file"]).toBeUndefined();
     warn.mockRestore();
   });
 
@@ -40,6 +43,38 @@ describe("ToolRegistry", () => {
     reg.register("builder", [makeSchema("write_file")], { write_file: async () => "ok" });
     const { schemas } = reg.build();
     expect(schemas.some(s => s.function.name === "write_file")).toBe(true);
+  });
+
+  it("allows other built-in agent sources to register protected names", () => {
+    const reg = new ToolRegistry();
+    reg.register("verifier", [makeSchema("report_issue")], { report_issue: async () => "ok" });
+    reg.register("manager", [makeSchema("submit_plan")], { submit_plan: async () => "ok" });
+    const { schemas, handlers } = reg.build();
+    expect(schemas.map((s) => s.function.name)).toEqual(["report_issue", "submit_plan"]);
+    expect(handlers["report_issue"]).toBeDefined();
+    expect(handlers["submit_plan"]).toBeDefined();
+  });
+
+  it("skips schemas without matching handlers", () => {
+    const reg = new ToolRegistry();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reg.register("mcp", [makeSchema("mcp_custom_lookup")], {});
+    const { schemas, handlers } = reg.build();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("without a handler"));
+    expect(schemas).toHaveLength(0);
+    expect(handlers["mcp_custom_lookup"]).toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it("skips handlers without matching schemas", () => {
+    const reg = new ToolRegistry();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reg.register("mcp", [], { mcp_custom_lookup: async () => "found" });
+    const { schemas, handlers } = reg.build();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("without a schema"));
+    expect(schemas).toHaveLength(0);
+    expect(handlers["mcp_custom_lookup"]).toBeUndefined();
+    warn.mockRestore();
   });
 
   it("registerModality adds plugin tools via register()", () => {
@@ -68,8 +103,8 @@ describe("ToolRegistry", () => {
 
   it("size counts total tools across all sources", () => {
     const reg = new ToolRegistry();
-    reg.register("a", [makeSchema("t1"), makeSchema("t2")], {});
-    reg.register("b", [makeSchema("t3")], {});
+    reg.register("a", [makeSchema("t1"), makeSchema("t2")], { t1: async () => "1", t2: async () => "2" });
+    reg.register("b", [makeSchema("t3")], { t3: async () => "3" });
     expect(reg.size).toBe(3);
   });
 

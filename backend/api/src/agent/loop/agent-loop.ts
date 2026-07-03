@@ -410,8 +410,31 @@ export async function runAgentLoop(
         emitPart(partCtx, emit, toolPart);
       } else {
         // Legacy: emit action_log directly for tools that don't have their own logs
-        const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "finish_build", "report_issue", "submit_verdict"]);
-        if (!toolsWithOwnLogs.has(tc.name)) {
+        const toolsWithOwnLogs = new Set([
+          "write_file",
+          "read_file",
+          "list_files",
+          "grep",
+          "edit_file",
+          "patch_file",
+          "hash_patch_file",
+          "delete_file",
+          "ast_search",
+          "ast_replace",
+          "lsp_diagnostics",
+          "lsp_find_references",
+          "lsp_goto_definition",
+          "shell_run",
+          "run_tests",
+          "mcp_search",
+          "fetch_url",
+          "research",
+          "mark_step_complete",
+          "finish_build",
+          "report_issue",
+          "submit_verdict",
+        ]);
+        if (!toolsWithOwnLogs.has(tc.name) && !tc.name.startsWith("mcp_")) {
           const argsPreview = JSON.stringify(args).slice(0, 120);
           emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
         }

@@ -75,7 +75,7 @@ export function ChatPanel() {
     mgrLiveNarrationText,
     mgrLiveActionLog,
     autoExecutePlanRef,
-    resetLiveState: resetManagerLiveState,
+    clearLiveState: clearManagerLiveState,
   } = manager;
 
   const {
@@ -351,11 +351,11 @@ export function ChatPanel() {
     const prev = prevProjectIdRef.current;
     const curr = projectId;
     if (prev && curr && prev !== curr) {
-      resetManagerLiveState();
+      clearManagerLiveState();
       resetBuildLiveState();
     }
     prevProjectIdRef.current = curr;
-  }, [projectId, resetManagerLiveState, resetBuildLiveState]);
+  }, [projectId, clearManagerLiveState, resetBuildLiveState]);
 
   useEffect(() => {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {

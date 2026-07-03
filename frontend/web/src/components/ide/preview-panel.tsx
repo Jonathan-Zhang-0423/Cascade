@@ -239,6 +239,7 @@ export function PreviewPanel({
     customDeviceHeight,
     setCustomDeviceDimensions,
     projectId,
+    currentSessionId,
     isConsoleOpen,
     toggleConsole,
     planPreviewOpen,
@@ -362,7 +363,7 @@ export function PreviewPanel({
         // Forward errors/warnings to the active build session so the verifier can see them
         if ((level === "error" || level === "warn") && projectId) {
           try {
-            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}`);
+            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}-${currentSessionId || "main"}`);
             if (sessionId) {
               fetch(`/api/build-session/${sessionId}/console-event`, {
                 method: "POST",
@@ -376,7 +377,7 @@ export function PreviewPanel({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addConsoleEntry, projectId]);
+  }, [addConsoleEntry, projectId, currentSessionId]);
 
   const handleRefresh = () => {
     clearConsole();

@@ -458,6 +458,8 @@ export function getActionLogColor(type: ActionLogEntry["type"]): string {
       return "text-green-400";
     case "file_read":
       return "text-amber-400";
+    case "file_delete":
+      return "text-red-400";
     case "tool_call":
       return "text-purple-400";
     case "research":

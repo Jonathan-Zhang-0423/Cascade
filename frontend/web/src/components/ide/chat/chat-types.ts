@@ -81,6 +81,8 @@ export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
   "step_failed",
   "step_cancelled",
   "code_applied",
+  "file_deleted",
+  "capabilities_active",
   "build_complete",
   "all_complete",
   "build_error",
@@ -98,6 +100,8 @@ export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   step_failed: "manager",
   step_cancelled: "manager",
   build_complete: "manager",
+  file_deleted: "editor",
+  capabilities_active: "editor",
   all_complete: "manager",
   build_error: "editor",
   done: "manager",
@@ -217,6 +221,7 @@ export interface BuildSseEvent {
   fixCycle?: number;
   items?: string[];
   changedFiles?: string[];
+  capabilities?: Array<{ name: string; score?: number; tier?: string }>;
   summary?: string;
   summaryText?: string;
   content?: string;

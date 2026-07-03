@@ -79,7 +79,10 @@ export interface StoreActions {
   // Task status
   updateTaskStatus: (subTaskId: string, status: TaskStatus) => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
-  freezeLatestPlanStatuses: () => void;
+  freezeLatestPlanStatuses: (
+    statuses?: Record<string, TaskStatus>,
+    failureReasons?: Record<string, string>,
+  ) => void;
 
   // Build state
   setAiResponding: (v: boolean) => void;

@@ -46,10 +46,22 @@ export class ToolRegistry {
 
   /** Names that cannot be overridden by external sources (MCP, modalities). */
   private static PROTECTED_NAMES = new Set([
-    "write_file", "read_file", "patch_file", "hash_patch_file", "delete_file",
+    "write_file", "read_file", "list_files", "grep", "edit_file",
+    "patch_file", "hash_patch_file", "delete_file",
     "mark_step_complete", "finish_build", "submit_plan",
     "update_project_memory", "ast_search", "ast_replace",
-    "lsp_diagnostics", "shell",
+    "lsp_diagnostics", "lsp_find_references", "lsp_goto_definition",
+    "shell_run", "run_tests", "report_issue", "submit_verdict", "submit_review",
+    "mcp_search", "fetch_url", "research",
+  ]);
+
+  /** Sources that are allowed to provide protected built-in tools. */
+  private static BUILTIN_SOURCES = new Set([
+    "builder",
+    "fixer",
+    "verifier",
+    "reviewer",
+    "manager",
   ]);
 
   /**
@@ -57,16 +69,31 @@ export class ToolRegistry {
    * name overwrite (idempotent for re-registration on retry).
    */
   register(source: string, schemas: ToolSchema[], handlers: ToolHandlers): void {
-    // Validate: external sources cannot shadow protected built-in tools
-    if (source !== "builder" && source !== "fixer" && source !== "reviewer") {
-      for (const s of schemas) {
-        if (ToolRegistry.PROTECTED_NAMES.has(s.function.name)) {
-          console.warn(`[ToolRegistry] Source "${source}" tried to register protected tool "${s.function.name}" — skipped`);
-          continue;
-        }
+    const isBuiltinSource = ToolRegistry.BUILTIN_SOURCES.has(source);
+    const filteredSchemas: ToolSchema[] = [];
+    const filteredHandlers: ToolHandlers = {};
+
+    for (const schema of schemas) {
+      const name = schema.function.name;
+      if (!isBuiltinSource && ToolRegistry.PROTECTED_NAMES.has(name)) {
+        console.warn(`[ToolRegistry] Source "${source}" tried to register protected tool "${name}" - skipped`);
+        continue;
+      }
+      if (!handlers[name]) {
+        console.warn(`[ToolRegistry] Source "${source}" registered schema "${name}" without a handler - skipped`);
+        continue;
+      }
+      filteredSchemas.push(schema);
+      filteredHandlers[name] = handlers[name];
+    }
+
+    for (const name of Object.keys(handlers)) {
+      if (!filteredSchemas.some((schema) => schema.function.name === name)) {
+        console.warn(`[ToolRegistry] Source "${source}" registered handler "${name}" without a schema - skipped`);
       }
     }
-    this.sources.set(source, { schemas, handlers });
+
+    this.sources.set(source, { schemas: filteredSchemas, handlers: filteredHandlers });
   }
 
   /**

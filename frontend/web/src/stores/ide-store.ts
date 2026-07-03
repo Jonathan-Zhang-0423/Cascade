@@ -99,6 +99,8 @@ export interface BuildResultData {
   sessionId?: string;
 }
 
+type TaskStatus = "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
+
 export interface ManagerMessage {
   id: string;
   role: "user" | "assistant" | "checkpoint";
@@ -117,7 +119,7 @@ export interface ManagerMessage {
   // Snapshot of taskStatuses captured when this plan's build finished.
   // Lets historical PlanCards render their final state instead of reverting
   // to all-pending once a newer plan takes over the live `taskStatuses`.
-  frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  frozenTaskStatuses?: Record<string, TaskStatus>;
   frozenTaskFailureReasons?: Record<string, string>;
 }
 
@@ -303,7 +305,7 @@ interface IDEState {
   _nextSeq: number;
   streamingSnapshot: StreamingSnapshot | null;
   executingTaskIndex: number | null;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  taskStatuses: Record<string, TaskStatus>;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
   /** Per-session responding state. Key = sessionId. True while that session's manager stream is active. */
@@ -353,6 +355,7 @@ interface IDEState {
   clearConsole: () => void;
   setActiveTool: (tool: ToolPanel) => void;
   setAiResponding: (v: boolean) => void;
+  setIdePageMounted: (v: boolean) => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
@@ -371,7 +374,7 @@ interface IDEState {
   setManagerPlan: (plan: ManagerPlan | null) => void;
   addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
   loadOlderMessages: (kind: "chat" | "manager", limit?: number) => Promise<number>;
-  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
+  updateTaskStatus: (subTaskId: string, status: TaskStatus) => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean, sessionId?: string) => void;
@@ -393,7 +396,7 @@ interface IDEState {
   setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
-  freezeLatestPlanStatuses: () => void;
+  freezeLatestPlanStatuses: (statuses?: Record<string, TaskStatus>, failureReasons?: Record<string, string>) => void;
 
   userId: string | null;
   setUserId: (id: string | null) => void;
@@ -1261,7 +1264,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       // replay together cover refresh-during-build.
       let buildInFlight = false;
       try {
-        buildInFlight = !!localStorage.getItem(`cascade-build-session-${id}`);
+        const prefix = `cascade-build-session-${id}-`;
+        buildInFlight = Object.keys(localStorage).some((key) => key.startsWith(prefix));
       } catch {}
       if (buildInFlight) return;
 
@@ -1933,7 +1937,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       return next;
     }),
 
-  freezeLatestPlanStatuses: () =>
+  freezeLatestPlanStatuses: (statuses, failureReasons) =>
     set((state) => {
       // Snapshot the current live taskStatuses onto the most recent plan-bearing
       // manager message. Called on build all_complete so historical PlanCards
@@ -1947,8 +1951,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const target = msgs[lastPlanIdx];
       msgs[lastPlanIdx] = {
         ...target,
-        frozenTaskStatuses: { ...state.taskStatuses },
-        frozenTaskFailureReasons: { ...state.taskFailureReasons },
+        frozenTaskStatuses: { ...(statuses ?? state.taskStatuses) },
+        frozenTaskFailureReasons: { ...(failureReasons ?? state.taskFailureReasons) },
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);

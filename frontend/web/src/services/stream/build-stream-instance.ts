@@ -451,55 +451,66 @@ export class BuildStreamInstance {
             });
           } else if (type === "all_complete") {
             receivedAllComplete = true;
+            const finalStatuses = { ...this.state.get().taskStatuses };
+            normalizedSteps.forEach((step) => {
+              const key = String(step.step);
+              const liveStatus = isCurrentProject ? this.actions.getTaskStatuses()[key] : finalStatuses[key];
+              if (isCurrentProject && (liveStatus === "bug" || liveStatus === "failed" || liveStatus === "running" || liveStatus === "pending")) {
+                this.actions.updateTaskStatus(key, "done");
+              }
+              if (
+                finalStatuses[key] === "bug" ||
+                finalStatuses[key] === "failed" ||
+                finalStatuses[key] === "running" ||
+                finalStatuses[key] === "pending" ||
+                finalStatuses[key] === undefined
+              ) {
+                finalStatuses[key] = "done";
+              }
+            });
+            this.state.set({ taskStatuses: finalStatuses });
+            this.actions.freezeLatestPlanStatuses(finalStatuses);
+            const changedFiles: string[] = ev.changedFiles || [];
+            const summaryText = ev.summaryText || "";
+            this.actions.setCompletionData({ changedFiles, summary: summaryText });
+            if (this.actionLog.length > 0) {
+              // Group by step entry — each "step" action_log entry starts a new segment.
+              // Narration comes from stepNarrations (keyed by step number), which is populated
+              // as communicator tokens arrive and finalized at step_completed. This is more
+              // reliable than precedingNarration (which is empty when actions fire before narration).
+              const stepNarrations = this.state.get().stepNarrations;
+              const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+              let currentSegStepNum = 0;
+              for (const entry of this.actionLog) {
+                if (entry.type === "narration") continue;
+                if (entry.type === "step") {
+                  // Extract step number from label e.g. "Step 2/4: ..."
+                  const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
+                  currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
+                  const narration = stepNarrations[currentSegStepNum] ?? "";
+                  segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
+                } else {
+                  if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+                  segs[segs.length - 1].actions.push(entry);
+                }
+              }
+              this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
+              this.actions.addManagerMessage({
+                role: "assistant",
+                content: "",
+                buildResult: {
+                  actionLog: [...this.actionLog],
+                  segments: segs,
+                  completionData: { changedFiles, summary: summaryText },
+                  tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
+                },
+              });
+              this._dbg("all_complete: addManagerMessage called with buildResult");
+            } else {
+              this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
+            }
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
-              normalizedSteps.forEach((step) => {
-                const key = String(step.step);
-                const s = this.actions.getTaskStatuses()[key];
-                if (s === "bug" || s === "failed" || s === "running" || s === "pending") {
-                  this.actions.updateTaskStatus(key, "done");
-                }
-              });
-              this.actions.freezeLatestPlanStatuses();
-              const changedFiles: string[] = ev.changedFiles || [];
-              const summaryText = ev.summaryText || "";
-              this.actions.setCompletionData({ changedFiles, summary: summaryText });
-              if (this.actionLog.length > 0) {
-                // Group by step entry — each "step" action_log entry starts a new segment.
-                // Narration comes from stepNarrations (keyed by step number), which is populated
-                // as communicator tokens arrive and finalized at step_completed. This is more
-                // reliable than precedingNarration (which is empty when actions fire before narration).
-                const stepNarrations = this.state.get().stepNarrations;
-                const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
-                let currentSegStepNum = 0;
-                for (const entry of this.actionLog) {
-                  if (entry.type === "narration") continue;
-                  if (entry.type === "step") {
-                    // Extract step number from label e.g. "Step 2/4: ..."
-                    const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
-                    currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
-                    const narration = stepNarrations[currentSegStepNum] ?? "";
-                    segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
-                  } else {
-                    if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
-                    segs[segs.length - 1].actions.push(entry);
-                  }
-                }
-                this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
-                this.actions.addManagerMessage({
-                  role: "assistant",
-                  content: "",
-                  buildResult: {
-                    actionLog: [...this.actionLog],
-                    segments: segs,
-                    completionData: { changedFiles, summary: summaryText },
-                    tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
-                  },
-                });
-                this._dbg("all_complete: addManagerMessage called with buildResult");
-              } else {
-                this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
-              }
             }
             this.actions.setStreamingSnapshot(null);
             try { localStorage.removeItem(this.storageKey); } catch {}
@@ -728,41 +739,44 @@ export class BuildStreamInstance {
             commAccumulated = "";
           } else if (type === "all_complete") {
             receivedAllComplete = true;
-            if (isCurrentProject) {
-              nSteps.forEach((step) => {
-                const key = String(step.step);
-                const s = this.actions.getTaskStatuses()[key];
-                if (s !== "done") this.actions.updateTaskStatus(key, "done");
-              });
-              this.actions.freezeLatestPlanStatuses();
-              const changedFiles2: string[] = ev.changedFiles || [];
-              const summaryText2 = ev.summaryText || "";
-              this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
-              if (this.actionLog.length > 0) {
-                const segs2: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
-                for (const entry of this.actionLog) {
-                  if (entry.type === "narration") continue;
-                  if (entry.type === "step") {
-                    segs2.push({ id: String(segs2.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
-                  } else {
-                    if (segs2.length === 0) segs2.push({ id: "0", narration: "", actions: [], isLive: false });
-                    const last = segs2[segs2.length - 1];
-                    if (!last.narration && entry.precedingNarration) {
-                      last.narration = entry.precedingNarration;
-                    }
-                    last.actions.push(entry);
+            const finalStatuses = { ...this.state.get().taskStatuses };
+            nSteps.forEach((step) => {
+              const key = String(step.step);
+              const s = isCurrentProject ? this.actions.getTaskStatuses()[key] : finalStatuses[key];
+              if (isCurrentProject && s !== "done") this.actions.updateTaskStatus(key, "done");
+              if (finalStatuses[key] !== "done") finalStatuses[key] = "done";
+            });
+            this.state.set({ taskStatuses: finalStatuses });
+            this.actions.freezeLatestPlanStatuses(finalStatuses);
+            const changedFiles2: string[] = ev.changedFiles || [];
+            const summaryText2 = ev.summaryText || "";
+            this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
+            if (this.actionLog.length > 0) {
+              const segs2: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+              for (const entry of this.actionLog) {
+                if (entry.type === "narration") continue;
+                if (entry.type === "step") {
+                  segs2.push({ id: String(segs2.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+                } else {
+                  if (segs2.length === 0) segs2.push({ id: "0", narration: "", actions: [], isLive: false });
+                  const last = segs2[segs2.length - 1];
+                  if (!last.narration && entry.precedingNarration) {
+                    last.narration = entry.precedingNarration;
                   }
+                  last.actions.push(entry);
                 }
-                this.actions.addChatMessage({
-                  role: "assistant",
-                  content: "",
-                  buildResult: {
-                    actionLog: [...this.actionLog],
-                    segments: segs2,
-                    completionData: { changedFiles: changedFiles2, summary: summaryText2 },
-                  } as any,
-                });
               }
+              this.actions.addManagerMessage({
+                role: "assistant",
+                content: "",
+                buildResult: {
+                  actionLog: [...this.actionLog],
+                  segments: segs2,
+                  completionData: { changedFiles: changedFiles2, summary: summaryText2 },
+                } as any,
+              });
+            }
+            if (isCurrentProject) {
               // Background build finished while we were away: pull the latest
               // files and refresh the preview so the user sees the result
               // without a manual page refresh. The primary path does this via
@@ -983,10 +997,16 @@ export class BuildStreamInstance {
       });
       if (!resp.ok) return;
       const data = await resp.json();
-      const files: Array<{ path: string; content: string }> = data?.files ?? [];
-      if (!files.length) return;
+      if (!Array.isArray(data?.files)) return;
+      const files: Array<{ path: string; content: string }> = data.files;
       if (this.actions.getProjectId() !== this.projectId) return;
       const current = new Map(this.actions.getFiles().map((f) => [f.path, f.content ?? ""]));
+      const serverPaths = new Set(files.map((f) => f.path));
+      for (const filePath of current.keys()) {
+        if (!serverPaths.has(filePath)) {
+          this.actions.deleteFile(filePath);
+        }
+      }
       for (const f of files) {
         if (current.get(f.path) !== f.content) {
           await this.actions.applyCodeBlock({ filePath: f.path, code: f.content, language: "" });

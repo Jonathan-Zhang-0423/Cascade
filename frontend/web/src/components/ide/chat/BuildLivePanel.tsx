@@ -104,6 +104,7 @@ function LiveBar() {
 }
 import {
   FileText,
+  Trash2,
   PencilLine,
   Wrench,
   Terminal,
@@ -243,7 +244,10 @@ function extractThinkingNarration(text: string): string {
 // ── E. getActionNarration ─────────────────────────────────────────────────
 const TOOL_NARRATION: Record<string, string> = {
   read_file: "读取文件",
+  list_files: "查看文件列表",
+  grep: "搜索项目文件",
   write_file: "编辑文件",
+  edit_file: "修改文件",
   patch_file: "修改文件",
   hash_patch_file: "修改文件",
   ast_search: "搜索代码结构",
@@ -253,6 +257,11 @@ const TOOL_NARRATION: Record<string, string> = {
   lsp_goto_definition: "跳转到定义",
   shell_run: "运行命令",
   run_tests: "运行测试",
+  mcp_search: "联网搜索",
+  fetch_url: "读取网页",
+  research: "联网调研",
+  update_project_memory: "更新项目记忆",
+  submit_interaction_script: "保存演示脚本",
 };
 
 // Tools that are pure control-flow signals — never shown as user-facing actions.
@@ -295,6 +304,8 @@ function summarizeActions(actions: ActionLogEntry[]): string {
   const deletes = actions.filter(a => a.type === "file_delete");
   const terms   = actions.filter(a => a.type === "terminal_command");
   const reviews = actions.filter(a => a.type === "code_review");
+  const research = actions.filter(a => a.type === "research");
+  const tools = actions.filter(a => a.type === "tool_call");
 
   // 取文件名（去掉路径前缀）
   const name = (entry: ActionLogEntry) =>
@@ -334,6 +345,17 @@ function summarizeActions(actions: ActionLogEntry[]): string {
   }
 
   if (reviews.length > 0) parts.push("代码审查");
+  if (research.length > 0) {
+    parts.push(research.length === 1 ? "完成了联网调研" : `完成了 ${research.length} 次联网调研`);
+  }
+  if (parts.length === 0 && tools.length > 0) {
+    const named = tools
+      .map((a) => TOOL_NARRATION[a.label] || a.label)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("、");
+    parts.push(named ? `调用了 ${named}${tools.length > 2 ? ` 等 ${tools.length} 个工具` : ""}` : `调用了 ${tools.length} 个工具`);
+  }
 
   return parts.join("，");
 }
@@ -384,13 +406,14 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
 }
 
 // ── H. toDisplayType ──────────────────────────────────────────────────────
-type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
+type ActionType = "thinking" | "read" | "edit" | "delete" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
 
 function toDisplayType(raw: string): ActionType {
   switch (raw) {
     case "thinking":       return "thinking";
     case "file_read":      return "read";
     case "file_write":     return "edit";
+    case "file_delete":    return "delete";
     case "code_applied":   return "apply";
     case "code_review":    return "review";
     case "capabilities":   return "capabilities";
@@ -406,6 +429,7 @@ const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
   thinking:     { icon: Brain,       color: "text-muted-foreground/50" },
   read:         { icon: FileText,    color: "text-muted-foreground/50" },
   edit:         { icon: PencilLine,  color: "text-muted-foreground/50" },
+  delete:       { icon: Trash2,      color: "text-muted-foreground/50" },
   apply:        { icon: GitMerge,    color: "text-muted-foreground/50" },
   review:       { icon: ShieldCheck, color: "text-muted-foreground/50" },
   capabilities: { icon: Zap,         color: "text-muted-foreground/50" },

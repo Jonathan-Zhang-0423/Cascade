@@ -12,6 +12,86 @@ import type { BuildTelemetry } from "../../infra/telemetry";
 import { storage } from "../../infra/storage";
 import { validateDslSequence } from "../../api/video/dsl-executor";
 
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "\u0000")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\u0000/g, ".*")
+    .replace(/\?/g, "[^/]");
+  return new RegExp(`^${escaped}$`);
+}
+
+function matchesPathFilter(filePath: string, include?: string, exclude?: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  if (include && !globToRegExp(include).test(normalized)) return false;
+  if (exclude && globToRegExp(exclude).test(normalized)) return false;
+  return true;
+}
+
+async function mirrorFileChangeToDiskAndLsp(
+  session: BuildSessionState,
+  filePath: string,
+  content: string,
+): Promise<void> {
+  if (!session.sessionDir) return;
+  try {
+    const abs = path.resolve(session.sessionDir, filePath.replace(/^\/+/, ""));
+    const normalizedBase = path.resolve(session.sessionDir);
+    // Guard: ensure the resolved path is inside sessionDir (prevent ../../ escape)
+    if (!abs.startsWith(normalizedBase)) {
+      console.warn(`[agent-tools] path traversal blocked: ${filePath}`);
+    } else {
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, content, "utf-8");
+    }
+  } catch (err) {
+    console.warn("[agent-tools] disk mirror failed for", filePath, err instanceof Error ? err.message : err);
+  }
+  lspManager.notifyFileChange(session.id, filePath, content).catch(() => {});
+}
+
+async function buildTypeScriptDiagnosticSuffix(
+  session: BuildSessionState,
+  filePath: string,
+  telemetry?: BuildTelemetry,
+): Promise<string> {
+  if (!session.sessionDir || (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx"))) {
+    return "";
+  }
+  try {
+    const diags = await lspManager.getDiagnostics(session.id, filePath);
+    if (diags.length === 0) return "\n\nLSP: no errors.";
+    const errCount = diags.filter((d) => d.severity === 1).length;
+    if (errCount > 0) telemetry?.incrLspErrors(errCount);
+    const lines = diags.map(d => {
+      const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
+      return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
+    });
+    return `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
+  } catch {
+    // LSP not available - silent, don't break the file operation.
+    return "";
+  }
+}
+
+async function applyFileContentUpdate(
+  session: BuildSessionState,
+  telemetry: BuildTelemetry | undefined,
+  emit: SseEmit,
+  filePath: string,
+  content: string,
+): Promise<string> {
+  const fileName = filePath.split("/").pop() || filePath;
+  emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath });
+  session.files.set(filePath, content);
+  persistFileToDb(session, filePath, content);
+  emit({ type: "code_applied", filePath, code: content });
+  await mirrorFileChangeToDiskAndLsp(session, filePath, content);
+  telemetry?.addFileWritten(filePath);
+  return buildTypeScriptDiagnosticSuffix(session, filePath, telemetry);
+}
+
 /**
  * Fire-and-forget persist of a single file to the DB. Used by write tools to
  * keep the project_files table in sync mid-build so a page refresh during a
@@ -178,6 +258,67 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "list_files",
+        description: "List project files. Use this to discover the project structure before reading or editing files.",
+        parameters: {
+          type: "object",
+          properties: {
+            include: {
+              type: "string",
+              description: "Optional glob filter, e.g. '/project/src/**/*.tsx' or '**/*.json'",
+            },
+            exclude: {
+              type: "string",
+              description: "Optional glob exclude, e.g. '**/node_modules/**' or '**/*.png'",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum files to return (default 200, max 1000)",
+            },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "grep",
+        description: "Search text across project files. Supports regex by default. Returns matching file paths with line numbers and snippets.",
+        parameters: {
+          type: "object",
+          properties: {
+            pattern: {
+              type: "string",
+              description: "Text or regular expression to search for",
+            },
+            include: {
+              type: "string",
+              description: "Optional glob filter, e.g. '/project/src/**/*.tsx' or '**/*.css'",
+            },
+            exclude: {
+              type: "string",
+              description: "Optional glob exclude, e.g. '**/dist/**'",
+            },
+            case_sensitive: {
+              type: "boolean",
+              description: "Whether the search is case-sensitive (default false)",
+            },
+            regex: {
+              type: "boolean",
+              description: "Treat pattern as a regular expression (default true). Set false for literal text.",
+            },
+            max_results: {
+              type: "number",
+              description: "Maximum matching lines to return (default 80, max 300)",
+            },
+          },
+          required: ["pattern"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "mark_step_complete",
         description: "Mark a plan step as complete after you have written all files for it.",
         parameters: {
@@ -193,6 +334,39 @@ export function buildBuilderTools(
             },
           },
           required: ["step_id", "summary"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "edit_file",
+        description: "Edit an existing file by replacing exact text. Prefer this for small/medium changes. old_content must match exactly; by default it must match exactly once. Use replace_all only for intentional repeated replacements.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to edit, e.g. /project/src/App.tsx",
+            },
+            old_content: {
+              type: "string",
+              description: "Exact text to replace, including whitespace",
+            },
+            new_content: {
+              type: "string",
+              description: "Replacement text",
+            },
+            replace_all: {
+              type: "boolean",
+              description: "Replace all occurrences. Default false.",
+            },
+            expected_replacements: {
+              type: "number",
+              description: "Expected replacement count. Default 1 for single edit; required for safer replace_all.",
+            },
+          },
+          required: ["path", "old_content", "new_content"],
         },
       },
     },
@@ -332,55 +506,107 @@ export function buildBuilderTools(
       if (!path_ || typeof content !== "string") {
         return "Error: path and content are required";
       }
-      const fileName = path_.split("/").pop() || path_;
-      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath: path_ });
-      session.files.set(path_, content);
-      persistFileToDb(session, path_, content);
-      emit({ type: "code_applied", filePath: path_, code: content });
-
-      // Mirror to disk (with path traversal protection)
-      if (session.sessionDir) {
-        try {
-          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
-          const normalizedBase = path.resolve(session.sessionDir);
-          // Guard: ensure the resolved path is inside sessionDir (prevent ../../ escape)
-          if (!abs.startsWith(normalizedBase)) {
-            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
-          } else {
-            await mkdir(path.dirname(abs), { recursive: true });
-            await writeFile(abs, content, "utf-8");
-          }
-        } catch (err) {
-          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
-        }
-        // Notify LSP server of the change
-        lspManager.notifyFileChange(session.id, path_, content).catch(() => {});
-      }
-
-      // Inline LSP diagnostics for TypeScript files
-      let diagSuffix = "";
-      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
-        try {
-          const diags = await lspManager.getDiagnostics(session.id, path_);
-          if (diags.length > 0) {
-            const errCount = diags.filter((d) => d.severity === 1).length;
-            if (errCount > 0) telemetry?.incrLspErrors(errCount);
-            const lines = diags.map(d => {
-              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
-              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
-            });
-            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
-          } else {
-            diagSuffix = "\n\nLSP: no errors.";
-          }
-        } catch {
-          // LSP not available — silent, don't break the write
-        }
-      }
-
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, content);
       telemetry?.incr("writeFileCount");
-      telemetry?.addFileWritten(path_);
       return `File written successfully: ${path_} (${content.length} chars)${diagSuffix}`;
+    },
+
+    list_files: async (args, emit) => {
+      const include = typeof args.include === "string" ? args.include : undefined;
+      const exclude = typeof args.exclude === "string" ? args.exclude : undefined;
+      const limit = Math.min(Math.max(typeof args.limit === "number" ? args.limit : 200, 1), 1000);
+      const detail = [
+        include ? `include=${include}` : "",
+        exclude ? `exclude=${exclude}` : "",
+        `limit=${limit}`,
+      ].filter(Boolean).join(" ");
+      emit({ type: "action_log", actionType: "tool_call", label: "list_files", detail });
+      const allFiles = Array.from(session.files.keys())
+        .filter((filePath) => matchesPathFilter(filePath, include, exclude))
+        .sort();
+      const shown = allFiles.slice(0, limit);
+      const suffix = allFiles.length > shown.length
+        ? `\n\n...${allFiles.length - shown.length} more file(s) omitted. Increase limit or narrow include.`
+        : "";
+      return shown.length > 0
+        ? `Files (${shown.length}/${allFiles.length}):\n${shown.join("\n")}${suffix}`
+        : "No files matched.";
+    },
+
+    grep: async (args, emit) => {
+      const pattern = args.pattern as string;
+      if (!pattern) return "Error: pattern is required";
+      const include = typeof args.include === "string" ? args.include : undefined;
+      const exclude = typeof args.exclude === "string" ? args.exclude : undefined;
+      const caseSensitive = args.case_sensitive === true;
+      const useRegex = args.regex !== false;
+      const maxResults = Math.min(Math.max(typeof args.max_results === "number" ? args.max_results : 80, 1), 300);
+      let matcher: RegExp;
+      try {
+        const source = useRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        matcher = new RegExp(source, caseSensitive ? "" : "i");
+      } catch (err) {
+        return `Error: invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`;
+      }
+
+      emit({ type: "action_log", actionType: "file_read", label: "grep", detail: pattern });
+
+      const matches: string[] = [];
+      let totalMatches = 0;
+      for (const [filePath, content] of Array.from(session.files.entries()).sort(([a], [b]) => a.localeCompare(b))) {
+        if (!matchesPathFilter(filePath, include, exclude)) continue;
+        const lines = content.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          if (!matcher.test(lines[i])) continue;
+          matcher.lastIndex = 0;
+          totalMatches++;
+          if (matches.length < maxResults) {
+            matches.push(`${filePath}:${i + 1}: ${lines[i].trim().slice(0, 240)}`);
+          }
+        }
+      }
+
+      if (totalMatches === 0) return `No matches for ${JSON.stringify(pattern)}.`;
+      const omitted = totalMatches > matches.length ? `\n\n...${totalMatches - matches.length} more match(es) omitted.` : "";
+      return `Matches (${matches.length}/${totalMatches}):\n${matches.join("\n")}${omitted}`;
+    },
+
+    edit_file: async (args, emit) => {
+      const path_ = args.path as string;
+      const oldContent = args.old_content as string;
+      const newContent = args.new_content as string;
+      const replaceAll = args.replace_all === true;
+      const expectedReplacements = typeof args.expected_replacements === "number"
+        ? args.expected_replacements
+        : (replaceAll ? undefined : 1);
+      if (!path_ || typeof oldContent !== "string" || typeof newContent !== "string") {
+        return "Error: path, old_content, and new_content are required";
+      }
+      if (oldContent.length === 0) {
+        return "Error: old_content must not be empty. Use write_file if you need to replace the entire file.";
+      }
+      const current = session.files.get(path_);
+      if (current === undefined) {
+        return `Error: file not found: ${path_}. Use write_file to create new files.`;
+      }
+      if (!current.includes(oldContent)) {
+        return `Error: old_content not found verbatim in ${path_}. The file may have changed. Read the file first and retry with the exact current content.`;
+      }
+
+      const occurrences = current.split(oldContent).length - 1;
+      if (!replaceAll && occurrences > 1) {
+        return `Error: old_content appears ${occurrences} times in ${path_}, so the edit is ambiguous. Include more surrounding context to make old_content unique, set replace_all with expected_replacements, or use hash_patch_file.`;
+      }
+      if (expectedReplacements !== undefined && occurrences !== expectedReplacements) {
+        return `Error: expected ${expectedReplacements} replacement(s) in ${path_}, but found ${occurrences}. File unchanged.`;
+      }
+
+      const patched = replaceAll
+        ? current.split(oldContent).join(newContent)
+        : current.replace(oldContent, newContent);
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
+      telemetry?.incr("patchFileCount");
+      return `File edited successfully: ${path_} (${replaceAll ? occurrences : 1} replacement(s), ${oldContent.length} chars -> ${newContent.length} chars)${diagSuffix}`;
     },
 
     patch_file: async (args, emit) => {
@@ -406,49 +632,8 @@ export function buildBuilderTools(
         return `Error: old_content appears ${occurrences} times in ${path_}, so the patch is ambiguous. Include more surrounding context to make old_content unique, or use hash_patch_file to target a specific block.`;
       }
       const patched = current.replace(oldContent, newContent);
-      const fileName = path_.split("/").pop() || path_;
-      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
-      session.files.set(path_, patched);
-      persistFileToDb(session, path_, patched);
-      emit({ type: "code_applied", filePath: path_, code: patched });
-
-      if (session.sessionDir) {
-        try {
-          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
-          const normalizedBase = path.resolve(session.sessionDir);
-          if (!abs.startsWith(normalizedBase)) {
-            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
-          } else {
-            await mkdir(path.dirname(abs), { recursive: true });
-            await writeFile(abs, patched, "utf-8");
-          }
-        } catch (err) {
-          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
-        }
-        lspManager.notifyFileChange(session.id, path_, patched).catch(() => {});
-      }
-
-      // Inline LSP diagnostics for TypeScript files
-      let diagSuffix = "";
-      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
-        try {
-          const diags = await lspManager.getDiagnostics(session.id, path_);
-          if (diags.length > 0) {
-            const lines = diags.map(d => {
-              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
-              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
-            });
-            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
-          } else {
-            diagSuffix = "\n\nLSP: no errors.";
-          }
-        } catch {
-          // LSP not available — silent, don't break the patch
-        }
-      }
-
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
       telemetry?.incr("patchFileCount");
-      telemetry?.addFileWritten(path_);
       return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
     },
 
@@ -484,49 +669,9 @@ export function buildBuilderTools(
       }
 
       const patched = applyBlockReplacement(current, match, newContent);
-      const fileName = path_.split("/").pop() || path_;
-      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: patched, filePath: path_ });
-      session.files.set(path_, patched);
-      persistFileToDb(session, path_, patched);
-      emit({ type: "code_applied", filePath: path_, code: patched });
-
-      if (session.sessionDir) {
-        try {
-          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
-          const normalizedBase = path.resolve(session.sessionDir);
-          if (!abs.startsWith(normalizedBase)) {
-            console.warn(`[agent-tools] path traversal blocked: ${path_}`);
-          } else {
-            await mkdir(path.dirname(abs), { recursive: true });
-            await writeFile(abs, patched, "utf-8");
-          }
-        } catch (err) {
-          console.warn("[agent-tools] disk mirror failed for", path_, err instanceof Error ? err.message : err);
-        }
-        lspManager.notifyFileChange(session.id, path_, patched).catch(() => {});
-      }
-
-      let diagSuffix = "";
-      if (session.sessionDir && (path_.endsWith(".ts") || path_.endsWith(".tsx"))) {
-        try {
-          const diags = await lspManager.getDiagnostics(session.id, path_);
-          if (diags.length > 0) {
-            const lines = diags.map(d => {
-              const sev = d.severity === 1 ? "ERROR" : d.severity === 2 ? "WARNING" : "INFO";
-              return `  [${sev}] Line ${d.range.start.line + 1}: ${d.message}`;
-            });
-            diagSuffix = `\n\nLSP diagnostics (fix before proceeding):\n${lines.join("\n")}`;
-          } else {
-            diagSuffix = "\n\nLSP: no errors.";
-          }
-        } catch {
-          // LSP not available — silent
-        }
-      }
-
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
       const label = match.name ? `${match.kind} ${match.name}` : match.kind;
       telemetry?.incr("hashPatchFileCount");
-      telemetry?.addFileWritten(path_);
       return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
     },
 

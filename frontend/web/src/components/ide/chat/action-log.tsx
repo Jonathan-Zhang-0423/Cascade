@@ -3,6 +3,7 @@ import {
   Brain,
   FilePlus,
   FileSearch,
+  Trash2,
   ListChecks,
   Wrench,
   ChevronRight,
@@ -31,6 +32,8 @@ function getActionLogIcon(type: ActionLogEntry["type"], small?: boolean) {
       return <FilePlus className={cls} />;
     case "file_read":
       return <FileSearch className={cls} />;
+    case "file_delete":
+      return <Trash2 className={cls} />;
     case "tool_call":
       return <TerminalSquare className={cls} />;
     case "research":
