@@ -1,5 +1,5 @@
 import { runAgentLoop, type ToolHandler, type ToolSchema } from "../loop/agent-loop";
-import { getAIClient } from "../providers/kimi-client";
+import { getFastClient } from "../providers/kimi-client";
 
 const EXPLORE_SYSTEM_PROMPT = `You are a fast codebase scanner. Your job is to quickly understand the most relevant parts of an existing project for a given user request.
 
@@ -15,10 +15,7 @@ export async function runExploreAgent(
   files: Array<{ path: string; content: string }>,
   userRequest: string,
 ): Promise<string> {
-  // Use MiniMax if available (fastest), else Doubao
-  const { client, model } = process.env.MINIMAX_API_KEY
-    ? getAIClient("minimax")
-    : getAIClient("doubao");
+  const { client, model } = getFastClient();
 
   const fileList = files.map(f => f.path).join("\n");
   const initialMessage = `User request: ${userRequest}
@@ -65,7 +62,13 @@ Read the most relevant files and return a concise summary of the codebase patter
       schemas,
       handlers,
       () => {},  // no SSE emission — we only want the final text
-      { maxIterations: 5, client, model, phase: "manager" },
+      {
+        maxIterations: 5,
+        client,
+        model,
+        disableThinking: true,
+        phase: "manager",
+      },
     );
     return result.finalText.trim();
   } catch {

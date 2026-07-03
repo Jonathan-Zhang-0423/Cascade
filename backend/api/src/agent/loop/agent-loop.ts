@@ -67,7 +67,7 @@ export interface AgentLoopOpts {
    * Shared exit signal. A tool handler can set `.exit = true` to force the loop
    * to stop after the current tool round, even if no exitTool was called. Used
    * by the builder so completing the last plan step ends the loop deterministically
-   * instead of waiting on the model to emit a separate request_review tool call
+   * instead of waiting on the model to emit a separate finish_build tool call
    * (which it sometimes only narrates, leaving the loop spinning to maxIterations).
    */
   exitSignal?: { exit: boolean; reason?: string };

@@ -213,7 +213,7 @@ export function buildBuilderTools(
   const totalSteps = planSteps?.length ?? 0;
   // Track which steps have been marked complete so we can end the builder loop
   // deterministically once the final step is done — without depending on the
-  // model to emit a separate request_review tool call.
+  // model to emit a separate finish_build tool call.
   const completedSteps = new Set<number | string>();
 
   const schemas: ToolSchema[] = [

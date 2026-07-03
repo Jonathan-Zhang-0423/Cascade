@@ -291,7 +291,7 @@ export function buildBuilderInitialMessage(
   }
 
   const existingFilesWarning = allFiles.length > 0
-    ? `\n\n⚠️ WARNING — EXISTING PROJECT FILES DETECTED ⚠️\nThe following files already contain working code that must be preserved:\n${allFiles.map(f => `  - ${f.path}`).join("\n")}\nDO NOT delete, clear, or replace the content of these files unless a plan step explicitly says to. Always call read_file on each existing file BEFORE writing to it, so you preserve all current content.\n`
+    ? `\n\nExisting project files contain working code. Preserve them unless a plan step explicitly says otherwise. Read an existing file before editing it unless it was pre-loaded or you just wrote it.\n`
     : "";
 
   const modePrefix = mode === "fix"
@@ -307,13 +307,7 @@ ${session.userRequest}
 ${stepsList}
 ${filesList}${preloadedContent}
 
-IMPORTANT: You are implementing a complete coding project. For each step:
-1. Read existing files using read_file before modifying them (SKIP for files already pre-loaded above or files you just wrote).
-2. Write the complete file content using write_file.
-3. Mark each step complete with mark_step_complete.
-4. After ALL steps are done, call finish_build.
-
-Preserve ALL existing content that is not part of the current step. Never truncate or omit existing code.`;
+IMPORTANT: Implement the plan step by step. Preserve unrelated existing code, mark each completed step with mark_step_complete, then finish_build only after final checks, memory update when useful, and demo script submission.`;
 }
 
 

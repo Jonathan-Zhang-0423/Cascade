@@ -24,8 +24,24 @@ const SYSTEM_FALLBACK_DEFAULTS: Record<AgentRole, AIProvider[]> = {
   fixer:     ["glm", "kimi", "doubao", "deepseek-flash"],
 };
 
+export function isProviderConfigured(provider: AIProvider): boolean {
+  if (provider === "doubao") return true;
+  if (provider === "kimi") return !!process.env.KIMI_API_KEY;
+  if (provider === "minimax") return !!process.env.MINIMAX_API_KEY;
+  if (provider === "glm") return !!process.env.GLM_API_KEY;
+  if (provider === "deepseek-pro" || provider === "deepseek-flash") return !!process.env.DEEPSEEK_API_KEY;
+  return false;
+}
+
 export function buildFallbackChain(role: AgentRole, userProvider: AIProvider): AIProvider[] {
-  return [userProvider, ...SYSTEM_FALLBACK_DEFAULTS[role].filter(p => p !== userProvider)];
+  const seen = new Set<AIProvider>();
+  const chain: AIProvider[] = [];
+  for (const provider of [userProvider, ...SYSTEM_FALLBACK_DEFAULTS[role]]) {
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    if (isProviderConfigured(provider)) chain.push(provider);
+  }
+  return chain.length > 0 ? chain : ["doubao"];
 }
 
 export async function withFallback<T>(
@@ -120,20 +136,13 @@ export function getOptimalClient(
   phase: BuildPhase,
   userPreferredProvider: AIProvider,
 ): { client: OpenAI; model: string } {
-  // Check which providers are actually configured
-  const configured = new Set<AIProvider>(["doubao"]); // doubao is always the fallback
-  if (process.env.KIMI_API_KEY)     configured.add("kimi");
-  if (process.env.MINIMAX_API_KEY)  configured.add("minimax");
-  if (process.env.GLM_API_KEY)      configured.add("glm");
-  if (process.env.DEEPSEEK_API_KEY) { configured.add("deepseek-pro"); configured.add("deepseek-flash"); }
-
   // User's choice first
-  if (configured.has(userPreferredProvider)) {
+  if (isProviderConfigured(userPreferredProvider)) {
     return getAIClient(userPreferredProvider);
   }
   // Fall through phase preference list
   for (const p of PHASE_PROVIDER_PREFERENCE[phase]) {
-    if (configured.has(p)) return getAIClient(p);
+    if (isProviderConfigured(p)) return getAIClient(p);
   }
   // Last resort
   return getAIClient("doubao");

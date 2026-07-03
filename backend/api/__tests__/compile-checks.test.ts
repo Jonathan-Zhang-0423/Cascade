@@ -37,10 +37,11 @@ describe("AG-11 framework-specific compile checks", () => {
   });
 
   describe("buildEditorCompileCheckPrompt", () => {
-    it("includes the command and request_review guidance for web", () => {
+    it("includes the command and finish_build guidance for web", () => {
       const fragment = buildEditorCompileCheckPrompt("web");
       expect(fragment).toContain("tsc --noEmit");
-      expect(fragment).toContain("request_review");
+      expect(fragment).toContain("finish_build");
+      expect(fragment).not.toContain("request_review");
     });
 
     it("includes flutter analyze for Flutter", () => {

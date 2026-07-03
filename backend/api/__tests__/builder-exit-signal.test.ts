@@ -23,7 +23,7 @@ const steps: BuildStep[] = [
   { step: 2, title: "Two", description: "d2" },
 ];
 
-describe("builder exit signal (request_review bypass)", () => {
+describe("builder exit signal (finish_build bypass)", () => {
   it("trips the exit signal + emits build_complete once the LAST step is marked complete", async () => {
     const session = makeSession();
     const exitSignal = { exit: false, reason: undefined as string | undefined };

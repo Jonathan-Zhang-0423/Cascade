@@ -1,12 +1,9 @@
 import { db } from "../infra/db";
 import { userSkills, projectSkills } from "@cascade/database";
 import { eq, and } from "drizzle-orm";
-import { readdir, readFile } from "fs/promises";
-import { join } from "path";
 import type { ToolSchema, ToolHandler, ToolHandlers } from "../agent/loop/agent-loop";
 import type { BuildSessionState, SseEmit } from "../agent/orchestrator/build-orchestrator";
 import { shellManager } from "../agent/tools/shell-manager";
-import { srcDir } from "../infra/paths";
 import { PROJECT_MEMORY_NAME } from "../infra/storage";
 
 export interface LoadedSkills {
@@ -172,25 +169,6 @@ export async function loadUserSkills(
     if (seen.has(skill.name)) continue;
     seen.add(skill.name);
     parseSkillContent(skill.name, skill.type, skill.content, session.id, result);
-  }
-
-  // 4. Built-in skills from server/skills/ (lowest priority)
-  const skillsDir = srcDir("skills", "builtin");
-  try {
-    const dirents = await readdir(skillsDir, { withFileTypes: true });
-    for (const d of dirents) {
-      if (!d.isDirectory()) continue;
-      if (seen.has(d.name)) continue;
-      try {
-        const content = await readFile(join(skillsDir, d.name, "SKILL.md"), "utf-8");
-        seen.add(d.name);
-        parseSkillContent(d.name, "knowledge", content, session.id, result);
-      } catch {
-        // skill directory exists but SKILL.md is missing/unreadable — skip
-      }
-    }
-  } catch {
-    // skills directory doesn't exist — skip silently
   }
 
   if (result.knowledgePacks.length > 0 || result.toolSchemas.length > 0) {

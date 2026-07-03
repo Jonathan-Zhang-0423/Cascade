@@ -1178,8 +1178,9 @@ export async function registerRoutes(
       // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
       const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
-      // Planning uses Kimi for stable task decomposition; fallback via getOptimalClient
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "kimi");
+      // Planning respects the selected provider when configured, then falls
+      // back through planning-specialized defaults (Kimi -> GLM -> DeepSeek).
+      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
