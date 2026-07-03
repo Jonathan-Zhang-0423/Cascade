@@ -4,6 +4,8 @@ import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency"
 import type { SseEmit } from "../../infra/sse";
 import type OpenAI from "openai";
 import { createModelAdapter, type AgentLoopPhase, type ModelAdapter } from "../providers/model-adapter";
+import type { ToolPolicy } from "../runtime/types";
+import { compactToolResultForPolicy, inferToolPolicy, shouldRunToolInParallel } from "../runtime/tool-policy";
 import {
   createPart,
   emitPart,
@@ -59,6 +61,7 @@ const DISCOVERY_TOOL_NAMES = new Set([
 ]);
 
 const READ_ONLY_STALL_NUDGE_THRESHOLD = 4;
+const READ_ONLY_STALL_NUDGE_MIN_ITERATION = 20;
 
 function isDiscoveryTool(name: string): boolean {
   if (DISCOVERY_TOOL_NAMES.has(name)) return true;
@@ -101,6 +104,8 @@ export interface AgentLoopOpts {
    * If omitted, auto-created from client+model via createModelAdapter().
    */
   adapter?: ModelAdapter;
+  /** Tool metadata used for conservative in-turn parallelism and result compaction. */
+  toolPolicies?: Record<string, ToolPolicy>;
 }
 
 export async function runAgentLoop(
@@ -440,8 +445,17 @@ export async function runAgentLoop(
     let shouldExit = false;
     let toolErrorCountThisIteration = 0;
 
-    // ── Execute tool calls with state machine ──────────────────────
-    for (const tc of toolCalls) {
+    type ToolExecutionResult = {
+      tc: PendingToolCall;
+      args: Record<string, unknown>;
+      toolResultMsg: OpenAI.Chat.Completions.ChatCompletionToolMessageParam;
+      handlerSucceeded: boolean;
+      errorCount: number;
+    };
+
+    const getPolicy = (name: string) => opts.toolPolicies?.[name] ?? inferToolPolicy(name);
+
+    const executeToolCall = async (tc: PendingToolCall): Promise<ToolExecutionResult> => {
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(tc.argsRaw || "{}") as Record<string, unknown>;
@@ -483,6 +497,7 @@ export async function runAgentLoop(
           "finish_build",
           "report_issue",
           "submit_verdict",
+          "submit_review",
         ]);
         if (!toolsWithOwnLogs.has(tc.name) && !tc.name.startsWith("mcp_")) {
           const argsPreview = JSON.stringify(args).slice(0, 120);
@@ -503,9 +518,10 @@ export async function runAgentLoop(
       const handler = handlers[tc.name];
 
       let handlerSucceeded = false;
+      let errorCount = 0;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
-        toolErrorCountThisIteration++;
+        errorCount++;
         if (toolPart && partCtx) {
           updateToolState(partCtx, emit, toolPart, {
             status: "error",
@@ -531,7 +547,7 @@ export async function runAgentLoop(
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           result = `Error executing tool "${tc.name}": ${message}`;
-          toolErrorCountThisIteration++;
+          errorCount++;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {
               status: "error",
@@ -544,29 +560,54 @@ export async function runAgentLoop(
         }
       }
 
-      // Hard cap on tool result size to prevent unbounded context growth.
-      // 48000 chars ≈ 12K tokens — large enough for any reasonable file/output,
-      // small enough to prevent a single tool call from exhausting the window.
-      const MAX_TOOL_RESULT_CHARS = 48000;
-      if (result.length > MAX_TOOL_RESULT_CHARS) {
-        result = result.slice(0, MAX_TOOL_RESULT_CHARS) + "\n\n...(truncated — output exceeded 48000 chars)";
-      }
+      result = compactToolResultForPolicy(result, getPolicy(tc.name));
 
       const toolResultMsg: OpenAI.Chat.Completions.ChatCompletionToolMessageParam = {
         role: "tool",
         tool_call_id: tc.id,
         content: result,
       };
-      messages.push(toolResultMsg);
+      return { tc, args, toolResultMsg, handlerSucceeded, errorCount };
+    };
+
+    // ── Execute tool calls with state machine ──────────────────────
+    const batches: PendingToolCall[][] = [];
+    for (const tc of toolCalls) {
+      const policy = getPolicy(tc.name);
+      const previous = batches[batches.length - 1];
+      if (shouldRunToolInParallel(policy) && previous?.every((item) => shouldRunToolInParallel(getPolicy(item.name)))) {
+        previous.push(tc);
+      } else {
+        batches.push([tc]);
+      }
+    }
+
+    for (const batch of batches) {
+      const parallel = batch.length > 1 && batch.every((tc) => shouldRunToolInParallel(getPolicy(tc.name)));
+      if (parallel) {
+        emit({ type: "tool_batch_started", tools: batch.map((tc) => tc.name) });
+      }
+      const results = parallel
+        ? await Promise.all(batch.map((tc) => executeToolCall(tc)))
+        : [await executeToolCall(batch[0])];
+
+      if (parallel) {
+        emit({ type: "tool_batch_completed", tools: batch.map((tc) => tc.name) });
+      }
+
+      for (const result of results) {
+        toolErrorCountThisIteration += result.errorCount;
+        messages.push(result.toolResultMsg);
 
       // Only treat this as an exit if the handler actually succeeded.
       // A throwing handler signals "rejected, retry" — keep looping so the
       // LLM sees the error message and can re-invoke the tool with fixed args.
       // maxIterations bounds the retry budget.
-      if (handlerSucceeded && exitTools.has(tc.name)) {
+        if (result.handlerSucceeded && exitTools.has(result.tc.name)) {
         shouldExit = true;
-        exitTool = tc.name;
-        exitArgs = args;
+          exitTool = result.tc.name;
+          exitArgs = result.args;
+        }
       }
     }
     previousToolErrorCount = toolErrorCountThisIteration;
@@ -581,6 +622,7 @@ export async function runAgentLoop(
       }
 
       if (
+        iteration + 1 >= READ_ONLY_STALL_NUDGE_MIN_ITERATION &&
         consecutiveDiscoveryToolRounds >= READ_ONLY_STALL_NUDGE_THRESHOLD &&
         !shouldExit &&
         iteration < maxIterations - 1

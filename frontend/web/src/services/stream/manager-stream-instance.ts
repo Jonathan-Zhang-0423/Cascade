@@ -6,6 +6,7 @@ import {
   INITIAL_MANAGER_STREAM_STATE,
 } from "./types";
 import type { ActionLogEntry, ManagerSseEvent } from "@/components/ide/chat/chat-types";
+import { normalizeActionLogEntry } from "@/components/ide/chat/action-log-normalize";
 import {
   KNOWN_MGR_EVENT_TYPES,
   MGR_SOURCE_MAP,
@@ -228,13 +229,13 @@ export class ManagerStreamInstance {
               this.state.set({ narrationText: commAccumulated });
             }
           } else if (evType === "action_log") {
-            const actionEntry: ActionLogEntry = {
+            const actionEntry: ActionLogEntry = normalizeActionLogEntry({
               type: ev.actionType || "tool_call",
-              label: ev.label || "",
-              detail: ev.detail || "",
+              label: ev.label,
+              detail: ev.detail,
               timestamp: Date.now(),
-              filePath: ev.filePath || undefined,
-            };
+              filePath: ev.filePath,
+            });
             if (isCurrentProject) {
               this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
             }

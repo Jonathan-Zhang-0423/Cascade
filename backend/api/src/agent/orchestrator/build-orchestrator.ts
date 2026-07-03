@@ -26,6 +26,9 @@ import { buildMcpAliasTools, buildMcpTools, getMcpToolNames } from "../mcp/mcp-t
 import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
 import { ToolRegistry } from "../tools/tool-registry";
 import type { ToolHandler, ToolSchema } from "../loop/agent-loop";
+import type { AgentRunSpec, ToolPolicy } from "../runtime/types";
+import { buildEditorContextPacket, estimateContextPacketTokens, renderContextPacket } from "../runtime/context-packet";
+import { TodoLedger } from "../runtime/todo-ledger";
 
 const BUILDER_MAX_ITERATIONS = 200;
 
@@ -86,6 +89,10 @@ export interface BuildSessionState {
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
   /** "plan": multi-step plan execution. "direct": single-shot. Review is a separate, user-invoked step either way. */
   mode?: "plan" | "direct";
+  /** Backend-authoritative plan/build state ledger. Frontend may render snapshots, but should not infer completion itself. */
+  todoLedger?: TodoLedger;
+  /** Immediate per-build summary injected into the next round even if long-term memory distillation is still pending. */
+  completedRoundSummary?: string;
 }
 
 function normalizeSteps(plan: BuildPlan): BuildStep[] {
@@ -148,6 +155,7 @@ function buildEditorToolset(
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
+  policies: Record<string, ToolPolicy>;
   sources: string[];
   state: BuilderToolState;
 } {
@@ -383,13 +391,15 @@ async function distillProjectMemory(
   changedFiles: string[],
   summaryText: string,
   tele: BuildTelemetryRecord,
+  emit?: SseEmit,
 ): Promise<void> {
   if (!session.projectId) return;
   const existing = await storage.getProjectMemory(session.projectId);
   const { client, model } = getFastClient();
   const prompt = [
     "You maintain a concise, durable MEMORY doc for a software project. Rewrite it to incorporate what this build round revealed.",
-    "Keep ONLY durable, project-specific learnings: architecture/tools/conventions in use, bugs hit and their fixes, recurring gotchas, and ideas to revisit. Drop one-off trivia and anything already obvious. Merge duplicates. Use short markdown bullet sections.",
+    "Keep ONLY durable, project-specific learnings: implemented user-facing behavior that future work must preserve, changed files/modules and their ownership, architecture/tools/conventions in use, bugs hit and their fixes, recurring gotchas, regression risks, and ideas to revisit. Drop one-off trivia and anything already obvious. Merge duplicates. Use short markdown bullet sections.",
+    "Treat completed behavior and changed files as current project truth: future agents should extend them, not delete/rewrite/regress them unless the user explicitly asks.",
     `Hard limit: ${PROJECT_MEMORY_MAX} characters. If over, compress — keep the most useful.`,
     "",
     "=== CURRENT MEMORY ===",
@@ -412,6 +422,8 @@ async function distillProjectMemory(
   const updated = completion.choices[0]?.message?.content?.trim();
   if (updated) {
     await storage.setProjectMemory(session.projectId, session.userId ?? "", updated);
+    session.projectMemory = updated;
+    emit?.({ type: "memory_updated", chars: updated.length, source: "distill" });
   }
 }
 
@@ -422,7 +434,7 @@ export function buildBuilderSystemPrompt(session: BuildSessionState): string {
     ? ""
     : `IMPORTANT: Write ALL narration and explanatory text in ${label}. Code identifiers, file paths, and code comments must remain in their original language.\n\n`;
   const memorySection = session.projectMemory && session.projectMemory.trim()
-    ? `\n\n## Project Memory (learned from past sessions)\n\nThis is accumulated, project-specific knowledge from previous builds — bugs hit and their fixes, the architecture/tools in use, and gotchas. Treat it as authoritative context for THIS project and avoid repeating past mistakes. If you learn something durable this session, call update_project_memory to record it:\n\n${session.projectMemory.trim()}`
+    ? `\n\n## Project Memory (learned from past sessions)\n\nThis is accumulated, project-specific knowledge from previous builds — implemented behavior to preserve, files/modules already changed, bugs hit and their fixes, architecture/tools in use, and gotchas. Treat it as authoritative context for THIS project: extend existing behavior and avoid deleting, rewriting, or regressing prior work unless the user explicitly asks. If you learn something durable this session, call update_project_memory to record it:\n\n${session.projectMemory.trim()}`
     : "";
   const skillSection = session.skillContent
     ? `\n\n## Technology & Capability Skill Guidance\n\nThese conventions and capability patterns are MANDATORY for this project — apply them as hard requirements, not suggestions. Where a capability includes a checklist, every applicable item must be satisfied before you consider a step complete:\n\n${session.skillContent}`
@@ -477,6 +489,22 @@ export function buildBuilderInitialMessage(
     }
   }
 
+  const contextPacket = buildEditorContextPacket({
+    projectId: session.projectId,
+    files: allFiles,
+    userIntent: session.userRequest,
+    plan: session.plan,
+    steps,
+    completedRoundSummary: session.completedRoundSummary,
+    projectMemory: session.projectMemory,
+    skillContent: session.skillContent,
+  });
+  const runtimeContextSection = `\n\n## Runtime Context Packet\n\n${renderContextPacket(contextPacket, {
+    includeProjectMemory: false,
+    includeSkillContent: false,
+    includeExternalGuidance: false,
+  })}`;
+
   const existingFilesWarning = allFiles.length > 0
     ? `\n\nExisting project files contain working code. Preserve them unless a plan step explicitly says otherwise. Read an existing file before editing it unless it was pre-loaded or you just wrote it.\n`
     : "\n\nThis is an empty project. Start by creating the required files with write_file; do not spend tool rounds searching for files that do not exist.\n";
@@ -492,9 +520,9 @@ ${session.userRequest}
 
 ## Plan Steps
 ${stepsList}
-${filesList}${preloadedContent}
+${filesList}${runtimeContextSection}${preloadedContent}
 
-IMPORTANT: Implement the plan step by step. Use at most two read/search rounds per step before the first edit unless a tool error blocks you. Preserve unrelated existing code, mark each completed step with mark_step_complete, then finish_build only after final checks, memory update when useful, and demo script submission.`;
+IMPORTANT: Implement the plan step by step. In the first 20 loop iterations, gather the context needed for correct edits; after that, converge toward write_file/edit_file/patch_file/hash_patch_file, mark_step_complete, or finish_build instead of continuing broad discovery unless a specific blocker remains. Preserve unrelated existing code and prior user-facing behavior, mark each completed step with mark_step_complete, then finish_build only after final checks, update_project_memory when files changed or durable facts were learned, and demo script submission.`;
 }
 
 
@@ -613,6 +641,7 @@ async function runBuilderParallelWaves(
               phase: "editor",
               partCtx,
               sessionId: session.id,
+              toolPolicies: subTools.policies,
             },
           );
         });
@@ -627,6 +656,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
   const normalizedSteps = normalizeSteps(plan);
   const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
+  session.todoLedger = new TodoLedger(normalizedSteps);
 
   const userProvider = session.provider ?? "glm";
 
@@ -662,6 +692,30 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     emit({ type: "capabilities_active", capabilities: preparedContext.activeCapabilities });
   }
 
+  const editorContextPacket = buildEditorContextPacket({
+    projectId: session.projectId,
+    files: initialFiles,
+    userIntent: userRequest,
+    plan,
+    steps: normalizedSteps,
+    completedRoundSummary: session.completedRoundSummary,
+    projectMemory: session.projectMemory,
+    skillContent: session.skillContent,
+  });
+  const estimatedContextTokens = estimateContextPacketTokens(editorContextPacket);
+  telemetry.setContextTokenSize(estimatedContextTokens);
+  emit({
+    type: "context_summary",
+    role: "editor",
+    estimatedTokens: estimatedContextTokens,
+    fileCount: initialFiles.length,
+    stepCount: totalSteps,
+    hasProjectMemory: !!session.projectMemory?.trim(),
+    hasRoundSummary: !!session.completedRoundSummary?.trim(),
+  });
+
+  session.todoLedger.start(normalizedSteps[0]?.step ?? 1);
+  emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
 
   // AG-10: Analyze step dependencies. By default execution stays sequential
@@ -703,13 +757,43 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
           `[BuildSession ${session.id}] Tool registry sources: ${builderTools.sources.join(", ") || "(none)"}; tools=${builderTools.schemas.length}`,
         );
         const loopResult = await withFallback(providerChainEditor, async (client, model) => {
+          const builderRunSpec: AgentRunSpec = {
+            systemPrompt: builderSystemPrompt,
+            initialMessages: [{ role: "user", content: builderInitialMessage }],
+            tools: builderTools.schemas,
+            handlers: builderTools.handlers,
+            runtime: {
+              role: "editor",
+              provider: userProvider,
+              model,
+              maxIterations: BUILDER_MAX_ITERATIONS,
+              thinkingMode: "auto",
+              contextBudgetTokens: 120_000,
+              stallPolicy: {
+                discoveryNudgeMinIteration: 20,
+                discoveryNudgeThreshold: 4,
+              },
+              toolPolicies: builderTools.policies,
+            },
+            client,
+          };
           return await runAgentLoop(
-            builderSystemPrompt,
-            [{ role: "user", content: builderInitialMessage }],
-            builderTools.schemas,
-            builderTools.handlers,
+            builderRunSpec.systemPrompt,
+            builderRunSpec.initialMessages,
+            builderRunSpec.tools,
+            builderRunSpec.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: BUILDER_MAX_ITERATIONS, client, model, phase: "editor", partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            {
+              exitTools: ["finish_build"],
+              maxIterations: builderRunSpec.runtime.maxIterations,
+              client: builderRunSpec.client,
+              model: builderRunSpec.runtime.model,
+              phase: "editor",
+              partCtx,
+              sessionId: session.id,
+              exitSignal: builderExitSignal,
+              toolPolicies: builderRunSpec.runtime.toolPolicies,
+            },
           );
         });
         if (loopResult.exhausted && !builderExitSignal.exit && !loopResult.exitTool) {
@@ -827,7 +911,29 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       }
     }
 
-    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
+    const roundSummary = [
+      `Implemented: ${summaryText || plan.summary || session.userRequest || "(summary unavailable)"}`,
+      `Changed files: ${changedFiles.join(", ") || "(none)"}`,
+      "Preservation: keep prior user-facing behavior and unrelated existing code unless the user explicitly asks to change it.",
+    ].join("\n");
+    session.completedRoundSummary = roundSummary;
+
+    try {
+      session.todoLedger?.assertAllDone();
+      telemetry.setLedgerCompletionConsistent(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[build-session] ledger completion mismatch sessionId=${session.id}: ${message}`);
+      emit({ type: "build_error", message });
+      telemetry.setLedgerCompletionConsistent(false);
+      telemetry.setFinalStatus("error", message);
+      await telemetry.flush();
+      if (mcpManager) mcpManager.disconnect().catch(() => {});
+      return;
+    }
+
+    emit({ type: "ledger_snapshot", ledger: session.todoLedger?.snapshot() });
+    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion, roundSummary });
     console.log(`[build-session] EMITTING all_complete sessionId=${session.id} changedFiles=${changedFiles.length}`);
 
     // Auto-distill project memory (safety net for when the agent didn't call
@@ -838,7 +944,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
       const tele = telemetry.snapshot();
       const hasSignal = changedFiles.length > 0 || (tele.fixCycles ?? 0) > 0 || (tele.lspDiagnosticErrorCount ?? 0) > 0;
       if (hasSignal) {
-        void distillProjectMemory(session, changedFiles, summaryText, tele).catch((err) =>
+        void distillProjectMemory(session, changedFiles, summaryText, tele, emit).catch((err) =>
           console.warn(`[BuildSession ${session.id}] memory distill failed:`, err instanceof Error ? err.message : err),
         );
       }

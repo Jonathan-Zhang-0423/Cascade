@@ -48,10 +48,61 @@ describe("buildManagerHistory", () => {
     expect(out[0].role).toBe("assistant");
     expect(out[0].content).toContain("Previous round completed");
     expect(out[0].content).toContain("build a calculator");
+    expect(out[0].content).toContain("Changed/touched files: a.js");
+    expect(out[0].content).toContain("Preservation constraint");
     // The new request survives verbatim and is the only thing after the summary.
     expect(out.slice(1)).toEqual([{ role: "user", content: "now add a dark mode toggle" }]);
     // Crucially, the old plan text is NOT present — no contamination.
     expect(JSON.stringify(out)).not.toContain("planning the calculator");
+  });
+
+  it("carries completed build details forward so the next plan preserves prior work", () => {
+    const msgs = [
+      u("add inventory and settlement screens"),
+      a("", {
+        buildResult: {
+          completionData: {
+            summary: "Implemented inventory drag/drop and extraction settlement.",
+            changedFiles: ["/project/index.html", "/project/app.js"],
+          },
+          segments: [
+            { narration: "Built inventory model and loot UI", actions: [], isLive: false },
+            { stepLabel: "Step 2/3: Settlement overlay", actions: [], isLive: false },
+          ],
+        },
+      }),
+      u("now add enemy patrols"),
+    ];
+
+    const out = buildManagerHistory(msgs);
+
+    expect(out[0].content).toContain("Implemented inventory drag/drop and extraction settlement");
+    expect(out[0].content).toContain("/project/index.html, /project/app.js");
+    expect(out[0].content).toContain("Built inventory model and loot UI");
+    expect(out[0].content).toContain("Step 2/3: Settlement overlay");
+    expect(out[0].content).toContain("must not delete, rewrite, or regress prior features");
+    expect(out.slice(1)).toEqual([{ role: "user", content: "now add enemy patrols" }]);
+  });
+
+  it("falls back to touched files from actionLog when completion metadata is missing", () => {
+    const msgs = [
+      u("fix the HUD"),
+      a("", {
+        buildResult: {
+          actionLog: [
+            { type: "file_read", label: "/project/index.html", detail: "", timestamp: 1 },
+            { type: "file_write", filePath: "/project/styles.css", label: "styles.css", detail: "", timestamp: 2 },
+          ],
+        },
+      }),
+      u("make it mobile friendly"),
+    ];
+
+    const out = buildManagerHistory(msgs);
+
+    expect(out[0].content).toContain("/project/index.html");
+    expect(out[0].content).toContain("/project/styles.css");
+    expect(out.slice(1)).toEqual([{ role: "user", content: "make it mobile friendly" }]);
   });
 
   it("uses the LAST completed round when several builds happened", () => {

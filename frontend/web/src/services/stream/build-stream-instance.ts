@@ -3,8 +3,10 @@ import {
   type BuildStreamState,
   type StoreActions,
   INITIAL_BUILD_STREAM_STATE,
+  type TaskStatus,
 } from "./types";
 import type { ActionLogEntry, BuildSseEvent, NormalizedStep } from "@/components/ide/chat/chat-types";
+import { normalizeActionLogEntry, stringifyLogValue } from "@/components/ide/chat/action-log-normalize";
 import { KNOWN_BUILD_EVENT_TYPES, BUILD_SOURCE_MAP, validateBuildEvent } from "@/components/ide/chat/chat-types";
 import { detectLanguage, normalizeSteps } from "@/components/ide/chat/chat-utils";
 import { parseSseStream, createHeartbeatWatchdog } from "@/components/ide/chat/hooks/useSSEStream";
@@ -284,7 +286,9 @@ export class BuildStreamInstance {
           }
 
           // ─── Event handling ─────────────────────────────────────────
-          if (type === "step_starting") {
+          if (type === "ledger_snapshot") {
+            this.applyLedgerSnapshot(ev, isCurrentProject);
+          } else if (type === "step_starting") {
             // Flush any pending thinking from the previous step before moving on
             if (thinkingAccumulated) {
               const lastIsThinking = this.actionLog.length > 0 &&
@@ -359,10 +363,10 @@ export class BuildStreamInstance {
             if (actionType) {
               this.appendActionLog({
                 type: actionType,
-                label: (ev.label as string) || "",
-                detail: (ev.detail as string) || "",
+                label: stringifyLogValue(ev.label, ""),
+                detail: stringifyLogValue(ev.detail, ""),
                 timestamp: Date.now(),
-                filePath: (ev.filePath as string) || undefined,
+                filePath: stringifyLogValue(ev.filePath, "") || undefined,
                 precedingNarration: commAccumulated || undefined,
               });
             }
@@ -672,7 +676,9 @@ export class BuildStreamInstance {
           const type = ev.type;
           const isCurrentProject = this.actions.getProjectId() === this.projectId;
 
-          if (type === "step_starting") {
+          if (type === "ledger_snapshot") {
+            this.applyLedgerSnapshot(ev, isCurrentProject);
+          } else if (type === "step_starting") {
             // Flush pending thinking from previous step
             if (thinkingAccumulated) {
               const lastIsThinking = this.actionLog.length > 0 &&
@@ -700,10 +706,10 @@ export class BuildStreamInstance {
             if (actionType) {
               this.appendActionLog({
                 type: actionType,
-                label: (ev.label as string) || "",
-                detail: (ev.detail as string) || "",
+                label: stringifyLogValue(ev.label, ""),
+                detail: stringifyLogValue(ev.detail, ""),
                 timestamp: Date.now(),
-                filePath: (ev.filePath as string) || undefined,
+                filePath: stringifyLogValue(ev.filePath, "") || undefined,
                 precedingNarration: commAccumulated || undefined,
               });
             }
@@ -952,8 +958,9 @@ export class BuildStreamInstance {
   }
 
   private appendActionLog(entry: ActionLogEntry): void {
+    const normalized = normalizeActionLogEntry(entry as any);
     // 给每个 entry 打上当前步骤号，供前端分段渲染使用
-    const entryWithStep = entry.stepNum !== undefined ? entry : { ...entry, stepNum: this.currentStepNum };
+    const entryWithStep = normalized.stepNum !== undefined ? normalized : { ...normalized, stepNum: this.currentStepNum };
     this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
   }
@@ -962,6 +969,40 @@ export class BuildStreamInstance {
   private trackTaskStatus(key: string, status: "running" | "done" | "failed"): void {
     const prev = this.state.get().taskStatuses;
     this.state.set({ taskStatuses: { ...prev, [key]: status } });
+  }
+
+  private applyLedgerSnapshot(ev: BuildSseEvent, isCurrentProject: boolean): void {
+    const steps = ev.ledger?.steps;
+    if (!Array.isArray(steps)) return;
+
+    const statusMap: Record<string, TaskStatus> = {
+      pending: "pending",
+      running: "running",
+      done: "done",
+      failed: "failed",
+    };
+    const taskStatuses = { ...this.state.get().taskStatuses };
+    const stepNarrations = { ...this.state.get().stepNarrations };
+    let runningIndex: number | null = null;
+
+    for (const step of steps) {
+      if (typeof step.stepNumber !== "number") continue;
+      const mapped = statusMap[String(step.status ?? "")];
+      if (!mapped) continue;
+      const key = String(step.stepNumber);
+      taskStatuses[key] = mapped;
+      if (step.summary) stepNarrations[step.stepNumber] = step.summary;
+      if (mapped === "running") runningIndex = step.stepNumber - 1;
+      if (isCurrentProject) {
+        this.actions.updateTaskStatus(key, mapped);
+        if (mapped === "failed" && step.error) this.actions.setTaskFailureReason(key, step.error);
+      }
+    }
+
+    this.state.set({ taskStatuses, stepNarrations });
+    if (isCurrentProject && runningIndex !== null) {
+      this.actions.setExecutingTaskIndex(runningIndex);
+    }
   }
 
   /**

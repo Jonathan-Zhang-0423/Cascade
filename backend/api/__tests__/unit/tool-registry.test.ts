@@ -11,10 +11,12 @@ describe("ToolRegistry", () => {
     const reg = new ToolRegistry();
     reg.register("builder", [makeSchema("write_file")], { write_file: async () => "ok" });
     reg.register("mcp", [makeSchema("mcp_custom_lookup")], { mcp_custom_lookup: async () => "found" });
-    const { schemas, handlers } = reg.build();
+    const { schemas, handlers, policies } = reg.build();
     expect(schemas).toHaveLength(2);
     expect(handlers["write_file"]).toBeDefined();
     expect(handlers["mcp_custom_lookup"]).toBeDefined();
+    expect(policies["write_file"]).toMatchObject({ category: "edit", mutatesFiles: true, safeToParallelize: false });
+    expect(policies["mcp_custom_lookup"]).toMatchObject({ category: "network", mutatesFiles: false, safeToParallelize: true });
   });
 
   it("skips duplicate tool names (first registration wins)", async () => {

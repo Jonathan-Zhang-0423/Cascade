@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useLanguageStore } from "@/stores/language-store";
+import { compactBuildResultForPersistence } from "@/components/ide/chat/action-log-normalize";
 
 function getWelcomeMessage(): string {
   const lang = useLanguageStore.getState().lang;
@@ -86,12 +87,13 @@ export interface VerificationResult {
 }
 
 export interface BuildResultData {
-  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
+  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string; stepNum?: number }[];
   segments?: {
     id: string;
     narration: string;
-    actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+    actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string; stepNum?: number }[];
     isLive: boolean;
+    stepLabel?: string;
   }[];
   completionData?: { changedFiles: string[]; userLang?: string; summary?: string };
   tokenUsage?: { input: number; output: number; total: number };
@@ -706,7 +708,7 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string, sessionId
   if (m.hidden) metadata.hidden = m.hidden;
   if (m.checkpointId) metadata.checkpointId = m.checkpointId;
   if (m.preparingPlan) metadata.preparingPlan = m.preparingPlan;
-  if (m.buildResult) metadata.buildResult = m.buildResult;
+  if (m.buildResult) metadata.buildResult = compactBuildResultForPersistence(m.buildResult as any);
   if (m.errorCode) metadata.errorCode = m.errorCode;
   if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
   if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;

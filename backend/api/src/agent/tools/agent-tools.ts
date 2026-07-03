@@ -85,6 +85,7 @@ async function applyFileContentUpdate(
   const fileName = filePath.split("/").pop() || filePath;
   emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath });
   session.files.set(filePath, content);
+  session.todoLedger?.recordTouchedFile(filePath);
   persistFileToDb(session, filePath, content);
   emit({ type: "code_applied", filePath, code: content });
   await mirrorFileChangeToDiskAndLsp(session, filePath, content);
@@ -135,25 +136,26 @@ function buildProjectMemoryTool(
     function: {
       name: "update_project_memory",
       description:
-        "Record durable, project-specific knowledge into this project's long-term memory: bugs you hit and their fix, the architecture/tools/conventions in use, gotchas, and ideas worth revisiting. This memory is shown to you at the start of every future session for THIS project, so it compounds. Provide the COMPLETE new memory document — rewrite it, keeping it tight (drop stale/obvious entries, merge duplicates). Only record things that will help future sessions; skip one-off trivia.",
+        "Record durable, project-specific knowledge into this project's long-term memory: implemented user-facing features that future work must preserve, changed files/modules and their ownership, bugs you hit and their fixes, architecture/tools/conventions in use, gotchas, and ideas worth revisiting. This memory is shown to you at the start of every future session for THIS project, so it compounds and prevents accidental regressions. Provide the COMPLETE new memory document — rewrite it, keeping it tight (drop stale/obvious entries, merge duplicates). Only record things that will help future sessions; skip one-off trivia.",
       parameters: {
         type: "object",
         properties: {
           content: {
             type: "string",
-            description: "The full updated memory document (markdown). Replaces the previous one.",
+            description: "The full updated memory document (markdown). Replaces the previous one. Include durable implemented behavior, touched files/modules, conventions, gotchas, and regression risks worth preserving.",
           },
         },
         required: ["content"],
       },
     },
   };
-  const handler: ToolHandler = async (args) => {
+  const handler: ToolHandler = async (args, emit) => {
     const content = args.content as string;
     if (typeof content !== "string") return "Error: content (string) is required";
     if (!projectId) return "Project memory unavailable (no project context).";
     await storage.setProjectMemory(projectId, userId ?? "", content);
     onUpdate?.(content); // reflect within this session too
+    emit?.({ type: "memory_updated", chars: content.length, source: "tool" });
     return `Project memory updated (${content.length} chars).`;
   };
   return { schema, handler };
@@ -690,6 +692,7 @@ export function buildBuilderTools(
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_delete", label: fileName, detail: "", filePath: path_ });
       session.files.delete(path_);
+      session.todoLedger?.recordTouchedFile(path_);
       if (session.projectId) {
         try {
           await storage.deleteProjectFile(session.projectId, path_);
@@ -766,7 +769,9 @@ export function buildBuilderTools(
         return `Step ${stepId} was already completed — skipping. Move on to the next incomplete step.`;
       }
 
+      session.todoLedger?.complete(resolvedNum, summary);
       emit({ type: "step_completed", stepNumber: resolvedNum, summary });
+      if (session.todoLedger) emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
       completedSteps.add(resolvedNum);
 
       // Advance to the next step
@@ -774,6 +779,8 @@ export function buildBuilderTools(
       if (!isNaN(numericCompleted) && totalSteps > 0) {
         const nextStep = stepByNum.get(numericCompleted + 1);
         if (nextStep) {
+          session.todoLedger?.start(nextStep.step);
+          if (session.todoLedger) emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
           emit({ type: "step_starting", stepNumber: nextStep.step, stepTitle: nextStep.title, totalSteps });
         }
       }

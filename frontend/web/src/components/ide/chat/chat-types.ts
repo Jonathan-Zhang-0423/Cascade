@@ -83,6 +83,11 @@ export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
   "code_applied",
   "file_deleted",
   "capabilities_active",
+  "ledger_snapshot",
+  "context_summary",
+  "memory_updated",
+  "tool_batch_started",
+  "tool_batch_completed",
   "build_complete",
   "all_complete",
   "build_error",
@@ -102,6 +107,11 @@ export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   build_complete: "manager",
   file_deleted: "editor",
   capabilities_active: "editor",
+  ledger_snapshot: "manager",
+  context_summary: "editor",
+  memory_updated: "editor",
+  tool_batch_started: "editor",
+  tool_batch_completed: "editor",
   all_complete: "manager",
   build_error: "editor",
   done: "manager",
@@ -223,6 +233,19 @@ export interface BuildSseEvent {
   items?: string[];
   changedFiles?: string[];
   capabilities?: Array<{ name: string; score?: number; tier?: string }>;
+  ledger?: {
+    steps?: Array<{
+      stepNumber?: number;
+      status?: string;
+      title?: string;
+      summary?: string;
+      touchedFiles?: string[];
+      error?: string;
+    }>;
+    allDone?: boolean;
+    completedCount?: number;
+    totalCount?: number;
+  };
   summary?: string;
   summaryText?: string;
   content?: string;

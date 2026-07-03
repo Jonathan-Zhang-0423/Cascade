@@ -68,7 +68,7 @@ export interface StreamingSnapshot {
 
 export interface StoreActions {
   // Chat message operations
-  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
+  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
 
   // Manager message operations
   addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;

@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import { decideGlm52ThinkingPolicy } from "../runtime/model-policy";
 
 /**
  * ModelAdapter — encapsulates per-model thinking/reasoning configuration so
@@ -177,23 +178,13 @@ export class Glm52Adapter implements ModelAdapter {
   constructor(readonly client: OpenAI, readonly model: string) {}
 
   getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
-    if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
-    const iteration = opts.iteration ?? ((opts.outputTokensSoFar ?? 0) > 0 ? 1 : 0);
-    const maxIterations = opts.maxIterations ?? 30;
-    const consecutiveNoToolCalls = opts.consecutiveNoToolCalls ?? 0;
-    const previousToolErrorCount = opts.previousToolErrorCount ?? 0;
-    const previousToolCallCount = opts.previousToolCallCount ?? 0;
-    const isInitialTurn = iteration === 0;
-    const isRecoveryTurn = consecutiveNoToolCalls > 0 || previousToolErrorCount > 0;
-    const isLateTurn = iteration >= Math.max(8, Math.floor(maxIterations * 0.65));
-    const isStalledLateTurn = isLateTurn && previousToolCallCount === 0;
-
-    if (!isInitialTurn && !isRecoveryTurn && !isStalledLateTurn) {
+    const decision = decideGlm52ThinkingPolicy(opts);
+    if (!decision.thinkingEnabled) {
       return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
     }
 
     return {
-      thinkingParam: { reasoning_effort: "high" },
+      thinkingParam: { reasoning_effort: decision.reasoningEffort ?? "high" },
       extraBody: { thinking: { type: "enabled" } },
     };
   }

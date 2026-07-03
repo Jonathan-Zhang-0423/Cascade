@@ -27,6 +27,9 @@ export interface BuildTelemetryRecord {
 
   stepCount: number;
   parallelWavesUsed: boolean;
+  contextTokenSize?: number;
+  ledgerCompletionConsistent?: boolean;
+  timeToFirstEditMs?: number;
 
   fixCycles: number;
   verifierFirstPassed: boolean;
@@ -119,6 +122,7 @@ export class BuildTelemetry {
 
   addFileWritten(filePath: string): void {
     this.filesWrittenSet.add(filePath);
+    this.record.timeToFirstEditMs ??= Date.now() - this.record.startedAt;
   }
 
   addFixerScope(paths: string[]): void {
@@ -128,6 +132,14 @@ export class BuildTelemetry {
   setStepCount(n: number, parallelWavesUsed: boolean): void {
     this.record.stepCount = n;
     this.record.parallelWavesUsed = parallelWavesUsed;
+  }
+
+  setContextTokenSize(tokens: number): void {
+    this.record.contextTokenSize = tokens;
+  }
+
+  setLedgerCompletionConsistent(consistent: boolean): void {
+    this.record.ledgerCompletionConsistent = consistent;
   }
 
   setFixCycle(n: number): void {

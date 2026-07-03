@@ -65,8 +65,8 @@ export function stripProjectNameMarker(text: string): string {
 
 /**
  * Build the message history sent to the manager agent, compressing any
- * completed build round into a one-line summary so the planner focuses on the
- * NEW request instead of re-surfacing the previous round's plan/issues.
+ * completed build round into a compact summary so the planner focuses on the
+ * NEW request while still preserving what the previous round implemented.
  *
  * A "completed round" = everything up to and including the most recent message
  * carrying a `buildResult`. Messages after it (the user's new request) are kept
@@ -91,14 +91,72 @@ export function buildManagerHistory(
   const afterBuild = messages.slice(lastBuildIdx + 1).filter(keep);
   const previousUserMsgs = messages.slice(0, lastBuildIdx + 1).filter((m) => m.role === "user" && !!m.content);
   const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
-  const roundSummary = lastPrevUserMsg
-    ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
-    : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
+  const roundSummary = summarizeCompletedRound(messages[lastBuildIdx]?.buildResult, lastPrevUserMsg?.content);
 
   return [
     { role: "assistant", content: roundSummary },
     ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
   ];
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => asString(item)).filter(Boolean)
+    : [];
+}
+
+function truncateForHistory(value: string, limit: number): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed.length > limit ? `${trimmed.slice(0, limit)}...` : trimmed;
+}
+
+function summarizeCompletedRound(buildResult: unknown, previousUserRequest?: string): string {
+  const br = (buildResult && typeof buildResult === "object") ? buildResult as Record<string, unknown> : {};
+  const completionData = (br.completionData && typeof br.completionData === "object")
+    ? br.completionData as Record<string, unknown>
+    : {};
+  const changedFiles = [
+    ...asStringArray(completionData.changedFiles),
+    ...asStringArray(br.changedFiles),
+  ].filter((file, index, all) => all.indexOf(file) === index);
+  const summary = asString(completionData.summary) || asString(br.summary);
+  const segments = Array.isArray(br.segments) ? br.segments as Array<Record<string, unknown>> : [];
+  const stepSummaries = segments
+    .map((seg) => asString(seg.narration) || asString(seg.stepLabel))
+    .filter(Boolean)
+    .slice(0, 5);
+  const actionLog = Array.isArray(br.actionLog) ? br.actionLog as Array<Record<string, unknown>> : [];
+  const touchedFiles = actionLog
+    .map((entry) => asString(entry.filePath) || asString(entry.label))
+    .filter((label) => label.includes("/") || /\.[a-z0-9]+$/i.test(label))
+    .filter((file, index, all) => all.indexOf(file) === index)
+    .slice(0, 8);
+  const files = changedFiles.length > 0 ? changedFiles : touchedFiles;
+
+  const parts = ["[Previous round completed]"];
+  if (previousUserRequest) {
+    parts.push(`User requested: "${truncateForHistory(previousUserRequest, 240)}".`);
+  } else {
+    parts.push("A build was executed successfully.");
+  }
+  if (summary) {
+    parts.push(`Build summary: ${truncateForHistory(summary, 400)}.`);
+  } else {
+    parts.push("The build was executed successfully.");
+  }
+  if (files.length > 0) {
+    parts.push(`Changed/touched files: ${files.slice(0, 8).join(", ")}.`);
+  }
+  if (stepSummaries.length > 0) {
+    parts.push(`Implemented steps: ${stepSummaries.map((s) => truncateForHistory(s, 160)).join(" | ")}.`);
+  }
+  parts.push("Preservation constraint: treat the completed work, changed files, and existing user-facing behavior as part of the current project. Future plans must build on top of them and must not delete, rewrite, or regress prior features unless the user explicitly asks.");
+  parts.push("Now the user has a new request — focus on it while preserving the existing project.");
+  return parts.join(" ");
 }
 
 function stripPlainFences(text: string): string {

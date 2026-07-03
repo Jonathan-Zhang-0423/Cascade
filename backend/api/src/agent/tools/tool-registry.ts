@@ -1,4 +1,6 @@
 import type { ToolSchema, ToolHandler, ToolHandlers } from "../loop/agent-loop";
+import type { ToolPolicy } from "../runtime/types";
+import { inferToolPolicy } from "../runtime/tool-policy";
 
 /**
  * ModalityPlugin — extension point for future multimodal capabilities
@@ -41,7 +43,7 @@ export interface ModalityPlugin {
  *   const { schemas, handlers } = registry.build();
  */
 export class ToolRegistry {
-  private sources = new Map<string, { schemas: ToolSchema[]; handlers: ToolHandlers }>();
+  private sources = new Map<string, { schemas: ToolSchema[]; handlers: ToolHandlers; policies: Record<string, ToolPolicy> }>();
   private modalities: ModalityPlugin[] = [];
 
   /** Names that cannot be overridden by external sources (MCP, modalities). */
@@ -68,10 +70,11 @@ export class ToolRegistry {
    * Register a named tool source. Later registrations with the same source
    * name overwrite (idempotent for re-registration on retry).
    */
-  register(source: string, schemas: ToolSchema[], handlers: ToolHandlers): void {
+  register(source: string, schemas: ToolSchema[], handlers: ToolHandlers, policies: Record<string, Partial<ToolPolicy>> = {}): void {
     const isBuiltinSource = ToolRegistry.BUILTIN_SOURCES.has(source);
     const filteredSchemas: ToolSchema[] = [];
     const filteredHandlers: ToolHandlers = {};
+    const filteredPolicies: Record<string, ToolPolicy> = {};
 
     for (const schema of schemas) {
       const name = schema.function.name;
@@ -85,6 +88,11 @@ export class ToolRegistry {
       }
       filteredSchemas.push(schema);
       filteredHandlers[name] = handlers[name];
+      filteredPolicies[name] = {
+        ...inferToolPolicy(name),
+        ...policies[name],
+        name,
+      };
     }
 
     for (const name of Object.keys(handlers)) {
@@ -93,7 +101,7 @@ export class ToolRegistry {
       }
     }
 
-    this.sources.set(source, { schemas: filteredSchemas, handlers: filteredHandlers });
+    this.sources.set(source, { schemas: filteredSchemas, handlers: filteredHandlers, policies: filteredPolicies });
   }
 
   /**
@@ -108,12 +116,13 @@ export class ToolRegistry {
    * Build the final merged tool set for the agent loop.
    * Returns schemas + handlers ready to pass to runAgentLoop.
    */
-  build(): { schemas: ToolSchema[]; handlers: ToolHandlers } {
+  build(): { schemas: ToolSchema[]; handlers: ToolHandlers; policies: Record<string, ToolPolicy> } {
     const schemas: ToolSchema[] = [];
     const handlers: ToolHandlers = {};
+    const policies: Record<string, ToolPolicy> = {};
     const seen = new Set<string>();
 
-    for (const [source, { schemas: s, handlers: h }] of Array.from(this.sources.entries())) {
+    for (const [source, { schemas: s, handlers: h, policies: p }] of Array.from(this.sources.entries())) {
       for (const schema of s) {
         const name = schema.function.name;
         if (seen.has(name)) {
@@ -123,10 +132,11 @@ export class ToolRegistry {
         seen.add(name);
         schemas.push(schema);
         if (h[name]) handlers[name] = h[name];
+        policies[name] = p[name] ?? inferToolPolicy(name);
       }
     }
 
-    return { schemas, handlers };
+    return { schemas, handlers, policies };
   }
 
   /**

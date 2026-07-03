@@ -10,6 +10,7 @@ import {
 } from "./types";
 import { useIDEStore, flattenFiles, type ManagerMessage } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { compactBuildResultForPersistence } from "@/components/ide/chat/action-log-normalize";
 
 /**
  * Create StoreActions bound to a specific project + session.
@@ -38,7 +39,7 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     if (msg.plan) metadata.plan = msg.plan;
     if (msg.thinking) metadata.thinking = msg.thinking;
     if (msg.source) metadata.source = msg.source;
-    if (msg.buildResult) metadata.buildResult = msg.buildResult;
+    if (msg.buildResult) metadata.buildResult = compactBuildResultForPersistence(msg.buildResult);
     if (msg.frozenTaskStatuses) metadata.frozenTaskStatuses = msg.frozenTaskStatuses;
     if (msg.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = msg.frozenTaskFailureReasons;
     const body = JSON.stringify({

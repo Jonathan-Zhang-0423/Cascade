@@ -63,22 +63,19 @@ function makeAdapter(client: any): ModelAdapter {
 }
 
 describe("runAgentLoop discovery stall nudges", () => {
-  it("nudges the editor to act after consecutive read/search-only rounds and resets after a write", async () => {
+  it("waits until iteration 20 before nudging the editor to act after read/search-only rounds", async () => {
     const sentMessages: any[][] = [];
     let createCount = 0;
-    const script = [
-      { name: "read_file", args: { path: "/project/src/App.tsx" } },
-      { name: "grep", args: { pattern: "App", path: "/project" } },
-      { name: "read_file", args: { path: "/project/src/App.tsx" } },
-      { name: "grep", args: { pattern: "useState", path: "/project" } },
-      { name: "write_file", args: { path: "/project/src/App.tsx", content: "export default function App() { return null; }\n" } },
-      { name: "read_file", args: { path: "/project/src/App.tsx" } },
-    ];
+    const script = Array.from({ length: 21 }, (_, index) => (
+      index % 2 === 0
+        ? { name: "read_file", args: { path: "/project/src/App.tsx" } }
+        : { name: "grep", args: { pattern: "App", path: "/project" } }
+    ));
     const client = {
       chat: {
         completions: {
           create: vi.fn((params: any) => {
-            sentMessages.push(params.messages);
+            sentMessages.push(params.messages.map((m: any) => ({ ...m })));
             const next = script[createCount] ?? script[script.length - 1];
             createCount++;
             return makeToolCallStream(next.name, next.args, createCount);
@@ -87,20 +84,18 @@ describe("runAgentLoop discovery stall nudges", () => {
       },
     } as any;
     const emit = vi.fn();
-    const writeFile = vi.fn(async () => "File written successfully");
 
     await runAgentLoop(
       "system",
       [{ role: "user", content: "edit the app" }],
-      [toolSchema("read_file"), toolSchema("grep"), toolSchema("write_file")],
+      [toolSchema("read_file"), toolSchema("grep")],
       {
         read_file: vi.fn(async () => "file contents"),
         grep: vi.fn(async () => "/project/src/App.tsx:1:App"),
-        write_file: writeFile,
       },
       emit,
       {
-        maxIterations: 6,
+        maxIterations: 21,
         client,
         model: "test-model",
         adapter: makeAdapter(client),
@@ -109,20 +104,13 @@ describe("runAgentLoop discovery stall nudges", () => {
       },
     );
 
-    const fifthRequest = sentMessages[4];
-    expect(fifthRequest.some((m) =>
+    const hasDiscoveryNudge = (messages: any[]) => messages.some((m) =>
       m.role === "user" &&
       typeof m.content === "string" &&
-      m.content.includes("several consecutive rounds only reading/searching"),
-    )).toBe(true);
-    expect(writeFile).toHaveBeenCalledTimes(1);
+      m.content.includes("several consecutive rounds only reading/searching")
+    );
 
-    const sixthRequest = sentMessages[5];
-    const nudgeCount = sixthRequest.filter((m) =>
-      m.role === "user" &&
-      typeof m.content === "string" &&
-      m.content.includes("several consecutive rounds only reading/searching"),
-    ).length;
-    expect(nudgeCount).toBe(1);
+    expect(sentMessages.slice(0, 20).some(hasDiscoveryNudge)).toBe(false);
+    expect(hasDiscoveryNudge(sentMessages[20])).toBe(true);
   });
 });

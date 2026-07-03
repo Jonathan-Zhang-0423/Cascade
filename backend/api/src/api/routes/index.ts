@@ -1305,7 +1305,7 @@ export async function registerRoutes(
         try {
           const memory = await storage.getProjectMemory(reqProjectId);
           if (memory.trim()) {
-            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — past bugs and fixes, the architecture/tools in use, gotchas. Use it to plan better and avoid repeating mistakes. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
+            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — implemented behavior to preserve, files/modules already changed, past bugs and fixes, architecture/tools in use, gotchas. Treat it as authoritative for THIS project: plans must extend current behavior and must not delete, rewrite, or regress prior work unless the user explicitly asks. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
           }
         } catch (err) {
           console.warn("[manager-chat] getProjectMemory failed:", err instanceof Error ? err.message : err);

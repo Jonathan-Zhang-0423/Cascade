@@ -126,6 +126,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
+import { normalizeActionLogEntry, rebuildSegmentsFromActionLog, stringifyLogValue } from "./action-log-normalize";
+import { shouldShowBuildCostSummary } from "./build-live-panel-utils";
 
 interface BuildLivePanelProps {
   entries: ActionLogEntry[];
@@ -991,6 +993,26 @@ export function BuildLivePanel({
 }: BuildLivePanelProps) {
   const t = useT();
   const projectId = useIDEStore((s) => s.projectId);
+  const safeEntries = useMemo(
+    () => (Array.isArray(entries) ? entries : []).map((entry) => normalizeActionLogEntry(entry as any)),
+    [entries],
+  );
+  const safeSegments = useMemo<NarrationSegment[] | undefined>(
+    () => Array.isArray(segments) ? segments.map((seg, index) => ({
+      id: stringifyLogValue(seg.id, String(index)),
+      narration: stringifyLogValue(seg.narration, ""),
+      actions: Array.isArray(seg.actions)
+        ? seg.actions.map((entry) => normalizeActionLogEntry(entry as any))
+        : [],
+      isLive: Boolean(seg.isLive),
+      stepLabel: stringifyLogValue(seg.stepLabel, ""),
+    })) : undefined,
+    [segments],
+  );
+  const persistedSegments = useMemo<NarrationSegment[] | undefined>(
+    () => rebuildSegmentsFromActionLog(safeEntries, safeSegments) ?? safeSegments,
+    [safeEntries, safeSegments],
+  );
 
   // 打字机效果只触发一次：用 localStorage 记录"已展示完毕"
   // 刷新/重进项目后直接完整显示，不重复动画
@@ -1007,16 +1029,16 @@ export function BuildLivePanel({
     if (!completionSummary) setSummaryDone(true);
   }, [completionSummary]);
 
-  const isPersisted = !!segments && segments.length > 0;
+  const isPersisted = !!persistedSegments && persistedSegments.length > 0;
 
   // Persisted 模式：优先用 summarizeActions，actions 为空则保留原有 narration
   const mergedSegments = useMemo<NarrationSegment[]>(() => {
-    if (!isPersisted || !segments) return [];
-    return segments.map((seg) => {
+    if (!isPersisted || !persistedSegments) return [];
+    return persistedSegments.map((seg) => {
       const summary = summarizeActions(seg.actions);
       return { ...seg, narration: summary || seg.narration };
     });
-  }, [isPersisted, segments]);
+  }, [isPersisted, persistedSegments]);
 
   // Live 模式：每次 entries 变化都重算 narration
   // live 最后一个 segment 用当前已有 actions 实时生成文字（哪怕只有1个action）
@@ -1029,7 +1051,7 @@ export function BuildLivePanel({
     const segByStep = new Map<number, NarrationSegment>();
     let maxStepNum = 0;
 
-    for (const entry of entries) {
+    for (const entry of safeEntries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
         const match = entry.label?.match(/Step\s*(\d+)/i);
@@ -1066,7 +1088,7 @@ export function BuildLivePanel({
       segs[segs.length - 1] = { ...segs[segs.length - 1], isLive: true };
     }
     return segs;
-  }, [entries, isPersisted, isCompleted]);
+  }, [safeEntries, isPersisted, isCompleted]);
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
@@ -1075,16 +1097,11 @@ export function BuildLivePanel({
 
   const hasAnyContent =
     renderSegments.length > 0 ||
-    (isPersisted && (segments?.length ?? 0) > 0);
+    (isPersisted && (persistedSegments?.length ?? 0) > 0);
 
   if (!hasAnyContent) return null;
 
-  const showCost =
-    (isPersisted || isCompleted) &&
-    entries.some(
-      (e) =>
-        e.type !== "step" && e.type !== "narration" && e.type !== "thinking",
-    );
+  const showCost = shouldShowBuildCostSummary(isCompleted, safeEntries);
 
   return (
     <div
@@ -1123,7 +1140,7 @@ export function BuildLivePanel({
       )}
 
       {/* Cost summary card — 等总结打字机完成后才显示 */}
-      {showCost && summaryDone && <CostSummary entries={entries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
+      {showCost && summaryDone && <CostSummary entries={safeEntries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
 
       {/* Checkpoint card */}
       {showCost && summaryDone && <CheckpointSummary />}
