@@ -34,6 +34,8 @@ export interface AiMockConfig {
   finishReason?: string;
   /** A dynamic responder: receives the create() params, returns text. */
   responder?: (params: any) => string;
+  /** Streaming tool calls to emit instead of text. */
+  toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> | string }>;
 }
 
 export interface AiMock {
@@ -76,7 +78,31 @@ export function installAiMock(initial: AiMockConfig = {}): AiMock {
 
       const text = cfg.responder ? cfg.responder(params) : cfg.text ?? "";
 
+      const shouldEmitToolCalls = !!cfg.toolCalls?.length && Array.isArray(params?.tools) && params.tools.length > 0;
+
       if (!params?.stream) {
+        if (shouldEmitToolCalls) {
+          return {
+            id: "mock-cmpl",
+            choices: [{
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: cfg.toolCalls.map((tc, index) => ({
+                  id: tc.id ?? `call_${index}`,
+                  type: "function",
+                  function: {
+                    name: tc.name,
+                    arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args ?? {}),
+                  },
+                })),
+              },
+              finish_reason: "tool_calls",
+            }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        }
         return {
           id: "mock-cmpl",
           choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: cfg.finishReason }],
@@ -91,6 +117,25 @@ export function installAiMock(initial: AiMockConfig = {}): AiMock {
       const perChunkDelayMs = cfg.perChunkDelayMs ?? 0;
 
       async function* gen() {
+        if (shouldEmitToolCalls) {
+          for (let i = 0; i < cfg.toolCalls.length; i++) {
+            const tc = cfg.toolCalls[i];
+            if (perChunkDelayMs) await sleep(perChunkDelayMs);
+            yield chunk({
+              tool_calls: [{
+                index: i,
+                id: tc.id ?? `call_${i}`,
+                type: "function",
+                function: {
+                  name: tc.name,
+                  arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args ?? {}),
+                },
+              }],
+            });
+          }
+          yield chunk({}, "tool_calls");
+          return;
+        }
         if (reasoning) {
           for (const r of splitInto(reasoning, Math.min(reasoning.length, 3))) {
             if (perChunkDelayMs) await sleep(perChunkDelayMs);

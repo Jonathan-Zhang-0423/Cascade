@@ -65,7 +65,7 @@ Read the most relevant files and return a concise summary of the codebase patter
       schemas,
       handlers,
       () => {},  // no SSE emission — we only want the final text
-      { maxIterations: 5, client, model },
+      { maxIterations: 5, client, model, phase: "manager" },
     );
     return result.finalText.trim();
   } catch {

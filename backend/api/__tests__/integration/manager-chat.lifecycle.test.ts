@@ -91,6 +91,36 @@ describeIntegration("manager-chat lifecycle", () => {
       ac.abort();
       await streamPromise;
     });
+
+    it("persists project_name from submit_plan when the project still has a default name", async () => {
+      const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "New Project" });
+
+      ai.update({
+        responder: (params) => Array.isArray(params?.tools) && params.tools.length > 0 ? "" : "build",
+        toolCalls: [{
+          name: "submit_plan",
+          args: {
+            project_name: "Todo Forge",
+            summary: "do it",
+            steps: [{ step: 1, title: "step", description: "d" }],
+          },
+        }],
+      });
+
+      const stream = await http.stream("POST", "/api/manager-chat", {
+        body: {
+          messages: [{ role: "user", content: "build me a todo app" }],
+          files: [],
+          projectId,
+        },
+      });
+
+      expect(stream.status).toBe(200);
+      await stream.text();
+      const list = await http.get("/api/projects");
+      expect(list.body.projects.find((x: any) => x.id === projectId).name).toBe("Todo Forge");
+    });
   });
 });
 

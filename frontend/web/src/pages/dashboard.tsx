@@ -305,18 +305,6 @@ export default function DashboardPage() {
       setUsePlanFirst(true);
       setShowNewDialog(false);
       navigate(`/project/${id}`);
-      // Auto-name the project based on the idea — fire and forget
-      const framework = selectedFramework;
-      fetch("/api/generate-project-name", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea, framework }),
-      })
-        .then((r) => r.json())
-        .then((data: { name?: string }) => {
-          if (data.name) renameProject(id, data.name, false);
-        })
-        .catch(() => {});
     } finally {
       setIsCreating(false);
     }

@@ -685,9 +685,11 @@ export function buildBuilderTools(
       emit({ type: "action_log", actionType: "file_delete", label: fileName, detail: "", filePath: path_ });
       session.files.delete(path_);
       if (session.projectId) {
-        storage.deleteProjectFile(session.projectId, path_).catch((err) => {
+        try {
+          await storage.deleteProjectFile(session.projectId, path_);
+        } catch (err) {
           console.warn(`[agent-tools] DB delete failed for ${path_}:`, err instanceof Error ? err.message : err);
-        });
+        }
       }
       emit({ type: "file_deleted", filePath: path_ });
 
@@ -798,7 +800,7 @@ export function buildBuilderTools(
       }
       const durationHint = typeof args.duration_hint === "number" ? args.duration_hint : 20;
       if (session.projectId) {
-        storage.updateProjectActionSequence(session.projectId, JSON.stringify(result.actions), durationHint).catch(() => {});
+        await storage.updateProjectActionSequence(session.projectId, JSON.stringify(result.actions), durationHint);
       }
       return `Interaction script saved: ${result.actions!.length} steps, ~${durationHint}s demo.`;
     },

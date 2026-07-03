@@ -3,7 +3,7 @@ import { withRetry } from "../providers/retry";
 import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency";
 import type { SseEmit } from "../../infra/sse";
 import type OpenAI from "openai";
-import { createModelAdapter, type ModelAdapter } from "../providers/model-adapter";
+import { createModelAdapter, type AgentLoopPhase, type ModelAdapter } from "../providers/model-adapter";
 import {
   createPart,
   emitPart,
@@ -51,6 +51,7 @@ export interface AgentLoopOpts {
   client?: OpenAI;
   model?: string;
   disableThinking?: boolean;
+  phase?: AgentLoopPhase;
   /** Part-based emission context. When provided, the loop emits structured
    *  Parts instead of raw SSE events directly. */
   partCtx?: PartEmitContext;
@@ -106,6 +107,8 @@ export async function runAgentLoop(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let emptyNudgeCount = 0; // bounded nudge counter for empty responses
+  let previousToolCallCount = 0;
+  let previousToolErrorCount = 0;
 
   // Model adapter: encapsulates per-model thinking params, timeout, and
   // reasoning extraction. Auto-created from client+model if not provided.
@@ -193,7 +196,20 @@ export async function runAgentLoop(
             const { thinkingParam, extraBody } = adapter.getThinkingConfig({
               disabled: opts.disableThinking,
               outputTokensSoFar: totalOutputTokens,
+              iteration,
+              maxIterations,
+              consecutiveNoToolCalls: emptyNudgeCount,
+              previousToolCallCount,
+              previousToolErrorCount,
+              phase: opts.phase,
             });
+            const thinkingType = (thinkingParam as any).thinking?.type ?? (extraBody as any)?.thinking?.type ?? "none";
+            const reasoningEffort = (thinkingParam as any).reasoning_effort ?? (extraBody as any)?.reasoning_effort ?? "none";
+            console.log(
+              `[agent-loop] thinking config model=${activeModel} adapter=${adapter.name} iteration=${iteration + 1} ` +
+                `phase=${opts.phase ?? "unknown"} thinking=${thinkingType} reasoning_effort=${reasoningEffort} ` +
+                `emptyNudges=${emptyNudgeCount} prevToolCalls=${previousToolCallCount} prevToolErrors=${previousToolErrorCount}`,
+            );
             return activeClient.chat.completions.create(
               {
                 model: activeModel,
@@ -332,6 +348,8 @@ export async function runAgentLoop(
     const toolCalls = Object.values(toolCallsMap);
 
     if (toolCalls.length === 0) {
+      previousToolCallCount = 0;
+      previousToolErrorCount = 0;
       // ── Step Finish (no tool calls → stop) ──────────────────────
       console.warn(`[agent-loop] iteration ${iteration + 1} ended with NO tool_calls. assistantText.length=${assistantText.length} reasoningContent.length=${reasoningContent.length} model=${activeModel} sessionId=${sessionId} inputTokens=${totalInputTokens} outputTokens=${totalOutputTokens}`);
 
@@ -362,6 +380,7 @@ export async function runAgentLoop(
 
     // Model produced tool calls — reset nudge counter
     emptyNudgeCount = 0;
+    previousToolCallCount = toolCalls.length;
 
     // Push assistant message with tool calls to context.
     // IMPORTANT optimizations to prevent messages[] from exploding:
@@ -389,6 +408,7 @@ export async function runAgentLoop(
     messages.push(assistantMsg as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam);
 
     let shouldExit = false;
+    let toolErrorCountThisIteration = 0;
 
     // ── Execute tool calls with state machine ──────────────────────
     for (const tc of toolCalls) {
@@ -455,6 +475,7 @@ export async function runAgentLoop(
       let handlerSucceeded = false;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
+        toolErrorCountThisIteration++;
         if (toolPart && partCtx) {
           updateToolState(partCtx, emit, toolPart, {
             status: "error",
@@ -480,6 +501,7 @@ export async function runAgentLoop(
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           result = `Error executing tool "${tc.name}": ${message}`;
+          toolErrorCountThisIteration++;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {
               status: "error",
@@ -517,6 +539,7 @@ export async function runAgentLoop(
         exitArgs = args;
       }
     }
+    previousToolErrorCount = toolErrorCountThisIteration;
 
     // A tool handler may trip the shared exit signal (e.g. the builder marking
     // the final plan step complete) to end the loop without a dedicated exit

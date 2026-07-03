@@ -20,6 +20,7 @@ export const describeIntegration = hasTestDb ? describe : describe.skip;
 // Every app-managed table, child-first isn't needed because we use CASCADE.
 const ALL_TABLES = [
   "chat_messages",
+  "agent_sessions",
   "project_files",
   "project_skills",
   "user_skills",

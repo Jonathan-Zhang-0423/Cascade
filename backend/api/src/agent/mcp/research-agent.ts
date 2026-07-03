@@ -63,6 +63,7 @@ Use your search tools to find current, accurate information. Synthesize the resu
           client,
           model,
           disableThinking: true, // Research doesn't need extended thinking — speed matters
+          phase: "research",
         },
       ),
       new Promise<never>((_, reject) =>

@@ -243,6 +243,13 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_ready") {
             if (isCurrentProject) {
               const plan = ev.plan;
+              const planProjectName = (plan as Record<string, unknown> | undefined)?.project_name;
+              const projectName = (typeof ev.project_name === "string" && ev.project_name.trim())
+                ? ev.project_name.trim()
+                : (typeof planProjectName === "string" ? planProjectName.trim() : "");
+              if (projectName) {
+                this.actions.renameProject(this.projectId, projectName, false);
+              }
               if (plan) {
                 this.actions.setManagerPlan(plan);
                 this.actions.addManagerMessage({
@@ -501,6 +508,13 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_ready") {
             if (isCurrentProject) {
               const plan = ev.plan;
+              const planProjectName = (plan as Record<string, unknown> | undefined)?.project_name;
+              const projectName = (typeof ev.project_name === "string" && ev.project_name.trim())
+                ? ev.project_name.trim()
+                : (typeof planProjectName === "string" ? planProjectName.trim() : "");
+              if (projectName) {
+                this.actions.renameProject(this.projectId, projectName, false);
+              }
               if (plan) {
                 this.actions.setManagerPlan(plan);
                 // Skip re-adding the plan message when this is a replayed event

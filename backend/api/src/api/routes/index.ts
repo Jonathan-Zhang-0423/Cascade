@@ -79,6 +79,7 @@ import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
 import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -655,7 +656,7 @@ export async function registerRoutes(
       buildSessions.set(sessionId, session);
 
       // Register with unified SessionManager for persistence + restart-survival
-      await sessionManager.create({
+      const agentSession = await sessionManager.create({
         id: sessionId,
         type: "build",
         projectId: reqProjectId,
@@ -663,6 +664,16 @@ export async function registerRoutes(
         payload: { mode: resolvedMode, framework: resolvedFramework },
       }).catch(() => {}); // non-fatal if DB insert fails — build still runs in-memory
       await sessionManager.transition(sessionId, "running").catch(() => {});
+
+      if (agentSession) {
+        session.events = agentSession.events;
+        session.sseWriters = agentSession.sseWriters;
+        Object.defineProperty(session, "nextEventId", {
+          configurable: true,
+          get: () => agentSession.nextEventId,
+          set: (v: number) => { agentSession.nextEventId = v; },
+        });
+      }
 
       const emit = createSessionEmit(session);
 
@@ -690,10 +701,14 @@ export async function registerRoutes(
           const doneLine = "data: [DONE]\n\n";
           Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
           // Unified cleanup via SessionManager: persist build events + transition + slot release
-          // Note: build events live on the BuildSessionState (not the agentSession),
-          // so we flush them directly to the store.
-          const store = new SessionStore();
-          await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          if (!agentSession) {
+            const store = new SessionStore();
+            await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          } else {
+            agentSession.nextEventId = session.nextEventId;
+            agentSession._dirty = true;
+            await sessionManager.flushEvents(sessionId).catch(() => {});
+          }
           await sessionManager.transition(sessionId, "done").catch(() => {});
           await sessionManager.cleanup(sessionId).catch(() => {});
           // Also clean resources directly (SessionManager.cleanup handles slot;
@@ -918,7 +933,7 @@ export async function registerRoutes(
       reviewSessions.set(sessionId, session);
 
       // Register with unified SessionManager for persistence + restart-survival
-      await sessionManager.create({
+      const agentSession = await sessionManager.create({
         id: sessionId,
         type: "review",
         projectId: reqProjectId,
@@ -926,6 +941,16 @@ export async function registerRoutes(
         payload: { strictness: resolvedStrictness, framework: resolvedFramework },
       }).catch(() => {});
       await sessionManager.transition(sessionId, "running").catch(() => {});
+
+      if (agentSession) {
+        session.events = agentSession.events;
+        session.sseWriters = agentSession.sseWriters;
+        Object.defineProperty(session, "nextEventId", {
+          configurable: true,
+          get: () => agentSession.nextEventId,
+          set: (v: number) => { agentSession.nextEventId = v; },
+        });
+      }
 
       const emit = createSessionEmit(session);
       attachSseWriter(session, res, -1);
@@ -939,8 +964,14 @@ export async function registerRoutes(
           session.done = true;
           session.doneAt = Date.now();
           // Persist review events + transition via SessionManager
-          const store = new SessionStore();
-          await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          if (!agentSession) {
+            const store = new SessionStore();
+            await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          } else {
+            agentSession.nextEventId = session.nextEventId;
+            agentSession._dirty = true;
+            await sessionManager.flushEvents(sessionId).catch(() => {});
+          }
           await sessionManager.transition(sessionId, "done").catch(() => {});
           await sessionManager.cleanup(sessionId).catch(() => {});
           // Build-specific resource cleanup
@@ -1514,8 +1545,8 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             console.warn("[manager-chat] submit_plan produced empty steps; surfacing as manager_error");
             emit({ type: "manager_error", reason: "empty_plan" });
           } else {
-          const projectName = typeof result.exitArgs?.project_name === "string"
-            ? result.exitArgs.project_name
+          let projectName = typeof result.exitArgs?.project_name === "string"
+            ? sanitizeProjectName(result.exitArgs.project_name)
             : undefined;
 
           emit({ type: "plan_preparing" });
@@ -1532,11 +1563,21 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             emit({ type: "communicator_token", token: narratedText });
           }
 
-          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false });
-
           if (mgrSession.projectId) {
-            storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});
+            try {
+              await storage.updateProjectPlan(mgrSession.projectId, plan);
+              if (projectName) {
+                const project = await storage.getProject(mgrSession.projectId);
+                if (project && isDefaultProjectName(project.name)) {
+                  await storage.updateProjectName(mgrSession.projectId, projectName);
+                }
+              }
+            } catch (err) {
+              console.warn("[manager-chat] persist plan/name failed:", err instanceof Error ? err.message : err);
+            }
           }
+
+          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false });
           }
 
           emit({ type: "manager_done" });

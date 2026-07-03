@@ -3,6 +3,9 @@ import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } 
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 import { installAiMock, type AiMock } from "../_helpers/ai-mock";
+import { db } from "../../src/infra/db";
+import { agentSessions } from "@cascade/database";
+import { eq } from "drizzle-orm";
 
 /**
  * /api/build-session lifecycle — validation gates, the per-user session cap
@@ -135,6 +138,71 @@ describeIntegration("build-session lifecycle", () => {
       ac.abort();
       await streamPromise;
     });
+
+    it("persists final file set and flushed events before completion", async () => {
+      const sessionId = sid();
+      const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "Build Persist Test" });
+      await http.put(`/api/projects/${projectId}/files`, {
+        files: [
+          { path: "/project/old.txt", content: "old" },
+          { path: "/project/keep.txt", content: "keep-old" },
+        ],
+      });
+
+      ai.update({
+        responder: (params) => Array.isArray(params?.tools) && params.tools.length > 0 ? "" : "build",
+        toolCalls: [
+          {
+            name: "write_file",
+            args: { path: "/project/keep.txt", content: "keep-new" },
+          },
+          {
+            name: "delete_file",
+            args: { path: "/project/old.txt" },
+          },
+          {
+            name: "mark_step_complete",
+            args: { step_id: "1", summary: "updated and removed stale file" },
+          },
+        ],
+      });
+
+      const stream = await http.stream("POST", "/api/build-session", {
+        body: {
+          sessionId,
+          mode: "direct",
+          userMessage: "update keep and remove old",
+          userLang: "English",
+          projectId,
+          files: [
+            { path: "/project/old.txt", content: "old" },
+            { path: "/project/keep.txt", content: "keep-old" },
+          ],
+        },
+      });
+      expect(stream.status).toBe(200);
+
+      await waitFor(async () => {
+        const files = await http.get(`/api/projects/${projectId}/files`);
+        const paths = files.body.files.map((f: any) => f.path).sort();
+        return paths.length === 1 &&
+          paths[0] === "/project/keep.txt" &&
+          files.body.files.find((f: any) => f.path === "/project/keep.txt")?.content === "keep-new";
+      }, 15000);
+
+      const row = await waitForValue(async () => {
+        const [candidate] = await db.select().from(agentSessions).where(eq(agentSessions.id, sessionId));
+        if (!candidate || candidate.status !== "done") return null;
+        return candidate;
+      }, 15000);
+      expect(row.status).toBe("done");
+      const events = JSON.parse(row.events || "[]");
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.some((e: any) => e.data?.type === "all_complete")).toBe(true);
+
+      await stream.body?.cancel().catch(() => {});
+    });
   });
 });
 
@@ -145,4 +213,14 @@ async function waitFor(pred: () => Promise<boolean>, timeoutMs = 5000, stepMs = 
     await new Promise((r) => setTimeout(r, stepMs));
   }
   throw new Error("waitFor timed out");
+}
+
+async function waitForValue<T>(fn: () => Promise<T | null | undefined>, timeoutMs = 5000, stepMs = 50): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await fn();
+    if (value) return value;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+  throw new Error("waitForValue timed out");
 }

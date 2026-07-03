@@ -77,17 +77,43 @@ describe("MiniMaxAdapter", () => {
 describe("Glm52Adapter", () => {
   const adapter = new Glm52Adapter({} as any, "glm-5.2");
 
-  it("uses 'high' reasoning_effort on first iteration (no output yet)", () => {
-    const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 0 });
-    expect((extraBody as any).reasoning_effort).toBe("high");
+  it("uses top-level 'high' reasoning_effort on first iteration", () => {
+    const { thinkingParam, extraBody } = adapter.getThinkingConfig({ iteration: 0, outputTokensSoFar: 0 });
+    expect((thinkingParam as any).reasoning_effort).toBe("high");
     expect((extraBody as any).thinking.type).toBe("enabled");
   });
-  it("DISABLES thinking on subsequent iterations (prevents 60K thinking loops)", () => {
-    const { extraBody } = adapter.getThinkingConfig({ outputTokensSoFar: 5000 });
+  it("disables thinking on normal subsequent execution iterations", () => {
+    const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+      iteration: 2,
+      outputTokensSoFar: 5000,
+      previousToolCallCount: 2,
+      previousToolErrorCount: 0,
+      consecutiveNoToolCalls: 0,
+    });
+    expect(thinkingParam).toEqual({});
     expect((extraBody as any).thinking.type).toBe("disabled");
   });
+  it("re-enables high reasoning on recovery turns after a stall", () => {
+    const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+      iteration: 3,
+      outputTokensSoFar: 5000,
+      consecutiveNoToolCalls: 1,
+    });
+    expect((thinkingParam as any).reasoning_effort).toBe("high");
+    expect((extraBody as any).thinking.type).toBe("enabled");
+  });
+  it("re-enables high reasoning after tool errors", () => {
+    const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+      iteration: 4,
+      outputTokensSoFar: 5000,
+      previousToolErrorCount: 1,
+    });
+    expect((thinkingParam as any).reasoning_effort).toBe("high");
+    expect((extraBody as any).thinking.type).toBe("enabled");
+  });
   it("returns disabled when opts.disabled is true", () => {
-    const { extraBody } = adapter.getThinkingConfig({ disabled: true });
+    const { thinkingParam, extraBody } = adapter.getThinkingConfig({ disabled: true });
+    expect(thinkingParam).toEqual({});
     expect((extraBody as any).thinking.type).toBe("disabled");
   });
 });

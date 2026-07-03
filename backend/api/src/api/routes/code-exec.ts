@@ -7,6 +7,7 @@ import { join } from "path";
 import { getOptimalClient } from "../../agent/providers/kimi-client";
 import { DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { spawnProcess, EXEC_TIMEOUT_MS } from "../../infra/process-exec";
+import { buildProjectNamePrompt, sanitizeProjectName } from "../../agent/utils/project-name";
 
 /**
  * Code-exec utility routes (Step C): AI-generated project naming and the
@@ -23,24 +24,17 @@ export function registerCodeExecRoutes(app: Express): void {
       }
       console.log(`[generate-project-name] idea="${idea.slice(0, 50)}" framework=${framework || "web"}`);
       const { client: nameClient } = getOptimalClient("planning", "doubao");
-      const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
-      // Name the project in the same language as the idea (Chinese vs English),
-      // so a Chinese prompt yields a Chinese name instead of defaulting to English.
-      const isChinese = /[一-鿿]/.test(idea);
-      const langInstruction = isChinese
-        ? "用中文起名（2-4 个字或词），不要使用英文。"
-        : "Use English (2-4 words, title case).";
       const completion = await nameClient.chat.completions.create({
         model: DOUBAO_LITE_MODEL,
         messages: [
           {
             role: "user",
-            content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${idea}"\n\nRespond with ONLY the project name, nothing else.`,
+            content: buildProjectNamePrompt(idea, framework),
           },
         ],
-        max_tokens: 20,
+        max_tokens: 128,
       });
-      const name = (completion.choices[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "");
+      const name = sanitizeProjectName(completion.choices[0]?.message?.content);
       res.json({ name: name || "New Project" });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Failed to generate name" });

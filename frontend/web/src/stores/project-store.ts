@@ -27,6 +27,11 @@ export interface ProjectEntry {
   userNamed?: boolean;
 }
 
+function isDefaultProjectName(name: string | null | undefined): boolean {
+  const normalized = (name ?? "").trim().toLowerCase();
+  return !normalized || normalized === "new project" || normalized === "新建项目" || normalized === "untitled" || normalized === "未命名";
+}
+
 interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
@@ -300,7 +305,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         // If AI tries to rename but user already set a custom name, skip
         if (!fromUser) {
           const existing = get().projects.find((p) => p.id === id);
-          if (existing?.userNamed) return;
+          if (existing?.userNamed || !isDefaultProjectName(existing?.name)) return;
         }
         set((s) => ({
           projects: s.projects.map((p) =>

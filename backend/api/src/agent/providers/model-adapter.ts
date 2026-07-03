@@ -19,6 +19,27 @@ export interface ThinkingConfig {
   extraBody: Record<string, unknown> | undefined;
 }
 
+export type AgentLoopPhase = "manager" | "editor" | "verifier" | "fixer" | "research" | "aigc";
+
+export interface ThinkingContext {
+  /** true when thinking should be explicitly suppressed */
+  disabled?: boolean;
+  /** cumulative output tokens (for dynamic budget) */
+  outputTokensSoFar?: number;
+  /** zero-based loop iteration */
+  iteration?: number;
+  /** max iterations for the current loop */
+  maxIterations?: number;
+  /** consecutive responses that produced no tool calls */
+  consecutiveNoToolCalls?: number;
+  /** tool calls produced by the previous completed iteration */
+  previousToolCallCount?: number;
+  /** tool handler errors in the previous completed iteration */
+  previousToolErrorCount?: number;
+  /** current orchestration phase, used by model-specific policies */
+  phase?: AgentLoopPhase;
+}
+
 export interface ModelAdapter {
   readonly name: string;
   readonly client: OpenAI;
@@ -30,10 +51,9 @@ export interface ModelAdapter {
 
   /**
    * Returns thinking/reasoning params for a given iteration context.
-   * @param opts.disabled - true when thinking should be explicitly suppressed
-   * @param opts.outputTokensSoFar - cumulative output tokens (for dynamic budget)
+   * @param opts rich loop context used for adaptive thinking policies
    */
-  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig;
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig;
 
   /**
    * Extract reasoning content from a streaming delta. Models emit reasoning
@@ -55,7 +75,7 @@ export class DoubaoAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
     return {
       thinkingParam: { thinking: { type: "enabled", budget_tokens: 8192 } },
@@ -78,7 +98,7 @@ export class KimiAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
     return {
       thinkingParam: { thinking: { type: "enabled" } },
@@ -101,7 +121,7 @@ export class MiniMaxAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
     return {
       thinkingParam: {},
@@ -129,7 +149,7 @@ export class GlmAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
     return {
       thinkingParam: {},
@@ -143,9 +163,10 @@ export class GlmAdapter implements ModelAdapter {
 }
 
 /**
- * GLM-5.2 — supports reasoning_effort parameter (max/high/medium/low/none).
- * Adaptive: first iteration uses "high" for deep plan comprehension,
- * subsequent iterations use "medium" for faster mechanical execution.
+ * GLM-5.2 — supports reasoning_effort parameter (max/xhigh/high/medium/low/minimal/none).
+ * Per docs, low/medium currently map to high, while minimal/none suppress
+ * thinking. Use high sparingly for comprehension/recovery, and disabled for
+ * mechanical tool execution.
  * Per docs: reasoning_effort is only supported on GLM-5.2+.
  */
 export class Glm52Adapter implements ModelAdapter {
@@ -155,18 +176,25 @@ export class Glm52Adapter implements ModelAdapter {
 
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
-    // GLM-5.2 burns 30-60K chars of reasoning per iteration even on "low" effort,
-    // consuming the entire token budget without producing tool calls. Only enable
-    // thinking for the FIRST iteration (plan comprehension). After that, DISABLE
-    // it entirely so the model focuses on tool execution, not internal monologue.
-    if ((opts.outputTokensSoFar ?? 0) > 0) {
+    const iteration = opts.iteration ?? ((opts.outputTokensSoFar ?? 0) > 0 ? 1 : 0);
+    const maxIterations = opts.maxIterations ?? 30;
+    const consecutiveNoToolCalls = opts.consecutiveNoToolCalls ?? 0;
+    const previousToolErrorCount = opts.previousToolErrorCount ?? 0;
+    const previousToolCallCount = opts.previousToolCallCount ?? 0;
+    const isInitialTurn = iteration === 0;
+    const isRecoveryTurn = consecutiveNoToolCalls > 0 || previousToolErrorCount > 0;
+    const isLateTurn = iteration >= Math.max(8, Math.floor(maxIterations * 0.65));
+    const isStalledLateTurn = isLateTurn && previousToolCallCount === 0;
+
+    if (!isInitialTurn && !isRecoveryTurn && !isStalledLateTurn) {
       return { thinkingParam: {}, extraBody: { thinking: { type: "disabled" } } };
     }
+
     return {
-      thinkingParam: {},
-      extraBody: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+      thinkingParam: { reasoning_effort: "high" },
+      extraBody: { thinking: { type: "enabled" } },
     };
   }
 
@@ -188,7 +216,7 @@ export class DeepSeekAdapter implements ModelAdapter {
   readonly timeoutMs = 90_000;
   constructor(readonly client: OpenAI, readonly model: string) {}
 
-  getThinkingConfig(opts: { disabled?: boolean; outputTokensSoFar?: number }): ThinkingConfig {
+  getThinkingConfig(opts: ThinkingContext): ThinkingConfig {
     if (opts.disabled) return { thinkingParam: {}, extraBody: undefined };
     // Adaptive effort: high for first iteration (outputTokensSoFar=0),
     // medium for subsequent iterations (mechanical file writes).

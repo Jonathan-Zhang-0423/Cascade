@@ -11,8 +11,8 @@ import { insertProjectSchema } from "@cascade/database";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { requireInviteCode } from "../middleware/auth-middleware";
-import { getOptimalClient, getFastClient } from "../../agent/providers/kimi-client";
-import { doubaoClient, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
+import { getFastClient } from "../../agent/providers/kimi-client";
+import { buildProjectNamePrompt, isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
 
 /**
  * Projects routes (Step C). CRUD, files, messages, sessions, export.
@@ -84,30 +84,16 @@ export function registerProjectsRoutes(app: Express): void {
         (async () => {
           try {
             const { client: nameClient, model: nameModel } = getFastClient();
-            const isChinese = /[一-鿿]/.test(initialPrompt);
-            const langInstruction = isChinese
-              ? "用中文起名（2-4 个字或词），不要使用英文。"
-              : "Use English (2-4 words, title case).";
-            const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
             const completion = await nameClient.chat.completions.create({
               model: nameModel,
               messages: [{
                 role: "user",
-                content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${initialPrompt.slice(0, 200)}"\n\nRespond with ONLY the project name, nothing else. No explanations, no quotes, no thinking.`,
+                content: buildProjectNamePrompt(initialPrompt, framework),
               }],
-              max_tokens: 100, // enough for think block + actual name
+              max_tokens: 128, // enough for providers that ignore "no thinking"
             });
-            let generatedName = (completion.choices[0]?.message?.content ?? "").trim();
-            // Strip <think>...</think> blocks (closed)
-            generatedName = generatedName.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-            // Strip unclosed <think> blocks (truncated output)
-            generatedName = generatedName.replace(/<think>[\s\S]*/gi, "").trim();
-            // Strip orphan </think> or <think> tags
-            generatedName = generatedName.replace(/<\/?think>/gi, "").trim();
-            // Strip quotes
-            generatedName = generatedName.replace(/^["']|["']$/g, "").trim();
-            // Final validation: must be short, no HTML, non-empty
-            if (generatedName && generatedName.length <= 30 && generatedName !== name && !generatedName.includes("<")) {
+            const generatedName = sanitizeProjectName(completion.choices[0]?.message?.content);
+            if (generatedName && generatedName !== name && isDefaultProjectName(name)) {
               await storage.updateProjectName(id, generatedName);
               console.log(`[auto-name] project ${id}: "${name}" → "${generatedName}"`);
             }

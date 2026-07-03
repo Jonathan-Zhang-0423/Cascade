@@ -244,7 +244,7 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
             reviewTools.schemas,
             reviewTools.handlers,
             emit,
-            { exitTools: ["submit_review"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
+            { exitTools: ["submit_review"], maxIterations: 15, client, model, phase: "verifier", partCtx, sessionId: session.id },
           );
         });
       });
@@ -309,7 +309,7 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
             fixerTools.schemas,
             fixerTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+            { exitTools: ["finish_build"], maxIterations: 50, client, model, phase: "fixer", partCtx, sessionId: session.id },
           );
         });
       });

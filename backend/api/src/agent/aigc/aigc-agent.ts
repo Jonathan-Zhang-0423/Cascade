@@ -103,6 +103,7 @@ export async function runAigcAgent(
       model,
       maxIterations: 8,
       exitTools: ["finish_aigc"],
+      phase: "aigc",
     },
   );
 

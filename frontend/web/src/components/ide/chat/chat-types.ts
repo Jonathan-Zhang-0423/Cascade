@@ -146,6 +146,7 @@ export interface ManagerSseEvent {
   sessionId?: string;
   token?: string;
   plan?: ManagerPlan;
+  project_name?: string;
   autoExecute?: boolean;
   label?: string;
   detail?: string;

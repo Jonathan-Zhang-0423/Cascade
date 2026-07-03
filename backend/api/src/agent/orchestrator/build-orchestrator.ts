@@ -429,6 +429,7 @@ async function runBuilderParallelWaves(
               maxIterations: 30,
               client,
               model,
+              phase: "editor",
               partCtx,
               sessionId: session.id,
             },
@@ -658,7 +659,7 @@ Examples of when to call research:
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 40, emitOnIterationExhausted: true, client, model, partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: 40, emitOnIterationExhausted: true, client, model, phase: "editor", partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
       }
@@ -734,37 +735,33 @@ Examples of when to call research:
       summaryText = summaryText.replace(/\nNEXT_STEP:.*$/m, "").trim();
     }
 
-    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
-    console.log(`[build-session] EMITTING all_complete sessionId=${session.id} changedFiles=${changedFiles.length}`);
-
-    // Persist changed files to the DB BEFORE the client triggers its post-build
-    // file refetch. The frontend's syncFilesToServer is debounced (1s), so on a
-    // refresh shortly after all_complete the server might still hold the previous
-    // iteration. Awaiting the upsert here makes the DB authoritative the moment
-    // the client receives all_complete.
-    if (session.projectId && changedFiles.length > 0) {
-      const finalMap = new Map(finalFiles.map(f => [f.path, f.content]));
+    // Persist the final file SET before all_complete. This converges DB state to
+    // the in-memory build result, including deletes (single-file upsert cannot).
+    if (session.projectId) {
       try {
-        await Promise.all(
-          changedFiles.map((p) =>
-            storage.upsertProjectFile(session.projectId!, p, finalMap.get(p) ?? ""),
-          ),
-        );
+        await storage.upsertProjectFiles(session.projectId, finalFiles);
       } catch (err) {
         console.warn(
-          "[BuildSession] Failed to persist changed files:",
+          "[BuildSession] Failed to persist final files:",
           err instanceof Error ? err.message : err,
         );
       }
     }
 
     if (session.projectId) {
-      storage.updateProjectBuildResult(session.projectId, {
-        changedFiles,
-        summary: plan.summary ?? "",
-        completedAt: Date.now(),
-      }).catch(() => {});
+      try {
+        await storage.updateProjectBuildResult(session.projectId, {
+          changedFiles,
+          summary: plan.summary ?? "",
+          completedAt: Date.now(),
+        });
+      } catch (err) {
+        console.warn("[BuildSession] Failed to persist build result:", err instanceof Error ? err.message : err);
+      }
     }
+
+    emit({ type: "all_complete", changedFiles, summary: plan.summary ?? "", summaryText, nextStepSuggestion });
+    console.log(`[build-session] EMITTING all_complete sessionId=${session.id} changedFiles=${changedFiles.length}`);
 
     // Auto-distill project memory (safety net for when the agent didn't call
     // update_project_memory itself). Only runs when there's signal — files
