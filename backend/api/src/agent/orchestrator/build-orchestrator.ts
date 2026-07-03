@@ -479,7 +479,7 @@ export function buildBuilderInitialMessage(
 
   const existingFilesWarning = allFiles.length > 0
     ? `\n\nExisting project files contain working code. Preserve them unless a plan step explicitly says otherwise. Read an existing file before editing it unless it was pre-loaded or you just wrote it.\n`
-    : "";
+    : "\n\nThis is an empty project. Start by creating the required files with write_file; do not spend tool rounds searching for files that do not exist.\n";
 
   const modePrefix = mode === "fix"
     ? `You are in FIX MODE. The quality reviewer found issues that need to be addressed.\n\n${previousIssues ? `Issues to fix:\n${previousIssues}\n\n` : ""}`
@@ -494,7 +494,7 @@ ${session.userRequest}
 ${stepsList}
 ${filesList}${preloadedContent}
 
-IMPORTANT: Implement the plan step by step. Preserve unrelated existing code, mark each completed step with mark_step_complete, then finish_build only after final checks, memory update when useful, and demo script submission.`;
+IMPORTANT: Implement the plan step by step. Use at most two read/search rounds per step before the first edit unless a tool error blocks you. Preserve unrelated existing code, mark each completed step with mark_step_complete, then finish_build only after final checks, memory update when useful, and demo script submission.`;
 }
 
 

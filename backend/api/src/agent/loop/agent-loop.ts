@@ -46,6 +46,29 @@ interface PendingToolCall {
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
+const DISCOVERY_TOOL_NAMES = new Set([
+  "read_file",
+  "list_files",
+  "grep",
+  "ast_search",
+  "lsp_find_references",
+  "lsp_goto_definition",
+  "mcp_search",
+  "fetch_url",
+  "research",
+]);
+
+const READ_ONLY_STALL_NUDGE_THRESHOLD = 4;
+
+function isDiscoveryTool(name: string): boolean {
+  if (DISCOVERY_TOOL_NAMES.has(name)) return true;
+  return /^mcp_.*(search|fetch|read|get|list|query)/.test(name);
+}
+
+function areAllDiscoveryTools(toolCalls: PendingToolCall[]): boolean {
+  return toolCalls.length > 0 && toolCalls.every((tc) => isDiscoveryTool(tc.name));
+}
+
 export interface AgentLoopOpts {
   maxIterations?: number;
   exitTools?: string[];
@@ -110,6 +133,7 @@ export async function runAgentLoop(
   let emptyNudgeCount = 0; // bounded nudge counter for empty responses
   let previousToolCallCount = 0;
   let previousToolErrorCount = 0;
+  let consecutiveDiscoveryToolRounds = 0;
   let exhausted = false;
 
   // Model adapter: encapsulates per-model thinking params, timeout, and
@@ -210,7 +234,8 @@ export async function runAgentLoop(
             console.log(
               `[agent-loop] thinking config model=${activeModel} adapter=${adapter.name} iteration=${iteration + 1} ` +
                 `phase=${opts.phase ?? "unknown"} thinking=${thinkingType} reasoning_effort=${reasoningEffort} ` +
-                `emptyNudges=${emptyNudgeCount} prevToolCalls=${previousToolCallCount} prevToolErrors=${previousToolErrorCount}`,
+                `emptyNudges=${emptyNudgeCount} prevToolCalls=${previousToolCallCount} prevToolErrors=${previousToolErrorCount} ` +
+                `discoveryStreak=${consecutiveDiscoveryToolRounds}`,
             );
             return activeClient.chat.completions.create(
               {
@@ -545,6 +570,32 @@ export async function runAgentLoop(
       }
     }
     previousToolErrorCount = toolErrorCountThisIteration;
+
+    if (opts.phase === "editor") {
+      if (toolErrorCountThisIteration > 0) {
+        consecutiveDiscoveryToolRounds = 0;
+      } else if (areAllDiscoveryTools(toolCalls)) {
+        consecutiveDiscoveryToolRounds++;
+      } else {
+        consecutiveDiscoveryToolRounds = 0;
+      }
+
+      if (
+        consecutiveDiscoveryToolRounds >= READ_ONLY_STALL_NUDGE_THRESHOLD &&
+        !shouldExit &&
+        iteration < maxIterations - 1
+      ) {
+        console.warn(
+          `[agent-loop] editor discovery streak ${consecutiveDiscoveryToolRounds}; injecting action nudge ` +
+            `(session=${sessionId}, iteration=${iteration + 1}, tools=${toolCalls.map((tc) => tc.name).join(",")})`,
+        );
+        messages.push({
+          role: "user",
+          content:
+            "IMPORTANT: You have spent several consecutive rounds only reading/searching. You likely have enough context. In your next response, call write_file/edit_file/patch_file/hash_patch_file/delete_file to change files, or call mark_step_complete/finish_build if no file change is needed. Do not call read_file/grep/list_files/research again unless the last tool result was an error or a specific missing fact blocks the edit.",
+        } as any);
+      }
+    }
 
     // A tool handler may trip the shared exit signal (e.g. the builder marking
     // the final plan step complete) to end the loop without a dedicated exit
