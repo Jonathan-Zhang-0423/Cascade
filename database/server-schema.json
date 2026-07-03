@@ -1,0 +1,1940 @@
+{
+  "_meta": {
+    "generated_for": "server MVP (cascade_cn_db)",
+    "note": "Canonical DB structure snapshot — compare across environments, not for runtime use."
+  },
+  "extensions": [],
+  "enums": {},
+  "tables": {
+    "admin_audit_log": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval(admin_audit_log_id_seq)"
+        },
+        "admin_user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "action": {
+          "type": "varchar(128)",
+          "nullable": false,
+          "default": null
+        },
+        "resource": {
+          "type": "varchar(128)",
+          "nullable": true,
+          "default": null
+        },
+        "resource_id": {
+          "type": "varchar(256)",
+          "nullable": true,
+          "default": null
+        },
+        "details": {
+          "type": "jsonb",
+          "nullable": true,
+          "default": null
+        },
+        "ip_address": {
+          "type": "varchar(45)",
+          "nullable": false,
+          "default": null
+        },
+        "user_agent": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "admin_users": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        "username": {
+          "type": "varchar(64)",
+          "nullable": false,
+          "default": null
+        },
+        "password_hash": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "totp_secret": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "totp_enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "role": {
+          "type": "varchar(32)",
+          "nullable": false,
+          "default": "admin"
+        },
+        "last_login_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "last_login_ip": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        "backup_codes": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "failed_attempts": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "locked_until": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "app_comments": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "app_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "app_likes": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "app_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "changelog_entries": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "version": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "title": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "published_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "is_published": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        }
+      }
+    },
+    "chat_messages": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "client_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "kind": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "role": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        },
+        "thinking": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "source": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "seq": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "timestamp": {
+          "type": "bigint",
+          "nullable": false,
+          "default": null
+        },
+        "metadata": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "session_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": "main"
+        }
+      }
+    },
+    "chat_sessions": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": "新对话"
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "last_message_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "message_count": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        }
+      }
+    },
+    "invite_codes": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval(invite_codes_id_seq)"
+        },
+        "code": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "is_edu": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "trial_days": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "expires_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null
+        },
+        "redeemed_by_user_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "redeemed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "waitlist_subscriber_id": {
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "manager_sessions": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "done": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "started_at": {
+          "type": "bigint",
+          "nullable": false,
+          "default": null
+        },
+        "done_at": {
+          "type": "bigint",
+          "nullable": true,
+          "default": null
+        },
+        "next_event_id": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "events": {
+          "type": "text",
+          "nullable": false,
+          "default": "[]"
+        }
+      }
+    },
+    "notifications": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "type": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "admin_reply"
+        },
+        "title": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "body": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "is_read": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "otp_codes": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval(otp_codes_id_seq)"
+        },
+        "channel": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "target": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "code_hash": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "purpose": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "expires_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null
+        },
+        "attempts": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "consumed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "project_files": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "path": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        }
+      }
+    },
+    "project_skills": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "description": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        },
+        "type": {
+          "type": "text",
+          "nullable": false,
+          "default": "knowledge"
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "project_videos": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "default": "pending"
+        },
+        "local_path": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "cos_url": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "duration": {
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        "style": {
+          "type": "text",
+          "nullable": false,
+          "default": "raw"
+        },
+        "parent_video_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "action_sequence": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "error_message": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        },
+        "finished_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null
+        }
+      }
+    },
+    "projects": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "emoji": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "framework": {
+          "type": "text",
+          "nullable": false,
+          "default": "web"
+        },
+        "language": {
+          "type": "text",
+          "nullable": false,
+          "default": "html"
+        },
+        "target_platform": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "last_plan": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "last_build_result": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        },
+        "action_sequence": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "action_sequence_duration": {
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        }
+      }
+    },
+    "published_apps": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "project_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "title": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "description": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "is_open_source": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "visibility": {
+          "type": "text",
+          "nullable": false,
+          "default": "public"
+        },
+        "preview_screenshot": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "preview_video": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "framework": {
+          "type": "text",
+          "nullable": false,
+          "default": "web"
+        },
+        "view_count": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "fork_count": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "like_count": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        "admin_taken_down": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "published_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        },
+        "category": {
+          "type": "text",
+          "nullable": false,
+          "default": "tools"
+        }
+      }
+    },
+    "session": {
+      "columns": {
+        "sid": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "sess": {
+          "type": "json",
+          "nullable": false,
+          "default": null
+        },
+        "expire": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": null
+        }
+      }
+    },
+    "subscription_grants": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "granted_days": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "reason": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "related_user_id": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "user_feedback": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "source": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "pc"
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "replied_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "reply_content": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        }
+      }
+    },
+    "user_skills": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        "user_id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": null
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "description": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        },
+        "type": {
+          "type": "text",
+          "nullable": false,
+          "default": "knowledge"
+        },
+        "content": {
+          "type": "text",
+          "nullable": false,
+          "default": ""
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "now()"
+        }
+      }
+    },
+    "users": {
+      "columns": {
+        "id": {
+          "type": "varchar",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        "username": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "password": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "email": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "email_verified": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "phone": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "phone_verified": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "github_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "avatar_url": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "experience_level": {
+          "type": "text",
+          "nullable": false,
+          "default": "intermediate"
+        },
+        "has_set_experience_level": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "invite_code": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "trial_expires_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "referral_code": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "referred_by": {
+          "type": "varchar",
+          "nullable": true,
+          "default": null
+        },
+        "wechat_open_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "wechat_union_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "first_name": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "last_name": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "bio": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "username_last_changed_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        },
+        "github_login": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "wechat_nickname": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        }
+      }
+    },
+    "waitlist_subscribers": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval(waitlist_subscribers_id_seq)"
+        },
+        "email": {
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()"
+        },
+        "ip_address": {
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        "is_edu": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "default": "pending"
+        },
+        "batch_id": {
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        "confirmation_email_sent_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null
+        }
+      }
+    }
+  },
+  "indexes": {
+    "admin_audit_log": [
+      {
+        "name": "admin_audit_log_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ],
+    "admin_users": [
+      {
+        "name": "admin_users_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "admin_users_username_key",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "username"
+        ],
+        "predicate": null
+      }
+    ],
+    "app_comments": [
+      {
+        "name": "app_comments_app_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "app_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_comments_created_at_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "created_at"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_comments_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_comments_user_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "user_id"
+        ],
+        "predicate": null
+      }
+    ],
+    "app_likes": [
+      {
+        "name": "app_likes_app_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "app_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_likes_app_user_uniq",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "app_id",
+          "user_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_likes_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "app_likes_user_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "user_id"
+        ],
+        "predicate": null
+      }
+    ],
+    "changelog_entries": [
+      {
+        "name": "changelog_entries_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "changelog_published_at_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "published_at"
+        ],
+        "predicate": null
+      }
+    ],
+    "chat_messages": [
+      {
+        "name": "chat_messages_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "chat_messages_project_session_client_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "session_id",
+          "client_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "chat_messages_project_session_kind_seq_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "session_id",
+          "kind",
+          "seq"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "chat_messages_session_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "session_id"
+        ],
+        "predicate": null
+      }
+    ],
+    "chat_sessions": [
+      {
+        "name": "chat_sessions_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "chat_sessions_project_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "created_at"
+        ],
+        "predicate": null
+      }
+    ],
+    "invite_codes": [
+      {
+        "name": "invite_codes_code_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "code"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "invite_codes_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ],
+    "manager_sessions": [
+      {
+        "name": "manager_sessions_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "manager_sessions_project_active_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "done"
+        ],
+        "predicate": null
+      }
+    ],
+    "notifications": [
+      {
+        "name": "notifications_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "notifications_user_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "user_id",
+          "created_at"
+        ],
+        "predicate": null
+      }
+    ],
+    "otp_codes": [
+      {
+        "name": "otp_codes_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "otp_codes_target_purpose_created_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "target",
+          "purpose",
+          "created_at"
+        ],
+        "predicate": null
+      }
+    ],
+    "project_files": [
+      {
+        "name": "project_files_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "project_files_project_id_path_key",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "path"
+        ],
+        "predicate": null
+      }
+    ],
+    "project_skills": [
+      {
+        "name": "project_skills_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "project_skills_project_name_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "name"
+        ],
+        "predicate": null
+      }
+    ],
+    "project_videos": [
+      {
+        "name": "project_videos_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ],
+    "projects": [
+      {
+        "name": "projects_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ],
+    "published_apps": [
+      {
+        "name": "published_apps_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "published_apps_project_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "project_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "published_apps_project_user_uniq",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "project_id",
+          "user_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "published_apps_user_id_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "user_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "published_apps_view_count_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "view_count"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "published_apps_visibility_published_at_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "visibility",
+          "published_at"
+        ],
+        "predicate": null
+      }
+    ],
+    "session": [
+      {
+        "name": "IDX_session_expire",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "expire"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "session_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "sid"
+        ],
+        "predicate": null
+      }
+    ],
+    "subscription_grants": [
+      {
+        "name": "subscription_grants_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ],
+    "user_feedback": [
+      {
+        "name": "user_feedback_created_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "created_at"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "user_feedback_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "user_feedback_user_idx",
+        "unique": false,
+        "primary": false,
+        "columns": [
+          "user_id"
+        ],
+        "predicate": null
+      }
+    ],
+    "user_skills": [
+      {
+        "name": "user_skills_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "user_skills_user_name_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "user_id",
+          "name"
+        ],
+        "predicate": null
+      }
+    ],
+    "users": [
+      {
+        "name": "users_email_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "email"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_github_id_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "github_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_phone_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "phone"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_referral_code_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "referral_code"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_username_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "username"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_wechat_open_id_key",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "wechat_open_id"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "users_wechat_union_id_key",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "wechat_union_id"
+        ],
+        "predicate": null
+      }
+    ],
+    "waitlist_subscribers": [
+      {
+        "name": "waitlist_subscribers_email_unique",
+        "unique": true,
+        "primary": false,
+        "columns": [
+          "email"
+        ],
+        "predicate": null
+      },
+      {
+        "name": "waitlist_subscribers_pkey",
+        "unique": true,
+        "primary": true,
+        "columns": [
+          "id"
+        ],
+        "predicate": null
+      }
+    ]
+  },
+  "constraints": {
+    "admin_audit_log": [
+      {
+        "name": "admin_audit_log_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "admin_users": [
+      {
+        "name": "admin_users_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "admin_users_username_key",
+        "type": "unique",
+        "def": "UNIQUE (username)"
+      }
+    ],
+    "app_comments": [
+      {
+        "name": "app_comments_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "app_likes": [
+      {
+        "name": "app_likes_app_user_uniq",
+        "type": "unique",
+        "def": "UNIQUE (app_id, user_id)"
+      },
+      {
+        "name": "app_likes_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "changelog_entries": [
+      {
+        "name": "changelog_entries_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "chat_messages": [
+      {
+        "name": "chat_messages_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "chat_messages_project_id_projects_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"
+      }
+    ],
+    "chat_sessions": [
+      {
+        "name": "chat_sessions_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "chat_sessions_project_id_projects_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"
+      }
+    ],
+    "invite_codes": [
+      {
+        "name": "invite_codes_code_unique",
+        "type": "unique",
+        "def": "UNIQUE (code)"
+      },
+      {
+        "name": "invite_codes_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "invite_codes_redeemed_by_user_id_users_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id)"
+      },
+      {
+        "name": "invite_codes_waitlist_subscriber_id_waitlist_subscribers_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (waitlist_subscriber_id) REFERENCES waitlist_subscribers(id)"
+      }
+    ],
+    "manager_sessions": [
+      {
+        "name": "manager_sessions_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "manager_sessions_project_id_projects_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"
+      }
+    ],
+    "notifications": [
+      {
+        "name": "notifications_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "notifications_user_id_users_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+      }
+    ],
+    "otp_codes": [
+      {
+        "name": "otp_codes_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "project_files": [
+      {
+        "name": "project_files_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "project_files_project_id_path_key",
+        "type": "unique",
+        "def": "UNIQUE (project_id, path)"
+      },
+      {
+        "name": "project_files_project_id_projects_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"
+      }
+    ],
+    "projects": [
+      {
+        "name": "projects_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "project_skills": [
+      {
+        "name": "project_skills_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "project_skills_project_id_projects_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"
+      }
+    ],
+    "project_videos": [
+      {
+        "name": "project_videos_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "published_apps": [
+      {
+        "name": "published_apps_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "published_apps_project_user_uniq",
+        "type": "unique",
+        "def": "UNIQUE (project_id, user_id)"
+      }
+    ],
+    "session": [
+      {
+        "name": "session_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (sid)"
+      }
+    ],
+    "subscription_grants": [
+      {
+        "name": "subscription_grants_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "user_feedback": [
+      {
+        "name": "user_feedback_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "user_feedback_user_id_users_id_fk",
+        "type": "foreign_key",
+        "def": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+      }
+    ],
+    "users": [
+      {
+        "name": "users_email_unique",
+        "type": "unique",
+        "def": "UNIQUE (email)"
+      },
+      {
+        "name": "users_github_id_unique",
+        "type": "unique",
+        "def": "UNIQUE (github_id)"
+      },
+      {
+        "name": "users_phone_unique",
+        "type": "unique",
+        "def": "UNIQUE (phone)"
+      },
+      {
+        "name": "users_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "users_referral_code_unique",
+        "type": "unique",
+        "def": "UNIQUE (referral_code)"
+      },
+      {
+        "name": "users_username_unique",
+        "type": "unique",
+        "def": "UNIQUE (username)"
+      },
+      {
+        "name": "users_wechat_open_id_key",
+        "type": "unique",
+        "def": "UNIQUE (wechat_open_id)"
+      },
+      {
+        "name": "users_wechat_union_id_key",
+        "type": "unique",
+        "def": "UNIQUE (wechat_union_id)"
+      }
+    ],
+    "user_skills": [
+      {
+        "name": "user_skills_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ],
+    "waitlist_subscribers": [
+      {
+        "name": "waitlist_subscribers_email_unique",
+        "type": "unique",
+        "def": "UNIQUE (email)"
+      },
+      {
+        "name": "waitlist_subscribers_pkey",
+        "type": "primary_key",
+        "def": "PRIMARY KEY (id)"
+      }
+    ]
+  },
+  "sequences": [
+    "admin_audit_log_id_seq",
+    "invite_codes_id_seq",
+    "otp_codes_id_seq",
+    "waitlist_subscribers_id_seq"
+  ]
+}
