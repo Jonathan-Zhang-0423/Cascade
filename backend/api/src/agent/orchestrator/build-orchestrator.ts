@@ -10,6 +10,7 @@ import { storage, PROJECT_MEMORY_MAX } from "../../infra/storage";
 import { BuildTelemetry, type BuildTelemetryRecord } from "../../infra/telemetry";
 import {
   buildBuilderTools,
+  type BuilderToolState,
 } from "../tools/agent-tools";
 import { getMobilePromptSupplement } from "../prompts/mobile-prompt-supplements";
 import { buildEditorCompileCheckPrompt } from "../tools/compile-checks";
@@ -25,6 +26,8 @@ import { buildMcpAliasTools, buildMcpTools, getMcpToolNames } from "../mcp/mcp-t
 import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
 import { ToolRegistry } from "../tools/tool-registry";
 import type { ToolHandler, ToolSchema } from "../loop/agent-loop";
+
+const BUILDER_MAX_ITERATIONS = 200;
 
 export interface BuildFile {
   path: string;
@@ -146,6 +149,7 @@ function buildEditorToolset(
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
   sources: string[];
+  state: BuilderToolState;
 } {
   const registry = new ToolRegistry();
   const builtinTools = buildBuilderTools(session, steps, options?.telemetry, options?.exitSignal);
@@ -166,7 +170,7 @@ function buildEditorToolset(
   }
 
   const built = registry.build();
-  return { ...built, sources: registry.listSources() };
+  return { ...built, sources: registry.listSources(), state: builtinTools.state };
 }
 
 type LoadedUserSkills = Awaited<ReturnType<typeof loadUserSkills>>;
@@ -698,16 +702,33 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         console.log(
           `[BuildSession ${session.id}] Tool registry sources: ${builderTools.sources.join(", ") || "(none)"}; tools=${builderTools.schemas.length}`,
         );
-        await withFallback(providerChainEditor, async (client, model) => {
-          await runAgentLoop(
+        const loopResult = await withFallback(providerChainEditor, async (client, model) => {
+          return await runAgentLoop(
             builderSystemPrompt,
             [{ role: "user", content: builderInitialMessage }],
             builderTools.schemas,
             builderTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 40, emitOnIterationExhausted: true, client, model, phase: "editor", partCtx, sessionId: session.id, exitSignal: builderExitSignal },
+            { exitTools: ["finish_build"], maxIterations: BUILDER_MAX_ITERATIONS, client, model, phase: "editor", partCtx, sessionId: session.id, exitSignal: builderExitSignal },
           );
         });
+        if (loopResult.exhausted && !builderExitSignal.exit && !loopResult.exitTool) {
+          const completed = builderTools.state.getCompletedStepCount();
+          const message =
+            completed > 0
+              ? `Agent paused after reaching the iteration budget (${completed}/${normalizedSteps.length} steps completed). Continue the build to finish the remaining steps.`
+              : "Agent reached the iteration budget before completing a build step. Try breaking the task into smaller steps or continuing with a narrower request.";
+          console.warn(
+            `[build-session] builder iteration budget exhausted sessionId=${session.id} ` +
+              `completed=${completed}/${normalizedSteps.length}`,
+          );
+          emit({ type: "build_error", message });
+          emit({ type: "done" });
+          telemetry.setFinalStatus("error", message);
+          await telemetry.flush();
+          if (mcpManager) mcpManager.disconnect().catch(() => {});
+          return;
+        }
       }
     });
   } catch (err: unknown) {

@@ -34,6 +34,7 @@ export interface AgentLoopResult {
   finalText: string;
   exitTool?: string;
   exitArgs?: Record<string, unknown>;
+  exhausted?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
 }
 
@@ -109,6 +110,7 @@ export async function runAgentLoop(
   let emptyNudgeCount = 0; // bounded nudge counter for empty responses
   let previousToolCallCount = 0;
   let previousToolErrorCount = 0;
+  let exhausted = false;
 
   // Model adapter: encapsulates per-model thinking params, timeout, and
   // reasoning extraction. Auto-created from client+model if not provided.
@@ -368,6 +370,9 @@ export async function runAgentLoop(
       }
 
       finalText = assistantText;
+      if (iteration === maxIterations - 1) {
+        exhausted = true;
+      }
       if (partCtx) {
         const stepFinish = createPart("step-finish", sessionId, messageId, {
           step: iteration + 1,
@@ -559,10 +564,17 @@ export async function runAgentLoop(
     }
 
     if (shouldExit) break;
+
+    if (iteration === maxIterations - 1) {
+      exhausted = true;
+    }
   }
 
-  // 迭代耗尽但没有正常退出 — 只对 builder 主循环 emit 错误，子 agent 静默退出
-  if (!exitTool && !opts.exitSignal?.exit) {
+  // 迭代耗尽但没有正常退出 — return a structured signal to the caller. The
+  // orchestrator owns final session state; emitting a fatal build_error here can
+  // race with later all_complete handling and make the UI think a build both
+  // failed and succeeded.
+  if (exhausted && !exitTool && !opts.exitSignal?.exit) {
     console.warn(`[agent-loop] maxIterations (${maxIterations}) reached without exit signal. sessionId=${sessionId}`);
     if (opts.emitOnIterationExhausted) {
       emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
@@ -573,6 +585,7 @@ export async function runAgentLoop(
     finalText,
     exitTool,
     exitArgs,
+    exhausted,
     tokenUsage: totalInputTokens + totalOutputTokens > 0
       ? { input: totalInputTokens, output: totalOutputTokens, total: totalInputTokens + totalOutputTokens }
       : undefined,

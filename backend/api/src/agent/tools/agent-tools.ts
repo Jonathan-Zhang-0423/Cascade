@@ -197,6 +197,11 @@ export interface ManagerSessionState {
   plan?: Record<string, unknown>;
 }
 
+export interface BuilderToolState {
+  getCompletedStepCount(): number;
+  getCompletedSteps(): Array<number | string>;
+}
+
 export function buildBuilderTools(
   session: BuildSessionState,
   planSteps?: BuildStep[],
@@ -205,6 +210,7 @@ export function buildBuilderTools(
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
+  state: BuilderToolState;
 } {
   const stepByNum = new Map<number, BuildStep>();
   if (planSteps) {
@@ -831,7 +837,14 @@ export function buildBuilderTools(
   schemas.push(mem.schema);
   handlers[mem.schema.function.name] = mem.handler;
 
-  return { schemas, handlers };
+  return {
+    schemas,
+    handlers,
+    state: {
+      getCompletedStepCount: () => completedSteps.size,
+      getCompletedSteps: () => Array.from(completedSteps),
+    },
+  };
 }
 
 export function buildVerifierTools(
