@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { SiteBeian } from "../components/SiteBeian";
 import cascadeLogo from "../assets/cascade-logo.png";
 import iconFeature1 from "../assets/icon-feature-1.svg";
@@ -29,358 +29,10 @@ if (typeof document !== "undefined") {
 
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
-// ─── Phone animation frame hook ────────────────────────────────────────────
-const FRAME_DURATIONS = [4500, 5000, 5000]; // ms per frame
-
-function usePhoneFrames() {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setFrame((f) => (f + 1) % 3);
-    }, FRAME_DURATIONS[frame]);
-    return () => clearTimeout(timer);
-  }, [frame]);
-  return frame;
-}
-
-// ─── Shared phone header ───────────────────────────────────────────────────
-function PhoneHeader() {
-  return (
-    <>
-      <div className="flex items-center justify-between px-4 pt-3 pb-1">
-        <span className="text-[10px] font-medium" style={{ color: "rgba(0,0,0,0.5)" }}>9:41</span>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-[6px] rounded-sm border border-black/30 relative">
-            <div className="absolute inset-[1px] right-[2px] bg-black/30 rounded-sm" />
-          </div>
-        </div>
-      </div>
-      <div className="px-4 py-2 border-b border-black/[0.06]">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-black flex items-center justify-center shrink-0">
-            <img src={cascadeLogo} alt="Cascade" className="w-4 h-4 object-contain" style={{ filter: "brightness(0) invert(1)" }} />
-          </div>
-          <span className="text-black text-[12px] font-semibold">Cascade AI</span>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─── Frame 1: Chat input with typewriter ───────────────────────────────────
-const CHAT_TEXT = "Build me a fitness tracker app";
-const CHAT_TYPE_SPEED = 65;
-
-function Frame1() {
-  const [typed, setTyped] = useState("");
-  const [cursor, setCursor] = useState(true);
-  const idx = useRef(0);
-
-  useEffect(() => {
-    idx.current = 0;
-    setTyped("");
-    let timeout: ReturnType<typeof setTimeout>;
-    function tick() {
-      if (idx.current < CHAT_TEXT.length) {
-        idx.current += 1;
-        setTyped(CHAT_TEXT.slice(0, idx.current));
-        timeout = setTimeout(tick, CHAT_TYPE_SPEED);
-      }
-    }
-    timeout = setTimeout(tick, 400);
-    return () => clearTimeout(timeout);
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => setCursor((v) => !v), 530);
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <div className="flex flex-col h-full bg-white rounded-[28px] overflow-hidden">
-      <PhoneHeader />
-      {/* messages */}
-      <div className="flex-1 px-3 py-3 flex flex-col gap-2 overflow-hidden">
-        <div className="self-start max-w-[80%] bg-[#f3f4f6] rounded-2xl rounded-tl-sm px-3 py-2">
-          <p className="text-black/70 text-[10px] leading-relaxed">Hi! What would you like to build today?</p>
-        </div>
-        <div className="self-end max-w-[85%] bg-black rounded-2xl rounded-tr-sm px-3 py-2">
-          <p className="text-white text-[10px] leading-relaxed">
-            {typed}
-            <span style={{ opacity: cursor ? 1 : 0, transition: "opacity 0.1s" }}>|</span>
-          </p>
-        </div>
-      </div>
-      {/* input bar */}
-      <div className="px-3 pb-4 pt-2 border-t border-black/[0.06]">
-        <div className="flex items-center gap-2 bg-[#f3f4f6] rounded-full px-3 py-2">
-          <span className="text-black/30 text-[10px] flex-1">Message Cascade...</span>
-          <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center shrink-0">
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-              <path d="M2 8L8 5L2 2V4.5L6 5L2 5.5V8Z" fill="white" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Frame 2: Plan cards ────────────────────────────────────────────────────
-const PLAN_STEPS = [
-  { icon: "thinking", label: "Thinking", desc: "Analyzing your request…" },
-  { icon: "planning", label: "Planning", desc: "Generating development plan" },
-  { icon: "building", label: "Building", desc: "Executing step by step" },
-];
-
-function SpinnerIcon() {
-  return (
-    <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-      className="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-gray-700"
-    />
-  );
-}
-
-function Frame2() {
-  return (
-    <div className="flex flex-col h-full bg-white rounded-[28px] overflow-hidden">
-      <PhoneHeader />
-      {/* plan content */}
-      <div className="flex-1 px-3 py-3 flex flex-col gap-2 overflow-hidden">
-        <p className="text-black/40 text-[9px] font-mono uppercase tracking-wider mb-1">Execution Plan</p>
-        {PLAN_STEPS.map((step, i) => (
-          <motion.div
-            key={step.label}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.45, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center gap-2 bg-[#f9fafb] rounded-xl px-3 py-2 relative overflow-hidden"
-          >
-            {/* black left border */}
-            <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-black rounded-l-xl" />
-            <div className="pl-1 shrink-0">
-              {i === 0 ? <SpinnerIcon /> :
-               i === 1 ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
-                  <rect x="1" y="2" width="12" height="2" rx="1" fill="currentColor" opacity="0.6"/>
-                  <rect x="1" y="6" width="9" height="2" rx="1" fill="currentColor" opacity="0.8"/>
-                  <rect x="1" y="10" width="6" height="2" rx="1" fill="currentColor"/>
-                </svg>
-               ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
-                  <path d="M3 11L6 8L3 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  <path d="M7 11H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  <path d="M7 8H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-               )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-black text-[10px] font-medium leading-tight">{step.label}</p>
-              <p className="text-gray-400 text-[8.5px] leading-tight mt-0.5">{step.desc}</p>
-            </div>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: i < 2 ? 1 : 0.3 }}
-              transition={{ delay: i * 0.45 + 0.3 }}
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${i === 0 ? "bg-black animate-pulse" : i === 1 ? "bg-gray-400" : "bg-gray-200"}`}
-            />
-          </motion.div>
-        ))}
-      </div>
-      {/* bottom hint */}
-      <div className="px-4 pb-4 pt-1">
-        <div className="flex items-center gap-1.5">
-          <motion.div
-            animate={{ opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="w-1 h-1 rounded-full bg-black/50"
-          />
-          <span className="text-black/50 text-[9px] font-mono">Working on it…</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Frame 3: App preview ───────────────────────────────────────────────────
-const WORKOUT_ITEMS = [
-  { label: "Morning Run", sub: "5.2 km · 32 min", done: true },
-  { label: "Push-ups", sub: "3 sets × 20 reps", done: true },
-  { label: "Evening Stretch", sub: "15 min", done: false },
-];
-
-function Frame3() {
-  const [badgeVisible, setBadgeVisible] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setBadgeVisible(true), 800);
-    return () => clearTimeout(t);
-  }, []);
-
-  return (
-    <div className="flex flex-col h-full bg-white rounded-[28px] overflow-hidden relative">
-      <PhoneHeader />
-      {/* app header */}
-      <div className="px-4 py-3 bg-white border-b border-black/[0.06]">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-black text-[13px] font-bold leading-tight">Fitness Tracker</p>
-            <p className="text-gray-400 text-[9px] mt-0.5">Today · 2 of 3 complete</p>
-          </div>
-          <div className="w-7 h-7 rounded-full bg-black/[0.06] flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 2C4.24 2 2 4.24 2 7s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 9c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" fill="#000" opacity="0.4"/>
-              <path d="M7 4.5v2.75l1.75 1.75" stroke="#000" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-      {/* progress bar */}
-      <div className="px-4 py-2 bg-white">
-        <div className="h-1 bg-black/[0.08] rounded-full overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: "66%" }}
-            transition={{ duration: 1, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="h-full bg-black rounded-full"
-          />
-        </div>
-      </div>
-      {/* workout list */}
-      <div className="flex-1 px-3 py-2 flex flex-col gap-1.5 overflow-hidden">
-        <p className="text-black/30 text-[8.5px] uppercase tracking-wider font-mono px-1 mb-0.5">Today's Workouts</p>
-        {WORKOUT_ITEMS.map((item, i) => (
-          <motion.div
-            key={item.label}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.15 + 0.2, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl ${
-              item.done
-                ? "bg-black/[0.04]"
-                : "bg-black/[0.02]"
-            }`}
-          >
-            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-              item.done ? "border-black bg-black" : "border-black/30"
-            }`}>
-              {item.done && (
-                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                  <path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`text-[10px] font-medium leading-tight ${item.done ? "text-black/40 line-through" : "text-black"}`}>
-                {item.label}
-              </p>
-              <p className="text-black/30 text-[8px] mt-0.5">{item.sub}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-      {/* bottom nav */}
-      <div className="px-4 pb-4 pt-2 border-t border-black/[0.06] flex items-center justify-around">
-        {["Home", "Stats", "Goals"].map((tab, i) => (
-          <div key={tab} className={`flex flex-col items-center gap-0.5 ${i === 0 ? "opacity-100" : "opacity-25"}`}>
-            <div className="w-4 h-4 rounded-sm bg-black"
-              style={{ clipPath: i === 0 ? "polygon(20% 0%,80% 0%,100% 100%,0% 100%)" : undefined }}
-            />
-            <span className="text-[7px] text-black">{tab}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* App Ready badge */}
-      <AnimatePresence>
-        {badgeVisible && (
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 18 }}
-            className="absolute bottom-14 right-3 flex items-center gap-1.5 bg-black rounded-full px-2.5 py-1 shadow-lg shadow-black/20"
-          >
-            <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-              <path d="M2 5.5L4.5 8L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-white text-[9px] font-semibold whitespace-nowrap">App Ready</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ─── Phone shell wrapper ────────────────────────────────────────────────────
-function PhoneDemo() {
-  const frame = usePhoneFrames();
-
-  return (
-    <div className="relative mx-auto" style={{ width: 280, height: 560 }}>
-      {/* blue-purple ambient glow behind phone */}
-      <div
-        className="absolute pointer-events-none"
-        style={{
-          inset: "-60px",
-          background: "radial-gradient(ellipse at 50% 50%, rgba(99,102,255,0.22) 0%, rgba(139,92,246,0.14) 40%, transparent 70%)",
-          filter: "blur(28px)",
-        }}
-      />
-      {/* outer shell */}
-      <div
-        className="absolute inset-0 rounded-[44px] shadow-2xl"
-        style={{
-          background: "linear-gradient(145deg, #2a2a3e 0%, #0d0d1a 60%, #1a1a2e 100%)",
-          boxShadow: "0 40px 80px rgba(0,0,0,0.50), 0 0 0 1px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12)",
-        }}
-      />
-      {/* side buttons */}
-      <div className="absolute -left-[3px] top-[110px] w-[3px] h-10 bg-[#1a1a2e] rounded-l-sm" />
-      <div className="absolute -left-[3px] top-[168px] w-[3px] h-10 bg-[#1a1a2e] rounded-l-sm" />
-      <div className="absolute -right-[3px] top-[136px] w-[3px] h-14 bg-[#1a1a2e] rounded-r-sm" />
-      {/* screen bezel */}
-      <div className="absolute inset-[7px] rounded-[37px] bg-white overflow-hidden">
-        {/* notch */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-6 bg-[#0d0d1a] rounded-b-2xl z-10 flex items-center justify-center gap-1.5 pt-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-          <div className="w-8 h-2 rounded-full bg-white/10" />
-        </div>
-        {/* frame content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={frame}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            className="absolute inset-0"
-          >
-            {frame === 0 && <Frame1 />}
-            {frame === 1 && <Frame2 />}
-            {frame === 2 && <Frame3 />}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-      {/* home indicator */}
-      <div className="absolute bottom-[12px] left-1/2 -translate-x-1/2 w-20 h-1 bg-white/20 rounded-full" />
-      {/* top glow */}
-      <div
-        className="absolute inset-0 rounded-[44px] pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse at 50% 0%, rgba(99,102,255,0.15) 0%, transparent 60%)",
-        }}
-      />
-    </div>
-  );
-}
-
 // ─── Feature cards ──────────────────────────────────────────
 const FEATURES = [
   {
-    icon: <div className="w-20 h-20 flex items-center justify-center"><img src={iconFeature1} alt="Build anywhere" className="w-full h-full object-contain" /></div>,
+    icon: <div className="w-14 h-14 flex items-center justify-center"><img src={iconFeature1} alt="Build anywhere" className="w-full h-full object-contain" /></div>,
     title: "Build anywhere, anytime",
     desc: "Cascade AI works on all your devices — phone, tablet, PC. So you can build anywhere at anytime.",
   },
@@ -532,11 +184,11 @@ export default function LandingPage() {
           borderBottom: scrolled ? "1px solid rgba(0,0,0,0.07)" : "1px solid transparent",
         }}
       >
-        <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
-          <img src={cascadeLogo} alt="Cascade AI" data-testid="nav-logo" className="h-8 w-auto object-contain" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 sm:h-20 flex items-center justify-between">
+          <img src={cascadeLogo} alt="Cascade AI" data-testid="nav-logo" className="h-6 sm:h-8 w-auto object-contain" />
           <a
             href="/login"
-            className="px-5 py-2 rounded-full text-[14px] font-semibold text-white transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
+            className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-full text-[13px] sm:text-[14px] font-semibold text-white whitespace-nowrap transition-all duration-200 hover:opacity-85 active:scale-[0.97]"
             style={{ backgroundColor: "#000000" }}
           >
             Try it now
@@ -565,7 +217,7 @@ export default function LandingPage() {
             <motion.p
               variants={fadeUp}
               custom={1}
-              className="text-[19px] sm:text-[22px] text-gray-800 mb-12 leading-relaxed lg:whitespace-nowrap"
+              className="text-[19px] sm:text-[20px] md:text-[22px] text-gray-800 mb-12 leading-relaxed lg:whitespace-nowrap"
               lang="en"
             >
               See your ideas come to life, and scale to new heights — all with Cascade AI.
@@ -676,7 +328,7 @@ export default function LandingPage() {
           <img
             src={cascadeLogo}
             alt="Cascade AI"
-            className="hidden md:block h-6 w-auto"
+            className="h-5 md:h-6 w-auto"
             style={{ filter: "brightness(0)" }}
           />
           <div className="flex flex-col items-center gap-1.5 md:items-end">

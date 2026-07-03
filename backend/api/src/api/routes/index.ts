@@ -27,7 +27,7 @@ import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
 import { db, pool } from "../../infra/db";
-import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
+import { eq, and, desc, count, isNull, or, sql, inArray } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
 import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
@@ -5432,6 +5432,85 @@ Generate the cascade.md content for this project based on both the plan and the 
     } catch (err) {
       console.error("[admin/send-invites]", err);
       res.status(500).json({ error: "Failed to send invites" });
+    }
+  });
+
+  // POST /api/admin/bulk-message — send custom email and/or in-app notification to selected waitlist subscribers.
+  // Email goes straight to the subscriber's address. In-app notification requires a real user
+  // account, so subscribers who never registered are matched by email against `users` and
+  // skipped if no match is found — reported back as notificationSkipped.
+  app.post("/api/admin/bulk-message", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { subscriberIds, subject, content, viaEmail, viaNotification } = req.body as {
+        subscriberIds?: number[];
+        subject?: string;
+        content?: string;
+        viaEmail?: boolean;
+        viaNotification?: boolean;
+      };
+      if (!Array.isArray(subscriberIds) || subscriberIds.length === 0) {
+        return res.status(400).json({ error: "No subscriber IDs provided" });
+      }
+      const trimmedContent = (content ?? "").trim();
+      const trimmedSubject = (subject ?? "").trim();
+      if (!trimmedContent) return res.status(400).json({ error: "Content required" });
+      if (!viaEmail && !viaNotification) return res.status(400).json({ error: "Select at least one channel" });
+      if (viaEmail && !trimmedSubject) return res.status(400).json({ error: "Subject required for email" });
+
+      const targets = await db.select().from(waitlistSubscribers).where(inArray(waitlistSubscribers.id, subscriberIds));
+
+      let notificationSent = 0;
+      let notificationSkipped = 0;
+      if (viaNotification && targets.length > 0) {
+        const matchedUsers = await db.select().from(users).where(inArray(users.email, targets.map((t) => t.email)));
+        if (matchedUsers.length > 0) {
+          await db.insert(notifications).values(
+            matchedUsers.map((u) => ({
+              userId: u.id,
+              type: "system",
+              title: trimmedSubject || "系统通知",
+              body: trimmedContent,
+            }))
+          );
+        }
+        notificationSent = matchedUsers.length;
+        notificationSkipped = targets.length - matchedUsers.length;
+      }
+
+      let emailSent = 0;
+      let emailFailed = 0;
+      if (viaEmail) {
+        const escapeHtml = (s: string) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const paragraphs = trimmedContent
+          .split("\n")
+          .map((line) => `<p style="margin:0 0 16px">${escapeHtml(line) || "&nbsp;"}</p>`)
+          .join("");
+        const html = `
+          <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+            ${paragraphs}
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+            <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+          </div>
+        `;
+        for (const sub of targets) {
+          try {
+            await sendEmail({ to: sub.email, subject: trimmedSubject, html, text: trimmedContent });
+            emailSent++;
+          } catch (err) {
+            console.error("[admin/bulk-message] send failed", err, sub.email);
+            emailFailed++;
+          }
+          // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
+          await new Promise((r) => setTimeout(r, 600));
+        }
+      }
+
+      res.json({ ok: true, emailSent, emailFailed, notificationSent, notificationSkipped });
+    } catch (err) {
+      console.error("[admin/bulk-message]", err);
+      res.status(500).json({ error: "Failed to send bulk message" });
     }
   });
 

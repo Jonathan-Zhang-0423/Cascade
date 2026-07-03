@@ -139,6 +139,23 @@ export default function CreateSquarePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [categoryOpen]);
 
+  // Close category dropdown on scroll — the portal's position is computed once at open time
+  // (absolute coords, not re-measured), so if the horizontal filter row scrolls (common on
+  // mobile touch drag) or the page scrolls, the trigger button moves but the dropdown doesn't,
+  // leaving them visually detached. Closing on any scroll is simpler and more robust than
+  // tracking position continuously.
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const closeIt = () => { setCategoryOpen(false); setCategoryDropPos(null); };
+    const filterRow = categoryDropRef.current?.closest(".overflow-x-auto");
+    window.addEventListener("scroll", closeIt, { passive: true });
+    filterRow?.addEventListener("scroll", closeIt, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", closeIt);
+      filterRow?.removeEventListener("scroll", closeIt);
+    };
+  }, [categoryOpen]);
+
   // Fetch authors list on mount
   useEffect(() => {
     fetch("/api/square/authors")

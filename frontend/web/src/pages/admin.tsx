@@ -82,6 +82,11 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const authChecked = useRef(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkMsgForm, setBulkMsgForm] = useState({
+    open: false, subject: "", content: "", viaEmail: true, viaNotification: true,
+  });
+  const [bulkMsgSending, setBulkMsgSending] = useState(false);
+  const [bulkMsgResult, setBulkMsgResult] = useState("");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState("");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
@@ -637,6 +642,37 @@ export default function AdminPage() {
     setColFilters((prev) => { const next = { ...prev }; delete next[key]; return next; });
   }
 
+  async function handleSendBulkMessage() {
+    if (selected.size === 0 || !bulkMsgForm.content.trim()) return;
+    setBulkMsgSending(true);
+    setBulkMsgResult("");
+    try {
+      const res = await fetch("/api/admin/bulk-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          subscriberIds: Array.from(selected),
+          subject: bulkMsgForm.subject.trim(),
+          content: bulkMsgForm.content.trim(),
+          viaEmail: bulkMsgForm.viaEmail,
+          viaNotification: bulkMsgForm.viaNotification,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "发送失败");
+      setBulkMsgResult(
+        `邮件已发送 ${body.emailSent} 封${body.emailFailed > 0 ? `（失败 ${body.emailFailed} 封）` : ""}，站内通知已发送 ${body.notificationSent} 条${body.notificationSkipped > 0 ? `（跳过未注册 ${body.notificationSkipped} 人）` : ""}`
+      );
+      setSelected(new Set());
+      setBulkMsgForm({ open: false, subject: "", content: "", viaEmail: true, viaNotification: true });
+    } catch (err) {
+      setBulkMsgResult(err instanceof Error ? err.message : "发送失败，请重试");
+    } finally {
+      setBulkMsgSending(false);
+    }
+  }
+
   const filtered = (data?.subscribers ?? []).filter((s) => {
     if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (filterType === "edu" && !s.isEdu) return false;
@@ -646,24 +682,25 @@ export default function AdminPage() {
     return true;
   });
 
-  const pendingFiltered = filtered.filter((s) => s.status === "pending" || s.status === "email_failed");
-  const allPendingSelected = pendingFiltered.length > 0 && pendingFiltered.every((s) => selected.has(s.id));
+  const allSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
 
   function toggleSelectAll() {
-    if (allPendingSelected) {
+    if (allSelected) {
       setSelected((prev) => {
         const next = new Set(prev);
-        pendingFiltered.forEach((s) => next.delete(s.id));
+        filtered.forEach((s) => next.delete(s.id));
         return next;
       });
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
-        pendingFiltered.forEach((s) => next.add(s.id));
+        filtered.forEach((s) => next.add(s.id));
         return next;
       });
     }
   }
+
+  const selectedRegisteredCount = filtered.filter((s) => selected.has(s.id) && s.registeredAt).length;
 
   return (
     <div
@@ -781,6 +818,14 @@ export default function AdminPage() {
                       style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
                     >
                       {loading ? "Refreshing…" : "Refresh"}
+                    </button>
+                    <button
+                      onClick={() => setBulkMsgForm((f) => ({ ...f, open: true }))}
+                      disabled={selected.size === 0}
+                      className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-40"
+                      style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                    >
+                      群发消息 {selected.size > 0 ? `(${selected.size})` : ""}
                     </button>
                     <button
                       onClick={handleExportCSV}
@@ -927,6 +972,71 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {bulkMsgResult && <p className="mb-4 text-[13px] text-green-600 font-medium">{bulkMsgResult}</p>}
+
+            {/* 群发消息面板 */}
+            {bulkMsgForm.open && (
+              <div className="rounded-2xl p-5 flex flex-col gap-3 mb-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 20px rgba(0,0,0,0.05)" }}>
+                <p className="text-[13px] text-gray-500">
+                  已选 <strong className="text-black">{selected.size}</strong> 位用户，其中 <strong className="text-black">{selectedRegisteredCount}</strong> 位已注册（可收到站内通知，其余仅能收到邮件）
+                </p>
+                <input
+                  type="text"
+                  value={bulkMsgForm.subject}
+                  onChange={(e) => setBulkMsgForm((f) => ({ ...f, subject: e.target.value }))}
+                  placeholder="标题"
+                  className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                  style={{ fontFamily: FONT, background: "white", border: "1px solid rgba(0,0,0,0.10)", color: "#111827" }}
+                />
+                <textarea
+                  value={bulkMsgForm.content}
+                  onChange={(e) => setBulkMsgForm((f) => ({ ...f, content: e.target.value }))}
+                  placeholder="正文内容…"
+                  rows={5}
+                  className="px-3 py-2.5 rounded-xl text-[13px] outline-none resize-none"
+                  style={{ fontFamily: FONT, background: "white", border: "1px solid rgba(0,0,0,0.10)", color: "#111827" }}
+                />
+                <div className="flex items-center gap-5">
+                  <label className="flex items-center gap-2 text-[13px] text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkMsgForm.viaEmail}
+                      onChange={(e) => setBulkMsgForm((f) => ({ ...f, viaEmail: e.target.checked }))}
+                      className="rounded"
+                    />
+                    发邮件
+                  </label>
+                  <label className="flex items-center gap-2 text-[13px] text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkMsgForm.viaNotification}
+                      onChange={(e) => setBulkMsgForm((f) => ({ ...f, viaNotification: e.target.checked }))}
+                      className="rounded"
+                    />
+                    发站内通知
+                  </label>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  <button
+                    onClick={handleSendBulkMessage}
+                    disabled={bulkMsgSending || !bulkMsgForm.content.trim() || (!bulkMsgForm.viaEmail && !bulkMsgForm.viaNotification)}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-40"
+                    style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                  >
+                    {bulkMsgSending ? "发送中，请勿关闭页面…" : "发送"}
+                  </button>
+                  <button
+                    onClick={() => setBulkMsgForm({ open: false, subject: "", content: "", viaEmail: true, viaNotification: true })}
+                    disabled={bulkMsgSending}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)" }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Table */}
             {filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-400 text-[14px]">No subscribers found.</div>
@@ -945,7 +1055,7 @@ export default function AdminPage() {
                       <th className="px-5 py-3.5 text-left w-10">
                         <input
                           type="checkbox"
-                          checked={allPendingSelected}
+                          checked={allSelected}
                           onChange={toggleSelectAll}
                           className="rounded"
                         />
@@ -968,20 +1078,18 @@ export default function AdminPage() {
                         className={selected.has(s.id) ? "bg-gray-50/80" : "hover:bg-gray-50/40 transition-colors"}
                       >
                         <td className="px-5 py-3.5">
-                          {(s.status === "pending" || s.status === "email_failed") && (
-                            <input
-                              type="checkbox"
-                              checked={selected.has(s.id)}
-                              onChange={() => {
-                                setSelected((prev) => {
-                                  const next = new Set(prev);
-                                  next.has(s.id) ? next.delete(s.id) : next.add(s.id);
-                                  return next;
-                                });
-                              }}
-                              className="rounded"
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={selected.has(s.id)}
+                            onChange={() => {
+                              setSelected((prev) => {
+                                const next = new Set(prev);
+                                next.has(s.id) ? next.delete(s.id) : next.add(s.id);
+                                return next;
+                              });
+                            }}
+                            className="rounded"
+                          />
                         </td>
                         <td className="px-5 py-3.5 font-medium text-gray-900">{s.email}</td>
                         <td className="px-5 py-3.5">

@@ -123,8 +123,9 @@ export function AppCard({ app, onClick, onFork, index = 0 }: AppCardProps) {
             )}
           </div>
 
-          {/* Hover action buttons — bottom right */}
-          <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {/* Action buttons — bottom right. Always visible on touch devices (no hover state
+              to reveal them); desktop keeps the hover-reveal treatment. */}
+          <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}
