@@ -169,6 +169,189 @@ function buildEditorToolset(
   return { ...built, sources: registry.listSources() };
 }
 
+type LoadedUserSkills = Awaited<ReturnType<typeof loadUserSkills>>;
+
+export interface PreparedBuildContext {
+  skillContent?: string;
+  projectMemory?: string;
+  userSkillsLoaded: LoadedUserSkills;
+  activeCapabilities: Array<{ name: string; score: number; tier: string }>;
+}
+
+function appendSkillContent(current: string | undefined, addition: string | null | undefined): string | undefined {
+  const trimmed = addition?.trim();
+  if (!trimmed) return current;
+  return current ? `${current}\n\n---\n\n${trimmed}` : trimmed;
+}
+
+export async function prepareBuildContext(
+  session: BuildSessionState,
+  normalizedSteps: BuildStep[],
+  providerChainEditor: AIProvider[],
+): Promise<PreparedBuildContext> {
+  const planText = [
+    session.userRequest,
+    session.plan.summary || "",
+    normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
+  ].join(" ");
+
+  const shouldDetectSystemSkills = !session.skillContent;
+  const frameworkSkill = session.framework ? getSkillForFramework(session.framework) : null;
+
+  const techSkillPromise = !shouldDetectSystemSkills
+    ? Promise.resolve<string | null>(session.skillContent ?? null)
+    : (async () => {
+        const detected = await detectSkillsFromText(planText, providerChainEditor);
+        const merged: string[] = [];
+        if (frameworkSkill) merged.push(frameworkSkill);
+        for (const name of detected) {
+          if (!merged.includes(name)) merged.push(name);
+        }
+        const finalSkills = merged.slice(0, 2);
+        return finalSkills.length > 0 ? loadSkills(finalSkills) : null;
+      })();
+
+  const capabilityPromise = (async (): Promise<{
+    content: string | null;
+    active: Array<{ name: string; score: number; tier: string }>;
+  }> => {
+    if (!shouldDetectSystemSkills) {
+      return { content: null, active: [] };
+    }
+    const detectedCapMatches = await detectCapabilitiesDetailed(planText);
+    if (detectedCapMatches.length === 0) {
+      return { content: null, active: [] };
+    }
+    console.log(
+      `[build-session] capability skills active: ${detectedCapMatches
+        .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
+        .join("; ")}`,
+    );
+    const content = await loadCapabilitiesTiered(detectedCapMatches);
+    return {
+      content,
+      active: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })),
+    };
+  })();
+
+  const memoryPromise = (async (): Promise<string | undefined> => {
+    if (!session.projectId || session.projectMemory) return session.projectMemory;
+    try {
+      return await storage.getProjectMemory(session.projectId);
+    } catch (err) {
+      console.warn(`[BuildSession ${session.id}] getProjectMemory failed:`, err instanceof Error ? err.message : err);
+      return undefined;
+    }
+  })();
+
+  const userSkillsPromise = loadUserSkills(
+    session,
+    session.projectId ?? "",
+    session.userId ?? "",
+  );
+
+  const [techSkillContent, capability, projectMemory, userSkillsLoaded] = await Promise.all([
+    techSkillPromise,
+    capabilityPromise,
+    memoryPromise,
+    userSkillsPromise,
+  ]);
+
+  let skillContent = appendSkillContent(undefined, techSkillContent);
+  skillContent = appendSkillContent(skillContent, capability.content);
+  if (userSkillsLoaded.knowledgePacks.length > 0) {
+    skillContent = appendSkillContent(skillContent, userSkillsLoaded.knowledgePacks.join("\n\n---\n\n"));
+  }
+
+  return {
+    skillContent,
+    projectMemory,
+    userSkillsLoaded,
+    activeCapabilities: capability.active,
+  };
+}
+
+export async function prepareSessionWorkspace(session: BuildSessionState): Promise<void> {
+  const sessionDir = `/tmp/cascade-sessions/${session.id}`;
+  try {
+    await mkdir(sessionDir, { recursive: true });
+    session.sessionDir = sessionDir;
+    await Promise.all(Array.from(session.files).map(async ([filePath, content]) => {
+      const abs = path.join(sessionDir, filePath.replace(/^\/+/, ""));
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, content, "utf-8");
+    }));
+    // Start LSP servers in the background (non-blocking — won't crash build if unavailable)
+    lspManager.start(session.id, sessionDir, "typescript").catch(() => {});
+    if (session.framework === "flutter") {
+      lspManager.start(session.id, sessionDir, "dart").catch(() => {});
+    }
+    // Register shell session (actual containers are created per-command)
+    shellManager.createShell(session.id, sessionDir, session.framework).catch(() => {});
+  } catch (err) {
+    console.warn("[BuildSession] Failed to create session directory:", err instanceof Error ? err.message : err);
+  }
+}
+
+export interface PreparedMcp {
+  manager: McpManager | null;
+  guidance?: string;
+}
+
+export async function prepareMcpManager(session: BuildSessionState): Promise<PreparedMcp> {
+  try {
+    const builtinConfig = getBuiltinMcpConfig();
+    const userConfig = loadMcpConfig(session);
+    const mergedConfig: McpConfig = {
+      servers: {
+        ...builtinConfig.servers,
+        ...(userConfig?.servers ?? {}),
+      },
+    };
+
+    const manager = new McpManager();
+    await manager.connect(mergedConfig);
+    if (manager.getAvailableTools().length === 0) {
+      return { manager };
+    }
+
+    const mcpToolNames = getMcpToolNames(manager);
+    const guidance = `\n\n## External Tools (MCP)
+
+You have access to external tools that connect to real-time services. These tools are prefixed with \`mcp_\` and provide capabilities beyond the project files (e.g. web search, API calls, database queries).
+
+Available MCP tools: ${mcpToolNames.join(", ")}
+
+### research(query) — IMPORTANT: Use Proactively
+
+Call \`research(query)\` whenever ANY of these conditions apply:
+- You are about to use a library, framework, or API and are not 100% certain of the **current** (${new Date().getFullYear()}) syntax or configuration format
+- The task mentions a specific version (e.g. "Tailwind v4", "Next.js 15", "React 19") — your training data may be outdated
+- You need to check if a package/API still exists or has been renamed/deprecated
+- You are writing configuration files (tsconfig, vite.config, tailwind.config, etc.) for a version you haven't seen in your training data
+- The user asks for "latest" or "newest" anything
+
+**DO NOT rely on your training data for version-specific details.** Your knowledge has a cutoff date. When in doubt, research first — it takes seconds and prevents hours of debugging wrong APIs.
+
+### CRITICAL: Research results are INTERNAL context only
+
+The output from research() is raw reference material for YOUR use only. NEVER paste, quote, or forward research results directly to the user. Instead:
+- Read and digest the research findings silently
+- Use the information to write correct code and make informed decisions
+- If the user needs to know something you learned, express it in your own words as part of your narration — brief, relevant, and integrated naturally
+
+Examples of when to call research:
+- "What is the Tailwind CSS v4 configuration format?" (before writing tailwind.config)
+- "React 19 useActionState API" (before using new React APIs)
+- "Vite 6 config changes" (before writing vite.config.ts)
+- "shadcn/ui latest install command" (before running install steps)`;
+    return { manager, guidance };
+  } catch (err) {
+    console.warn(`[BuildSession ${session.id}] MCP setup failed:`, err instanceof Error ? err.message : err);
+    return { manager: null };
+  }
+}
+
 export function filesMapToArray(files: Map<string, string>): BuildFile[] {
   return Array.from(files.entries()).map(([path, content]) => ({ path, content }));
 }
@@ -453,27 +636,6 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     userLang: session.userLang,
   });
 
-  // Create session directory and seed existing files onto disk
-  const sessionDir = `/tmp/cascade-sessions/${session.id}`;
-  try {
-    await mkdir(sessionDir, { recursive: true });
-    session.sessionDir = sessionDir;
-    for (const [filePath, content] of Array.from(session.files)) {
-      const abs = path.join(sessionDir, filePath.replace(/^\/+/, ""));
-      await mkdir(path.dirname(abs), { recursive: true });
-      await writeFile(abs, content, "utf-8");
-    }
-    // Start LSP servers in the background (non-blocking — won't crash build if unavailable)
-    lspManager.start(session.id, sessionDir, "typescript").catch(() => {});
-    if (session.framework === "flutter") {
-      lspManager.start(session.id, sessionDir, "dart").catch(() => {});
-    }
-    // Register shell session (actual containers are created per-command)
-    shellManager.createShell(session.id, sessionDir, session.framework).catch(() => {});
-  } catch (err) {
-    console.warn("[BuildSession] Failed to create session directory:", err instanceof Error ? err.message : err);
-  }
-
   // Per-phase optimal provider selection — respects user preference, optimizes by phase
   // Each chain: [user's provider first if available, then system defaults for that phase]
   const providerChainEditor = buildFallbackChain("editor", userProvider);
@@ -482,128 +644,18 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
   session.status = { type: "busy", agent: "editor" };
 
-  if (!session.skillContent) {
-    // AG-13: Multi-skill injection. Framework skill is always primary when
-    // known; we still ask the LLM for a complementary secondary so full-stack
-    // projects (e.g., rn-expo frontend + node-express backend) get both
-    // skill docs.
-    const frameworkSkill = session.framework ? getSkillForFramework(session.framework) : null;
-    const planText = [
-      userRequest,
-      plan.summary || "",
-      normalizedSteps.map((s) => `${s.title} ${s.description}`).join(" "),
-    ].join(" ");
-    const detected = await detectSkillsFromText(planText, providerChainEditor);
-    const merged: string[] = [];
-    if (frameworkSkill) merged.push(frameworkSkill);
-    for (const name of detected) {
-      if (!merged.includes(name)) merged.push(name);
-    }
-    const finalSkills = merged.slice(0, 2);
-    if (finalSkills.length > 0) {
-      const skillContent = await loadSkills(finalSkills);
-      if (skillContent) {
-        session.skillContent = skillContent;
-      }
-    }
+  const [preparedContext, preparedMcp] = await Promise.all([
+    prepareBuildContext(session, normalizedSteps, providerChainEditor),
+    prepareMcpManager(session),
+    prepareSessionWorkspace(session),
+  ]);
 
-    // Capability skills (game design, frontend design, completeness checks, ...)
-    // are an additive track — keyword-detected (no LLM) and appended after the
-    // tech-stack skill so they never compete for the 2 tech-stack slots above.
-    const detectedCapMatches = await detectCapabilitiesDetailed(planText);
-    if (detectedCapMatches.length > 0) {
-      console.log(
-        `[build-session] capability skills active: ${detectedCapMatches
-          .map((m) => `${m.name}[${m.tier}](score=${m.score} via ${m.matched.slice(0, 3).join(",")})`)
-          .join("; ")}`,
-      );
-      const capContent = await loadCapabilitiesTiered(detectedCapMatches);
-      if (capContent) {
-        session.skillContent = session.skillContent
-          ? `${session.skillContent}\n\n---\n\n${capContent}`
-          : capContent;
-        emit({ type: "capabilities_active", capabilities: detectedCapMatches.map((m) => ({ name: m.name, score: m.score, tier: m.tier })) });
-      }
-    }
-  }
-
-  // Load the per-project self-evolving memory doc (injected first as authoritative
-  // context by buildBuilderSystemPrompt). Best-effort — never block the build.
-  if (session.projectId && !session.projectMemory) {
-    try {
-      session.projectMemory = await storage.getProjectMemory(session.projectId);
-    } catch (err) {
-      console.warn(`[BuildSession ${session.id}] getProjectMemory failed:`, err instanceof Error ? err.message : err);
-    }
-  }
-
-  // Load user-defined skills (knowledge packs + tool plugins) from project files and DB
-  const userSkillsLoaded = await loadUserSkills(
-    session,
-    session.projectId ?? "",
-    session.userId ?? "",
-  );
-  if (userSkillsLoaded.knowledgePacks.length > 0) {
-    const userKnowledge = userSkillsLoaded.knowledgePacks.join("\n\n---\n\n");
-    session.skillContent = session.skillContent
-      ? `${session.skillContent}\n\n---\n\n${userKnowledge}`
-      : userKnowledge;
-  }
-
-  // MCP: Always start built-in search server; merge user config on top.
-  // Failures are non-blocking — a broken server won't stop the build.
-  let mcpManager: McpManager | null = null;
-  try {
-    const builtinConfig = getBuiltinMcpConfig();
-    const userConfig = loadMcpConfig(session);
-    const mergedConfig: McpConfig = {
-      servers: {
-        ...builtinConfig.servers,
-        ...(userConfig?.servers ?? {}),
-      },
-    };
-
-    mcpManager = new McpManager();
-    await mcpManager.connect(mergedConfig);
-    if (mcpManager.getAvailableTools().length > 0) {
-      const mcpToolNames = getMcpToolNames(mcpManager);
-      // Inject MCP tool guidance into the skill content so the editor knows how to use them
-      const mcpGuidance = `\n\n## External Tools (MCP)
-
-You have access to external tools that connect to real-time services. These tools are prefixed with \`mcp_\` and provide capabilities beyond the project files (e.g. web search, API calls, database queries).
-
-Available MCP tools: ${mcpToolNames.join(", ")}
-
-### research(query) — IMPORTANT: Use Proactively
-
-Call \`research(query)\` whenever ANY of these conditions apply:
-- You are about to use a library, framework, or API and are not 100% certain of the **current** (${new Date().getFullYear()}) syntax or configuration format
-- The task mentions a specific version (e.g. "Tailwind v4", "Next.js 15", "React 19") — your training data may be outdated
-- You need to check if a package/API still exists or has been renamed/deprecated
-- You are writing configuration files (tsconfig, vite.config, tailwind.config, etc.) for a version you haven't seen in your training data
-- The user asks for "latest" or "newest" anything
-
-**DO NOT rely on your training data for version-specific details.** Your knowledge has a cutoff date. When in doubt, research first — it takes seconds and prevents hours of debugging wrong APIs.
-
-### CRITICAL: Research results are INTERNAL context only
-
-The output from research() is raw reference material for YOUR use only. NEVER paste, quote, or forward research results directly to the user. Instead:
-- Read and digest the research findings silently
-- Use the information to write correct code and make informed decisions
-- If the user needs to know something you learned, express it in your own words as part of your narration — brief, relevant, and integrated naturally
-
-Examples of when to call research:
-- "What is the Tailwind CSS v4 configuration format?" (before writing tailwind.config)
-- "React 19 useActionState API" (before using new React APIs)
-- "Vite 6 config changes" (before writing vite.config.ts)
-- "shadcn/ui latest install command" (before running install steps)`;
-      session.skillContent = session.skillContent
-        ? `${session.skillContent}${mcpGuidance}`
-        : mcpGuidance;
-    }
-  } catch (err) {
-    console.warn(`[BuildSession ${session.id}] MCP setup failed:`, err instanceof Error ? err.message : err);
-    mcpManager = null;
+  session.projectMemory = preparedContext.projectMemory;
+  session.skillContent = appendSkillContent(preparedContext.skillContent, preparedMcp.guidance);
+  const userSkillsLoaded = preparedContext.userSkillsLoaded;
+  const mcpManager = preparedMcp.manager;
+  if (preparedContext.activeCapabilities.length > 0) {
+    emit({ type: "capabilities_active", capabilities: preparedContext.activeCapabilities });
   }
 
   emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
