@@ -766,8 +766,32 @@ if (typeof window !== "undefined") {
 
 let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingServerSync: { projectId: string; files: { path: string; content: string }[] } | null = null;
+const singleFileSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function singleFileSyncKey(projectId: string, path: string) {
+  return `${projectId}\n${path}`;
+}
+
+function cancelSingleFileSync(projectId: string, path: string) {
+  const key = singleFileSyncKey(projectId, path);
+  const timer = singleFileSyncTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    singleFileSyncTimers.delete(key);
+  }
+}
+
+function cancelAllSingleFileSyncs(projectId?: string) {
+  for (const [key, timer] of singleFileSyncTimers) {
+    if (!projectId || key.startsWith(`${projectId}\n`)) {
+      clearTimeout(timer);
+      singleFileSyncTimers.delete(key);
+    }
+  }
+}
 
 function syncFilesToServer(projectId: string, files: FileNode[]) {
+  cancelAllSingleFileSyncs(projectId);
   const flat = flattenToFlatFiles(files);
 
   if (serverSyncTimer) clearTimeout(serverSyncTimer);
@@ -785,6 +809,35 @@ function syncFilesToServer(projectId: string, files: FileNode[]) {
       body: JSON.stringify({ files: flatFiles }),
     }).catch(() => {});
   }, 1000);
+}
+
+function refreshPendingFullFileSync(projectId: string, files: FileNode[]) {
+  if (pendingServerSync?.projectId === projectId) {
+    pendingServerSync = { projectId, files: flattenToFlatFiles(files) };
+  }
+}
+
+function syncSingleFileToServer(projectId: string, path: string, content: string, delayMs = 500) {
+  cancelSingleFileSync(projectId, path);
+  const key = singleFileSyncKey(projectId, path);
+  const timer = setTimeout(() => {
+    singleFileSyncTimers.delete(key);
+    fetch(`/api/projects/${projectId}/files/single`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, content }),
+    }).catch(() => {});
+  }, delayMs);
+  singleFileSyncTimers.set(key, timer);
+}
+
+function deleteSingleFileFromServer(projectId: string, path: string) {
+  cancelSingleFileSync(projectId, path);
+  fetch(`/api/projects/${projectId}/files`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  }).catch(() => {});
 }
 
 async function fetchFilesFromServer(projectId: string): Promise<{ path: string; content: string }[] | null> {
@@ -1426,6 +1479,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state,
         activeFile: path,
         previewOverrideHtml: null,
+        layoutMode: "code" as const,
+        codeVisible: true,
         openFiles: state.openFiles.includes(path)
           ? state.openFiles
           : [...state.openFiles, path],
@@ -1439,6 +1494,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const next = {
         ...state,
         activeFile: path,
+        previewOverrideHtml: null,
+        layoutMode: "code" as const,
+        codeVisible: true,
         openFiles: state.openFiles.includes(path)
           ? state.openFiles
           : [...state.openFiles, path],
@@ -1470,7 +1528,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       debouncedPersist(next);
       if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+        refreshPendingFullFileSync(state.projectId, next.files);
+        syncSingleFileToServer(state.projectId, path, content);
       }
       return next;
     }),
@@ -1550,22 +1609,35 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addFile: (parentPath, name, type) =>
     set((state) => {
+      const normalizedParentPath = parentPath || "/project";
+      const newPath = `${normalizedParentPath}/${name}`;
+      const alreadyExists = !!findFileNode(state.files, newPath);
       const next = {
         ...state,
-        files: addFileToTree(state.files, parentPath, name, type),
+        files: addFileToTree(state.files, normalizedParentPath, name, type),
+        activeFile: type === "file" ? newPath : state.activeFile,
+        openFiles:
+          type === "file" && !state.openFiles.includes(newPath)
+            ? [...state.openFiles, newPath]
+            : state.openFiles,
+        layoutMode: type === "file" ? ("code" as const) : state.layoutMode,
+        codeVisible: type === "file" ? true : state.codeVisible,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+      if (state.projectId && type === "file" && !alreadyExists) {
+        refreshPendingFullFileSync(state.projectId, next.files);
+        syncSingleFileToServer(state.projectId, newPath, "", 0);
       }
       return next;
     }),
 
   renameFile: (oldPath, newName) =>
     set((state) => {
+      const renamedBefore = collectFlatFilesUnderPath(state.files, oldPath);
       const newFiles = renameFileInTree(state.files, oldPath, newName);
       const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
       const newPath = `${parentPath}/${newName}`;
+      const renamedAfter = collectFlatFilesUnderPath(newFiles, newPath);
       const newOpenFiles = state.openFiles.map((f) => {
         if (f === oldPath) return newPath;
         if (f.startsWith(oldPath + "/")) return newPath + f.substring(oldPath.length);
@@ -1584,14 +1656,18 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+      const projectId = state.projectId;
+      if (projectId) {
+        refreshPendingFullFileSync(projectId, next.files);
+        renamedBefore.forEach((file) => deleteSingleFileFromServer(projectId, file.path));
+        renamedAfter.forEach((file) => syncSingleFileToServer(projectId, file.path, file.content, 0));
       }
       return next;
     }),
 
   deleteFile: (path) =>
     set((state) => {
+      const deletedFiles = collectFlatFilesUnderPath(state.files, path);
       const newFiles = deleteFileFromTree(state.files, path);
       const newOpenFiles = state.openFiles.filter(
         (f) => f !== path && !f.startsWith(path + "/")
@@ -1609,15 +1685,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
-        if (path) {
-          fetch(`/api/projects/${state.projectId}/files`, {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path }),
-          }).catch(() => {});
-        }
+      const projectId = state.projectId;
+      if (projectId) {
+        refreshPendingFullFileSync(projectId, next.files);
+        deletedFiles.forEach((file) => deleteSingleFileFromServer(projectId, file.path));
       }
       return next;
     }),
@@ -2116,6 +2187,29 @@ export function findFileContent(
     }
   }
   return undefined;
+}
+
+function findFileNode(files: FileNode[], path: string): FileNode | undefined {
+  for (const file of files) {
+    if (file.path === path) return file;
+    if (file.children) {
+      const found = findFileNode(file.children, path);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function flattenNodeToFlatFiles(node: FileNode): FlatFile[] {
+  if (node.type === "file") {
+    return [{ path: node.path, content: node.content || "" }];
+  }
+  return (node.children || []).flatMap((child) => flattenNodeToFlatFiles(child));
+}
+
+function collectFlatFilesUnderPath(files: FileNode[], path: string): FlatFile[] {
+  const node = findFileNode(files, path);
+  return node ? flattenNodeToFlatFiles(node) : [];
 }
 
 export function getFileLanguage(path: string): string {

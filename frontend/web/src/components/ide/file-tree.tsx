@@ -181,7 +181,7 @@ function FileTreeItem({
   const [isOpen, setIsOpen] = useState(true);
   const [isRenaming, setIsRenaming] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const { activeFile, setActiveFile, addFile, renameFile, deleteFile, setPreviewFile } =
+  const { activeFile, openFile, addFile, renameFile, deleteFile, setPreviewFile } =
     useIDEStore();
   const isActive = activeFile === node.path;
   const isFolder = node.type === "folder";
@@ -224,7 +224,7 @@ function FileTreeItem({
                   if (isFolder) {
                     setIsOpen(!isOpen);
                   } else {
-                    setActiveFile(node.path);
+                    openFile(node.path);
                   }
                 }}
                 aria-label={isFolder ? t("files.ariaFolder", { name: node.name }) : node.name}
