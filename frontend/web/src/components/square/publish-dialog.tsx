@@ -137,17 +137,17 @@ export function PublishDialog({
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent
-          className="max-w-md w-full p-0 overflow-hidden rounded-2xl border border-border shadow-xl bg-background"
+          className="max-w-none w-full h-full sm:max-w-md sm:w-[calc(100vw-2rem)] sm:h-auto p-0 overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-border shadow-none sm:shadow-xl bg-background fixed inset-0 translate-x-0 translate-y-0 sm:inset-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] max-h-full sm:max-h-[90vh]"
           style={{ fontFamily: FONT }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border">
+          <div className="flex items-center justify-between px-5 sm:px-6 pt-5 pb-4 border-b border-border">
             <h2 className="text-[17px] font-semibold text-foreground">
               {isUpdate ? "更新发布" : "发布到创造者广场"}
             </h2>
           </div>
 
-          <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[75vh]">
+          <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto flex-1" style={{ maxHeight: "calc(100dvh - 80px)" }}>
 
             {/* ── Cover screenshot ── */}
             <div className="space-y-2">
@@ -219,7 +219,7 @@ export function PublishDialog({
             {/* ── Code visibility ── */}
             <div className="space-y-2">
               <label className="text-[13px] font-medium text-foreground">代码可见性</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
                   { value: true, icon: <Code2 className="w-4 h-4" />, label: "开源", desc: "他人可以 Fork 你的代码" },
                   { value: false, icon: <Lock className="w-4 h-4" />, label: "私有", desc: "仅供展示，不可 Fork" },

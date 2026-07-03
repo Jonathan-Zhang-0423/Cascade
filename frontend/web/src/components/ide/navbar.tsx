@@ -327,7 +327,6 @@ export function Navbar({
 
   const menuItems = [
     { icon: <Home className="w-3.5 h-3.5" />, label: t("navbar.home"), action: () => { handleBack(); setLogoMenuOpen(false); } },
-    { icon: <Clock className="w-3.5 h-3.5" />, label: t("navbar.recentProjects"), action: () => { navigate("/app"); setLogoMenuOpen(false); } },
     null,
     {
       icon: mode === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />,
@@ -346,6 +345,7 @@ export function Navbar({
       label: "消息通知",
       action: () => { setNotifOpen((v) => !v); setLogoMenuOpen(false); },
       badge: unreadCount,
+      hideOnMobile: true,
     },
   ];
 
@@ -398,7 +398,7 @@ export function Navbar({
                 ) : (
                   <button
                     key={item.label}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent/20 transition-colors text-left"
+                    className={`flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent/20 transition-colors text-left ${(item as any).hideOnMobile ? "hidden sm:flex" : ""}`}
                     onClick={item.action}
                   >
                     <span className="text-muted-foreground shrink-0">{item.icon}</span>
@@ -414,9 +414,9 @@ export function Navbar({
                   </button>
                 )
               )}
-              {/* 字体大小 */}
-              <div className="h-px my-1" style={{ background: "var(--panel-divider)" }} />
-              <div className="px-3 py-1.5 flex items-center gap-2">
+              {/* 字体大小 — 移动端隐藏 */}
+              <div className="h-px my-1 hidden sm:block" style={{ background: "var(--panel-divider)" }} />
+              <div className="px-3 py-1.5 hidden sm:flex items-center gap-2">
                 <Type className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="text-[12px] text-foreground flex-1">{t("navbar.fontSize")}</span>
                 <div className="flex gap-1 items-center">

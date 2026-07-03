@@ -111,6 +111,12 @@ Files are stored both in the DB (`projectFiles`) and in localStorage. The DB is 
 
 All providers use the OpenAI-compatible chat completions API. Configured via env vars (`DOUBAO_API_KEY`, `KIMI_API_KEY`, `MINIMAX_API_KEY`, `GLM_API_KEY`). Default is Doubao. Provider selection is per-project, stored in localStorage.
 
+### Desktop/mobile parity (UI changes)
+
+Several pages (e.g. `frontend/web/src/pages/app-detail.tsx`, `create-square.tsx`) share business logic across breakpoints but diverge in rendering: plain Tailwind `sm:`/`lg:` responsive classes for pure visual differences, and fully separate JSX branches (e.g. an `isDesktop` check) for interaction patterns that only exist on one breakpoint (like the mobile-only immersive fullscreen preview). Past redesigns landed only on desktop and silently left mobile behind (e.g. a desktop preview panel redesign shipped without updating the mobile immersive-preview branch, and `group-hover`-only reveal buttons — comment delete, card share/fork — are invisible on touch devices since there is no hover state).
+
+**When making a UI/UX change to a page or component that renders differently on mobile vs desktop: always check both breakpoints before considering the change done.** If a change is desktop-only or mobile-only by nature, say so explicitly and confirm with the user whether the other breakpoint needs an equivalent treatment — don't silently skip it.
+
 ## Key Files
 
 | File | Role |

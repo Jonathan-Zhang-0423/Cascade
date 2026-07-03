@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, CheckSquare, Square, CheckCheck, LogOut, Home, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2 } from "lucide-react";
+import { Plus, Trash2, Pencil, FolderOpen, Send, CheckSquare, Square, CheckCheck, LogOut, Home, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2, ArrowLeft, User } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
@@ -986,11 +986,11 @@ export default function DashboardPage() {
 
               {logoMenuOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 w-48 rounded-lg py-1 z-50"
+                  className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2rem)] rounded-lg py-1 z-50"
                   style={{
-                    background: "#ffffff",
+                    background: "var(--panel-mid-bg)",
                     opacity: 1,
-                    border: "1px solid rgba(0,0,0,0.10)",
+                    border: "1px solid var(--panel-divider)",
                     boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
                   }}
                 >
@@ -1000,11 +1000,10 @@ export default function DashboardPage() {
                     ) : (
                       <button
                         key={item.label}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] transition-colors text-left hover:bg-black/5"
-                        style={{ color: "#1a1a1a" }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] transition-colors text-left hover:bg-accent/10 text-foreground"
                         onClick={item.action}
                       >
-                        <span className="shrink-0" style={{ color: "#555555" }}>{item.icon}</span>
+                        <span className="shrink-0 text-muted-foreground">{item.icon}</span>
                         {item.label}
                       </button>
                     )
@@ -1013,20 +1012,34 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 mr-[-26px]">
+          <div className="flex items-center gap-2 sm:mr-[-26px]">
             <Button
               size="sm"
-              className="w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+              className="w-auto px-3 sm:w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
               onClick={() => { window.location.href = "/BuilderSquare"; }}
             >
               {t("dashboard.builderSquare")}
             </Button>
+            {/* 手机端：头像圆圈（无头像则显示人像 icon 占位）；PC 端保持原有文字按钮 */}
             <button
-              className="h-8 w-[72px] shrink-0 truncate rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
+              className="hidden sm:flex sm:h-8 sm:w-[72px] shrink-0 truncate rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors items-center justify-center"
               onClick={() => { setProfileTab("home"); setProfileOpen(true); }}
               data-testid="button-user-menu"
             >
               {accountInfo?.firstName || username || "…"}
+            </button>
+            <button
+              className="flex sm:hidden shrink-0 w-8 h-8 rounded-full overflow-hidden items-center justify-center transition-opacity hover:opacity-80"
+              style={{ background: accountInfo?.avatarUrl ? "transparent" : "#3a6ea8" }}
+              onClick={() => { setProfileTab("home"); setProfileOpen(true); }}
+              data-testid="button-user-menu-mobile"
+              aria-label="个人主页"
+            >
+              {accountInfo?.avatarUrl ? (
+                <img src={accountInfo.avatarUrl} className="w-full h-full object-cover" alt="avatar" />
+              ) : (
+                <User className="w-4 h-4 text-white" />
+              )}
             </button>
           </div>
         </div>
@@ -1037,12 +1050,12 @@ export default function DashboardPage() {
           <h1 className="font-lora text-xl font-bold tracking-tight text-foreground" data-testid="text-dashboard-title">
             {t("dashboard.myProjects")}
           </h1>
-          <div className="flex items-center gap-2 mr-[-26px]">
+          <div className="flex items-center gap-2 sm:mr-[-26px]">
             {!selectMode && (
               <Button
                 onClick={() => setShowNewDialog(true)}
                 size="sm"
-                className="w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+                className="w-8 px-0 sm:w-[104px] sm:px-3 h-8 shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
                 data-testid="button-new-project"
               >
                 <Plus className="w-4 h-4" />
@@ -1053,20 +1066,16 @@ export default function DashboardPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-[72px] shrink-0 justify-center gap-1.5 text-muted-foreground hover:text-foreground"
+                className="w-8 px-0 sm:w-[72px] sm:px-3 h-8 shrink-0 justify-center gap-1.5 text-muted-foreground hover:text-foreground"
                 onClick={enterSelectMode}
                 data-testid="button-enter-select"
               >
                 <CheckSquare className="w-4 h-4" />
-                {t("dashboard.select")}
+                <span className="hidden sm:inline">{t("dashboard.select")}</span>
               </Button>
             )}
           </div>
         </div>
-        <p className="text-muted-foreground mb-6">
-          {t("dashboard.subtitle")}
-        </p>
-
         {sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center" data-testid="empty-state">
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
@@ -1544,7 +1553,7 @@ export default function DashboardPage() {
                   const isSelected = (selectedNotifId ?? notifs[0]?.id) === n.id;
                   return (
                     <div key={n.id}
-                      className="relative flex items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
+                      className="relative flex items-start sm:items-center gap-2.5 px-4 cursor-pointer transition-colors shrink-0"
                       style={{ minHeight: 72, borderBottom: "1px solid var(--panel-divider)", background: isSelected ? "rgba(79,130,255,0.08)" : n.isRead ? "transparent" : "rgba(79,130,255,0.04)", padding: "12px 16px" }}
                       onClick={() => { markRead(n.id); setSelectedNotifId(n.id); }}
                     >
@@ -1592,71 +1601,92 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      {/* ── 个人主页弹窗 ── */}
+      {/* ── 个人主页弹窗（响应式：手机全屏 + 顶部横向 Tab 条，PC 保持原有左右分栏）── */}
       {profileOpen && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center"
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
           style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
           onClick={(e) => { if (e.target === e.currentTarget) setProfileOpen(false); }}
         >
           <div
-            className="flex overflow-hidden w-full"
+            className="flex flex-col sm:flex-row overflow-hidden w-full h-full sm:h-auto sm:rounded-2xl"
             style={{
               maxWidth: 760,
               minHeight: 500,
-              margin: "0 16px",
-              borderRadius: 16,
+              margin: 0,
               background: "var(--panel-mid-bg)",
               border: "1px solid var(--panel-divider)",
               boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
             }}
           >
-            {/* 左侧导航 */}
-            <div className="flex flex-col shrink-0" style={{ width: 140, borderRight: "1px solid var(--panel-divider)", background: "var(--panel-left-bg)", padding: "20px 0 16px" }}>
-              {(["home", "account", "invite"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => {
-                    setProfileTab(tab);
-                    if (tab === "invite" && !referralCode) {
-                      setInviteLoading(true);
-                      fetch("/api/referral/my-code", { credentials: "include" })
-                        .then((r) => r.json())
-                        .then((d) => { if (d.referralCode) { setReferralCode(d.referralCode); setReferralLink(d.referralLink); setReferralCount(d.referralCount ?? 0); } })
-                        .catch(() => {})
-                        .finally(() => setInviteLoading(false));
-                    }
-                  }}
-                  className="w-full text-left text-[13px] px-5 py-2.5 transition-colors hover:bg-accent/10"
-                  style={{
-                    fontWeight: profileTab === tab ? 700 : 400,
-                    color: profileTab === tab ? "var(--foreground)" : "var(--muted-foreground)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {tab === "home" ? "个人主页" : tab === "account" ? "账户信息" : "邀请礼遇"}
-                </button>
-              ))}
-              <div className="flex-1" />
+            {/* 顶部工具条 — 仅手机显示：返回箭头 + 标题 */}
+            <div className="flex sm:hidden items-center gap-2 px-4 shrink-0" style={{ height: 52, borderBottom: "1px solid var(--panel-divider)" }}>
+              <button
+                onClick={() => setProfileOpen(false)}
+                className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                style={{ background: "none", border: "none", cursor: "pointer" }}
+                aria-label="关闭"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <span className="text-[14px] font-semibold text-foreground">
+                {profileTab === "home" ? "个人主页" : profileTab === "account" ? "账户信息" : "邀请礼遇"}
+              </span>
+            </div>
+
+            {/* 导航 — 手机：顶部横向 Tab 条；PC：左侧竖直导航栏（原样保留） */}
+            <div
+              className="flex sm:flex-col shrink-0 sm:w-[140px] w-full"
+              style={{ borderRight: "1px solid var(--panel-divider)", background: "var(--panel-left-bg)" }}
+            >
+              <div className="flex sm:flex-col w-full sm:py-5 sm:pb-4">
+                {(["home", "account", "invite"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => {
+                      setProfileTab(tab);
+                      if (tab === "invite" && !referralCode) {
+                        setInviteLoading(true);
+                        fetch("/api/referral/my-code", { credentials: "include" })
+                          .then((r) => r.json())
+                          .then((d) => { if (d.referralCode) { setReferralCode(d.referralCode); setReferralLink(d.referralLink); setReferralCount(d.referralCount ?? 0); } })
+                          .catch(() => {})
+                          .finally(() => setInviteLoading(false));
+                      }
+                    }}
+                    className="flex-1 sm:w-full sm:flex-none text-center sm:text-left text-[13px] px-3 sm:px-5 py-2.5 transition-colors hover:bg-accent/10"
+                    style={{
+                      fontWeight: profileTab === tab ? 700 : 400,
+                      color: profileTab === tab ? "var(--foreground)" : "var(--muted-foreground)",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: "2px solid transparent",
+                      borderBottomColor: profileTab === tab ? "var(--foreground)" : "transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tab === "home" ? "个人主页" : tab === "account" ? "账户信息" : "邀请礼遇"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 hidden sm:block" />
               <button
                 onClick={handleSignOut}
-                className="mx-3.5 py-2 rounded-lg text-[12px] font-semibold text-white transition-colors text-center"
+                className="hidden sm:block mx-3.5 py-2 rounded-lg text-[12px] font-semibold text-white transition-colors text-center"
                 style={{ background: "#1a1a1a", border: "none", cursor: "pointer" }}
               >
                 退出登录
               </button>
             </div>
 
-            {/* 右侧内容 */}
-            <div className="flex-1 overflow-y-auto" style={{ padding: "24px 28px 28px" }}>
+            {/* 右侧内容 — 手机需要给底部退出登录按钮留出空间 */}
+            <div className="flex-1 overflow-y-auto p-5 pb-24 sm:p-[24px_28px_28px]">
 
               {/* ===== 个人主页 tab ===== */}
               {profileTab === "home" && (
                 <div>
                   <p className="text-[15px] font-bold text-foreground mb-5">个人主页</p>
-                  <div className="flex gap-5 items-start">
+                  <div className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
                     {/* 头像列 */}
                     <div className="flex flex-col items-center gap-2 shrink-0" style={{ width: 88 }}>
                       <div
@@ -1710,8 +1740,8 @@ export default function DashboardPage() {
                           <input
                             readOnly
                             value={username ?? ""}
-                            className="h-7 px-2.5 text-[12px] text-muted-foreground rounded-md outline-none"
-                            style={{ width: 140, border: "1px solid var(--panel-divider)", background: "var(--panel-left-bg)" }}
+                            className="h-7 px-2.5 text-[12px] text-muted-foreground rounded-md outline-none flex-1 min-w-0 sm:flex-none"
+                            style={{ width: undefined, maxWidth: 140, border: "1px solid var(--panel-divider)", background: "var(--panel-left-bg)" }}
                           />
                           <button
                             className="flex items-center gap-1 text-[12px] text-foreground hover:text-[#3a6ea8] transition-colors shrink-0"
@@ -1781,12 +1811,16 @@ export default function DashboardPage() {
                         </div>
                       )}
 
-                      {/* 姓氏 + 名字 — 三个输入框大小一致 */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-[13px] text-foreground shrink-0" style={{ width: 52 }}>姓氏：</span>
-                        <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setProfileDirty(true); }} onBlur={handleProfileBlurSave} className="h-7 text-[12px]" style={{ width: 140 }} maxLength={20} />
-                        <span className="text-[13px] text-foreground shrink-0 ml-2">名字：</span>
-                        <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setProfileDirty(true); }} onBlur={handleProfileBlurSave} className="h-7 text-[12px]" style={{ width: 140 }} maxLength={40} />
+                      {/* 姓氏 + 名字 — PC 固定宽度对齐，手机各占一半自适应 */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] text-foreground shrink-0" style={{ width: 52 }}>姓氏：</span>
+                          <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setProfileDirty(true); }} onBlur={handleProfileBlurSave} className="h-7 text-[12px] flex-1 min-w-0 sm:flex-none" style={{ maxWidth: 140 }} maxLength={20} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] text-foreground shrink-0 sm:ml-2">名字：</span>
+                          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setProfileDirty(true); }} onBlur={handleProfileBlurSave} className="h-7 text-[12px] flex-1 min-w-0 sm:flex-none" style={{ maxWidth: 140 }} maxLength={40} />
+                        </div>
                       </div>
 
                       {/* 个人简介 */}
@@ -1999,6 +2033,15 @@ export default function DashboardPage() {
               )}
 
             </div>
+
+            {/* 退出登录 — 仅手机显示，固定在底部（PC 版按钮在左侧导航栏内，见上方） */}
+            <button
+              onClick={handleSignOut}
+              className="flex sm:hidden items-center justify-center mx-4 mb-4 py-2.5 rounded-lg text-[13px] font-semibold text-white transition-colors text-center shrink-0"
+              style={{ background: "#1a1a1a", border: "none", cursor: "pointer" }}
+            >
+              退出登录
+            </button>
           </div>
         </div>
       )}
