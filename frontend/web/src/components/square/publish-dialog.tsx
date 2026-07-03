@@ -137,17 +137,17 @@ export function PublishDialog({
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent
-          className="max-w-none w-full h-full sm:max-w-md sm:w-[calc(100vw-2rem)] sm:h-auto p-0 overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-border shadow-none sm:shadow-xl bg-background fixed inset-0 translate-x-0 translate-y-0 sm:inset-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] max-h-full sm:max-h-[90vh]"
+          className="flex flex-col gap-0 max-w-none w-full h-full sm:max-w-md sm:w-[calc(100vw-2rem)] sm:h-auto p-0 overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-border shadow-none sm:shadow-xl bg-background fixed inset-0 translate-x-0 translate-y-0 sm:inset-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] max-h-full sm:max-h-[90vh]"
           style={{ fontFamily: FONT }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 sm:px-6 pt-5 pb-4 border-b border-border">
+          <div className="shrink-0 flex items-center justify-between px-5 sm:px-6 pt-5 pb-4 border-b border-border">
             <h2 className="text-[17px] font-semibold text-foreground">
               {isUpdate ? "更新发布" : "发布到创造者广场"}
             </h2>
           </div>
 
-          <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto flex-1" style={{ maxHeight: "calc(100dvh - 80px)" }}>
+          <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto flex-1 min-h-0">
 
             {/* ── Cover screenshot ── */}
             <div className="space-y-2">
