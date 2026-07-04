@@ -190,14 +190,9 @@ export class BuildStreamInstance {
       const now = Date.now();
       if (now - lastSnapshotFlush < 500) return;
       lastSnapshotFlush = now;
-      this.actions.setStreamingSnapshot({
-        type: "build",
+      this.persistLiveSnapshot({
         thinkingText: thinkingAccumulated,
         narrationText: commAccumulated,
-        sessionId,
-        projectId: this.projectId,
-        updatedAt: now,
-        lastEventId: this.lastEventId,
       });
     };
 
@@ -350,7 +345,6 @@ export class BuildStreamInstance {
               thinkingAccumulated = "";
             }
             commAccumulated += ev.token || "";
-            flushSnapshot();
             // Write per-step narration so StepItem can display it inline
             const prevNarrations = this.state.get().stepNarrations;
             this.state.set({
@@ -358,6 +352,7 @@ export class BuildStreamInstance {
               buildPhase: "working",
               stepNarrations: { ...prevNarrations, [this.currentStepNum]: commAccumulated },
             });
+            flushSnapshot();
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
             if (actionType) {
@@ -421,6 +416,7 @@ export class BuildStreamInstance {
             if (stepSummary && !isNaN(parsedNum)) {
               const prev = this.state.get().stepNarrations;
               this.state.set({ stepNarrations: { ...prev, [parsedNum]: stepSummary } });
+              this.persistLiveSnapshot();
             }
             this.state.set({ narrationText: "" });
             commAccumulated = "";
@@ -639,9 +635,27 @@ export class BuildStreamInstance {
     let commAccumulated = "";
     let receivedAllComplete = false;
     const snapshot = this.actions.getStreamingSnapshot();
-    if (snapshot?.type === "build") {
+    if (
+      snapshot?.type === "build" &&
+      snapshot.sessionId === sessionId &&
+      snapshot.projectId === this.projectId
+    ) {
       thinkingAccumulated = snapshot.thinkingText || "";
       commAccumulated = snapshot.narrationText || "";
+      this.actionLog = Array.isArray(snapshot.actionLog)
+        ? snapshot.actionLog.map((entry) => normalizeActionLogEntry(entry as any))
+        : this.actionLog;
+      this.currentStepNum = typeof snapshot.currentStepNum === "number" && Number.isFinite(snapshot.currentStepNum)
+        ? snapshot.currentStepNum
+        : this.currentStepNum;
+      const restoredState: Partial<BuildStreamState> = {
+        actionLog: [...this.actionLog],
+        thinkingText: thinkingAccumulated,
+        narrationText: commAccumulated,
+      };
+      if (snapshot.stepNarrations) restoredState.stepNarrations = { ...snapshot.stepNarrations };
+      if (snapshot.taskStatuses) restoredState.taskStatuses = { ...snapshot.taskStatuses };
+      this.state.set(restoredState);
     }
 
     try {
@@ -694,7 +708,22 @@ export class BuildStreamInstance {
               thinkingAccumulated = "";
             }
             const stepNum = ev.stepNumber ?? 1;
+            this.currentStepNum = stepNum;
+            const lastStepEntry = [...this.actionLog].reverse().find((entry) => entry.type === "step");
+            const alreadyHasBoundary = lastStepEntry?.stepNum === stepNum ||
+              lastStepEntry?.label?.match(/Step\s*(\d+)/i)?.[1] === String(stepNum);
+            if (!alreadyHasBoundary) {
+              const totalSteps = nSteps.length || (typeof ev.totalSteps === "number" ? ev.totalSteps : stepNum);
+              this.appendActionLog({
+                type: "step",
+                label: `Step ${stepNum}/${totalSteps}: ${ev.stepTitle || ""}`,
+                detail: "",
+                timestamp: Date.now(),
+                stepNum,
+              });
+            }
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "" });
+            this.persistLiveSnapshot({ thinkingText: "", narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) {
               this.actions.setExecutingTaskIndex(stepNum - 1);
@@ -733,8 +762,10 @@ export class BuildStreamInstance {
             }
             commAccumulated += ev.token || "";
             this.state.set({ narrationText: commAccumulated, buildPhase: "working" });
+            this.persistLiveSnapshot({ narrationText: commAccumulated });
           } else if (type === "step_completed") {
             this.state.set({ narrationText: "" });
+            this.persistLiveSnapshot({ narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) {
               const key = String(ev.stepNumber ?? 0);
@@ -900,7 +931,15 @@ export class BuildStreamInstance {
         this.actions.setExecutingTaskIndex(0);
         this.actions.setChatMode("build");
         this.state.set({ buildPhase: "thinking" });
-        await this.connect(savedSessionId, -1);
+        const snapshot = this.actions.getStreamingSnapshot();
+        const resumeEventId =
+          snapshot?.type === "build" &&
+          snapshot.sessionId === savedSessionId &&
+          snapshot.projectId === this.projectId &&
+          typeof snapshot.lastEventId === "number"
+            ? snapshot.lastEventId
+            : -1;
+        await this.connect(savedSessionId, resumeEventId);
       } else {
         try { localStorage.removeItem(this.storageKey); } catch {}
         this.state.set({ isReconnecting: false });
@@ -963,12 +1002,32 @@ export class BuildStreamInstance {
     const entryWithStep = normalized.stepNum !== undefined ? normalized : { ...normalized, stepNum: this.currentStepNum };
     this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
+    this.persistLiveSnapshot();
+  }
+
+  private persistLiveSnapshot(overrides?: { thinkingText?: string; narrationText?: string }): void {
+    if (!this.sessionId) return;
+    const state = this.state.get();
+    this.actions.setStreamingSnapshot({
+      type: "build",
+      thinkingText: overrides?.thinkingText ?? state.thinkingText,
+      narrationText: overrides?.narrationText ?? state.narrationText,
+      sessionId: this.sessionId,
+      projectId: this.projectId,
+      updatedAt: Date.now(),
+      lastEventId: this.lastEventId,
+      actionLog: [...this.actionLog],
+      stepNarrations: { ...state.stepNarrations },
+      taskStatuses: { ...state.taskStatuses },
+      currentStepNum: this.currentStepNum,
+    });
   }
 
   /** Track task status in per-session state (survives project switch). */
   private trackTaskStatus(key: string, status: "running" | "done" | "failed"): void {
     const prev = this.state.get().taskStatuses;
     this.state.set({ taskStatuses: { ...prev, [key]: status } });
+    this.persistLiveSnapshot();
   }
 
   private applyLedgerSnapshot(ev: BuildSseEvent, isCurrentProject: boolean): void {
@@ -1000,6 +1059,7 @@ export class BuildStreamInstance {
     }
 
     this.state.set({ taskStatuses, stepNarrations });
+    this.persistLiveSnapshot();
     if (isCurrentProject && runningIndex !== null) {
       this.actions.setExecutingTaskIndex(runningIndex);
     }

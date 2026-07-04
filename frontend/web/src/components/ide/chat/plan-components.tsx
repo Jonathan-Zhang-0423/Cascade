@@ -550,6 +550,7 @@ export function BuildResultCard({
       narration: s.narration,
       actions: s.actions as ActionLogEntry[],
       isLive: false,
+      stepLabel: s.stepLabel,
     }),
   );
 

@@ -91,30 +91,6 @@ export function compactActionLogEntryForPersistence(raw: Partial<ActionLogEntry>
   };
 }
 
-export function compactBuildResultForPersistence<T extends Record<string, unknown>>(raw: T): T {
-  if (!raw || typeof raw !== "object") return raw;
-  const actionLog = Array.isArray((raw as any).actionLog)
-    ? (raw as any).actionLog.map((entry: unknown) => compactActionLogEntryForPersistence(entry as any))
-    : (raw as any).actionLog;
-  const segments = Array.isArray((raw as any).segments)
-    ? (raw as any).segments.map((seg: any, index: number) => ({
-        id: stringifyLogValue(seg?.id, String(index)),
-        narration: truncateText(stringifyLogValue(seg?.narration, ""), 800),
-        actions: Array.isArray(seg?.actions)
-          ? seg.actions.map((entry: unknown) => compactActionLogEntryForPersistence(entry as any))
-          : [],
-        isLive: Boolean(seg?.isLive),
-        stepLabel: stringifyLogValue(seg?.stepLabel, "") || undefined,
-      }))
-    : (raw as any).segments;
-
-  return {
-    ...raw,
-    actionLog,
-    segments,
-  };
-}
-
 function parseStepNumber(label: string): number | undefined {
   const match = label.match(/Step\s*(\d+)/i);
   if (!match) return undefined;
@@ -171,7 +147,11 @@ export function rebuildSegmentsFromActionLog(
   const narrationByStep = new Map<number, string>();
   const labelByStep = new Map<number, string>();
   normalizedSegments?.forEach((seg, index) => {
-    const stepNum = (seg.stepLabel && parseStepNumber(seg.stepLabel)) || index + 1;
+    const firstActionStep = seg.actions.find((entry) => getEntryStepNumber(entry))?.stepNum;
+    const stepNum =
+      (seg.stepLabel && parseStepNumber(seg.stepLabel)) ||
+      (typeof firstActionStep === "number" && Number.isFinite(firstActionStep) ? firstActionStep : undefined) ||
+      index + 1;
     if (seg.narration) narrationByStep.set(stepNum, seg.narration);
     if (seg.stepLabel) labelByStep.set(stepNum, seg.stepLabel);
   });
@@ -211,4 +191,47 @@ export function rebuildSegmentsFromActionLog(
   return Array.from(byStep.entries())
     .sort(([a], [b]) => a - b)
     .map(([, seg]) => seg);
+}
+
+export function compactBuildResultForPersistence<T extends Record<string, unknown>>(raw: T): T {
+  if (!raw || typeof raw !== "object") return raw;
+  const normalizedActionLog = Array.isArray((raw as any).actionLog)
+    ? (raw as any).actionLog.map((entry: unknown) => normalizeActionLogEntry(entry as any))
+    : (raw as any).actionLog;
+  const normalizedSegments = Array.isArray((raw as any).segments)
+    ? (raw as any).segments.map((seg: any, index: number) => ({
+        id: stringifyLogValue(seg?.id, String(index)),
+        narration: stringifyLogValue(seg?.narration, ""),
+        actions: Array.isArray(seg?.actions)
+          ? seg.actions.map((entry: unknown) => normalizeActionLogEntry(entry as any))
+          : [],
+        isLive: Boolean(seg?.isLive),
+        stepLabel: stringifyLogValue(seg?.stepLabel, "") || undefined,
+      }))
+    : (raw as any).segments;
+  const rebuiltSegments = Array.isArray(normalizedActionLog)
+    ? rebuildSegmentsFromActionLog(normalizedActionLog, normalizedSegments)
+    : undefined;
+  const segmentsForPersistence = rebuiltSegments ?? normalizedSegments;
+
+  const actionLog = Array.isArray(normalizedActionLog)
+    ? normalizedActionLog.map((entry: unknown) => compactActionLogEntryForPersistence(entry as any))
+    : normalizedActionLog;
+  const segments = Array.isArray(segmentsForPersistence)
+    ? segmentsForPersistence.map((seg: any, index: number) => ({
+        id: stringifyLogValue(seg?.id, String(index)),
+        narration: truncateText(stringifyLogValue(seg?.narration, ""), 800),
+        actions: Array.isArray(seg?.actions)
+          ? seg.actions.map((entry: unknown) => compactActionLogEntryForPersistence(entry as any))
+          : [],
+        isLive: Boolean(seg?.isLive),
+        stepLabel: stringifyLogValue(seg?.stepLabel, "") || undefined,
+      }))
+    : segmentsForPersistence;
+
+  return {
+    ...raw,
+    actionLog,
+    segments,
+  };
 }

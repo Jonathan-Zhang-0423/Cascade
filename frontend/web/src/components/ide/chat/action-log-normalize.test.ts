@@ -114,8 +114,31 @@ describe("action log normalization", () => {
     expect(compacted.actionLog[0].detail.length).toBeLessThan(2500);
     expect(compacted.actionLog[1].detail.length).toBeLessThan(1500);
     expect(compacted.actionLog[1].stepNum).toBe(2);
-    expect(compacted.segments[0].stepLabel).toBe("Step 2/2: Build UI");
-    expect(compacted.segments[0].actions[0].stepNum).toBe(2);
+    expect(compacted.segments).toHaveLength(2);
+    expect(compacted.segments[0].actions[0].stepNum).toBe(1);
+    expect(compacted.segments[1].stepLabel).toBe("Step 2/2: Build UI");
+    expect(compacted.segments[1].actions[0].stepNum).toBe(2);
     expect(JSON.stringify(compacted).length).toBeLessThan(10_000);
+  });
+
+  it("rebuilds collapsed segments before persistence when action log has step structure", () => {
+    const compacted = compactBuildResultForPersistence({
+      actionLog: [
+        { type: "step", label: "Step 1/2: Inspect", detail: "", timestamp: 1, stepNum: 1 },
+        { type: "file_read", label: "index.html", detail: "read", timestamp: 2, stepNum: 1 },
+        { type: "step", label: "Step 2/2: Edit", detail: "", timestamp: 3, stepNum: 2 },
+        { type: "file_write", label: "app.js", detail: "write", timestamp: 4, stepNum: 2 },
+      ],
+      segments: [{
+        id: "collapsed",
+        narration: "everything together",
+        actions: [],
+        isLive: false,
+      }],
+    });
+
+    expect(compacted.segments).toHaveLength(2);
+    expect(compacted.segments[0]).toMatchObject({ stepLabel: "Step 1/2: Inspect", actions: [{ label: "index.html" }] });
+    expect(compacted.segments[1]).toMatchObject({ stepLabel: "Step 2/2: Edit", actions: [{ label: "app.js" }] });
   });
 });

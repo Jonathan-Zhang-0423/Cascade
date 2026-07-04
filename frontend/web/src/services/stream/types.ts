@@ -64,6 +64,10 @@ export interface StreamingSnapshot {
   projectId: string;
   updatedAt: number;
   lastEventId: number;
+  actionLog?: ActionLogEntry[];
+  stepNarrations?: Record<number, string>;
+  taskStatuses?: Record<string, TaskStatus>;
+  currentStepNum?: number;
 }
 
 export interface StoreActions {

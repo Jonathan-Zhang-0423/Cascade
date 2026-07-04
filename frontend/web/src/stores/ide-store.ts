@@ -152,6 +152,10 @@ export interface StreamingSnapshot {
   projectId: string;
   updatedAt: number;
   lastEventId?: number;
+  actionLog?: BuildResultData["actionLog"];
+  stepNarrations?: Record<number, string>;
+  taskStatuses?: Record<string, TaskStatus>;
+  currentStepNum?: number;
 }
 
 // A persisted streaming snapshot older than this is treated as dead on reload —
@@ -512,8 +516,12 @@ function persistState(state: IDEState) {
     if (!snap) return null;
     const tt = (snap as { thinkingText?: string }).thinkingText;
     const nt = (snap as { narrationText?: string }).narrationText;
+    const compactedActionLog = Array.isArray(snap.actionLog)
+      ? snap.actionLog.map((entry) => compactBuildResultForPersistence({ actionLog: [entry] }).actionLog?.[0] ?? entry)
+      : snap.actionLog;
     return {
       ...snap,
+      actionLog: compactedActionLog,
       ...(typeof tt === "string" && tt.length > MAX_SNAPSHOT_TEXT
         ? { thinkingText: tt.slice(-MAX_SNAPSHOT_TEXT) }
         : {}),
