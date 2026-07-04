@@ -72,6 +72,7 @@ export async function evaluatePoster(
       model,
       max_tokens: 200,
       temperature: 0,
+      signal: AbortSignal.timeout(20_000),
       messages: [
         {
           role: "user",

@@ -50,6 +50,10 @@ export interface AgentLoopOpts {
   client?: OpenAI;
   model?: string;
   disableThinking?: boolean;
+  /** When true, set tool_choice="required" so the model must call a tool
+   *  every iteration (used by the AIGC agent, which tends to narrate
+   *  instead of calling capture_screenshot / generate_poster). */
+  forceToolChoice?: boolean;
   /** Part-based emission context. When provided, the loop emits structured
    *  Parts instead of raw SSE events directly. */
   partCtx?: PartEmitContext;
@@ -81,6 +85,7 @@ export async function runAgentLoop(
 ): Promise<AgentLoopResult> {
   const maxIterations = opts.maxIterations ?? 30;
   const exitTools = new Set(opts.exitTools ?? []);
+  const toolChoice = opts.forceToolChoice ? "required" : "auto";
 
   const activeClient = opts.client ?? doubaoClient;
   const activeModel = opts.model ?? DOUBAO_MODEL;
@@ -106,7 +111,13 @@ export async function runAgentLoop(
   const isGLM52 = activeModel.toLowerCase().includes("glm-5.2");
   const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
   const thinkingParam = opts.disableThinking
-    ? {}
+    ? isKimiModel
+      // kimi-k2.5 enables thinking by default; must explicitly disable it,
+      // or tool_choice:"required" returns 400 ("incompatible with thinking").
+      ? { thinking: { type: "disabled" } }
+      : isDoubaoModel
+        ? { thinking: { type: "disabled" } }
+        : {}
     : isDoubaoModel
       ? { thinking: { type: "enabled", budget_tokens: 8192 } }
       : isKimiModel
@@ -172,7 +183,7 @@ export async function runAgentLoop(
               ...thinkingParam,
               ...(extraBody ? { extra_body: extraBody } : {}),
               tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
-              tool_choice: tools.length > 0 ? "auto" : undefined,
+              tool_choice: tools.length > 0 ? (toolChoice as "auto" | "required") : undefined,
               stream: true,
               stream_options: { include_usage: true },
               max_tokens: 16384,
@@ -409,6 +420,7 @@ export async function runAgentLoop(
           }
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
+          console.error(`[agent-loop] tool "${tc.name}" threw:`, message);
           result = `Error executing tool "${tc.name}": ${message}`;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {

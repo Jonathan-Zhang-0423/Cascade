@@ -27,7 +27,7 @@ import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
 import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
 import { db, pool } from "../../infra/db";
-import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
+import { eq, and, desc, count, isNull, or, sql, inArray } from "drizzle-orm";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
 import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
@@ -5435,6 +5435,100 @@ Generate the cascade.md content for this project based on both the plan and the 
     }
   });
 
+  // POST /api/admin/bulk-message — send custom email and/or in-app notification to selected waitlist subscribers.
+  // Email goes straight to the subscriber's address. In-app notification requires a real user
+  // account, so subscribers who never registered are matched by email against `users` and
+  // skipped if no match is found — reported back as notificationSkipped.
+  app.post("/api/admin/bulk-message", async (req, res) => {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const { subscriberIds, subject, content, viaEmail, viaNotification } = req.body as {
+        subscriberIds?: unknown;
+        subject?: string;
+        content?: string;
+        viaEmail?: boolean;
+        viaNotification?: boolean;
+      };
+      if (!Array.isArray(subscriberIds) || subscriberIds.length === 0) {
+        return res.status(400).json({ error: "No subscriber IDs provided" });
+      }
+      // Validate element types: coerce to numbers, reject non-numeric to avoid PG type errors (#9)
+      const numericIds = subscriberIds
+        .map((id) => (typeof id === "number" ? id : Number(id)))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      if (numericIds.length === 0) {
+        return res.status(400).json({ error: "subscriberIds must be an array of positive integers" });
+      }
+      // Batch cap: prevent gateway timeouts from oversized selections (#6)
+      const MAX_BATCH = 200;
+      const cappedIds = numericIds.slice(0, MAX_BATCH);
+      const truncated = numericIds.length - cappedIds.length;
+
+      const trimmedContent = (content ?? "").trim();
+      const trimmedSubject = (subject ?? "").trim();
+      if (!trimmedContent) return res.status(400).json({ error: "Content required" });
+      if (!viaEmail && !viaNotification) return res.status(400).json({ error: "Select at least one channel" });
+      if (viaEmail && !trimmedSubject) return res.status(400).json({ error: "Subject required for email" });
+
+      const targets = await db.select().from(waitlistSubscribers).where(inArray(waitlistSubscribers.id, cappedIds));
+
+      // In-app notifications — case-insensitive email match (#8)
+      let notificationSent = 0;
+      let notificationSkipped = 0;
+      if (viaNotification && targets.length > 0) {
+        const targetEmailsLower = targets.map((t) => t.email.toLowerCase());
+        const matchedUsers = await db.select().from(users).where(inArray(sql`lower(${users.email})`, targetEmailsLower));
+        if (matchedUsers.length > 0) {
+          await db.insert(notifications).values(
+            matchedUsers.map((u) => ({
+              userId: u.id,
+              type: "system",
+              title: trimmedSubject || "系统通知",
+              body: trimmedContent,
+            }))
+          );
+        }
+        notificationSent = matchedUsers.length;
+        notificationSkipped = targets.length - matchedUsers.length;
+      }
+
+      // Respond immediately; send emails in the background to avoid 504 on large batches (#6)
+      res.json({ ok: true, queued: viaEmail ? targets.length : 0, notificationSent, notificationSkipped, truncated });
+
+      if (viaEmail && targets.length > 0) {
+        const escapeHtml = (s: string) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const paragraphs = trimmedContent
+          .split("\n")
+          .map((line) => `<p style="margin:0 0 16px">${escapeHtml(line) || "&nbsp;"}</p>`)
+          .join("");
+        const html = `
+          <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
+            ${paragraphs}
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
+            <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
+          </div>
+        `;
+        // Fire-and-forget background send (detached from the request lifecycle)
+        (async () => {
+          for (const sub of targets) {
+            try {
+              await sendEmail({ to: sub.email, subject: trimmedSubject, html, text: trimmedContent });
+            } catch (err) {
+              console.error("[admin/bulk-message] send failed", err, sub.email);
+            }
+            // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
+            await new Promise((r) => setTimeout(r, 600));
+          }
+          console.log(`[admin/bulk-message] background send complete for ${targets.length} recipients`);
+        })().catch((err) => console.error("[admin/bulk-message] background loop error", err));
+      }
+    } catch (err) {
+      console.error("[admin/bulk-message]", err);
+      res.status(500).json({ error: "Failed to send bulk message" });
+    }
+  });
+
   // GET /api/admin/confirm-batch?token=... — link target from notification email
   app.get("/api/admin/confirm-batch", async (req, res) => {
     const token = req.query.token as string | undefined;
@@ -6724,14 +6818,21 @@ Generate the cascade.md content for this project based on both the plan and the 
           { role: "user", content: text.trim() },
         ],
         temperature: 0,
-      });
+      }, { signal: AbortSignal.timeout(4_000) });
       const raw = completion.choices[0]?.message?.content?.trim() ?? '{"intent":"none"}';
       const parsed = JSON.parse(raw.match(/\{[^}]+\}/)?.[0] ?? '{"intent":"none"}') as { intent: string };
       const intent = ["poster", "video"].includes(parsed.intent) ? parsed.intent : "none";
       res.json({ intent });
     } catch (err) {
-      console.warn("[aigc/classify-intent]", err instanceof Error ? err.message : err);
-      res.json({ intent: "none" });
+      console.warn("[aigc/classify-intent] LLM failed, using keyword fallback:", err instanceof Error ? err.message : err);
+      // Fallback: simple keyword check so the AIGC entry point still works when
+      // MiniMax is down (don't silently return none for an obvious media request).
+      const t = text.trim().toLowerCase();
+      const has = (k: string) => t.includes(k);
+      let intent: "poster" | "video" | "none" = "none";
+      if (has("海报") || has("宣传图") || has("封面") || has("poster")) intent = "poster";
+      else if (has("视频") || has("录视频") || has("video")) intent = "video";
+      res.json({ intent });
     }
   });
 
@@ -6764,6 +6865,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       events: [],
       nextEventId: 0,
       done: false,
+      running: false,
       sseWriters: new Set(),
     };
     aigcSessions.set(sessionId, session);
@@ -6778,11 +6880,43 @@ Generate the cascade.md content for this project based on both the plan and the 
     if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
     const { message } = req.body as { message?: string };
     if (!message?.trim()) { res.status(400).json({ error: "message_required" }); return; }
+    // Guard against double-fire and poisoned sessions:
+    // - running: a previous /message on this session is still executing → reject
+    //   so two agents can't corrupt shared session state concurrently (F8).
+    // - done: this session already finished (success or error) → reject; the
+    //   client must create a fresh session for a new turn (F9). Prevents running
+    //   a new agent on top of a half-populated, poisoned session.
+    if (session.running) { res.status(409).json({ error: "agent_running" }); return; }
+    if (session.done) { res.status(409).json({ error: "session_finished" }); return; }
+
+    // Capture the user's session cookie so capture_screenshot can authenticate
+    // against /preview/:projectId (otherwise the headless browser hits the login page).
+    session.cookie = typeof req.headers.cookie === "string" ? req.headers.cookie : undefined;
 
     // Fire-and-forget — client polls via SSE
     runAigcAgent(session, message.trim()).catch((err) => {
       console.error("[aigc/session] agent error:", err);
     });
+    res.json({ ok: true });
+  });
+
+  // POST /api/aigc/session/:id/style — user submits a poster style, unblocking
+  // the agent's request_style tool so it proceeds to generate_poster.
+  app.post("/api/aigc/session/:id/style", async (req, res) => {
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
+    const session = aigcSessions.get(req.params.id);
+    if (!session) { res.status(404).json({ error: "session_not_found" }); return; }
+    const { style } = req.body as { style?: string };
+    const trimmed = style?.trim();
+    if (!trimmed) { res.status(400).json({ error: "style_required" }); return; }
+    if (!session.styleResolver) { res.status(409).json({ error: "not_awaiting_style" }); return; }
+    try {
+      session.styleResolver(trimmed);
+    } catch (err) {
+      console.error("[aigc/session/style] resolver threw:", err);
+    }
+    session.styleResolver = undefined;
     res.json({ ok: true });
   });
 
@@ -6796,17 +6930,53 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Replay missed events
+    const isTerminal = (line: string) =>
+      line.includes('"type":"aigc_done"') || line.includes('"type":"aigc_error"');
+
+    // Replay missed events. If a terminal event is among them (or the session
+    // already finished), the client already has the outcome — don't hold the
+    // connection open forever.
+    let replaySawTerminal = false;
     const lastId = parseInt(req.headers["last-event-id"] as string ?? "-1", 10);
     for (const ev of session.events) {
       if ((ev.eventId as number) > lastId) {
-        res.write(`id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`);
+        const line = `id:${ev.eventId}\ndata:${JSON.stringify(ev)}\n\n`;
+        res.write(line);
+        if (isTerminal(line)) replaySawTerminal = true;
       }
     }
+    if (replaySawTerminal || session.done) {
+      res.end();
+      return;
+    }
 
-    const writer = (line: string) => { try { res.write(line); } catch {} };
+    // Heartbeat so proxies (nginx proxy_read_timeout ~60s) don't drop the
+    // half-open connection, and a stuck agent doesn't leave a silent socket.
+    const heartbeat = setInterval(() => {
+      try { res.write(": keepalive\n\n"); } catch {}
+    }, 15_000);
+
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      session.sseWriters.delete(writer);
+      clearInterval(heartbeat);
+    };
+    const writer = (line: string) => {
+      if (closed) return;
+      try {
+        res.write(line);
+        if (isTerminal(line)) {
+          // Terminal event sent — close server-side so writers/FDs don't leak
+          // and the client doesn't sit on a dead connection.
+          cleanup();
+          try { res.end(); } catch {}
+        }
+      } catch {}
+    };
     session.sseWriters.add(writer);
-    req.on("close", () => session.sseWriters.delete(writer));
+    req.on("close", cleanup);
   });
 
   // GET /api/aigc/session/:id — get session state

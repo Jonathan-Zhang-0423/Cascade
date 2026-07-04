@@ -27,11 +27,22 @@ export default function GitHubCallbackPage() {
         });
         if (!exchangeRes.ok) {
           const err = await exchangeRes.json().catch(() => ({}));
+          // 绑定模式下的错误跳回个人主页
+          if (err.error === "github_already_linked") {
+            window.location.replace("/app?bind_error=github_already_linked");
+            return;
+          }
           window.location.replace(`/login?github_error=${encodeURIComponent(err.error || "exchange_failed")}`);
           return;
         }
-        const user = await exchangeRes.json();
-        window.location.replace(user.inviteCode ? "/app" : "/invite-gate?next=/app");
+        const data = await exchangeRes.json();
+        // 绑定模式：返回个人主页
+        if (data.bound) {
+          window.location.replace("/app?bind_success=github");
+          return;
+        }
+        // 登录/注册模式
+        window.location.replace(data.inviteCode ? "/app" : "/invite-gate?next=/app");
       } catch (e) {
         console.error("[github-callback]", e);
         window.location.replace("/login?github_error=network_error");

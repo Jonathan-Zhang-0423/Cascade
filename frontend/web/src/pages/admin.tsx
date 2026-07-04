@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import cascadeLogo from "../assets/cascade-logo.png";
 
 interface BlockedIp {
@@ -26,6 +27,8 @@ interface AppUser {
   username: string;
   email: string | null;
   phone: string | null;
+  githubId: string | null;
+  wechatOpenId: string | null;
   activated: boolean;
   authMethod: string;
   projectCount: number;
@@ -72,12 +75,18 @@ function fmtRemain(sec: number) {
 }
 
 export default function AdminPage() {
-  const [secret, setSecret] = useState("");
+  const [, navigate] = useLocation();
   const [data, setData] = useState<WaitlistData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const authChecked = useRef(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkMsgForm, setBulkMsgForm] = useState({
+    open: false, subject: "", content: "", viaEmail: true, viaNotification: true,
+  });
+  const [bulkMsgSending, setBulkMsgSending] = useState(false);
+  const [bulkMsgResult, setBulkMsgResult] = useState("");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState("");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
@@ -148,39 +157,47 @@ export default function AdminPage() {
   const [squareActioning, setSquareActioning] = useState<string | null>(null);
   const [squareFilter, setSquareFilter] = useState<"all" | "active" | "takendown">("all");
 
-  const fetchData = useCallback(async (adminSecret: string) => {
-    const res = await fetch("/api/waitlist", {
-      headers: { "x-admin-secret": adminSecret },
-    });
-    if (res.status === 401) throw new Error("Incorrect password.");
+  const fetchData = useCallback(async () => {
+    const res = await fetch("/api/waitlist", { credentials: "include" });
+    if (res.status === 401 || res.status === 403) {
+      navigate("/admin/login");
+      throw new Error("未登录");
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error((body as { error?: string }).error ?? "Something went wrong.");
     }
     return res.json() as Promise<WaitlistData>;
-  }, []);
+  }, [navigate]);
+
+  // JWT 鉴权检查：挂载时调用 /me，未登录跳转登录页
+  useEffect(() => {
+    if (authChecked.current) return;
+    authChecked.current = true;
+    fetch("/api/admin/auth/me", { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) { navigate("/admin/login"); return; }
+        // 已登录，加载 waitlist 数据
+        try {
+          const json = await fetchData();
+          setData(json);
+          setAuthed(true);
+        } catch {
+          // fetchData 内部已处理跳转
+        }
+      })
+      .catch(() => navigate("/admin/login"));
+  }, [navigate, fetchData]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!secret.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const json = await fetchData(secret.trim());
-      setData(json);
-      setAuthed(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reach the server.");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function handleRefresh() {
     setLoading(true);
     setError("");
     try {
-      setData(await fetchData(secret.trim()));
+      setData(await fetchData());
       setSelected(new Set());
       setSendResult("");
     } catch (err) {
@@ -194,7 +211,7 @@ export default function AdminPage() {
   async function fetchUsers() {
     setUsersLoading(true); setUsersError("");
     try {
-      const res = await fetch("/api/admin/users", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/users", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setAppUsers(json.items ?? []);
@@ -209,7 +226,7 @@ export default function AdminPage() {
   async function fetchFeedback() {
     setFeedbackLoading(true); setFeedbackError("");
     try {
-      const res = await fetch("/api/admin/feedback", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/feedback", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setFeedbackItems(json.feedback ?? []);
@@ -227,7 +244,8 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/feedback/${feedbackId}/reply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ message: msgContent }),
       });
       if (!res.ok) throw new Error("发送失败");
@@ -252,7 +270,7 @@ export default function AdminPage() {
   async function fetchChangelog() {
     setChangelogLoading(true); setChangelogError("");
     try {
-      const res = await fetch("/api/admin/changelog", { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch("/api/admin/changelog", { credentials: "include" });
       if (!res.ok) throw new Error("加载失败");
       const json = await res.json();
       setChangelogItems(json.entries ?? []);
@@ -271,7 +289,8 @@ export default function AdminPage() {
       const method = changelogForm.editId ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ version: changelogForm.version.trim() || undefined, title: changelogForm.title.trim(), content: changelogForm.content.trim(), isPublished: changelogForm.isPublished }),
       });
       if (!res.ok) throw new Error("保存失败");
@@ -289,7 +308,7 @@ export default function AdminPage() {
   async function deleteChangelogEntry(id: number) {
     if (!window.confirm("确认删除该条目？")) return;
     try {
-      const res = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/changelog/${id}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("删除失败");
       setChangelogItems((prev) => prev.filter((e) => e.id !== id));
       setChangelogMsg("已删除"); setTimeout(() => setChangelogMsg(""), 2000);
@@ -299,13 +318,14 @@ export default function AdminPage() {
   async function notifyChangelog(id: number) {
     if (!window.confirm("确认向所有用户推送该更新通知？")) return;
     try {
-      const res = await fetch(`/api/admin/changelog/${id}/notify`, { method: "POST", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/changelog/${id}/notify`, { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("推送失败");
       const json = await res.json();
       // 推送成功后自动标记为已发布
       await fetch(`/api/admin/changelog/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ isPublished: true }),
       });
       setChangelogItems((prev) => prev.map((e) => e.id === id ? { ...e, isPublished: true } : e));
@@ -318,7 +338,8 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/changelog/${item.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ isPublished: !item.isPublished }),
       });
       if (!res.ok) throw new Error("操作失败");
@@ -331,8 +352,8 @@ export default function AdminPage() {
     setSecLoading(true); setSecError("");
     try {
       const [ipRes, userRes] = await Promise.all([
-        fetch("/api/admin/blocklist/ip", { headers: { "x-admin-secret": secret.trim() } }),
-        fetch("/api/admin/blocklist/users", { headers: { "x-admin-secret": secret.trim() } }),
+        fetch("/api/admin/blocklist/ip", { credentials: "include" }),
+        fetch("/api/admin/blocklist/users", { credentials: "include" }),
       ]);
       const ipData = await ipRes.json();
       const userData = await userRes.json();
@@ -349,7 +370,7 @@ export default function AdminPage() {
     setSecError(""); setSecMsg("");
     try {
       const res = await fetch(`/api/admin/blocklist/ip/${encodeURIComponent(ip)}`, {
-        method: "DELETE", headers: { "x-admin-secret": secret.trim() },
+        method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error("解除失败");
       setSecMsg(`IP ${ip} 已解除封禁`);
@@ -363,7 +384,7 @@ export default function AdminPage() {
     setSecError(""); setSecMsg("");
     try {
       const res = await fetch(`/api/admin/blocklist/users/${userId}`, {
-        method: "DELETE", headers: { "x-admin-secret": secret.trim() },
+        method: "DELETE", credentials: "include",
       });
       if (!res.ok) throw new Error("解除失败");
       setSecMsg(`账号 ${username} 已解除锁定`);
@@ -380,7 +401,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/blocklist/ip", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret.trim() },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ ip: manualIp.trim(), durationHours: 1, reason: manualReason.trim() || "手动封禁" }),
       });
       if (!res.ok) throw new Error("封禁失败");
@@ -397,7 +419,7 @@ export default function AdminPage() {
     setOtpLoading(true); setOtpError(""); setOtpMsg("");
     try {
       const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("查询失败");
       const json = await res.json();
@@ -415,7 +437,7 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/admin/otp-limit/${encodeURIComponent(otpTarget.trim().toLowerCase())}`, {
         method: "DELETE",
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("清除失败");
       const json = await res.json();
@@ -452,7 +474,7 @@ export default function AdminPage() {
     setSquareLoading(true);
     setSquareError("");
     try {
-      const res = await fetch(`/api/admin/square?filter=${filter}`, { headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/square?filter=${filter}`, { credentials: "include" });
       if (!res.ok) throw new Error("获取失败");
       setSquareStats(await res.json());
     } catch {
@@ -466,7 +488,7 @@ export default function AdminPage() {
     if (!confirm("确认强制下架此应用？下架后记录保留，可随时重新上架。")) return;
     setSquareActioning(id);
     try {
-      const res = await fetch(`/api/admin/square/${id}/takedown`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/square/${id}/takedown`, { method: "PATCH", credentials: "include" });
       if (!res.ok) throw new Error();
       setSquareStats((prev) => prev ? {
         ...prev,
@@ -485,7 +507,7 @@ export default function AdminPage() {
     if (!confirm("确认重新上架此应用？")) return;
     setSquareActioning(id);
     try {
-      const res = await fetch(`/api/admin/square/${id}/restore`, { method: "PATCH", headers: { "x-admin-secret": secret.trim() } });
+      const res = await fetch(`/api/admin/square/${id}/restore`, { method: "PATCH", credentials: "include" });
       if (!res.ok) throw new Error();
       setSquareStats((prev) => prev ? {
         ...prev,
@@ -521,10 +543,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/send-invites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-secret": secret.trim(),
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ ids: Array.from(selected) }),
       });
       const body = await res.json();
@@ -542,7 +562,7 @@ export default function AdminPage() {
   async function handleExportCSV() {
     try {
       const res = await fetch("/api/admin/export-csv", {
-        headers: { "x-admin-secret": secret.trim() },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -622,6 +642,37 @@ export default function AdminPage() {
     setColFilters((prev) => { const next = { ...prev }; delete next[key]; return next; });
   }
 
+  async function handleSendBulkMessage() {
+    if (selected.size === 0 || !bulkMsgForm.content.trim()) return;
+    setBulkMsgSending(true);
+    setBulkMsgResult("");
+    try {
+      const res = await fetch("/api/admin/bulk-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          subscriberIds: Array.from(selected),
+          subject: bulkMsgForm.subject.trim(),
+          content: bulkMsgForm.content.trim(),
+          viaEmail: bulkMsgForm.viaEmail,
+          viaNotification: bulkMsgForm.viaNotification,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "发送失败");
+      setBulkMsgResult(
+        `邮件已发送 ${body.emailSent} 封${body.emailFailed > 0 ? `（失败 ${body.emailFailed} 封）` : ""}，站内通知已发送 ${body.notificationSent} 条${body.notificationSkipped > 0 ? `（跳过未注册 ${body.notificationSkipped} 人）` : ""}`
+      );
+      setSelected(new Set());
+      setBulkMsgForm({ open: false, subject: "", content: "", viaEmail: true, viaNotification: true });
+    } catch (err) {
+      setBulkMsgResult(err instanceof Error ? err.message : "发送失败，请重试");
+    } finally {
+      setBulkMsgSending(false);
+    }
+  }
+
   const filtered = (data?.subscribers ?? []).filter((s) => {
     if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (filterType === "edu" && !s.isEdu) return false;
@@ -631,24 +682,25 @@ export default function AdminPage() {
     return true;
   });
 
-  const pendingFiltered = filtered.filter((s) => s.status === "pending" || s.status === "email_failed");
-  const allPendingSelected = pendingFiltered.length > 0 && pendingFiltered.every((s) => selected.has(s.id));
+  const allSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
 
   function toggleSelectAll() {
-    if (allPendingSelected) {
+    if (allSelected) {
       setSelected((prev) => {
         const next = new Set(prev);
-        pendingFiltered.forEach((s) => next.delete(s.id));
+        filtered.forEach((s) => next.delete(s.id));
         return next;
       });
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
-        pendingFiltered.forEach((s) => next.add(s.id));
+        filtered.forEach((s) => next.add(s.id));
         return next;
       });
     }
   }
+
+  const selectedRegisteredCount = filtered.filter((s) => selected.has(s.id) && s.registeredAt).length;
 
   return (
     <div
@@ -685,46 +737,10 @@ export default function AdminPage() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 pt-36 pb-20">
 
-        {/* Login */}
+        {/* Loading state while auth check runs */}
         {!authed && (
-          <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
-            <h1
-              className="font-bold text-black mb-3 leading-tight"
-              style={{ fontSize: "clamp(36px, 5vw, 52px)", fontFamily: FONT }}
-            >
-              CascadeAI Admin
-            </h1>
-            <p className="text-gray-500 text-[16px] mb-10">
-              Enter your admin password to continue.
-            </p>
-            <form onSubmit={handleLogin} className="flex flex-col gap-3 w-full max-w-sm">
-              <input
-                type="password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                placeholder="Admin password"
-                required
-                className="w-full px-4 py-3 rounded-xl text-[14px] outline-none text-gray-900 placeholder:text-gray-400"
-                style={{
-                  background: "rgba(255,255,255,0.9)",
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
-                }}
-                onFocus={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.4)"; }}
-                onBlur={(e) => { e.currentTarget.style.border = "1px solid rgba(0,0,0,0.12)"; }}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
-                style={{ background: "#111827", boxShadow: "0 4px 16px rgba(0,0,0,0.18)" }}
-              >
-                {loading ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
-            {error && (
-              <p className="mt-4 text-[13px] text-red-500">{error}</p>
-            )}
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <p className="text-gray-400 text-[14px]">验证登录状态…</p>
           </div>
         )}
 
@@ -802,6 +818,14 @@ export default function AdminPage() {
                       style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
                     >
                       {loading ? "Refreshing…" : "Refresh"}
+                    </button>
+                    <button
+                      onClick={() => setBulkMsgForm((f) => ({ ...f, open: true }))}
+                      disabled={selected.size === 0}
+                      className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-40"
+                      style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                    >
+                      群发消息 {selected.size > 0 ? `(${selected.size})` : ""}
                     </button>
                     <button
                       onClick={handleExportCSV}
@@ -948,6 +972,71 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {bulkMsgResult && <p className="mb-4 text-[13px] text-green-600 font-medium">{bulkMsgResult}</p>}
+
+            {/* 群发消息面板 */}
+            {bulkMsgForm.open && (
+              <div className="rounded-2xl p-5 flex flex-col gap-3 mb-5" style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 20px rgba(0,0,0,0.05)" }}>
+                <p className="text-[13px] text-gray-500">
+                  已选 <strong className="text-black">{selected.size}</strong> 位用户，其中 <strong className="text-black">{selectedRegisteredCount}</strong> 位已注册（可收到站内通知，其余仅能收到邮件）
+                </p>
+                <input
+                  type="text"
+                  value={bulkMsgForm.subject}
+                  onChange={(e) => setBulkMsgForm((f) => ({ ...f, subject: e.target.value }))}
+                  placeholder="标题"
+                  className="px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                  style={{ fontFamily: FONT, background: "white", border: "1px solid rgba(0,0,0,0.10)", color: "#111827" }}
+                />
+                <textarea
+                  value={bulkMsgForm.content}
+                  onChange={(e) => setBulkMsgForm((f) => ({ ...f, content: e.target.value }))}
+                  placeholder="正文内容…"
+                  rows={5}
+                  className="px-3 py-2.5 rounded-xl text-[13px] outline-none resize-none"
+                  style={{ fontFamily: FONT, background: "white", border: "1px solid rgba(0,0,0,0.10)", color: "#111827" }}
+                />
+                <div className="flex items-center gap-5">
+                  <label className="flex items-center gap-2 text-[13px] text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkMsgForm.viaEmail}
+                      onChange={(e) => setBulkMsgForm((f) => ({ ...f, viaEmail: e.target.checked }))}
+                      className="rounded"
+                    />
+                    发邮件
+                  </label>
+                  <label className="flex items-center gap-2 text-[13px] text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={bulkMsgForm.viaNotification}
+                      onChange={(e) => setBulkMsgForm((f) => ({ ...f, viaNotification: e.target.checked }))}
+                      className="rounded"
+                    />
+                    发站内通知
+                  </label>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  <button
+                    onClick={handleSendBulkMessage}
+                    disabled={bulkMsgSending || !bulkMsgForm.content.trim() || (!bulkMsgForm.viaEmail && !bulkMsgForm.viaNotification)}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-85 active:scale-[0.97] disabled:opacity-40"
+                    style={{ background: "#111827", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                  >
+                    {bulkMsgSending ? "发送中，请勿关闭页面…" : "发送"}
+                  </button>
+                  <button
+                    onClick={() => setBulkMsgForm({ open: false, subject: "", content: "", viaEmail: true, viaNotification: true })}
+                    disabled={bulkMsgSending}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-40"
+                    style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.1)" }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Table */}
             {filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-400 text-[14px]">No subscribers found.</div>
@@ -966,7 +1055,7 @@ export default function AdminPage() {
                       <th className="px-5 py-3.5 text-left w-10">
                         <input
                           type="checkbox"
-                          checked={allPendingSelected}
+                          checked={allSelected}
                           onChange={toggleSelectAll}
                           className="rounded"
                         />
@@ -989,20 +1078,18 @@ export default function AdminPage() {
                         className={selected.has(s.id) ? "bg-gray-50/80" : "hover:bg-gray-50/40 transition-colors"}
                       >
                         <td className="px-5 py-3.5">
-                          {(s.status === "pending" || s.status === "email_failed") && (
-                            <input
-                              type="checkbox"
-                              checked={selected.has(s.id)}
-                              onChange={() => {
-                                setSelected((prev) => {
-                                  const next = new Set(prev);
-                                  next.has(s.id) ? next.delete(s.id) : next.add(s.id);
-                                  return next;
-                                });
-                              }}
-                              className="rounded"
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={selected.has(s.id)}
+                            onChange={() => {
+                              setSelected((prev) => {
+                                const next = new Set(prev);
+                                next.has(s.id) ? next.delete(s.id) : next.add(s.id);
+                                return next;
+                              });
+                            }}
+                            className="rounded"
+                          />
                         </td>
                         <td className="px-5 py-3.5 font-medium text-gray-900">{s.email}</td>
                         <td className="px-5 py-3.5">
@@ -1156,7 +1243,14 @@ export default function AdminPage() {
                                 return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={style}>{cat}</span>;
                               })()}
                             </td>
-                            <td className="px-5 py-3.5 text-gray-600">{userColByKey["auth"].value(u)}</td>
+                            <td className="px-5 py-3.5 text-gray-600">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {u.phone && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a" }}>📱</span>}
+                                {u.email && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(99,102,241,0.08)", color: "#4f46e5" }}>📧</span>}
+                                {u.githubId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(0,0,0,0.06)", color: "#333" }}>GH</span>}
+                                {u.wechatOpenId && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(34,197,94,0.08)", color: "#07c160" }}>微信</span>}
+                              </div>
+                            </td>
                             <td className="px-5 py-3.5">
                               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={u.activated ? { background: "rgba(34,197,94,0.08)", color: "#16a34a" } : { background: "rgba(234,179,8,0.08)", color: "#a16207" }}>
                                 {u.activated ? "已激活" : "未激活"}

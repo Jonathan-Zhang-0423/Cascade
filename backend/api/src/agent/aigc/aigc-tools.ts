@@ -12,7 +12,7 @@ import { addImageWatermark, addVideoWatermark } from "../../infra/watermark";
 import { videoStorage } from "../../infra/video-storage";
 import { executeDslSequence, validateDslSequence } from "../../api/video/dsl-executor";
 import { getFastClient } from "../providers/kimi-client";
-import { evaluatePoster, incrementSessionRetry, incrementDailyUsage } from "../../infra/aigc-evaluator";
+import { evaluatePoster, incrementSessionRetry, incrementDailyUsage, checkDailyQuota } from "../../infra/aigc-evaluator";
 
 // ── Style tag extractor (fire-and-forget) ─────────────────────────────────────
 // Runs after poster generation to update user style preferences asynchronously.
@@ -30,7 +30,7 @@ async function extractAndSaveStyleTags(userId: string, prompt: string, style: st
         },
         { role: "user", content: `提示词：${prompt}。风格选项：${style ?? "无"}` },
       ],
-    });
+    }, { signal: AbortSignal.timeout(10_000) });
     const raw = completion.choices[0]?.message?.content?.trim() ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return;
@@ -75,14 +75,27 @@ async function expandPosterPrompt(userPrompt: string, style?: string): Promise<s
           content: `用户需求：${userPrompt}。${styleHint}这是一个 App 的宣传海报，App 截图将作为参考图。`,
         },
       ],
-    });
-    const expanded = completion.choices[0]?.message?.content?.trim();
+    }, { signal: AbortSignal.timeout(15_000) });
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+    // MiniMax/reasoning models sometimes prepend <think>...</think> blocks.
+    // Strip them — otherwise the tag leaks into the card's step label AND into
+    // the Doubao image prompt (which can make generation fail).
+    const expanded = stripThink(raw);
     if (expanded && expanded.length > 20) return expanded;
   } catch (err) {
     console.warn("[aigc-tools] prompt expansion failed, using original:", err instanceof Error ? err.message : err);
   }
-  // Fallback: return original prompt if LLM fails
-  return userPrompt;
+  // Fallback: return original prompt if LLM fails (stripped, in case kimi
+  // passed <think> tags in the prompt arg).
+  return stripThink(userPrompt);
+}
+
+/** Strip <think>...</think> (and unclosed <think>...) blocks from LLM output. */
+function stripThink(s: string): string {
+  return s
+    .replace(/<think>[\s\S]*?<\/think>\s*/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .trim();
 }
 
 export interface AigcToolContext {
@@ -90,6 +103,11 @@ export interface AigcToolContext {
   sessionId: string;
   userId?: string;
   emit: (event: Record<string, unknown>) => void;
+  /** Blocks until the user submits a poster style (resolved by POST /style). */
+  requestStyle: () => Promise<string>;
+  /** User's session cookie header — injected into the screenshot browser so
+   *  /preview/:projectId doesn't redirect to login. */
+  cookie?: string;
 }
 
 export function buildAigcTools(ctx: AigcToolContext): {
@@ -102,6 +120,14 @@ export function buildAigcTools(ctx: AigcToolContext): {
       function: {
         name: "capture_screenshot",
         description: "Capture a real screenshot of the current App preview. Returns a base64 JPEG. Use this as the reference image before calling generate_poster.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "request_style",
+        description: "Ask the user to choose/enter a poster style. BLOCKS until the user submits a style, then returns the style string. Call this immediately after capture_screenshot, and use the returned string as the prompt for generate_poster.",
         parameters: { type: "object", properties: {}, required: [] },
       },
     },
@@ -152,47 +178,103 @@ export function buildAigcTools(ctx: AigcToolContext): {
 
   // Shared screenshot state (reused across generate_poster calls in same session)
   let capturedScreenshotB64: string | null = null;
+  // Workflow guards — track what has actually been produced so finish_aigc
+  // can refuse to exit prematurely (the LLM sometimes calls finish_aigc right
+  // after capture_screenshot, skipping generate_poster, yielding no media).
+  let posterGenerated = false;
+  let videoStarted = false;
+  let videoGenerated = false;
 
   const handlers: Record<string, ToolHandler> = {
     capture_screenshot: async (_args, emit) => {
       emit({ type: "aigc_action", label: "截取 App 真实画面" });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let browser: any = null;
       try {
         const pwModule = "playwright";
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
-        const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-        const page = await browser.newPage();
-        await page.setViewportSize({ width: 390, height: 844 });
+        browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+        // Inject the user's session cookie so /preview/:projectId (which calls
+        // authed project APIs) doesn't redirect to the login page — without
+        // this the screenshot was capturing the login screen.
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        if (ctx.cookie) {
+          const cookies = ctx.cookie.split(";").map((c) => {
+            const idx = c.indexOf("=");
+            const name = (idx >= 0 ? c.slice(0, idx) : c).trim();
+            const value = idx >= 0 ? c.slice(idx + 1).trim() : "";
+            return name ? { name, value, domain: "localhost", path: "/" } : null;
+          }).filter(Boolean) as Array<{ name: string; value: string; domain: string; path: string }>;
+          if (cookies.length) await context.addCookies(cookies);
+        }
+        const page = await context.newPage();
         await page.goto(`http://localhost:${PORT}/preview/${ctx.projectId}`, {
           waitUntil: "networkidle",
           timeout: 20_000,
         });
+        // If the page redirected to /login, the project preview isn't accessible
+        // (missing/invalid session) — fail loudly with an actionable message.
+        const url = page.url();
+        if (url.includes("/login") || url.includes("/auth")) {
+          throw new Error("截图被重定向到登录页（会话 cookie 未生效），无法获取 App 预览。请确认已登录后重试。");
+        }
         // Brief wait for animations to settle
         await new Promise<void>((r) => setTimeout(r, 1500));
         const buffer: Buffer = await page.screenshot({ type: "jpeg", quality: 90 });
-        await browser.close();
         capturedScreenshotB64 = buffer.toString("base64");
         emit({ type: "aigc_screenshot", dataUrl: `data:image/jpeg;base64,${capturedScreenshotB64}` });
-        return "Screenshot captured successfully. You can now call generate_poster with a style prompt.";
+        return "Screenshot captured successfully. You can now call request_style to ask the user for a poster style.";
       } catch (err) {
-        throw new Error(`Screenshot failed: ${err instanceof Error ? err.message : err}`);
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error("[aigc-tools] screenshot failed:", detail);
+        throw new Error("截图失败：请先确保 App 已初步构建完成且可正常预览，再重新生成海报。");
+      } finally {
+        // Always release the Chromium process — a throw on goto/screenshot used
+        // to skip browser.close() and leak a full browser + children per failure.
+        try { await browser?.close(); } catch {}
       }
     },
 
+    request_style: async (_args, emit) => {
+      emit({ type: "aigc_action", label: "等待用户选择风格" });
+      emit({ type: "aigc_need_style" });
+      // Blocks inside the agent loop until POST /api/aigc/session/:id/style
+      // resolves session.styleResolver. Returns the user's style string.
+      const style = await ctx.requestStyle();
+      return `User selected style: ${style}. Use this as the prompt for generate_poster.`;
+    },
+
     generate_poster: async (args, emit) => {
-      if (!capturedScreenshotB64) {
-        throw new Error("No screenshot available. Call capture_screenshot first.");
+      // Screenshot is required — the poster is meant to reflect the real App UI.
+      const refImage = capturedScreenshotB64;
+      if (!refImage) {
+        throw new Error("尚未截取 App 画面。请先确保 App 已初步构建完成且可正常预览，再重新生成海报。");
       }
-      const rawPrompt = args.prompt as string;
+      // kimi sometimes wraps the prompt arg in <think>...</think> tags; strip
+      // them at the entry so no think content leaks into the card label or the
+      // image-generation prompt.
+      const rawPrompt = stripThink((args.prompt as string) ?? "");
       const style = args.style as string | undefined;
-      emit({ type: "aigc_action", label: "优化提示词…" });
+
+      // Per-user daily quota. Previously incrementDailyUsage was keyed by
+      // sessionId (bug) and checkDailyQuota was never called, so the 20/day
+      // limit was never enforced. Enforce here, keyed by userId.
+      if (ctx.userId) {
+        const quota = checkDailyQuota(ctx.userId);
+        if (!quota.allowed) {
+          throw new Error("今日海报生成次数已达上限（20次），请明日再试。");
+        }
+      }
+
+      emit({ type: "aigc_action", label: "优化提示词" });
 
       const expandedPrompt = await expandPosterPrompt(rawPrompt, style);
-      emit({ type: "aigc_action", label: `生成海报: ${expandedPrompt.slice(0, 40)}…` });
+      emit({ type: "aigc_action", label: "生成海报" });
 
       const result = await aigcProvider.generatePoster({
         prompt: expandedPrompt,
-        referenceImageB64: capturedScreenshotB64,
+        referenceImageB64: refImage,
         style,
       });
 
@@ -206,24 +288,27 @@ export function buildAigcTools(ctx: AigcToolContext): {
         const { readFile } = await import("fs/promises");
         finalB64 = (await readFile(tmpOut)).toString("base64");
       } catch (wmErr) {
-        console.warn("[aigc-tools] watermark failed:", wmErr);
+        // Watermarking is a hard requirement — fail loudly rather than emit an
+        // unwatermarked poster (silent policy bypass).
+        console.error("[aigc-tools] watermark failed:", wmErr);
+        throw new Error("海报水印添加失败，请重试。");
       } finally {
         rm(tmpIn, { force: true }).catch(() => {});
         rm(tmpOut, { force: true }).catch(() => {});
       }
 
       // ── Quality evaluation ───────────────────────────────────────────────
-      emit({ type: "aigc_action", label: "质量检测中…" });
+      emit({ type: "aigc_action", label: "质量检测中" });
       const evalResult = await evaluatePoster(finalB64, expandedPrompt, ctx.sessionId);
 
       if (evalResult.shouldRetry) {
         // Auto-retry once with a freshened prompt
         incrementSessionRetry(ctx.sessionId);
-        emit({ type: "aigc_action", label: `质量偏低(${evalResult.score}分)，自动优化重试…` });
+        emit({ type: "aigc_action", label: `质量偏低(${evalResult.score}分)，自动优化重试` });
         const retryPrompt = await expandPosterPrompt(`${rawPrompt}，注意提升视觉质量和专业感`, style);
         const retryResult = await aigcProvider.generatePoster({
           prompt: retryPrompt,
-          referenceImageB64: capturedScreenshotB64!,
+          referenceImageB64: refImage,
           style,
         });
         const tmpIn2 = join(tmpdir(), `aigc-poster-retry-in-${Date.now()}.png`);
@@ -234,14 +319,18 @@ export function buildAigcTools(ctx: AigcToolContext): {
           await addImageWatermark(tmpIn2, tmpOut2);
           const { readFile } = await import("fs/promises");
           retryB64 = (await readFile(tmpOut2)).toString("base64");
-        } catch { /* watermark failure non-fatal */ } finally {
+        } catch (wmErr) {
+          console.error("[aigc-tools] retry watermark failed:", wmErr);
+          throw new Error("海报水印添加失败，请重试。");
+        } finally {
           rm(tmpIn2, { force: true }).catch(() => {});
           rm(tmpOut2, { force: true }).catch(() => {});
         }
         finalB64 = retryB64;
       }
 
-      incrementDailyUsage(ctx.sessionId);
+      // Key by userId (was sessionId — quota was never actually enforced per user).
+      if (ctx.userId) incrementDailyUsage(ctx.userId);
 
       // Fire-and-forget: extract style tags and update user preferences
       if (ctx.userId) {
@@ -252,10 +341,12 @@ export function buildAigcTools(ctx: AigcToolContext): {
       const qualityHint = evalResult.score >= 70 ? "quality_good" : evalResult.score >= 55 ? "quality_fair" : "quality_low";
       emit({ type: "aigc_poster", dataUrl, prompt: expandedPrompt, score: evalResult.score, qualityHint });
       ctx.emit({ type: "aigc_poster_ready", dataUrl, sessionId: ctx.sessionId, score: evalResult.score, qualityHint });
+      posterGenerated = true;
       return `Poster generated. Score: ${evalResult.score}. DataURL length: ${dataUrl.length} chars.`;
     },
 
     record_demo_video: async (args, emit) => {
+      videoStarted = true;
       emit({ type: "aigc_action", label: "录制 App 真实运行视频" });
 
       const projectRow = await storage.getProject(ctx.projectId).catch(() => null);
@@ -280,13 +371,27 @@ export function buildAigcTools(ctx: AigcToolContext): {
           viewport: { width: 390, height: 844 },
           recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
         });
+        // Inject user session cookie so /preview doesn't redirect to login.
+        if (ctx.cookie) {
+          const vcookies = ctx.cookie.split(";").map((c) => {
+            const idx = c.indexOf("=");
+            const name = (idx >= 0 ? c.slice(0, idx) : c).trim();
+            const value = idx >= 0 ? c.slice(idx + 1).trim() : "";
+            return name ? { name, value, domain: "localhost", path: "/" } : null;
+          }).filter(Boolean) as Array<{ name: string; value: string; domain: string; path: string }>;
+          if (vcookies.length) await context.addCookies(vcookies);
+        }
         const page = await context.newPage();
 
-        emit({ type: "aigc_action", label: "App 加载中…" });
+        emit({ type: "aigc_action", label: "App 加载中" });
         await page.goto(`http://localhost:${PORT}/preview/${ctx.projectId}`, {
           waitUntil: "networkidle",
           timeout: 30_000,
         });
+        const vurl = page.url();
+        if (vurl.includes("/login") || vurl.includes("/auth")) {
+          throw new Error("录屏被重定向到登录页（会话 cookie 未生效），无法获取 App 预览。");
+        }
 
         // Execute interaction script
         if (rawSequence) {
@@ -295,7 +400,15 @@ export function buildAigcTools(ctx: AigcToolContext): {
             const validation = validateDslSequence(parsed);
             if (validation.valid && validation.actions) {
               emit({ type: "aigc_action", label: `执行交互脚本 (${validation.actions.length} 步)` });
-              const execResult = await executeDslSequence(page, validation.actions);
+              // Bound DSL execution — an unbounded waitForSelector/waitForTimeout
+              // step would otherwise hang the recording forever, and the finally
+              // below (browser/tmpDir cleanup) only runs on throw/return, not hang.
+              const execResult = await Promise.race([
+                executeDslSequence(page, validation.actions),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error("DSL 执行超时")), 60_000),
+                ),
+              ]);
               if (execResult.failed > 0) {
                 console.warn(`[aigc-tools] ${execResult.failed} DSL steps failed`);
               }
@@ -352,6 +465,7 @@ export function buildAigcTools(ctx: AigcToolContext): {
 
         emit({ type: "aigc_video_ready", downloadUrl, storagePath });
         ctx.emit({ type: "aigc_video_ready", downloadUrl, sessionId: ctx.sessionId });
+        videoGenerated = true;
         return `Video recorded and saved. Download: ${downloadUrl}`;
       } finally {
         try { context?.close(); } catch {}
@@ -361,6 +475,16 @@ export function buildAigcTools(ctx: AigcToolContext): {
     },
 
     finish_aigc: async (args, emit) => {
+      // Hard workflow guard: the LLM sometimes calls finish_aigc right after
+      // capture_screenshot, skipping generate_poster — which yields a "done"
+      // with no media. Refuse to exit until the requested media actually exists,
+      // so the loop re-prompts the LLM to call generate_poster / record_demo_video.
+      if (capturedScreenshotB64 && !posterGenerated) {
+        throw new Error("你已截取 App 画面，但还未生成海报。请先调用 generate_poster（带上 style prompt）生成海报，然后再调用 finish_aigc。禁止在生成海报之前结束。");
+      }
+      if (videoStarted && !videoGenerated) {
+        throw new Error("你已开始录制视频，但还未产出视频。请先完成 record_demo_video，再调用 finish_aigc。");
+      }
       emit({ type: "aigc_complete", summary: args.summary as string });
       return "AIGC tasks complete.";
     },

@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useLanguageStore } from "@/stores/language-store";
 
-/** HTTP-safe UUID generator (crypto.randomUUID requires HTTPS) */
+/** HTTP-safe UUID generator. crypto.randomUUID requires a secure context
+ *  (HTTPS or localhost); fall back to a Math.random RFC4122-v4 string on
+ *  plain HTTP deployments (e.g. the test instance on a raw IP). */
 function genId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -402,6 +404,10 @@ interface IDEState {
   planPreviewOpen: boolean;
   planPreviewData: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null;
   setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
+
+  // AIGC media preview (poster image / demo video) shown in a right-panel tab
+  mediaPreview: { url: string; type: "image" | "video" } | null;
+  setMediaPreview: (mp: { url: string; type: "image" | "video" } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
   freezeLatestPlanStatuses: () => void;
@@ -875,6 +881,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   planPreviewOpen: false,
   planPreviewData: null,
   setPlanPreview: (open, data) => set({ planPreviewOpen: open, planPreviewData: data ?? null }),
+  mediaPreview: null,
+  setMediaPreview: (mp) => set({ mediaPreview: mp }),
 
   // ── Multi-session initial state ────────────────────────────────────────────
   currentSessionId: "main",

@@ -4,6 +4,7 @@ import { useIDEStore } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileIDE } from "@/components/mobile/MobileIDE";
+import { AigcProvider } from "@/components/ide/aigc/AigcProvider";
 import { Navbar } from "@/components/ide/navbar";
 import { ToolsDock } from "@/components/ide/tools-dock";
 import { FileTree } from "@/components/ide/file-tree";
@@ -93,6 +94,24 @@ export default function IDEPage() {
     window.addEventListener("plan-preview-open", handler);
     return () => window.removeEventListener("plan-preview-open", handler);
   }, [t]);
+
+  // 监听 media-preview-open 事件，AIGC 卡片点击"预览"时在右侧新开/切换到媒体预览 Tab
+  const MEDIA_PREVIEW_TAB_ID = "media-preview";
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { url: string; type: "image" | "video" } | undefined;
+      if (!detail?.url) return;
+      useIDEStore.getState().setMediaPreview(detail);
+      setPreviewTabs((prev) => {
+        if (prev.some((tab) => tab.id === MEDIA_PREVIEW_TAB_ID)) return prev;
+        return [...prev, { id: MEDIA_PREVIEW_TAB_ID, label: detail.type === "video" ? "视频预览" : "海报预览", closable: true }];
+      });
+      setActivePreviewTab(MEDIA_PREVIEW_TAB_ID);
+      setToolsPanelOpen(false);
+    };
+    window.addEventListener("media-preview-open", handler as EventListener);
+    return () => window.removeEventListener("media-preview-open", handler as EventListener);
+  }, []);
 
   // 打开 changelog 详情弹窗
   const openChangelogTab = useCallback((_refId: number) => {
@@ -241,12 +260,12 @@ export default function IDEPage() {
     );
   }
 
-  if (isMobile) {
-    return <MobileIDE projectId={id!} />;
-  }
-
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="ide-page">
+    <AigcProvider>
+      {isMobile ? (
+        <MobileIDE projectId={id!} />
+      ) : (
+        <div className="h-screen w-screen flex flex-col overflow-hidden relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="ide-page">
 
       {/* ── 一横：顶部导航栏 ── */}
       <Navbar
@@ -376,6 +395,8 @@ export default function IDEPage() {
         />
       )}
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
-    </div>
+        </div>
+      )}
+    </AigcProvider>
   );
 }

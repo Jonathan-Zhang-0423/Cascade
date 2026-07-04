@@ -178,7 +178,7 @@ export function MobileNotificationPanel() {
                       {/* 图标 */}
                       <div className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl"
                         style={{ background: n.type === "changelog" ? "rgba(79,130,255,0.10)" : "rgba(52,214,138,0.10)" }}>
-                        <span className="text-[16px]">{n.type === "changelog" ? "🎉" : n.type === "app_like" ? "❤️" : n.type === "app_comment" ? "💬" : "📢"}</span>
+                        <span className="text-[16px]">{n.type === "changelog" ? "🎉" : "💬"}</span>
                       </div>
 
                       {/* 文字 */}

@@ -37,9 +37,21 @@ export interface AigcVideoResult {
   provider: string;
 }
 
+export interface AigcPosterRequest {
+  prompt: string;
+  referenceImageB64?: string;   // app screenshot (ignored by text-to-image providers)
+  style?: string;
+}
+
+export interface AigcPosterResult {
+  imageB64: string;             // raw base64 PNG (no data: prefix)
+}
+
 export interface IAigcProvider {
   generateImage(req: AigcImageRequest): Promise<AigcImageResult>;
   generateVideo(req: AigcVideoRequest): Promise<AigcVideoResult>;
+  /** Generate a poster image, returning raw base64 (used by the AIGC poster tool). */
+  generatePoster(req: AigcPosterRequest): Promise<AigcPosterResult>;
   /** For async video providers: poll task status */
   getVideoStatus?(taskId: string): Promise<{ status: "pending" | "running" | "done" | "failed"; videoUrl?: string; progress?: number }>;
   readonly name: string;
@@ -87,6 +99,59 @@ class DoubaoAigcProvider implements IAigcProvider {
         b64: d.b64_json ? `data:image/png;base64,${d.b64_json}` : undefined,
       })),
     };
+  }
+
+  async generatePoster(req: AigcPosterRequest): Promise<AigcPosterResult> {
+    // Image-to-image: the App screenshot is the reference image, the prompt is
+    // the style/transformation instruction. This keeps the poster visually based
+    // on the real App UI instead of an unrelated text-only generation.
+    const apiKey = process.env.DOUBAO_API_KEY;
+    if (!apiKey) throw new Error("DOUBAO_API_KEY not configured");
+    // Prefer the i2i model; fall back to the (unified) image model.
+    const model = process.env.DOUBAO_IMAGE_I2I_MODEL
+      || process.env.DOUBAO_IMAGE_MODEL
+      || "doubao-seedream-3-0-t2i-250415";
+
+    if (!req.referenceImageB64) {
+      throw new Error("generatePoster requires a reference screenshot (referenceImageB64).");
+    }
+    // Doubao seedream i2i: `image` is a STRING (URL or base64 data URL), size is
+    // a preset like "2K", and sequential_image_generation should be disabled for
+    // single-image-in/single-image-out. (Per official ARK i2i example.)
+    const imageDataUrl = `data:image/jpeg;base64,${req.referenceImageB64}`;
+
+    const response = await fetch("https://ark.cn-beijing.volces.com/api/v3/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        prompt: req.prompt,
+        image: imageDataUrl,
+        sequential_image_generation: "disabled",
+        size: "2K",
+        response_format: "url",
+        stream: false,
+        watermark: false,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Doubao image API error ${response.status}: ${text}`);
+    }
+    const data = await response.json() as { data: Array<{ b64_json?: string; url?: string }> };
+    const img = data.data?.[0];
+    if (img?.b64_json) {
+      return { imageB64: img.b64_json };
+    }
+    // Fallback: fetch URL with a timeout if provider ignored response_format
+    if (img?.url) {
+      const r = await fetch(img.url, { signal: AbortSignal.timeout(30_000) });
+      if (!r.ok) throw new Error(`fetch poster image failed: ${r.status}`);
+      const buf = Buffer.from(await r.arrayBuffer());
+      return { imageB64: buf.toString("base64") };
+    }
+    throw new Error("AIGC provider returned no image data");
   }
 
   async generateVideo(req: AigcVideoRequest): Promise<AigcVideoResult> {
