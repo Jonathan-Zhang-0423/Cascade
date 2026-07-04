@@ -61,6 +61,8 @@ export interface ReviewSessionState {
   sessionDir?: string;
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
   _startedAt?: number;
+  _chatSessionId?: string;
+  finalArtifact?: Record<string, unknown>;
 }
 
 const SEVERITY_RANK: Record<ReviewSeverity, number> = {

@@ -36,6 +36,7 @@ describeIntegration("stress: SSE reconnect + replay", () => {
 
   async function startSession(projectId: string): Promise<string> {
     const ac = new AbortController();
+    await http.post("/api/projects", { id: projectId, name: "Reconnect Test" });
     // Kick off the producer; we don't read it here (a separate /stream reader
     // consumes events). Abort immediately — the session keeps running server-side.
     http
@@ -49,7 +50,7 @@ describeIntegration("stress: SSE reconnect + replay", () => {
     // Wait for the session to be registered and resolve its id.
     const deadline = Date.now() + 8000;
     while (Date.now() < deadline) {
-      const r = await http.get(`/api/manager-chat/active/${projectId}`);
+      const r = await http.get(`/api/manager-chat/active/${projectId}?chatSessionId=main`);
       if (r.status === 200 && r.body.sessionId) {
         ac.abort();
         return r.body.sessionId;

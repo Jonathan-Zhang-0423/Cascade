@@ -15,6 +15,7 @@ import { z } from "zod";
 import helmet from "helmet";
 import { createSecurity } from "../middleware/security";
 import { requireInviteCode, checkCaptcha, checkAdmin } from "../middleware/auth-middleware";
+import { assertProjectAccess, getRequestUserId, normalizeChatSessionId } from "../project-access";
 import { registerNotificationRoutes } from "./notifications";
 import { registerReferralRoutes } from "./referral";
 import { registerWaitlistRoutes } from "./waitlist";
@@ -427,6 +428,211 @@ setInterval(() => {
 
 type UserIntent = "build" | "question" | "fix" | "refine";
 
+function sessionBelongsToRequest(session: {
+  userId?: string | null;
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  _chatSessionId?: string | null;
+}, reqUserId?: string, projectId?: string, chatSessionId?: string): boolean {
+  if (!reqUserId) return false;
+  if (!session.userId || session.userId !== reqUserId) return false;
+  if (projectId && session.projectId && session.projectId !== projectId) return false;
+  if (chatSessionId) {
+    const sid = normalizeChatSessionId(session.chatSessionId ?? session._chatSessionId ?? "main");
+    if (sid !== normalizeChatSessionId(chatSessionId)) return false;
+  }
+  return true;
+}
+
+function sessionStatusPayload(session: {
+  events: BufferedEvent[];
+  done: boolean;
+  aborted?: boolean;
+  currentSnapshot?: Record<string, unknown>;
+  ledgerSnapshot?: Record<string, unknown>;
+  finalArtifact?: Record<string, unknown> | null;
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  actionLog?: Record<string, unknown>[];
+  todoLedger?: { snapshot: () => unknown };
+}) {
+  let ledger = session.ledgerSnapshot ?? {};
+  try {
+    const snapshot = session.todoLedger?.snapshot();
+    if (snapshot && typeof snapshot === "object") ledger = snapshot as Record<string, unknown>;
+  } catch {}
+  const currentSnapshot = {
+    ...(session.currentSnapshot ?? {}),
+    ...(session.actionLog ? { actionLog: session.actionLog } : {}),
+    ledger,
+    finalArtifact: session.finalArtifact ?? (session.currentSnapshot as any)?.finalArtifact ?? null,
+    updatedAt: Date.now(),
+  };
+  return {
+    active: !session.done && !session.aborted,
+    eventCount: session.events.length,
+    lastEventId: session.events.length > 0 ? session.events[session.events.length - 1].eventId : -1,
+    done: session.done,
+    projectId: session.projectId || null,
+    chatSessionId: normalizeChatSessionId(session.chatSessionId),
+    snapshot: currentSnapshot,
+    ledger,
+    finalArtifact: session.finalArtifact ?? null,
+  };
+}
+
+type PersistedActionLogEntry = {
+  type: string;
+  label: string;
+  detail: string;
+  timestamp: number;
+  filePath?: string;
+  precedingNarration?: string;
+  stepNum?: number;
+  eventId?: number;
+};
+
+type PersistedNarrationSegment = {
+  id: string;
+  narration: string;
+  actions: PersistedActionLogEntry[];
+  isLive: boolean;
+  stepLabel?: string;
+};
+
+function stringifyLogValue(value: unknown, fallback = ""): string {
+  if (value == null) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  try {
+    const json = JSON.stringify(value);
+    return json == null ? fallback : json;
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateForSessionLog(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}\n...(truncated for session history; full content remains in project files)`;
+}
+
+function currentLedgerStep(session: { todoLedger?: { snapshot: () => { steps?: Array<{ status?: string; stepNumber?: number }> } } }): number | undefined {
+  try {
+    return session.todoLedger?.snapshot().steps?.find((s) => s.status === "running")?.stepNumber;
+  } catch {
+    return undefined;
+  }
+}
+
+function pushBuildActionLogEntry(
+  session: BuildSessionState & { actionLog?: Record<string, unknown>[] },
+  entry: PersistedActionLogEntry,
+): void {
+  session.actionLog ??= [];
+  const detailLimit = entry.type === "file_read"
+    ? 2000
+    : entry.type === "file_write" || entry.type === "code_applied"
+      ? 1200
+      : 1200;
+  session.actionLog.push({
+    ...entry,
+    label: truncateForSessionLog(stringifyLogValue(entry.label), 240),
+    detail: truncateForSessionLog(stringifyLogValue(entry.detail), detailLimit),
+    filePath: entry.filePath ? truncateForSessionLog(entry.filePath, 500) : undefined,
+    precedingNarration: entry.precedingNarration
+      ? truncateForSessionLog(entry.precedingNarration, 800)
+      : undefined,
+  });
+}
+
+function getPersistedActionLog(session: { actionLog?: Record<string, unknown>[] }): PersistedActionLogEntry[] {
+  return (session.actionLog ?? []).map((entry) => ({
+    type: stringifyLogValue(entry.type, "tool_call"),
+    label: stringifyLogValue(entry.label),
+    detail: stringifyLogValue(entry.detail),
+    timestamp: typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp) ? entry.timestamp : Date.now(),
+    filePath: stringifyLogValue(entry.filePath) || undefined,
+    precedingNarration: stringifyLogValue(entry.precedingNarration) || undefined,
+    stepNum: typeof entry.stepNum === "number" && Number.isFinite(entry.stepNum) ? entry.stepNum : undefined,
+    eventId: typeof entry.eventId === "number" && Number.isFinite(entry.eventId) ? entry.eventId : undefined,
+  }));
+}
+
+function parseStepFromLabel(label?: string): number | undefined {
+  const match = stringifyLogValue(label).match(/Step\s*(\d+)/i);
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function buildSegmentsFromActionLog(actionLog: PersistedActionLogEntry[]): PersistedNarrationSegment[] {
+  const byStep = new Map<number, PersistedNarrationSegment>();
+  let currentStep = 0;
+  const ensure = (stepNum: number): PersistedNarrationSegment => {
+    const existing = byStep.get(stepNum);
+    if (existing) return existing;
+    const seg: PersistedNarrationSegment = {
+      id: String(stepNum),
+      narration: "",
+      actions: [],
+      isLive: false,
+    };
+    byStep.set(stepNum, seg);
+    return seg;
+  };
+
+  for (const entry of actionLog) {
+    if (entry.type === "narration") continue;
+    if (entry.type === "step") {
+      const stepNum = entry.stepNum ?? parseStepFromLabel(entry.label) ?? currentStep + 1;
+      currentStep = stepNum;
+      const seg = ensure(stepNum);
+      seg.stepLabel = entry.label || seg.stepLabel;
+      if (entry.detail && !seg.narration) seg.narration = entry.detail;
+      continue;
+    }
+    const stepNum = entry.stepNum ?? (currentStep > 0 ? currentStep : 1);
+    currentStep = Math.max(currentStep, stepNum);
+    const seg = ensure(stepNum);
+    if (!seg.narration && entry.precedingNarration) seg.narration = entry.precedingNarration;
+    seg.actions.push(entry);
+  }
+
+  return Array.from(byStep.entries()).sort(([a], [b]) => a - b).map(([, seg]) => seg);
+}
+
+async function persistAgentManagerMessage(opts: {
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  sessionId: string;
+  role?: "assistant" | "user" | "checkpoint";
+  content?: string;
+  source?: string | null;
+  seq?: number;
+  thinking?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  if (!opts.projectId) return;
+  const sessionId = normalizeChatSessionId(opts.chatSessionId);
+  const clientId = `agent:${opts.sessionId}:final`;
+  const now = Date.now();
+  await storage.upsertChatMessages(opts.projectId, [{
+    clientId,
+    kind: "manager",
+    role: opts.role ?? "assistant",
+    content: opts.content ?? "",
+    thinking: opts.thinking ?? null,
+    source: opts.source ?? null,
+    seq: typeof opts.seq === "number" ? opts.seq : now,
+    timestamp: now,
+    metadata: opts.metadata ? JSON.stringify(opts.metadata) : null,
+    sessionId,
+  }]).catch((err) => {
+    console.warn("[agent-session] persist manager message failed:", err instanceof Error ? err.message : err);
+  });
+}
+
 async function classifyIntent(
   messages: Array<{ role: string; content: string }>,
   client: OpenAI,
@@ -517,7 +723,7 @@ export async function registerRoutes(
       }
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
-        provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
+        provider, framework: buildFramework, projectId: reqProjectId,
         mode: reqMode, userMessage, consoleErrors, chatSessionId: reqChatSessionId,
       } = req.body as {
         sessionId: string;
@@ -530,14 +736,18 @@ export async function registerRoutes(
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
-        userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
         consoleErrors?: string[];
         chatSessionId?: string;
       };
       // chatSessionId: 前端传的当前 chat 会话 id，用于隔离同项目不同会话的 build
-      const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
+      const reqChatSession = normalizeChatSessionId(reqChatSessionId);
+      const reqUserId = getRequestUserId(req);
+      if (reqProjectId) {
+        const project = await assertProjectAccess(req, res, reqProjectId);
+        if (!project) return;
+      }
 
       // Per-user session cap
       _userId = reqUserId;
@@ -666,6 +876,7 @@ export async function registerRoutes(
         sseWriters: new Set(),
         parts: [],
         status: { type: "idle" },
+        actionLog: [],
       };
       buildSessions.set(sessionId, session);
 
@@ -675,7 +886,10 @@ export async function registerRoutes(
         type: "build",
         projectId: reqProjectId,
         userId: reqUserId,
-        payload: { mode: resolvedMode, framework: resolvedFramework },
+        chatSessionId: reqChatSession,
+        runType: "build",
+        runGroupId: sessionId,
+        payload: { mode: resolvedMode, framework: resolvedFramework, chatSessionId: reqChatSession },
       }).catch(() => {}); // non-fatal if DB insert fails — build still runs in-memory
       await sessionManager.transition(sessionId, "running").catch(() => {});
 
@@ -689,7 +903,90 @@ export async function registerRoutes(
         });
       }
 
-      const emit = createSessionEmit(session);
+      const rawEmit = agentSession ? sessionManager.createEmit(agentSession) : createSessionEmit(session);
+      const emit: SseEmit = (data) => {
+        const type = typeof data.type === "string" ? data.type : "";
+        const stepNum = typeof (data as any).stepNumber === "number"
+          ? (data as any).stepNumber
+          : currentLedgerStep(session);
+        if (type === "action_log") {
+          pushBuildActionLogEntry(session, {
+            type: stringifyLogValue((data as any).actionType, "tool_call"),
+            label: stringifyLogValue((data as any).label),
+            detail: stringifyLogValue((data as any).detail),
+            timestamp: Date.now(),
+            filePath: stringifyLogValue((data as any).filePath) || undefined,
+            stepNum,
+          });
+        } else if (type === "step_starting") {
+          const totalSteps = typeof (data as any).totalSteps === "number" ? (data as any).totalSteps : undefined;
+          const title = stringifyLogValue((data as any).stepTitle);
+          pushBuildActionLogEntry(session, {
+            type: "step",
+            label: `Step ${stepNum ?? 1}${totalSteps ? `/${totalSteps}` : ""}: ${title}`,
+            detail: "",
+            timestamp: Date.now(),
+            stepNum: stepNum ?? 1,
+          });
+        } else if (type === "step_completed") {
+          const summary = stringifyLogValue((data as any).summary);
+          if (summary) {
+            const existing = [...(session.actionLog ?? [])].reverse().find((entry) =>
+              entry.type === "step" && entry.stepNum === (stepNum ?? currentLedgerStep(session))
+            );
+            if (existing && !existing.detail) existing.detail = truncateForSessionLog(summary, 800);
+          }
+        } else if (type === "step_failed") {
+          pushBuildActionLogEntry(session, {
+            type: "tool_call",
+            label: `Step ${stepNum ?? currentLedgerStep(session) ?? ""} failed`.trim(),
+            detail: stringifyLogValue((data as any).reason || (data as any).message),
+            timestamp: Date.now(),
+            stepNum,
+          });
+        } else if (type === "ledger_snapshot" && agentSession && (data as any).ledger && typeof (data as any).ledger === "object") {
+          agentSession.ledgerSnapshot = (data as any).ledger as any;
+          agentSession.currentSnapshot = {
+            ...agentSession.currentSnapshot,
+            ledger: (data as any).ledger,
+            actionLog: session.actionLog ?? [],
+            updatedAt: Date.now(),
+          };
+          void sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+            ledger: (data as any).ledger as any,
+          }).catch(() => {});
+        } else if (type === "all_complete") {
+          const persistedClientId = `agent:${sessionId}:final`;
+          const actionLog = getPersistedActionLog(session);
+          const ledger = session.todoLedger?.snapshot();
+          session.finalArtifact = {
+            type,
+            ...data,
+            persistedClientId,
+            actionLog,
+            segments: buildSegmentsFromActionLog(actionLog),
+            ledger,
+            completedAt: Date.now(),
+          };
+          data = { ...data, persistedClientId };
+          if (agentSession) {
+            agentSession.finalArtifact = session.finalArtifact;
+            agentSession.ledgerSnapshot = (ledger ?? {}) as any;
+            agentSession.currentSnapshot = {
+              ...agentSession.currentSnapshot,
+              finalArtifact: session.finalArtifact,
+              ledger,
+              actionLog,
+              updatedAt: Date.now(),
+            };
+            void sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+              ledger: (ledger ?? {}) as any,
+              finalArtifact: session.finalArtifact,
+            }).catch(() => {});
+          }
+        }
+        rawEmit(data);
+      };
 
       attachSseWriter(session, res, -1);
 
@@ -721,7 +1018,50 @@ export async function registerRoutes(
           } else {
             agentSession.nextEventId = session.nextEventId;
             agentSession._dirty = true;
+            if (session.finalArtifact) {
+              agentSession.finalArtifact = session.finalArtifact;
+              agentSession.currentSnapshot = {
+                ...agentSession.currentSnapshot,
+                finalArtifact: session.finalArtifact,
+                ledger: session.todoLedger?.snapshot(),
+                actionLog: session.actionLog ?? [],
+                updatedAt: Date.now(),
+              };
+              if (session.todoLedger) agentSession.ledgerSnapshot = session.todoLedger.snapshot() as any;
+            }
             await sessionManager.flushEvents(sessionId).catch(() => {});
+            if (session.finalArtifact) {
+              await sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+                ledger: session.todoLedger?.snapshot() as any,
+                finalArtifact: session.finalArtifact,
+              }).catch(() => {});
+            }
+          }
+          if (session.finalArtifact && session.projectId) {
+            const changedFiles = Array.isArray(session.finalArtifact.changedFiles)
+              ? session.finalArtifact.changedFiles as string[]
+              : [];
+            const summaryText = typeof session.finalArtifact.summaryText === "string"
+              ? session.finalArtifact.summaryText
+              : "";
+            const tokenUsage = (session.finalArtifact as any).tokenUsage;
+            await persistAgentManagerMessage({
+              projectId: session.projectId,
+              chatSessionId: (session as any)._chatSessionId,
+              sessionId,
+              content: "",
+              source: "manager",
+              metadata: {
+                buildResult: {
+                  actionLog: getPersistedActionLog(session),
+                  segments: buildSegmentsFromActionLog(getPersistedActionLog(session)),
+                  completionData: { changedFiles, summary: summaryText },
+                  tokenUsage,
+                  nextStepSuggestion: session.finalArtifact.nextStepSuggestion,
+                  sessionId,
+                },
+              },
+            });
           }
           await sessionManager.transition(sessionId, "done").catch(() => {});
           await sessionManager.cleanup(sessionId).catch(() => {});
@@ -751,30 +1091,55 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/build-session/:sessionId/status", (req, res) => {
+  app.get("/api/build-session/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     console.log(`[build-status] sessionId=${req.params.sessionId} found=${!!session} done=${session?.done} aborted=${(session as any)?.aborted} mapSize=${buildSessions.size}`);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session.userId,
+        projectId: session.projectId,
+        _chatSessionId: (session as any)._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json(sessionStatusPayload({
+        ...session,
+        chatSessionId: (session as any)._chatSessionId,
+      }));
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "build") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done && !session.aborted,
-      eventCount: session.events.length,
-      done: session.done,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
   // Pre-register a build session ID so that a page refresh during the main
   // POST (which carries the full file payload) can still find the session via
   // the status endpoint. The main POST will overwrite this placeholder with the
   // real session data.
-  app.post("/api/build-session/pre-register", (req, res) => {
-    const { sessionId } = req.body as { sessionId?: string };
+  app.post("/api/build-session/pre-register", async (req, res) => {
+    const { sessionId, projectId, chatSessionId } = req.body as { sessionId?: string; projectId?: string; chatSessionId?: string };
     if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+    const reqUserId = getRequestUserId(req);
+    const normalizedChatSessionId = normalizeChatSessionId(chatSessionId);
+    if (projectId) {
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
+    }
     if (!buildSessions.has(sessionId)) {
       buildSessions.set(sessionId, {
         id: sessionId,
+        projectId,
+        userId: reqUserId,
         aborted: false,
         files: new Map(),
         plan: { steps: [] },
@@ -788,15 +1153,25 @@ export async function registerRoutes(
         sseWriters: new Set(),
         parts: [],
         status: { type: "idle" },
+        _chatSessionId: normalizedChatSessionId,
       } as any);
     }
     res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/console-event", (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     if (!session || session.done || session.aborted) {
       res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    if (!sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const { level, message } = req.body as { level?: string; message?: string };
@@ -812,21 +1187,45 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  app.get("/api/build-session/active/:projectId", (req, res) => {
+  app.get("/api/build-session/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
-    const chatSessionId = (req.query.chatSessionId as string) || undefined;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     const entries = Array.from(buildSessions.entries());
     const active = entries.find(([, s]) => {
       if (s.projectId !== projectId || s.done || s.aborted) return false;
       // If chatSessionId is provided, only match builds from the same chat session
-      if (chatSessionId) {
-        const buildChatSession = (s as any)._chatSessionId || "main";
-        return buildChatSession === chatSessionId;
-      }
-      return true;
+      const buildChatSession = normalizeChatSessionId((s as any)._chatSessionId);
+      return buildChatSession === chatSessionId && sessionBelongsToRequest({
+        userId: s.userId,
+        projectId: s.projectId,
+        _chatSessionId: (s as any)._chatSessionId,
+      }, reqUserId, projectId, chatSessionId);
     });
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
+      return;
+    }
+    const dbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "build" }).catch(() => null);
+    if (dbSession) {
+      if (!sessionBelongsToRequest(dbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: dbSession.id,
+        active: true,
+        eventCount: dbSession.events.length,
+        chatSessionId: dbSession.chatSessionId,
+        snapshot: dbSession.currentSnapshot,
+        ledger: dbSession.ledgerSnapshot,
+      });
       return;
     }
     // No active session — do NOT fall back to a done session here. The caller
@@ -837,28 +1236,72 @@ export async function registerRoutes(
     res.status(404).json({ error: "No active build session for this project" });
   });
 
-  app.get("/api/build-session/:sessionId/stream", (req, res) => {
-    const session = buildSessions.get(req.params.sessionId);
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+  app.get("/api/build-session/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
+    const live = buildSessions.get(req.params.sessionId);
+    let session: SseCapableSession | undefined = live;
+    if (live && !sessionBelongsToRequest({
+      userId: live.userId,
+      projectId: live.projectId,
+      _chatSessionId: (live as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (!dbSession || dbSession.type !== "build") {
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+      if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      session = dbSession;
     }
     const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
     attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
   });
 
-  app.delete("/api/build-session/:sessionId", (req, res) => {
+  app.delete("/api/build-session/:sessionId", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (dbSession && !sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     if (session) {
       session.aborted = true;
     }
+    await sessionManager.transition(req.params.sessionId, "aborted").catch(() => {});
     res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/input", (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     if (!session || session.done || session.aborted) {
       res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    if (!sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const { userInput } = req.body as { userInput?: string };
@@ -871,7 +1314,7 @@ export async function registerRoutes(
   // ─── Standalone review step (plan + build + REVIEW) ──────────────────────
   // Mirrors /api/build-session but runs the verify→fix→re-verify loop quietly
   // (no needs_input) and reports once. See review-orchestrator.ts.
-  app.post("/api/review-session", async (req, res) => {
+  app.post("/api/review-session", requireInviteCode, async (req, res) => {
     let _reviewUserId: string | undefined;
     let _reviewSessionId: string | undefined;
     try {
@@ -882,7 +1325,7 @@ export async function registerRoutes(
       }
       const {
         sessionId, files, userRequest, planSteps, userLang,
-        provider, framework: reqFramework, projectId: reqProjectId, strictness,
+        provider, framework: reqFramework, projectId: reqProjectId, strictness, chatSessionId: reqChatSessionId,
       } = req.body as {
         sessionId: string;
         files: Array<{ path: string; content: string }>;
@@ -893,6 +1336,7 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
         strictness?: ReviewStrictness;
+        chatSessionId?: string;
       };
 
       if (!sessionId) {
@@ -901,6 +1345,11 @@ export async function registerRoutes(
       }
 
       const reqUserId = (req.session as any)?.userId as string | undefined;
+      const reqChatSession = normalizeChatSessionId(reqChatSessionId);
+      if (reqProjectId) {
+        const project = await assertProjectAccess(req, res, reqProjectId);
+        if (!project) return;
+      }
       _reviewUserId = reqUserId;
       _reviewSessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
@@ -943,6 +1392,7 @@ export async function registerRoutes(
         parts: [],
         status: { type: "idle" },
         _startedAt: Date.now(),
+        _chatSessionId: reqChatSession,
       };
       reviewSessions.set(sessionId, session);
 
@@ -952,7 +1402,10 @@ export async function registerRoutes(
         type: "review",
         projectId: reqProjectId,
         userId: reqUserId,
-        payload: { strictness: resolvedStrictness, framework: resolvedFramework },
+        chatSessionId: reqChatSession,
+        runType: "review",
+        runGroupId: sessionId,
+        payload: { strictness: resolvedStrictness, framework: resolvedFramework, chatSessionId: reqChatSession },
       }).catch(() => {});
       await sessionManager.transition(sessionId, "running").catch(() => {});
 
@@ -966,7 +1419,17 @@ export async function registerRoutes(
         });
       }
 
-      const emit = createSessionEmit(session);
+      const rawEmit = agentSession ? sessionManager.createEmit(agentSession) : createSessionEmit(session);
+      const emit: SseEmit = (data) => {
+        if (data.type === "review_report" || data.type === "review_passed" || data.type === "review_done") {
+          session.finalArtifact = {
+            ...(session.finalArtifact ?? {}),
+            [String(data.type)]: data,
+            completedAt: Date.now(),
+          };
+        }
+        rawEmit(data);
+      };
       attachSseWriter(session, res, -1);
 
       runReviewSession(session, emit)
@@ -984,7 +1447,30 @@ export async function registerRoutes(
           } else {
             agentSession.nextEventId = session.nextEventId;
             agentSession._dirty = true;
+            if (session.finalArtifact) {
+              agentSession.finalArtifact = session.finalArtifact;
+              agentSession.currentSnapshot = {
+                ...agentSession.currentSnapshot,
+                finalArtifact: session.finalArtifact,
+                updatedAt: Date.now(),
+              };
+            }
             await sessionManager.flushEvents(sessionId).catch(() => {});
+            if (session.finalArtifact) {
+              await sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+                finalArtifact: session.finalArtifact,
+              }).catch(() => {});
+            }
+          }
+          if (session.finalArtifact && session.projectId) {
+            await persistAgentManagerMessage({
+              projectId: session.projectId,
+              chatSessionId: (session as any)._chatSessionId,
+              sessionId,
+              content: "",
+              source: "manager",
+              metadata: { reviewResult: session.finalArtifact },
+            });
           }
           await sessionManager.transition(sessionId, "done").catch(() => {});
           await sessionManager.cleanup(sessionId).catch(() => {});
@@ -1005,92 +1491,217 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/review-session/:sessionId/status", (req, res) => {
+  app.get("/api/review-session/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = reviewSessions.get(req.params.sessionId);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session.userId,
+        projectId: session.projectId,
+        _chatSessionId: (session as any)._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json(sessionStatusPayload({ ...session, chatSessionId: (session as any)._chatSessionId }));
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "review") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done && !session.aborted,
-      eventCount: session.events.length,
-      done: session.done,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
-  app.get("/api/review-session/active/:projectId", (req, res) => {
+  app.get("/api/review-session/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     const active = Array.from(reviewSessions.entries())
-      .find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+      .find(([, s]) =>
+        s.projectId === projectId &&
+        !s.done &&
+        !s.aborted &&
+        normalizeChatSessionId((s as any)._chatSessionId) === chatSessionId &&
+        sessionBelongsToRequest({
+          userId: s.userId,
+          projectId: s.projectId,
+          _chatSessionId: (s as any)._chatSessionId,
+        }, reqUserId, projectId, chatSessionId)
+      );
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
+      return;
+    }
+    const dbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "review" }).catch(() => null);
+    if (dbSession) {
+      if (!sessionBelongsToRequest(dbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: dbSession.id,
+        active: true,
+        eventCount: dbSession.events.length,
+        chatSessionId: dbSession.chatSessionId,
+        snapshot: dbSession.currentSnapshot,
+        finalArtifact: dbSession.finalArtifact,
+      });
       return;
     }
     res.status(404).json({ error: "No active review session for this project" });
   });
 
-  app.get("/api/review-session/:sessionId/stream", (req, res) => {
-    const session = reviewSessions.get(req.params.sessionId);
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+  app.get("/api/review-session/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
+    const live = reviewSessions.get(req.params.sessionId);
+    let session: SseCapableSession | undefined = live;
+    if (live && !sessionBelongsToRequest({
+      userId: live.userId,
+      projectId: live.projectId,
+      _chatSessionId: (live as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (!dbSession || dbSession.type !== "review") {
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+      if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      session = dbSession;
     }
     const lastEventId = parseInt(req.query.lastEventId as string);
     attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
   });
 
-  app.delete("/api/review-session/:sessionId", (req, res) => {
+  app.delete("/api/review-session/:sessionId", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = reviewSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (dbSession && !sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     if (session) session.aborted = true;
+    await sessionManager.transition(req.params.sessionId, "aborted").catch(() => {});
     res.json({ ok: true });
   });
 
-  app.get("/api/manager-chat/:sessionId/status", (req, res) => {
+  app.get("/api/manager-chat/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = managerChatSessions.get(req.params.sessionId);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session._userId,
+        projectId: session.projectId,
+        _chatSessionId: session._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        active: !session.done,
+        done: session.done,
+        eventCount: session.events.length,
+        projectId: session.projectId || null,
+        chatSessionId: normalizeChatSessionId(session._chatSessionId),
+      });
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "manager") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done,
-      done: session.done,
-      eventCount: session.events.length,
-      projectId: session.projectId || null,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
   app.get("/api/manager-chat/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
-    const chatSessionId = (req.query.chatSessionId as string) || undefined;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     // Check in-memory first (fast path)
     const entries = Array.from(managerChatSessions.entries());
     const active = entries.find(([, s]) => {
       if (s.projectId !== projectId || s.done) return false;
       // If chatSessionId is provided, only match sessions from the same chat session
-      if (chatSessionId) {
-        const sessChatSession = s._chatSessionId || "main";
-        return sessChatSession === chatSessionId;
-      }
-      return true;
+      const sessChatSession = normalizeChatSessionId(s._chatSessionId);
+      return sessChatSession === chatSessionId && sessionBelongsToRequest({
+        userId: s._userId,
+        projectId: s.projectId,
+        _chatSessionId: s._chatSessionId,
+      }, reqUserId, projectId, chatSessionId);
     });
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
       return;
     }
-    const done = entries.find(([, s]) => s.projectId === projectId && s.done);
-    if (done) {
-      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
+    const agentDbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "manager" }).catch(() => null);
+    if (agentDbSession) {
+      if (!sessionBelongsToRequest(agentDbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: agentDbSession.id,
+        active: true,
+        eventCount: agentDbSession.events.length,
+        done: false,
+        chatSessionId: agentDbSession.chatSessionId,
+        snapshot: agentDbSession.currentSnapshot,
+      });
       return;
     }
-    // Fallback: check DB for sessions that survived a restart
+    // Legacy fallback: check old manager_sessions table for sessions that
+    // survived before the unified store migration. It has no chatSessionId, so
+    // only allow it for the main session.
     try {
-      const dbSession = await storage.getActiveManagerSessionForProject(projectId);
+      const dbSession = chatSessionId === "main" ? await storage.getActiveManagerSessionForProject(projectId) : null;
       if (dbSession) {
         // Rehydrate into memory so /stream endpoint can serve it
         const events = JSON.parse(dbSession.events || "[]");
         const rehydrated: ManagerChatSession = {
           id: dbSession.id,
           projectId: dbSession.projectId ?? undefined,
+          _chatSessionId: "main",
+          _userId: reqUserId || undefined,
           events,
           nextEventId: dbSession.nextEventId,
           done: dbSession.done,
@@ -1107,7 +1718,26 @@ export async function registerRoutes(
   });
 
   app.get("/api/manager-chat/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     let session = managerChatSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session._userId,
+      projectId: session.projectId,
+      _chatSessionId: session._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const agentSession = !session ? await sessionManager.get(req.params.sessionId).catch(() => null) : null;
+    if (agentSession && agentSession.type === "manager") {
+      if (!sessionBelongsToRequest(agentSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
+      sessionManager.attachWriter(agentSession.id, res, isNaN(lastEventId) ? -1 : lastEventId);
+      return;
+    }
     // If not in memory, try rehydrating from DB (post-restart scenario)
     if (!session) {
       try {
@@ -1117,6 +1747,8 @@ export async function registerRoutes(
           session = {
             id: dbRow.id,
             projectId: dbRow.projectId ?? undefined,
+            _userId: reqUserId || undefined,
+            _chatSessionId: "main",
             events,
             nextEventId: dbRow.nextEventId,
             done: dbRow.done,
@@ -1216,6 +1848,9 @@ export async function registerRoutes(
         type: "manager",
         projectId: reqProjectId,
         userId: reqUserId,
+        chatSessionId: reqChatSession,
+        runType: "manager",
+        runGroupId: mgrSessionId,
         payload: { chatSessionId: reqChatSession },
       });
       await sessionManager.transition(mgrSessionId, "running");
@@ -1604,7 +2239,31 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             }
           }
 
-          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false });
+          const persistedClientId = `agent:${mgrSessionId}:final`;
+          await persistAgentManagerMessage({
+            projectId: mgrSession.projectId,
+            chatSessionId: mgrSession._chatSessionId,
+            sessionId: mgrSessionId,
+            content: "",
+            source: "manager",
+            metadata: { plan },
+          });
+
+          const managerArtifact = { type: "plan_ready", plan, project_name: projectName, persistedClientId, completedAt: Date.now() };
+          const liveManagerAgentSession = await sessionManager.get(mgrSessionId).catch(() => null);
+          if (liveManagerAgentSession) {
+            liveManagerAgentSession.finalArtifact = managerArtifact;
+            liveManagerAgentSession.currentSnapshot = {
+              ...liveManagerAgentSession.currentSnapshot,
+              finalArtifact: managerArtifact,
+              updatedAt: Date.now(),
+            };
+            await sessionManager.saveSnapshot(mgrSessionId, liveManagerAgentSession.currentSnapshot, {
+              finalArtifact: managerArtifact,
+            }).catch(() => {});
+          }
+
+          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false, persistedClientId });
           }
 
           emit({ type: "manager_done" });

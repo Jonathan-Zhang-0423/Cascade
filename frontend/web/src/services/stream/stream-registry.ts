@@ -173,6 +173,10 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
         .filter(Boolean);
     },
     getStreamingSnapshot: () => store().streamingSnapshot as any,
+    getStreamingSnapshotForRun: (agentSessionId, pid, chatSid) => {
+      const snapshots = (store() as any).streamingSnapshots || {};
+      return snapshots[`${pid}:${chatSid || "main"}:${agentSessionId}`] || null;
+    },
     getMessagesReady: () => store().messagesReady,
   };
 }

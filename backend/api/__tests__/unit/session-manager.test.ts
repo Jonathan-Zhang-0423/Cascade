@@ -13,7 +13,10 @@ function mockStore(): SessionStore {
     create: vi.fn().mockResolvedValue(undefined),
     updateStatus: vi.fn().mockResolvedValue(undefined),
     flushEvents: vi.fn().mockResolvedValue(undefined),
+    saveSnapshot: vi.fn().mockResolvedValue(undefined),
     load: vi.fn().mockResolvedValue(null),
+    loadEvents: vi.fn().mockResolvedValue([]),
+    getLatestForProject: vi.fn().mockResolvedValue(null),
     loadActiveForProject: vi.fn().mockResolvedValue([]),
     markInterruptedOnStartup: vi.fn().mockResolvedValue(0),
     deleteOld: vi.fn().mockResolvedValue(undefined),
@@ -149,14 +152,48 @@ describe("SessionManager", () => {
 
   describe("getEmit", () => {
     it("returns a function that pushes events to the session buffer", async () => {
-      await mgr.create({ id: "e1", type: "build" });
+      await mgr.create({
+        id: "e1",
+        type: "build",
+        projectId: "p1",
+        userId: "u1",
+        chatSessionId: "chat-a",
+        runType: "build",
+        runGroupId: "run-a",
+      });
       const emit = mgr.getEmit("e1");
       emit({ type: "test_event", value: 42 });
       const s = await mgr.get("e1");
       expect(s!.events).toHaveLength(1);
       expect(s!.events[0].data.type).toBe("test_event");
       expect(s!.events[0].data.value).toBe(42);
+      expect(s!.events[0].data.sessionId).toBe("e1");
+      expect(s!.events[0].data.projectId).toBe("p1");
+      expect(s!.events[0].data.chatSessionId).toBe("chat-a");
+      expect(s!.events[0].data.runType).toBe("build");
+      expect(s!.events[0].data.runGroupId).toBe("run-a");
       expect(s!._dirty).toBe(true);
+    });
+
+    it("persists ledger and final snapshots from emitted lifecycle events", async () => {
+      await mgr.create({ id: "e2", type: "build", projectId: "p1", chatSessionId: "main" });
+      const emit = mgr.getEmit("e2");
+      const ledger = { steps: [{ stepNumber: 1, status: "done" }], allDone: true };
+      emit({ type: "ledger_snapshot", ledger });
+      emit({ type: "all_complete", changedFiles: ["/project/app.ts"] });
+
+      const s = await mgr.get("e2");
+      expect(s!.ledgerSnapshot).toEqual(ledger);
+      expect(s!.finalArtifact?.type).toBe("all_complete");
+      await mgr.flushEvents("e2");
+      expect(store.saveSnapshot).toHaveBeenCalledWith(
+        "e2",
+        expect.objectContaining({ ledger, finalArtifact: expect.objectContaining({ type: "all_complete" }) }),
+        expect.objectContaining({
+          ledger,
+          finalArtifact: expect.objectContaining({ type: "all_complete" }),
+        }),
+      );
     });
 
     it("throws for unknown session", () => {

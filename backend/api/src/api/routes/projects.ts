@@ -1,16 +1,17 @@
 import type { Express } from "express";
 import { z } from "zod";
 import { randomBytes } from "crypto";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import archiver from "archiver";
 import { db } from "../../infra/db";
 import { storage } from "../../infra/storage";
 import type { ChatMessageInput } from "../../infra/storage";
-import { projects, chatMessages, chatSessions } from "@cascade/database";
+import { chatSessions } from "@cascade/database";
 import { insertProjectSchema } from "@cascade/database";
 import { getTemplateFiles } from "../../compiler/templates/index";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { requireInviteCode } from "../middleware/auth-middleware";
+import { assertProjectAccess, getRequestUserId, normalizeChatSessionId } from "../project-access";
 import { getFastClient } from "../../agent/providers/kimi-client";
 import { buildProjectNamePrompt, isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
 
@@ -110,6 +111,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.patch("/api/projects/:id", async (req, res) => {
     try {
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       const parsed = updateProjectSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: parsed.error.flatten() });
@@ -125,11 +128,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.get("/api/projects/:id/plan", async (req, res) => {
     try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       if (!project.lastPlan) {
         res.json({ plan: null });
         return;
@@ -142,11 +142,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.get("/api/projects/:id/build-result", async (req, res) => {
     try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       if (!project.lastBuildResult) {
         res.json({ result: null });
         return;
@@ -160,11 +157,8 @@ export function registerProjectsRoutes(app: Express): void {
   app.get("/api/projects/:id/messages", async (req, res) => {
     try {
       const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
       const kindParam = String(req.query.kind ?? "");
       const kind = kindParam === "chat" || kindParam === "manager" ? kindParam : undefined;
       const beforeRaw = req.query.before;
@@ -174,8 +168,8 @@ export function registerProjectsRoutes(app: Express): void {
       // sessionId: 传了就过滤；"null" 字符串 = 主会话（sessionId IS NULL）；不传 = 全部
       const sessionIdRaw = req.query.sessionId;
       const sessionId = typeof sessionIdRaw === "string"
-        ? (sessionIdRaw === "null" ? null : sessionIdRaw)
-        : undefined;
+        ? normalizeChatSessionId(sessionIdRaw === "null" ? "main" : sessionIdRaw)
+        : "main";
       const rows = await storage.listChatMessages(projectId, {
         kind,
         before: Number.isFinite(before) ? (before as number) : undefined,
@@ -191,11 +185,8 @@ export function registerProjectsRoutes(app: Express): void {
   app.post("/api/projects/:id/messages", async (req, res) => {
     try {
       const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
       const body = req.body as { messages?: unknown };
       if (!Array.isArray(body?.messages)) {
         res.status(400).json({ error: "messages must be an array" });
@@ -221,7 +212,7 @@ export function registerProjectsRoutes(app: Express): void {
           seq: m.seq,
           timestamp: m.timestamp,
           metadata: typeof m.metadata === "string" ? m.metadata : null,
-          sessionId: typeof m.sessionId === "string" ? m.sessionId : null,
+          sessionId: typeof m.sessionId === "string" ? normalizeChatSessionId(m.sessionId) : "main",
         });
       }
       await storage.upsertChatMessages(projectId, sanitized);
@@ -234,11 +225,8 @@ export function registerProjectsRoutes(app: Express): void {
   app.delete("/api/projects/:id/messages", async (req, res) => {
     try {
       const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
       const afterSeqRaw = req.query.afterSeq;
       const afterSeq = typeof afterSeqRaw === "string" ? Number(afterSeqRaw) : NaN;
       if (!Number.isFinite(afterSeq)) {
@@ -247,7 +235,7 @@ export function registerProjectsRoutes(app: Express): void {
       }
       // sessionId：传了就按 session 删，不传默认删 "main"
       const sessionIdRaw = req.query.sessionId;
-      const sessionId = typeof sessionIdRaw === "string" ? sessionIdRaw : null;
+      const sessionId = typeof sessionIdRaw === "string" ? normalizeChatSessionId(sessionIdRaw) : "main";
       await storage.deleteChatMessagesAfter(projectId, afterSeq, sessionId);
       res.json({ ok: true });
     } catch (error: any) {
@@ -262,9 +250,11 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.get("/api/projects/:id/sessions", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId as string | undefined;
+      const userId = getRequestUserId(req);
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const projectId = req.params.id;
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
       const rows = await db
         .select()
         .from(chatSessions)
@@ -279,9 +269,11 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.post("/api/projects/:id/sessions", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId as string | undefined;
+      const userId = getRequestUserId(req);
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const projectId = req.params.id;
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
       const name = (req.body as any)?.name ?? "新对话";
       const id = randomBytes(8).toString("hex");
       const [row] = await db.insert(chatSessions).values({
@@ -298,11 +290,13 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.delete("/api/projects/:id/sessions/:sid", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId as string | undefined;
+      const userId = getRequestUserId(req);
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       const { sid } = req.params;
       // cascade delete removes messages via FK
-      await db.delete(chatSessions).where(eq(chatSessions.id, sid));
+      await db.delete(chatSessions).where(and(eq(chatSessions.id, sid), eq(chatSessions.projectId, req.params.id)));
       res.json({ ok: true });
     } catch (err) {
       console.error("[sessions/delete]", err);
@@ -312,6 +306,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.delete("/api/projects/:id", async (req, res) => {
     try {
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       await storage.deleteProject(req.params.id);
       res.json({ ok: true });
     } catch (error: any) {
@@ -323,9 +319,11 @@ export function registerProjectsRoutes(app: Express): void {
   app.get("/api/projects/:id/files", async (req, res) => {
     try {
       const projectId = req.params.id;
+      const projectForAccess = await assertProjectAccess(req, res, projectId);
+      if (!projectForAccess) return;
       let files = await storage.getProjectFiles(projectId);
 
-      const project = await storage.getProject(projectId);
+      const project = projectForAccess;
       if (project && project.framework && project.framework !== "web") {
         const paths = files.map((f: { path: string }) => f.path);
         const webSignatures = new Set([
@@ -366,6 +364,8 @@ export function registerProjectsRoutes(app: Express): void {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
       }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       await storage.upsertProjectFiles(req.params.id, parsed.data.files);
       res.json({ ok: true });
     } catch (error: any) {
@@ -381,6 +381,8 @@ export function registerProjectsRoutes(app: Express): void {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
       }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       await storage.upsertProjectFile(req.params.id, parsed.data.path, parsed.data.content);
       res.json({ ok: true });
     } catch (error: any) {
@@ -396,6 +398,8 @@ export function registerProjectsRoutes(app: Express): void {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
       }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       await storage.deleteProjectFile(req.params.id, parsed.data.path);
       res.json({ ok: true });
     } catch (error: any) {
@@ -406,6 +410,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.get("/api/projects/:id/export", async (req, res) => {
     try {
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       const files = await storage.getProjectFiles(req.params.id);
       if (!files || files.length === 0) {
         res.status(404).json({ error: "No files found for this project" });
@@ -444,8 +450,8 @@ export function registerProjectsRoutes(app: Express): void {
 
   app.get("/api/projects/:id/export-wechat", async (req, res) => {
     try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+      const project = await assertProjectAccess(req, res, req.params.id);
+      if (!project) return;
       const files = await storage.getProjectFiles(req.params.id);
       if (!files || files.length === 0) { res.status(404).json({ error: "No files found" }); return; }
 

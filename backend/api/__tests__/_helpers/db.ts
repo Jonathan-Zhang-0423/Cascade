@@ -20,6 +20,7 @@ export const describeIntegration = hasTestDb ? describe : describe.skip;
 // Every app-managed table, child-first isn't needed because we use CASCADE.
 const ALL_TABLES = [
   "chat_messages",
+  "agent_session_events",
   "agent_sessions",
   "project_files",
   "project_skills",
@@ -32,6 +33,7 @@ const ALL_TABLES = [
 ];
 
 let guardChecked = false;
+let existingTablesCache: string[] | null = null;
 
 /**
  * Safety guard: refuse to truncate unless the connection string clearly targets
@@ -57,9 +59,19 @@ function assertTestDb() {
 export async function truncateAll(): Promise<void> {
   if (!hasTestDb) return;
   assertTestDb();
+  if (!existingTablesCache) {
+    const rows = await db.execute(sql`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+    `);
+    const existing = new Set((rows as any).rows?.map((row: any) => row.table_name) ?? []);
+    existingTablesCache = ALL_TABLES.filter((table) => existing.has(table));
+  }
+  if (existingTablesCache.length === 0) return;
   // Single statement, RESTART IDENTITY resets serial counters, CASCADE handles FKs.
   await db.execute(
-    sql.raw(`TRUNCATE TABLE ${ALL_TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`),
+    sql.raw(`TRUNCATE TABLE ${existingTablesCache.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`),
   );
 }
 

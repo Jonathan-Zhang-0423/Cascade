@@ -102,6 +102,9 @@ export interface BuildSessionState {
   completedRoundSummary?: string;
   /** Fast scanner output for this request, used to reduce repeated discovery by the editor. */
   explorerSummary?: string;
+  /** Server-side action log accumulator used for robust hard-refresh recovery. */
+  actionLog?: Array<Record<string, unknown>>;
+  finalArtifact?: Record<string, unknown>;
 }
 
 function normalizeSteps(plan: BuildPlan): BuildStep[] {

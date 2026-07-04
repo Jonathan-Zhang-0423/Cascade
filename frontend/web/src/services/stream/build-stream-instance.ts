@@ -4,6 +4,7 @@ import {
   type StoreActions,
   INITIAL_BUILD_STREAM_STATE,
   type TaskStatus,
+  type StreamingSnapshot,
 } from "./types";
 import type { ActionLogEntry, BuildSseEvent, NormalizedStep } from "@/components/ide/chat/chat-types";
 import { normalizeActionLogEntry, stringifyLogValue } from "@/components/ide/chat/action-log-normalize";
@@ -67,6 +68,13 @@ export class BuildStreamInstance {
   // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
   private get storageKey(): string {
     return `cascade-build-session-${this.projectId}-${this.chatSessionId}`;
+  }
+
+  private isEventForCurrentRun(ev: BuildSseEvent): boolean {
+    if (typeof ev.projectId === "string" && ev.projectId !== this.projectId) return false;
+    if (typeof ev.chatSessionId === "string" && ev.chatSessionId !== this.chatSessionId) return false;
+    if (typeof ev.sessionId === "string" && this.sessionId && ev.sessionId !== this.sessionId) return false;
+    return true;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -204,7 +212,7 @@ export class BuildStreamInstance {
       fetch("/api/build-session/pre-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId, projectId: this.projectId, chatSessionId: this.chatSessionId }),
         keepalive: true,
       }).catch(() => {});
 
@@ -266,6 +274,7 @@ export class BuildStreamInstance {
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
           watchdog.reset();
+          if (!this.isEventForCurrentRun(ev)) return;
           if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
 
           const type = ev.type;
@@ -496,6 +505,7 @@ export class BuildStreamInstance {
               }
               this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
               this.actions.addManagerMessage({
+                id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
                 role: "assistant",
                 content: "",
                 buildResult: {
@@ -634,12 +644,8 @@ export class BuildStreamInstance {
     let thinkingAccumulated = "";
     let commAccumulated = "";
     let receivedAllComplete = false;
-    const snapshot = this.actions.getStreamingSnapshot();
-    if (
-      snapshot?.type === "build" &&
-      snapshot.sessionId === sessionId &&
-      snapshot.projectId === this.projectId
-    ) {
+    const snapshot = this.getRunSnapshot(sessionId);
+    if (snapshot) {
       thinkingAccumulated = snapshot.thinkingText || "";
       commAccumulated = snapshot.narrationText || "";
       this.actionLog = Array.isArray(snapshot.actionLog)
@@ -686,6 +692,7 @@ export class BuildStreamInstance {
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
           watchdog.reset();
+          if (!this.isEventForCurrentRun(ev)) return;
           if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
           const type = ev.type;
           const isCurrentProject = this.actions.getProjectId() === this.projectId;
@@ -804,6 +811,7 @@ export class BuildStreamInstance {
                 }
               }
               this.actions.addManagerMessage({
+                id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
                 role: "assistant",
                 content: "",
                 buildResult: {
@@ -905,7 +913,15 @@ export class BuildStreamInstance {
     // was refreshed while the POST /api/build-session was still in-flight
     // (session exists in backend but response hadn't arrived yet).
     this.state.set({ isReconnecting: true });
-    const checkStatus = async (): Promise<{ active: boolean } | null> => {
+    const checkStatus = async (): Promise<{
+      active: boolean;
+      lastEventId?: number;
+      snapshot?: unknown;
+      ledger?: unknown;
+      finalArtifact?: unknown;
+      projectId?: string | null;
+      chatSessionId?: string | null;
+    } | null> => {
       try {
         const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
           cache: "no-store", headers: { "Cache-Control": "no-cache" },
@@ -928,15 +944,16 @@ export class BuildStreamInstance {
       }
 
       if (data?.active) {
-        this.actions.setExecutingTaskIndex(0);
+        const hasSnapshot = this.hydrateFromBackendStatus(savedSessionId, data);
         this.actions.setChatMode("build");
         this.state.set({ buildPhase: "thinking" });
-        const snapshot = this.actions.getStreamingSnapshot();
+        this.restoreTaskStatuses();
+        if (!Object.values(this.state.get().taskStatuses).includes("running")) {
+          this.actions.setExecutingTaskIndex(0);
+        }
+        const snapshot = this.getRunSnapshot(savedSessionId);
         const resumeEventId =
-          snapshot?.type === "build" &&
-          snapshot.sessionId === savedSessionId &&
-          snapshot.projectId === this.projectId &&
-          typeof snapshot.lastEventId === "number"
+          hasSnapshot && snapshot && typeof snapshot.lastEventId === "number"
             ? snapshot.lastEventId
             : -1;
         await this.connect(savedSessionId, resumeEventId);
@@ -1005,6 +1022,103 @@ export class BuildStreamInstance {
     this.persistLiveSnapshot();
   }
 
+  private getRunSnapshot(sessionId: string): StreamingSnapshot | null {
+    const snapshot = this.actions.getStreamingSnapshotForRun(sessionId, this.projectId, this.chatSessionId);
+    if (
+      snapshot?.type === "build" &&
+      snapshot.sessionId === sessionId &&
+      snapshot.projectId === this.projectId &&
+      (snapshot.chatSessionId || this.chatSessionId) === this.chatSessionId
+    ) {
+      return snapshot;
+    }
+    return null;
+  }
+
+  private hydrateFromBackendStatus(sessionId: string, status: any): boolean {
+    if (!status || typeof status !== "object") return false;
+    if (status.projectId && status.projectId !== this.projectId) return false;
+    if (status.chatSessionId && status.chatSessionId !== this.chatSessionId) return false;
+
+    const existing = this.getRunSnapshot(sessionId);
+    const rawSnapshot = status.snapshot && typeof status.snapshot === "object" ? status.snapshot : {};
+    const ledger = status.ledger ?? rawSnapshot.ledger;
+    const actionLog = Array.isArray(rawSnapshot.actionLog) && rawSnapshot.actionLog.length > 0
+      ? rawSnapshot.actionLog.map((entry: unknown) => normalizeActionLogEntry(entry as any))
+      : (Array.isArray(existing?.actionLog) ? existing.actionLog : []);
+    const taskStatuses: Record<string, TaskStatus> = { ...(existing?.taskStatuses ?? {}) };
+    const stepNarrations: Record<number, string> = { ...(existing?.stepNarrations ?? {}) };
+    let currentStepNum = typeof rawSnapshot.currentStepNum === "number" && Number.isFinite(rawSnapshot.currentStepNum)
+      ? rawSnapshot.currentStepNum
+      : (existing?.currentStepNum ?? 0);
+
+    const steps = ledger && typeof ledger === "object" && Array.isArray((ledger as any).steps)
+      ? (ledger as any).steps
+      : [];
+    const statusMap: Record<string, TaskStatus> = {
+      pending: "pending",
+      running: "running",
+      done: "done",
+      failed: "failed",
+    };
+    for (const step of steps) {
+      if (!step || typeof step.stepNumber !== "number") continue;
+      const mapped = statusMap[String(step.status ?? "")];
+      if (!mapped) continue;
+      const key = String(step.stepNumber);
+      taskStatuses[key] = mapped;
+      if (typeof step.summary === "string" && step.summary) {
+        stepNarrations[step.stepNumber] = step.summary;
+      }
+      if (mapped === "running") currentStepNum = step.stepNumber;
+    }
+
+    const thinkingText = typeof rawSnapshot.thinkingText === "string" && rawSnapshot.thinkingText
+      ? rawSnapshot.thinkingText
+      : (existing?.thinkingText ?? "");
+    const narrationText = typeof rawSnapshot.narrationText === "string" && rawSnapshot.narrationText
+      ? rawSnapshot.narrationText
+      : (existing?.narrationText ?? "");
+    const hasUsableSnapshot =
+      actionLog.length > 0 ||
+      Object.keys(taskStatuses).length > 0 ||
+      Boolean(thinkingText || narrationText || ledger || existing);
+    if (!hasUsableSnapshot) return false;
+
+    const snapshot: StreamingSnapshot = {
+      type: "build",
+      thinkingText,
+      narrationText,
+      sessionId,
+      projectId: this.projectId,
+      chatSessionId: this.chatSessionId,
+      runType: "build",
+      updatedAt: typeof rawSnapshot.updatedAt === "number" ? rawSnapshot.updatedAt : Date.now(),
+      lastEventId: typeof status.lastEventId === "number"
+        ? status.lastEventId
+        : (typeof rawSnapshot.lastEventId === "number" ? rawSnapshot.lastEventId : -1),
+      actionLog,
+      taskStatuses,
+      stepNarrations,
+      currentStepNum,
+      ledger,
+      finalArtifact: status.finalArtifact ?? rawSnapshot.finalArtifact,
+    };
+
+    this.actionLog = actionLog;
+    this.currentStepNum = currentStepNum;
+    this.lastEventId = snapshot.lastEventId;
+    this.state.set({
+      actionLog: [...actionLog],
+      taskStatuses,
+      stepNarrations,
+      thinkingText: snapshot.thinkingText,
+      narrationText: snapshot.narrationText,
+    });
+    this.actions.setStreamingSnapshot(snapshot);
+    return true;
+  }
+
   private persistLiveSnapshot(overrides?: { thinkingText?: string; narrationText?: string }): void {
     if (!this.sessionId) return;
     const state = this.state.get();
@@ -1014,6 +1128,8 @@ export class BuildStreamInstance {
       narrationText: overrides?.narrationText ?? state.narrationText,
       sessionId: this.sessionId,
       projectId: this.projectId,
+      chatSessionId: this.chatSessionId,
+      runType: "build",
       updatedAt: Date.now(),
       lastEventId: this.lastEventId,
       actionLog: [...this.actionLog],

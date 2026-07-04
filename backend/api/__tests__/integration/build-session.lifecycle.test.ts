@@ -68,8 +68,13 @@ describeIntegration("build-session lifecycle", () => {
       expect(res.status).toBe(404);
     });
 
-    it("active 404 when no session for the project", async () => {
+    it("active requires chatSessionId", async () => {
       const res = await http.get(`/api/build-session/active/proj-${Date.now()}`);
+      expect(res.status).toBe(400);
+    });
+
+    it("active 404 when no session for the project/chat session", async () => {
+      const res = await http.get(`/api/build-session/active/proj-${Date.now()}?chatSessionId=main`);
       expect(res.status).toBe(404);
     });
 
@@ -97,6 +102,7 @@ describeIntegration("build-session lifecycle", () => {
     it("creates a session, sees it via status/active, then DELETE aborts it", async () => {
       const sessionId = sid();
       const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "Build Lifecycle Test" });
       // Start a direct-mode build. The POST streams SSE; open it but don't block
       // on completion — we only need the session registered in memory.
       const ac = new AbortController();

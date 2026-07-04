@@ -52,8 +52,13 @@ describeIntegration("manager-chat lifecycle", () => {
       expect(res.status).toBe(404);
     });
 
-    it("active 404 when no session for the project", async () => {
+    it("active requires chatSessionId", async () => {
       const res = await http.get(`/api/manager-chat/active/proj-${Date.now()}`);
+      expect(res.status).toBe(400);
+    });
+
+    it("active 404 when no session for the project/chat session", async () => {
+      const res = await http.get(`/api/manager-chat/active/proj-${Date.now()}?chatSessionId=main`);
       expect(res.status).toBe(404);
     });
   });
@@ -61,6 +66,7 @@ describeIntegration("manager-chat lifecycle", () => {
   describe("started planning session is observable", () => {
     it("starts a manager-chat and finds it via active/:projectId", async () => {
       const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "Manager Lifecycle Test" });
       const ac = new AbortController();
       const streamPromise = http
         .stream("POST", "/api/manager-chat", {
@@ -75,11 +81,11 @@ describeIntegration("manager-chat lifecycle", () => {
 
       // The session should appear (active or done) shortly after start.
       await waitFor(async () => {
-        const r = await http.get(`/api/manager-chat/active/${projectId}`);
+        const r = await http.get(`/api/manager-chat/active/${projectId}?chatSessionId=main`);
         return r.status === 200;
       });
 
-      const active = await http.get(`/api/manager-chat/active/${projectId}`);
+      const active = await http.get(`/api/manager-chat/active/${projectId}?chatSessionId=main`);
       expect(active.status).toBe(200);
       expect(active.body.sessionId).toBeDefined();
 

@@ -150,12 +150,16 @@ export interface StreamingSnapshot {
   narrationText: string;
   sessionId?: string;
   projectId: string;
+  chatSessionId?: string;
+  runType?: string;
   updatedAt: number;
   lastEventId?: number;
   actionLog?: BuildResultData["actionLog"];
   stepNarrations?: Record<number, string>;
   taskStatuses?: Record<string, TaskStatus>;
   currentStepNum?: number;
+  ledger?: unknown;
+  finalArtifact?: unknown;
 }
 
 // A persisted streaming snapshot older than this is treated as dead on reload —
@@ -310,6 +314,7 @@ interface IDEState {
   managerMessages: ManagerMessage[];
   _nextSeq: number;
   streamingSnapshot: StreamingSnapshot | null;
+  streamingSnapshots: Record<string, StreamingSnapshot>;
   executingTaskIndex: number | null;
   taskStatuses: Record<string, TaskStatus>;
   taskFailureReasons: Record<string, string>;
@@ -355,7 +360,7 @@ interface IDEState {
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
-  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp" | "seq">) => void;
+  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   updateLastAssistantMessage: (content: string) => void;
   addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
   clearConsole: () => void;
@@ -378,7 +383,7 @@ interface IDEState {
 
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
-  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
+  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   loadOlderMessages: (kind: "chat" | "manager", limit?: number) => Promise<number>;
   updateTaskStatus: (subTaskId: string, status: TaskStatus) => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
@@ -532,6 +537,12 @@ function persistState(state: IDEState) {
   };
   // chatMessages, managerMessages, files are now persisted server-side (DB).
   // localStorage only holds lightweight UI/session state.
+  const compactSnapshots = Object.fromEntries(
+    Object.entries(state.streamingSnapshots || {})
+      .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .slice(0, 8)
+      .map(([key, snap]) => [key, truncateSnapshot(snap as any)]),
+  );
   const toSave = {
     openFiles: state.openFiles,
     activeFile: state.activeFile,
@@ -542,6 +553,7 @@ function persistState(state: IDEState) {
     chatMode: state.chatMode,
     _nextSeq: state._nextSeq,
     streamingSnapshot: truncateSnapshot(state.streamingSnapshot),
+    streamingSnapshots: compactSnapshots,
     managerPlan: state.managerPlan,
     taskStatuses: state.taskStatuses,
     taskFailureReasons: state.taskFailureReasons,
@@ -568,9 +580,9 @@ function persistState(state: IDEState) {
       return;
     }
   }
-  // Quota fallback: drop streamingSnapshot (often the largest remaining accumulator)
+  // Quota fallback: drop streamingSnapshot(s) (often the largest remaining accumulator)
   try {
-    localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null }));
+    localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null, streamingSnapshots: {} }));
     console.warn("[persistState] dropped streamingSnapshot to fit quota");
   } catch (err) {
     console.warn("[persistState] still over quota, skipping save:", err);
@@ -671,6 +683,14 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
   if (typeof row.metadata === "string" && row.metadata) {
     try { metadata = JSON.parse(row.metadata); } catch {}
   }
+  let buildResult = metadata?.buildResult;
+  if (buildResult && typeof buildResult === "object") {
+    try {
+      buildResult = compactBuildResultForPersistence(buildResult);
+    } catch {
+      buildResult = { actionLog: [], segments: [] };
+    }
+  }
   return {
     id: row.clientId,
     role: row.role,
@@ -684,7 +704,7 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     checkpointId: metadata?.checkpointId,
     thinking: row.thinking ?? undefined,
     preparingPlan: metadata?.preparingPlan,
-    buildResult: metadata?.buildResult,
+    buildResult,
     errorCode: metadata?.errorCode,
     frozenTaskStatuses: metadata?.frozenTaskStatuses,
     frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
@@ -946,6 +966,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   managerMessages: [],
   _nextSeq: 1,
   streamingSnapshot: null,
+  streamingSnapshots: {},
   executingTaskIndex: null,
   taskStatuses: {},
   taskFailureReasons: {},
@@ -1143,6 +1164,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         const age = Date.now() - (typeof snap.updatedAt === "number" ? snap.updatedAt : 0);
         return age <= STREAMING_SNAPSHOT_MAX_AGE_MS ? snap : null;
       })(),
+      streamingSnapshots: (() => {
+        const raw = saved.streamingSnapshots && typeof saved.streamingSnapshots === "object"
+          ? saved.streamingSnapshots
+          : {};
+        const now = Date.now();
+        return Object.fromEntries(Object.entries(raw).filter(([, value]) => {
+          const snap = value as any;
+          const age = now - (typeof snap?.updatedAt === "number" ? snap.updatedAt : 0);
+          return snap && typeof snap.sessionId === "string" && age <= STREAMING_SNAPSHOT_MAX_AGE_MS;
+        })) as Record<string, StreamingSnapshot>;
+      })(),
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
       taskStatuses: saved.taskStatuses || (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
@@ -1182,6 +1214,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       managerMessages: [],
       _nextSeq: 2,
       streamingSnapshot: null,
+      streamingSnapshots: {},
       managerPlan: null,
       executingTaskIndex: null,
       taskStatuses: {},
@@ -1380,7 +1413,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   },
 
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => {
-    set({ streamingSnapshot: snapshot });
+    set((state) => {
+      if (!snapshot) return { streamingSnapshot: null };
+      const chatSessionId = snapshot.chatSessionId || state.currentSessionId || "main";
+      const key = `${snapshot.projectId}:${chatSessionId}:${snapshot.sessionId}`;
+      const nextMap = { ...(state.streamingSnapshots || {}), [key]: { ...snapshot, chatSessionId } };
+      return {
+        streamingSnapshot: { ...snapshot, chatSessionId },
+        streamingSnapshots: nextMap,
+      };
+    });
     const state = get();
     persistState(state);
   },
@@ -1544,10 +1586,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addChatMessage: (message) =>
     set((state) => {
+      const existingIndex = message.id ? state.chatMessages.findIndex((m) => m.id === message.id) : -1;
+      if (existingIndex >= 0) {
+        const msgs = [...state.chatMessages];
+        msgs[existingIndex] = { ...msgs[existingIndex], ...message, id: msgs[existingIndex].id };
+        const next = { ...state, chatMessages: msgs };
+        debouncedPersist(next);
+        if (state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(msgs[existingIndex], state.projectId, state.currentSessionId));
+        return next;
+      }
       const seq = state._nextSeq;
       const newMsg: ChatMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: message.id || crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };
@@ -1743,10 +1794,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addManagerMessage: (message) =>
     set((state) => {
+      const existingIndex = message.id ? state.managerMessages.findIndex((m) => m.id === message.id) : -1;
+      if (existingIndex >= 0) {
+        const msgs = [...state.managerMessages];
+        msgs[existingIndex] = { ...msgs[existingIndex], ...message, id: msgs[existingIndex].id };
+        const next = { ...state, managerMessages: msgs };
+        debouncedPersist(next);
+        if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[existingIndex], state.projectId, state.currentSessionId));
+        return next;
+      }
       const seq = state._nextSeq;
       const newMsg: ManagerMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: message.id || crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };

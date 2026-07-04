@@ -62,20 +62,26 @@ export interface StreamingSnapshot {
   narrationText: string;
   sessionId: string;
   projectId: string;
+  chatSessionId?: string;
+  runType?: string;
   updatedAt: number;
   lastEventId: number;
   actionLog?: ActionLogEntry[];
   stepNarrations?: Record<number, string>;
   taskStatuses?: Record<string, TaskStatus>;
   currentStepNum?: number;
+  ledger?: unknown;
+  finalArtifact?: unknown;
 }
+
+export type StreamingSnapshotMap = Record<string, StreamingSnapshot>;
 
 export interface StoreActions {
   // Chat message operations
-  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
+  addChatMessage: (msg: { id?: string; role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
 
   // Manager message operations
-  addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
+  addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   clearManagerPlan: () => void;
   setManagerResponding: (v: boolean) => void;
@@ -120,6 +126,7 @@ export interface StoreActions {
   getTaskStatuses: () => Record<string, TaskStatus>;
   getConsoleErrors: () => string[];
   getStreamingSnapshot: () => StreamingSnapshot | null;
+  getStreamingSnapshotForRun: (sessionId: string, projectId: string, chatSessionId: string) => StreamingSnapshot | null;
   getMessagesReady: () => boolean;
 }
 

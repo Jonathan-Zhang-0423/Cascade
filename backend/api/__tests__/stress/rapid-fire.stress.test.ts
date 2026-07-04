@@ -76,6 +76,7 @@ describeIntegration("stress: rapid-fire user behavior", () => {
 
   it("start-then-immediately-abort build sessions clean up and never wedge the project", async () => {
     const projectId = `p-${Math.random().toString(36).slice(2, 8)}`;
+    await http.post("/api/projects", { id: projectId, name: "Rapid Build" });
     // Mash "Build" then "Stop" 12 times rapidly.
     for (let i = 0; i < 12; i++) {
       const sessionId = `bs_${Math.random().toString(36).slice(2, 10)}`;
@@ -102,7 +103,7 @@ describeIntegration("stress: rapid-fire user behavior", () => {
     }
 
     // After the thrash, there must be no *active* build session wedging the project.
-    const active = await http.get(`/api/build-session/active/${projectId}`);
+    const active = await http.get(`/api/build-session/active/${projectId}?chatSessionId=main`);
     expect(active.status).toBe(404);
   });
 

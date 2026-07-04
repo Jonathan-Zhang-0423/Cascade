@@ -154,6 +154,11 @@ export interface ManagerSseEvent {
   eventId?: number;
   replay?: boolean;
   sessionId?: string;
+  projectId?: string;
+  chatSessionId?: string;
+  runType?: string;
+  runGroupId?: string;
+  persistedClientId?: string;
   token?: string;
   plan?: ManagerPlan;
   project_name?: string;
@@ -217,6 +222,12 @@ export interface BuildSseEvent {
   type: string;
   eventId?: number;
   replay?: boolean;
+  sessionId?: string;
+  projectId?: string;
+  chatSessionId?: string;
+  runType?: string;
+  runGroupId?: string;
+  persistedClientId?: string;
   token?: string;
   label?: string;
   detail?: string;
