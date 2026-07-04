@@ -1092,11 +1092,19 @@ export function BuildLivePanel({
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
-  // Thinking is now per-step inside SegmentView — no global thinking state needed.
+  const hasLooseLiveActivity =
+    !isCompleted &&
+    !isPersisted &&
+    (Boolean(_thinkingText?.trim()) || Boolean(narrationText?.trim()));
+  const hasLiveSegment = renderSegments.some((seg) => seg.isLive);
+  const showLooseLiveBar = hasLooseLiveActivity && !hasLiveSegment;
+
+  // Thinking is now per-step inside SegmentView; keep only the live status fallback global.
   const showTrailingNarration = false;
 
   const hasAnyContent =
     renderSegments.length > 0 ||
+    showLooseLiveBar ||
     (isPersisted && (persistedSegments?.length ?? 0) > 0);
 
   if (!hasAnyContent) return null;
@@ -1122,6 +1130,15 @@ export function BuildLivePanel({
           />
         );
       })}
+
+      {showLooseLiveBar && (
+        <div className="mb-0.5 px-3.5" data-testid="loose-live-bar">
+          <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
+            <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
+            <LiveBar />
+          </div>
+        </div>
+      )}
 
       {/* Trailing live narration not yet bound to an action */}
       {showTrailingNarration && (
