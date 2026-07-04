@@ -9,6 +9,7 @@ vi.mock("../src/agent/tools/shell-manager", () => ({
 import { buildBuilderTools } from "../src/agent/tools/agent-tools";
 import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 import type { BuildStep } from "../src/agent/orchestrator/build-orchestrator";
+import { TodoLedger } from "../src/agent/runtime/todo-ledger";
 
 function makeSession(): BuildSessionState {
   return {
@@ -79,5 +80,21 @@ describe("builder exit signal (finish_build bypass)", () => {
     await tools.handlers.mark_step_complete({ step_id: "1", summary: "x" }, emit);
     await tools.handlers.mark_step_complete({ step_id: "1", summary: "x again" }, emit);
     expect(exitSignal.exit).toBe(false);
+  });
+
+  it("rejects finish_build while the ledger still has unfinished steps", async () => {
+    const session = makeSession();
+    session.todoLedger = new TodoLedger(steps);
+    session.todoLedger.start(1);
+    const tools = buildBuilderTools(session, steps);
+    const events: Array<Record<string, unknown>> = [];
+    const emit = (d: Record<string, unknown>) => { events.push(d); };
+
+    const result = (await tools.handlers.finish_build({}, emit)) as string;
+
+    expect(result).toContain("cannot finish_build yet");
+    expect(result).toContain("1:running");
+    expect(result).toContain("2:pending");
+    expect(events.some((e) => e.type === "build_complete")).toBe(false);
   });
 });

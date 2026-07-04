@@ -209,7 +209,7 @@ export async function runAgentLoop(
     // writing/reading without marking steps complete or calling finish_build.
     if (iteration > 0 && iteration % 25 === 0 && tools.length > 0) {
       console.warn(`[agent-loop] iteration ${iteration + 1}: injecting finish reminder (session=${sessionId})`);
-      messages.push({ role: "user", content: "IMPORTANT: You have been running for many iterations. If all steps are complete, call finish_build NOW. If steps remain, call mark_step_complete for each completed step, then finish_build. Do not continue indefinitely." } as any);
+      messages.push({ role: "user", content: "IMPORTANT: You have been running for many iterations. Check the current plan ledger mentally: if a step's work is complete, call mark_step_complete for that step. Only call finish_build after every plan step has been marked complete. If any step is still running or pending, finish that step now instead of calling finish_build." } as any);
     }
 
     // ── Step Start ──────────────────────────────────────────────────
@@ -603,7 +603,9 @@ export async function runAgentLoop(
       // A throwing handler signals "rejected, retry" — keep looping so the
       // LLM sees the error message and can re-invoke the tool with fixed args.
       // maxIterations bounds the retry budget.
-        if (result.handlerSucceeded && exitTools.has(result.tc.name)) {
+        const toolOutput = typeof result.toolResultMsg.content === "string" ? result.toolResultMsg.content : "";
+        const softFailed = /^\s*Error:/i.test(toolOutput);
+        if (result.handlerSucceeded && !softFailed && exitTools.has(result.tc.name)) {
         shouldExit = true;
           exitTool = result.tc.name;
           exitArgs = result.args;

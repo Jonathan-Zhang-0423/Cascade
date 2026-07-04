@@ -824,6 +824,14 @@ export function buildBuilderTools(
     },
 
     finish_build: async (_args, emit) => {
+      const snap = session.todoLedger?.snapshot();
+      if (snap && !snap.allDone) {
+        const open = snap.steps
+          .filter((s) => s.status !== "done")
+          .map((s) => `${s.stepNumber}:${s.status}`)
+          .join(", ");
+        return `Error: cannot finish_build yet. Unfinished plan steps: ${open || "(none)"}. Call mark_step_complete for each completed step first; if a step is still incomplete, finish that work before calling finish_build.`;
+      }
       emit({ type: "build_complete" });
       return "Build finished.";
     },
