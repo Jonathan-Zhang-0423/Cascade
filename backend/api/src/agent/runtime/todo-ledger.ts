@@ -84,9 +84,12 @@ export class TodoLedger {
     return entry;
   }
 
-  recordTouchedFile(filePath: string): void {
-    const running = this.snapshot().steps.filter((s) => s.status === "running");
-    const target = running[running.length - 1] ?? this.snapshot().steps.find((s) => s.status === "pending");
+  recordTouchedFile(filePath: string, stepId?: number | string): void {
+    const snapshot = this.snapshot();
+    const running = snapshot.steps.filter((s) => s.status === "running");
+    const target = stepId !== undefined
+      ? this.resolve(stepId)
+      : running[running.length - 1] ?? snapshot.steps.find((s) => s.status === "pending");
     if (!target) return;
     const entry = this.resolve(target.stepNumber);
     if (!entry || entry.touchedFiles.includes(filePath)) return;
@@ -121,4 +124,3 @@ export class TodoLedger {
     }
   }
 }
-

@@ -39,6 +39,13 @@ import { TodoLedger } from "../runtime/todo-ledger";
 
 const BUILDER_MAX_ITERATIONS = 200;
 
+function builderStepIterationBudget(totalSteps: number): number {
+  if (totalSteps <= 1) return BUILDER_MAX_ITERATIONS;
+  if (totalSteps === 2) return Math.min(120, BUILDER_MAX_ITERATIONS);
+  if (totalSteps <= 4) return Math.min(80, BUILDER_MAX_ITERATIONS);
+  return Math.min(60, BUILDER_MAX_ITERATIONS);
+}
+
 export interface BuildFile {
   path: string;
   content: string;
@@ -188,6 +195,9 @@ function buildEditorToolset(
     telemetry?: BuildTelemetry;
     exitSignal?: { exit: boolean; reason?: string };
     mcpManager?: McpManager | null;
+    allowedStepIds?: Array<number | string>;
+    completeOnlyCurrentStep?: boolean;
+    currentStepId?: number | string;
   },
 ): {
   schemas: ToolSchema[];
@@ -197,7 +207,11 @@ function buildEditorToolset(
   state: BuilderToolState;
 } {
   const registry = new ToolRegistry();
-  const builtinTools = buildBuilderTools(session, steps, options?.telemetry, options?.exitSignal);
+  const builtinTools = buildBuilderTools(session, steps, options?.telemetry, options?.exitSignal, {
+    allowedStepIds: options?.allowedStepIds,
+    completeOnlyCurrentStep: options?.completeOnlyCurrentStep,
+    currentStepId: options?.currentStepId,
+  });
   registry.register("builder", builtinTools.schemas, builtinTools.handlers);
 
   if (userSkillsLoaded.toolSchemas.length > 0 || Object.keys(userSkillsLoaded.toolHandlers).length > 0) {
@@ -216,6 +230,23 @@ function buildEditorToolset(
 
   const built = registry.build();
   return { ...built, sources: registry.listSources(), state: builtinTools.state };
+}
+
+function withStepScope(emit: SseEmit, stepNumber: number): SseEmit {
+  return (data) => {
+    const type = typeof data.type === "string" ? data.type : "";
+    if (
+      type === "action_log" ||
+      type === "tool_batch_started" ||
+      type === "tool_batch_completed" ||
+      type === "code_applied" ||
+      type === "file_deleted"
+    ) {
+      emit({ ...data, stepNumber });
+      return;
+    }
+    emit(data);
+  };
 }
 
 type LoadedUserSkills = Awaited<ReturnType<typeof loadUserSkills>>;
@@ -569,6 +600,89 @@ ${filesList}${runtimeContextSection}${preloadedContent}
 IMPORTANT: Implement the plan step by step. In the first 20 loop iterations, gather the context needed for correct edits; after that, converge toward write_file/edit_file/patch_file/hash_patch_file, mark_step_complete, or finish_build instead of continuing broad discovery unless a specific blocker remains. Preserve unrelated existing code and prior user-facing behavior, mark each completed step with mark_step_complete, then finish_build only after final checks, update_project_memory when files changed or durable facts were learned, and demo script submission.`;
 }
 
+export function buildBuilderStepMessage(
+  session: BuildSessionState,
+  allSteps: BuildStep[],
+  currentStep: BuildStep,
+  completedSteps: BuildStep[],
+): string {
+  const allFiles = filesMapToArray(session.files);
+  const completedSection = completedSteps.length > 0
+    ? completedSteps.map((s) => `- Step ${s.step}: ${s.title}`).join("\n")
+    : "(none yet)";
+  const futureSection = allSteps
+    .filter((s) => s.step > currentStep.step)
+    .map((s) => `- Step ${s.step}: ${s.title}`)
+    .join("\n") || "(none)";
+  const requiredFiles = Array.isArray(currentStep.required_files) && currentStep.required_files.length > 0
+    ? currentStep.required_files.join(", ")
+    : "(not specified; choose the minimum necessary files)";
+  const filesList = allFiles.length > 0
+    ? `\n\nExisting project files:\n${allFiles.map(f => `- ${f.path}`).join("\n")}`
+    : "\n\nThe project currently has no files.";
+
+  const preloaded: string[] = [];
+  const PRE_LOAD_CAP = 32000;
+  let preloadSize = 0;
+  for (const rf of currentStep.required_files ?? []) {
+    const file = allFiles.find(f => f.path === rf || f.path.endsWith(rf.replace(/^\/project\//, "")));
+    if (file && file.content) {
+      const entry = `--- ${file.path} ---\n${file.content}`;
+      if (preloadSize + entry.length > PRE_LOAD_CAP) break;
+      preloaded.push(entry);
+      preloadSize += entry.length;
+    }
+  }
+  const preloadedContent = preloaded.length > 0
+    ? `\n\n## Pre-loaded file content for this step\n\n${preloaded.join("\n\n")}`
+    : "";
+
+  const contextPacket = buildEditorContextPacket({
+    projectId: session.projectId,
+    files: allFiles,
+    userIntent: session.userRequest,
+    plan: session.plan,
+    steps: [currentStep],
+    completedRoundSummary: session.completedRoundSummary,
+    projectMemory: session.projectMemory,
+    skillContent: session.skillContent,
+    externalGuidance: session.explorerSummary,
+  });
+  const runtimeContextSection = `\n\n## Runtime Context Packet\n\n${renderContextPacket(contextPacket, {
+    includeProjectMemory: false,
+    includeSkillContent: false,
+    includeExternalGuidance: true,
+  })}`;
+
+  return `You are executing ONE plan step in a sequential build.
+
+## Hard Step Boundary
+- Current executable step: Step ${currentStep.step} — ${currentStep.title}
+- Implement ONLY this step's described behavior now.
+- Do NOT pre-implement future steps. Leave later-step features for their own step loops unless they are unavoidable scaffolding for this step.
+- When this step is done, call mark_step_complete with step_id "${currentStep.step}" and a concise summary.
+- Do not call mark_step_complete for any other step.
+- Do not call finish_build from this step loop.
+
+## Original Request
+${session.userRequest}
+
+## Completed Steps
+${completedSection}
+
+## Current Step
+Title: ${currentStep.title}
+Description: ${currentStep.description}
+Acceptance Criteria: ${currentStep.acceptance_criteria || "N/A"}
+Required Files: ${requiredFiles}
+
+## Future Steps (context only — do not implement yet)
+${futureSection}
+${filesList}${runtimeContextSection}${preloadedContent}
+
+Focus this tool work and action log on Step ${currentStep.step}.`;
+}
+
 
 /**
  * Extract the file path from a verifier issue (best-effort parsing).
@@ -655,6 +769,7 @@ async function runBuilderParallelWaves(
   emit: SseEmit,
   userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
 ): Promise<void> {
+  const allSteps = waves.flatMap((w) => w.steps).sort((a, b) => a.step - b.step);
   for (const wave of waves) {
     if (session.aborted) return;
 
@@ -666,41 +781,172 @@ async function runBuilderParallelWaves(
 
     await Promise.all(
       wave.steps.map(async (step) => {
-        const subInitialMessage = buildBuilderInitialMessage(session, [step], "build");
+        session.todoLedger?.start(step.step);
+        if (session.todoLedger) emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
+        emit({ type: "step_starting", stepNumber: step.step, stepTitle: step.title, totalSteps: allSteps.length });
+
+        const stepEmit = withStepScope(emit, step.step);
+        const completedSteps = allSteps.filter((s) => {
+          if (s.step >= step.step) return false;
+          return session.todoLedger?.resolve(s.step)?.status === "done";
+        });
+        const subInitialMessage = buildBuilderStepMessage(session, allSteps, step, completedSteps);
+        const subExitSignal = { exit: false, reason: undefined as string | undefined };
         // Each sub-loop gets tools scoped to just this step, so mark_step_complete
         // does not try to auto-advance to a different wave's step.
-        const subTools = buildEditorToolset(session, [step], emit, userSkillsLoaded);
-        await withModelFallback(editorDecisions, async (client, model) => {
+        const subTools = buildEditorToolset(session, [step], stepEmit, userSkillsLoaded, {
+          exitSignal: subExitSignal,
+          allowedStepIds: [step.step, ...(step.sub_task_id ? [step.sub_task_id] : [])],
+          completeOnlyCurrentStep: true,
+          currentStepId: step.step,
+        });
+        await withModelFallback(editorDecisions, async (client, model, decision) => {
           await runAgentLoop(
             builderSystemPrompt,
             [{ role: "user", content: subInitialMessage }],
             subTools.schemas,
             subTools.handlers,
-            emit,
+            stepEmit,
             {
-              exitTools: ["finish_build", "mark_step_complete"],
+              exitTools: ["mark_step_complete"],
               maxIterations: 30,
               client,
               model,
               phase: "editor",
               runtimePolicy: {
                 role: "editor",
+                provider: decision.provider,
+                model,
                 maxIterations: 30,
                 thinkingMode: "auto",
+                routingMode: decision.routingMode,
+                thinkingProfile: "adaptive",
                 stallPolicy: {
                   discoveryNudgeMinIteration: 20,
                   discoveryNudgeThreshold: 4,
                 },
+                toolPolicies: subTools.policies,
               },
               partCtx,
               sessionId: session.id,
+              exitSignal: subExitSignal,
               toolPolicies: subTools.policies,
             },
           );
         });
+        const completed = session.todoLedger?.resolve(step.step)?.status === "done";
+        if (!completed) {
+          throw new Error(`Parallel step ${step.step} ended before mark_step_complete`);
+        }
       }),
     );
   }
+}
+
+async function runBuilderSequentialSteps(
+  session: BuildSessionState,
+  steps: BuildStep[],
+  builderSystemPrompt: string,
+  editorDecisions: AgentModelDecision[],
+  partCtx: PartEmitContext,
+  emit: SseEmit,
+  userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
+  options: {
+    telemetry: BuildTelemetry;
+    mcpManager?: McpManager | null;
+  },
+): Promise<{
+  exhausted: boolean;
+  completedCount: number;
+  telemetry?: { discoveryOnlyRounds: number; thinkingModeCounts: Record<string, number> };
+}> {
+  const aggregateTelemetry = {
+    discoveryOnlyRounds: 0,
+    thinkingModeCounts: {} as Record<string, number>,
+  };
+  const completedSteps: BuildStep[] = [];
+  const stepMaxIterations = builderStepIterationBudget(steps.length);
+
+  for (const step of steps) {
+    if (session.aborted) break;
+    const alreadyDone = session.todoLedger?.resolve(step.step)?.status === "done";
+    if (alreadyDone) {
+      completedSteps.push(step);
+      continue;
+    }
+
+    session.todoLedger?.start(step.step);
+    if (session.todoLedger) emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
+    emit({ type: "step_starting", stepNumber: step.step, stepTitle: step.title, totalSteps: steps.length });
+
+    const stepEmit = withStepScope(emit, step.step);
+    const stepExitSignal = { exit: false, reason: undefined as string | undefined };
+    const stepTools = buildEditorToolset(session, [step], stepEmit, userSkillsLoaded, {
+      telemetry: options.telemetry,
+      exitSignal: stepExitSignal,
+      mcpManager: options.mcpManager,
+      allowedStepIds: [step.step, ...(step.sub_task_id ? [step.sub_task_id] : [])],
+      completeOnlyCurrentStep: true,
+      currentStepId: step.step,
+    });
+    const stepInitialMessage = buildBuilderStepMessage(session, steps, step, completedSteps);
+
+    const loopResult = await withModelFallback(editorDecisions, async (client, model, decision) => {
+      const stepRuntime: AgentRunSpec["runtime"] = {
+        role: "editor",
+        provider: decision.provider,
+        model,
+        maxIterations: stepMaxIterations,
+        thinkingMode: "auto",
+        routingMode: decision.routingMode,
+        thinkingProfile: "adaptive",
+        maxOutputTokens: 12288,
+        contextCompactionProfile: "preserve-memory",
+        contextBudgetTokens: 80_000,
+        stallPolicy: {
+          discoveryNudgeMinIteration: 20,
+          discoveryNudgeThreshold: 4,
+        },
+        toolPolicies: stepTools.policies,
+      };
+      return await runAgentLoop(
+        builderSystemPrompt,
+        [{ role: "user", content: stepInitialMessage }],
+        stepTools.schemas,
+        stepTools.handlers,
+        stepEmit,
+        {
+          exitTools: ["mark_step_complete"],
+          maxIterations: stepRuntime.maxIterations,
+          client,
+          model: stepRuntime.model,
+          phase: "editor",
+          partCtx,
+          sessionId: session.id,
+          exitSignal: stepExitSignal,
+          toolPolicies: stepRuntime.toolPolicies,
+          runtimePolicy: stepRuntime,
+        },
+      );
+    });
+
+    aggregateTelemetry.discoveryOnlyRounds += loopResult.telemetry?.discoveryOnlyRounds ?? 0;
+    for (const [mode, count] of Object.entries(loopResult.telemetry?.thinkingModeCounts ?? {})) {
+      aggregateTelemetry.thinkingModeCounts[mode] = (aggregateTelemetry.thinkingModeCounts[mode] ?? 0) + count;
+    }
+
+    const completed = session.todoLedger?.resolve(step.step)?.status === "done";
+    if (!completed) {
+      console.warn(
+        `[build-session] step loop ended before completion sessionId=${session.id} ` +
+          `step=${step.step} exhausted=${loopResult.exhausted} exitTool=${loopResult.exitTool || "(none)"}`,
+      );
+      return { exhausted: true, completedCount: completedSteps.length, telemetry: aggregateTelemetry };
+    }
+    completedSteps.push(step);
+  }
+
+  return { exhausted: false, completedCount: completedSteps.length, telemetry: aggregateTelemetry };
 }
 
 export async function runBuildSession(session: BuildSessionState, rawEmit: SseEmit): Promise<void> {
@@ -796,14 +1042,13 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     hasRoundSummary: !!session.completedRoundSummary?.trim(),
   });
 
-  session.todoLedger.start(normalizedSteps[0]?.step ?? 1);
   emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
-  emit({ type: "step_starting", stepNumber: 1, stepTitle: normalizedSteps[0]?.title ?? "Building", totalSteps });
 
-  // AG-10: Analyze step dependencies. By default execution stays sequential
-  // (one agent loop over the full plan). When AG10_PARALLEL=1 is set, each
-  // wave is executed as an independent agent loop, with steps inside a wave
-  // concurrent via Promise.all().
+  // AG-10: Analyze step dependencies. By default execution stays sequential,
+  // but each plan step still gets its own scoped agent loop so work/logs stay
+  // attached to the correct step. When AG10_PARALLEL=1 is set, each wave is
+  // executed with one scoped loop per step and steps inside a wave may run
+  // concurrently via Promise.all().
   const waves = groupStepsIntoWaves(normalizedSteps);
   const parallelEnabled = process.env.AG10_PARALLEL === "1";
   const shouldRunParallel = parallelEnabled && hasParallelOpportunity(waves) && waves.length > 1;
@@ -820,75 +1065,28 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
 
   const builderSystemPrompt = buildBuilderSystemPrompt(session);
 
+  let builderStoppedEarly = false;
   try {
     await telemetry.time("builder", async () => {
       if (shouldRunParallel) {
         await runBuilderParallelWaves(session, waves, builderSystemPrompt, editorDecisions, partCtx, emit, userSkillsLoaded);
       } else {
-        const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
-        // Shared exit signal: completing the final plan step trips this so the
-        // builder loop ends deterministically (instead of waiting on the model
-        // to emit finish_build, which it sometimes only narrates).
-        const builderExitSignal = { exit: false, reason: undefined as string | undefined };
-        const builderTools = buildEditorToolset(session, normalizedSteps, emit, userSkillsLoaded, {
-          telemetry,
-          exitSignal: builderExitSignal,
-          mcpManager,
-        });
-        console.log(
-          `[BuildSession ${session.id}] Tool registry sources: ${builderTools.sources.join(", ") || "(none)"}; tools=${builderTools.schemas.length}`,
+        const stepRunResult = await runBuilderSequentialSteps(
+          session,
+          normalizedSteps,
+          builderSystemPrompt,
+          editorDecisions,
+          partCtx,
+          emit,
+          userSkillsLoaded,
+          { telemetry, mcpManager },
         );
-        const loopResult = await withModelFallback(editorDecisions, async (client, model, decision) => {
-          const builderRunSpec: AgentRunSpec = {
-            systemPrompt: builderSystemPrompt,
-            initialMessages: [{ role: "user", content: builderInitialMessage }],
-            tools: builderTools.schemas,
-            handlers: builderTools.handlers,
-            runtime: {
-              role: "editor",
-              provider: decision.provider,
-              model,
-              maxIterations: BUILDER_MAX_ITERATIONS,
-              thinkingMode: "auto",
-              routingMode: decision.routingMode,
-              thinkingProfile: "adaptive",
-              maxOutputTokens: 16384,
-              contextCompactionProfile: "preserve-memory",
-              contextBudgetTokens: 120_000,
-              stallPolicy: {
-                discoveryNudgeMinIteration: 20,
-                discoveryNudgeThreshold: 4,
-              },
-              toolPolicies: builderTools.policies,
-            },
-            client,
-          };
-          return await runAgentLoop(
-            builderRunSpec.systemPrompt,
-            builderRunSpec.initialMessages,
-            builderRunSpec.tools,
-            builderRunSpec.handlers,
-            emit,
-            {
-              exitTools: ["finish_build"],
-              maxIterations: builderRunSpec.runtime.maxIterations,
-              client: builderRunSpec.client,
-              model: builderRunSpec.runtime.model,
-              phase: "editor",
-              partCtx,
-              sessionId: session.id,
-              exitSignal: builderExitSignal,
-              toolPolicies: builderRunSpec.runtime.toolPolicies,
-              runtimePolicy: builderRunSpec.runtime,
-            },
-          );
-        });
-        telemetry.addDiscoveryOnlyRounds(loopResult.telemetry?.discoveryOnlyRounds ?? 0);
-        for (const [mode, count] of Object.entries(loopResult.telemetry?.thinkingModeCounts ?? {})) {
+        telemetry.addDiscoveryOnlyRounds(stepRunResult.telemetry?.discoveryOnlyRounds ?? 0);
+        for (const [mode, count] of Object.entries(stepRunResult.telemetry?.thinkingModeCounts ?? {})) {
           telemetry.addThinkingMode(mode, count);
         }
-        if (loopResult.exhausted && !builderExitSignal.exit && !loopResult.exitTool) {
-          const completed = builderTools.state.getCompletedStepCount();
+        if (stepRunResult.exhausted) {
+          const completed = stepRunResult.completedCount;
           const message =
             completed > 0
               ? `Agent paused after reaching the iteration budget (${completed}/${normalizedSteps.length} steps completed). Continue the build to finish the remaining steps.`
@@ -902,10 +1100,15 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
           telemetry.setFinalStatus("error", message);
           await telemetry.flush();
           if (mcpManager) mcpManager.disconnect().catch(() => {});
+          builderStoppedEarly = true;
           return;
         }
       }
     });
+    if (builderStoppedEarly) return;
+    if (!session.aborted && session.todoLedger?.snapshot().allDone) {
+      emit({ type: "build_complete" });
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[build-session] BUILDER THREW sessionId=${session.id}: ${message}`);

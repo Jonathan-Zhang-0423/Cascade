@@ -86,11 +86,12 @@ async function applyFileContentUpdate(
   emit: SseEmit,
   filePath: string,
   content: string,
+  touchedStepId?: number | string,
 ): Promise<string> {
   const fileName = filePath.split("/").pop() || filePath;
   emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath });
   session.files.set(filePath, content);
-  session.todoLedger?.recordTouchedFile(filePath);
+  session.todoLedger?.recordTouchedFile(filePath, touchedStepId);
   persistFileToDb(session, filePath, content);
   emit({ type: "code_applied", filePath, code: content });
   await mirrorFileChangeToDiskAndLsp(session, filePath, content);
@@ -255,6 +256,7 @@ export function buildBuilderTools(
   planSteps?: BuildStep[],
   telemetry?: BuildTelemetry,
   exitSignal?: { exit: boolean; reason?: string },
+  options?: { allowedStepIds?: Array<number | string>; completeOnlyCurrentStep?: boolean; currentStepId?: number | string },
 ): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
@@ -265,6 +267,12 @@ export function buildBuilderTools(
     for (const s of planSteps) stepByNum.set(s.step, s);
   }
   const totalSteps = planSteps?.length ?? 0;
+  const allowedStepIds = new Set<number | string>();
+  for (const id of options?.allowedStepIds ?? []) {
+    allowedStepIds.add(id);
+    const asNum = typeof id === "string" ? Number(id) : id;
+    if (Number.isFinite(asNum)) allowedStepIds.add(asNum);
+  }
   // Track which steps have been marked complete so we can end the builder loop
   // deterministically once the final step is done — without depending on the
   // model to emit a separate finish_build tool call.
@@ -577,7 +585,7 @@ export function buildBuilderTools(
           return `Error: refusing full overwrite of existing file ${path_} without a current read. Call read_file first and then either use targeted edit_file/patch_file/hash_patch_file, or retry write_file with expected_hash=${currentHash} if a true full rewrite is required.`;
         }
       }
-      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, content);
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, content, options?.currentStepId);
       telemetry?.incr("writeFileCount");
       return `File written successfully: ${path_} (${content.length} chars)${diagSuffix}`;
     },
@@ -675,7 +683,7 @@ export function buildBuilderTools(
       const patched = replaceAll
         ? current.split(oldContent).join(newContent)
         : current.replace(oldContent, newContent);
-      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       telemetry?.incr("patchFileCount");
       return `File edited successfully: ${path_} (${replaceAll ? occurrences : 1} replacement(s), ${oldContent.length} chars -> ${newContent.length} chars)${diagSuffix}`;
     },
@@ -703,7 +711,7 @@ export function buildBuilderTools(
         return `Error: old_content appears ${occurrences} times in ${path_}, so the patch is ambiguous. Include more surrounding context to make old_content unique, or use hash_patch_file to target a specific block.`;
       }
       const patched = current.replace(oldContent, newContent);
-      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       telemetry?.incr("patchFileCount");
       return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
     },
@@ -740,7 +748,7 @@ export function buildBuilderTools(
       }
 
       const patched = applyBlockReplacement(current, match, newContent);
-      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched);
+      const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       const label = match.name ? `${match.kind} ${match.name}` : match.kind;
       telemetry?.incr("hashPatchFileCount");
       return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
@@ -755,7 +763,7 @@ export function buildBuilderTools(
       const fileName = path_.split("/").pop() || path_;
       emit({ type: "action_log", actionType: "file_delete", label: fileName, detail: "", filePath: path_ });
       session.files.delete(path_);
-      session.todoLedger?.recordTouchedFile(path_);
+      session.todoLedger?.recordTouchedFile(path_, options?.currentStepId);
       if (session.projectId) {
         try {
           await storage.deleteProjectFile(session.projectId, path_);
@@ -827,6 +835,11 @@ export function buildBuilderTools(
         if (matched) resolvedNum = matched.step;
       }
 
+      if (allowedStepIds.size > 0 && !allowedStepIds.has(resolvedNum) && !allowedStepIds.has(stepId)) {
+        const allowed = Array.from(allowedStepIds).join(", ");
+        return `Error: this agent loop is scoped to step ${allowed}. Complete the current step only; do not mark other steps complete.`;
+      }
+
       // Guard: if this step was already completed, acknowledge but don't re-emit
       // events or re-trigger the completion check. Prevents the LLM from looping
       // back to redo finished steps or double-triggering all_steps_complete.
@@ -839,9 +852,10 @@ export function buildBuilderTools(
       if (session.todoLedger) emit({ type: "ledger_snapshot", ledger: session.todoLedger.snapshot() });
       completedSteps.add(resolvedNum);
 
-      // Advance to the next step
+      // Advance to the next step. Step-scoped loops let the orchestrator emit
+      // the next step_starting event, so do not auto-advance there.
       const numericCompleted = typeof resolvedNum === "number" ? resolvedNum : NaN;
-      if (!isNaN(numericCompleted) && totalSteps > 0) {
+      if (!options?.completeOnlyCurrentStep && !isNaN(numericCompleted) && totalSteps > 0) {
         const nextStep = stepByNum.get(numericCompleted + 1);
         if (nextStep) {
           session.todoLedger?.start(nextStep.step);
@@ -855,10 +869,13 @@ export function buildBuilderTools(
       // instead of waiting on a separate finish_build tool call that the model
       // sometimes only narrates (leaving the loop spinning to maxIterations and
       // looking frozen). Build completion does NOT trigger any review.
-      if (totalSteps > 0 && completedSteps.size >= totalSteps && exitSignal) {
+      if (!options?.completeOnlyCurrentStep && totalSteps > 0 && completedSteps.size >= totalSteps && exitSignal) {
         emit({ type: "build_complete" });
         exitSignal.exit = true;
         exitSignal.reason = "all_steps_complete";
+      } else if (options?.completeOnlyCurrentStep && exitSignal) {
+        exitSignal.exit = true;
+        exitSignal.reason = "step_complete";
       }
 
       return `Step ${stepId} marked complete: ${summary}`;
