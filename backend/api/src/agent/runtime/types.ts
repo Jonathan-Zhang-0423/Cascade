@@ -56,6 +56,10 @@ export interface RuntimePolicy {
   model?: string;
   maxIterations: number;
   thinkingMode?: "auto" | "enabled" | "disabled";
+  routingMode?: "role_first" | "user_first";
+  thinkingProfile?: "adaptive" | "always" | "minimal" | "disabled";
+  maxOutputTokens?: number;
+  contextCompactionProfile?: "standard" | "aggressive" | "preserve-memory";
   contextBudgetTokens?: number;
   stallPolicy?: {
     discoveryNudgeMinIteration: number;
@@ -72,4 +76,3 @@ export interface AgentRunSpec {
   runtime: RuntimePolicy;
   client?: OpenAI;
 }
-

@@ -20,6 +20,7 @@ vi.mock("../src/agent/providers/deepseek-client", () => ({
 }));
 
 import { buildFallbackChain, getOptimalClient, isProviderConfigured } from "../src/agent/providers/kimi-client";
+import { resolveAgentModel, resolveAgentModelChain } from "../src/agent/providers/agent-model-router";
 
 describe("provider routing", () => {
   afterEach(() => {
@@ -36,12 +37,33 @@ describe("provider routing", () => {
   });
 
   it("keeps the user provider first when it is configured, then role-appropriate fallbacks", () => {
+    vi.stubEnv("AGENT_ROUTING_MODE", "user_first");
     vi.stubEnv("GLM_API_KEY", "glm-key");
     vi.stubEnv("KIMI_API_KEY", "kimi-key");
     vi.stubEnv("DEEPSEEK_API_KEY", "deepseek-key");
     vi.stubEnv("MINIMAX_API_KEY", "");
 
     expect(buildFallbackChain("editor", "kimi")).toEqual(["kimi", "glm", "doubao", "deepseek-flash"]);
+  });
+
+  it("defaults to role-first routing for editor even when the user picked another configured provider", () => {
+    vi.stubEnv("AGENT_ROUTING_MODE", "");
+    vi.stubEnv("GLM_API_KEY", "glm-key");
+    vi.stubEnv("KIMI_API_KEY", "kimi-key");
+    vi.stubEnv("DEEPSEEK_API_KEY", "deepseek-key");
+    vi.stubEnv("MINIMAX_API_KEY", "");
+
+    expect(resolveAgentModelChain("editor", "kimi").map((d) => d.provider)).toEqual([
+      "glm",
+      "kimi",
+      "doubao",
+      "deepseek-flash",
+    ]);
+    expect(resolveAgentModel("editor", "kimi", { log: false })).toMatchObject({
+      provider: "glm",
+      reason: "role-primary",
+      routingMode: "role_first",
+    });
   });
 
   it("lets verifier prefer fast review specialists when the selected provider is unavailable", () => {

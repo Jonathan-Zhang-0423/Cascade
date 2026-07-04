@@ -2,7 +2,7 @@ import { runAgentLoop, type ToolSchema, type ToolHandlers } from "../loop/agent-
 import { buildMcpTools } from "./mcp-tools";
 import type { McpManager } from "./mcp-client";
 import type { SseEmit } from "../orchestrator/build-orchestrator";
-import { getFastClient } from "../providers/kimi-client";
+import { resolveAgentModel, type AIProvider } from "../providers/agent-model-router";
 
 const RESEARCH_TIMEOUT = 60_000;
 const RESEARCH_MAX_ITERATIONS = 8;
@@ -33,6 +33,7 @@ export async function runResearchAgent(
   query: string,
   mcpManager: McpManager,
   emit: SseEmit,
+  opts?: { provider?: AIProvider },
 ): Promise<string> {
   // Build tool set: only MCP tools (no file ops, no shell)
   const noopEmit: SseEmit = () => {};
@@ -42,7 +43,7 @@ export async function runResearchAgent(
     return "(No research tools available — MCP servers have no tools)";
   }
 
-  const { client, model } = getFastClient();
+  const { client, model } = resolveAgentModel("research", opts?.provider ?? "glm");
 
   const initialMessage = `Research the following question and return a clear, factual answer:
 

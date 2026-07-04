@@ -4,20 +4,20 @@ vi.mock("../src/agent/loop/agent-loop", () => ({
   runAgentLoop: vi.fn(),
 }));
 
-vi.mock("../src/agent/providers/kimi-client", () => ({
-  getFastClient: vi.fn(() => ({ client: { __id: "fast" }, model: "fast-model" })),
+vi.mock("../src/agent/providers/agent-model-router", () => ({
+  resolveAgentModel: vi.fn(() => ({ client: { __id: "explorer" }, model: "explorer-model", provider: "minimax" })),
 }));
 
 import { runExploreAgent } from "../src/agent/orchestrator/explore-agent";
 import { runAgentLoop } from "../src/agent/loop/agent-loop";
-import { getFastClient } from "../src/agent/providers/kimi-client";
+import { resolveAgentModel } from "../src/agent/providers/agent-model-router";
 
 describe("explore agent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("uses the fast client with thinking disabled for lightweight scans", async () => {
+  it("uses the explorer model with thinking disabled for lightweight scans", async () => {
     (runAgentLoop as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       finalText: "React app with App.tsx entry point.",
     });
@@ -28,14 +28,14 @@ describe("explore agent", () => {
     );
 
     expect(result).toBe("React app with App.tsx entry point.");
-    expect(getFastClient).toHaveBeenCalledTimes(1);
+    expect(resolveAgentModel).toHaveBeenCalledWith("explorer", "glm");
     expect(runAgentLoop).toHaveBeenCalledTimes(1);
 
     const callArgs = (runAgentLoop as ReturnType<typeof vi.fn>).mock.calls[0];
     const opts = callArgs[5] as Record<string, unknown>;
-    expect(opts.client).toEqual({ __id: "fast" });
-    expect(opts.model).toBe("fast-model");
+    expect(opts.client).toEqual({ __id: "explorer" });
+    expect(opts.model).toBe("explorer-model");
     expect(opts.disableThinking).toBe(true);
-    expect(opts.phase).toBe("manager");
+    expect(opts.phase).toBe("research");
   });
 });

@@ -202,6 +202,47 @@ export interface ReviewSessionState {
 
 export interface ManagerSessionState {
   plan?: Record<string, unknown>;
+  memoryTouched?: boolean;
+}
+
+const LATEST_PLAN_MEMORY_MARKER = "<!-- cascade:latest-plan -->";
+
+function compactPlanMemoryLine(value: unknown, limit: number): string {
+  const text = typeof value === "string" ? value : "";
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > limit ? `${compact.slice(0, limit)}...` : compact;
+}
+
+function buildLatestPlanMemorySection(plan: Record<string, unknown>): string {
+  const steps = Array.isArray(plan.steps) ? plan.steps as Array<Record<string, unknown>> : [];
+  const stepLines = steps.slice(0, 8).map((step, index) => {
+    const title = compactPlanMemoryLine(step.title, 90) || `Step ${index + 1}`;
+    const files = Array.isArray(step.required_files)
+      ? step.required_files.filter((f): f is string => typeof f === "string").slice(0, 5)
+      : [];
+    return `- ${title}${files.length > 0 ? ` (${files.join(", ")})` : ""}`;
+  });
+  const files = Array.isArray(plan.relevant_files)
+    ? plan.relevant_files.filter((f): f is string => typeof f === "string").slice(0, 12)
+    : [];
+  return [
+    LATEST_PLAN_MEMORY_MARKER,
+    "## Latest Plan",
+    `Summary: ${compactPlanMemoryLine(plan.summary, 240) || "(none)"}`,
+    `Intent: ${compactPlanMemoryLine(plan.what_and_why, 360) || compactPlanMemoryLine(plan.overview, 360) || "(none)"}`,
+    files.length > 0 ? `Relevant files: ${files.join(", ")}` : "",
+    stepLines.length > 0 ? ["Steps:", ...stepLines].join("\n") : "",
+    "Preservation: future work should extend this plan and preserve existing user-facing behavior unless the user explicitly changes scope.",
+  ].filter(Boolean).join("\n");
+}
+
+function upsertLatestPlanMemory(existing: string, plan: Record<string, unknown>): string {
+  const section = buildLatestPlanMemorySection(plan);
+  const trimmed = existing.trim();
+  if (!trimmed) return section;
+  const markerIdx = trimmed.indexOf(LATEST_PLAN_MEMORY_MARKER);
+  if (markerIdx === -1) return `${trimmed}\n\n${section}`;
+  return `${trimmed.slice(0, markerIdx).trimEnd()}\n\n${section}`.trim();
 }
 
 export interface BuilderToolState {
@@ -1310,6 +1351,16 @@ export function buildManagerTools(
         media_task: args.media_task as Record<string, unknown> | undefined,
       };
       managerState.plan = plan;
+      if (memoryCtx?.projectId) {
+        try {
+          const existing = await storage.getProjectMemory(memoryCtx.projectId);
+          const updated = upsertLatestPlanMemory(existing, plan);
+          await storage.setProjectMemory(memoryCtx.projectId, memoryCtx.userId ?? "", updated);
+          managerState.memoryTouched = true;
+        } catch (err) {
+          console.warn("[manager-tools] latest plan memory update failed:", err instanceof Error ? err.message : err);
+        }
+      }
       return "Plan submitted successfully.";
     },
   };

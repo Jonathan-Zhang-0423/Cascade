@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { runAgentLoop } from "../loop/agent-loop";
-import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
+import { type AIProvider } from "../providers/kimi-client";
+import { resolveAgentModelChain, withModelFallback } from "../providers/agent-model-router";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
   buildReviewTools,
@@ -169,8 +170,8 @@ function issueKey(i: ReviewIssue): string {
  */
 export async function runReviewSession(session: ReviewSessionState, emit: SseEmit): Promise<void> {
   const userProvider = session.provider ?? "glm";
-  const providerChainReviewer = buildFallbackChain("verifier", userProvider);
-  const providerChainFixer = buildFallbackChain("fixer", userProvider);
+  const verifierDecisions = resolveAgentModelChain("verifier", userProvider);
+  const fixerDecisions = resolveAgentModelChain("fixer", userProvider);
 
   const telemetry = new BuildTelemetry({
     id: session.id,
@@ -179,6 +180,9 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     provider: session.provider,
     userLang: session.userLang,
   });
+  for (const decision of [...verifierDecisions, ...fixerDecisions]) {
+    telemetry.addModelRouteDecision(decision);
+  }
 
   // Seed files on disk + start LSP/shell so lsp_diagnostics and compile checks
   // work during review (same setup the build session performs).
@@ -237,14 +241,31 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
 
     try {
       await telemetry.time("verifier", async () => {
-        await withFallback(providerChainReviewer, async (client, model) => {
+        await withModelFallback(verifierDecisions, async (client, model, decision) => {
           await runAgentLoop(
             reviewerSystemPrompt,
             [{ role: "user", content: reviewerInitialMessage }],
             reviewTools.schemas,
             reviewTools.handlers,
             emit,
-            { exitTools: ["submit_review"], maxIterations: 15, client, model, phase: "verifier", partCtx, sessionId: session.id },
+            {
+              exitTools: ["submit_review"],
+              maxIterations: 15,
+              client,
+              model,
+              phase: "verifier",
+              partCtx,
+              sessionId: session.id,
+              runtimePolicy: {
+                role: "verifier",
+                provider: decision.provider,
+                model,
+                maxIterations: 15,
+                thinkingMode: "auto",
+                routingMode: decision.routingMode,
+                thinkingProfile: "adaptive",
+              },
+            },
           );
         });
       });
@@ -302,16 +323,41 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
 
     try {
       await telemetry.time("fixer", async () => {
-        await withFallback(providerChainFixer, async (client, model) => {
-          await runAgentLoop(
+        const fixerLoopResult = await withModelFallback(fixerDecisions, async (client, model, decision) => {
+          return await runAgentLoop(
             fixerSystemPrompt,
             [{ role: "user", content: fixerInitialMessage }],
             fixerTools.schemas,
             fixerTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 50, client, model, phase: "fixer", partCtx, sessionId: session.id },
+            {
+              exitTools: ["finish_build"],
+              maxIterations: 50,
+              client,
+              model,
+              phase: "fixer",
+              partCtx,
+              sessionId: session.id,
+              runtimePolicy: {
+                role: "fixer",
+                provider: decision.provider,
+                model,
+                maxIterations: 50,
+                thinkingMode: "auto",
+                routingMode: decision.routingMode,
+                thinkingProfile: "adaptive",
+                stallPolicy: {
+                  discoveryNudgeMinIteration: 20,
+                  discoveryNudgeThreshold: 4,
+                },
+              },
+            },
           );
         });
+        telemetry.addDiscoveryOnlyRounds(fixerLoopResult.telemetry?.discoveryOnlyRounds ?? 0);
+        for (const [mode, count] of Object.entries(fixerLoopResult.telemetry?.thinkingModeCounts ?? {})) {
+          telemetry.addThinkingMode(mode, count);
+        }
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

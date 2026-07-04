@@ -74,6 +74,7 @@ import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills
 import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
 import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
+import { resolveAgentModel } from "../../agent/providers/agent-model-router";
 import { setupPreviewServer } from "../../compiler/preview-server";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
 import { McpManager } from "../../agent/mcp/mcp-client";
@@ -503,8 +504,15 @@ export async function registerRoutes(
     let _userId: string | undefined;
     let _sessionId: string | undefined;
     try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+      const hasAnyProvider = !!(
+        process.env.GLM_API_KEY ||
+        process.env.DOUBAO_API_KEY ||
+        process.env.KIMI_API_KEY ||
+        process.env.MINIMAX_API_KEY ||
+        process.env.DEEPSEEK_API_KEY
+      );
+      if (!hasAnyProvider) {
+        res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY, or DEEPSEEK_API_KEY)" });
         return;
       }
       const {
@@ -599,7 +607,7 @@ export async function registerRoutes(
         // Run ExploreAgent (same as plan mode) with 8s timeout to gather codebase context
         let exploreContext = "";
         if (files && files.length > 0) {
-          const explorePromise = runExploreAgent(files, userMessage!);
+          const explorePromise = runExploreAgent(files, userMessage!, { provider: provider || "glm" });
           const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
           exploreContext = await Promise.race([explorePromise, timeoutPromise]);
         }
@@ -1186,7 +1194,8 @@ export async function registerRoutes(
       const activeProvider: AIProvider = provider || "glm";
       // Planning respects the selected provider when configured, then falls
       // back through planning-specialized defaults (Kimi -> GLM -> DeepSeek).
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", activeProvider);
+      const managerDecision = resolveAgentModel("manager", activeProvider);
+      const { client: activeAIClient, model: activeAIModel } = managerDecision;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -1374,7 +1383,7 @@ This override applies to THIS message only — it does not change behavior for p
       let exploreContext = "";
       if (files && files.length > 0) {
         const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0]?.content ?? "";
-        const explorePromise = runExploreAgent(files, lastUserMsg);
+        const explorePromise = runExploreAgent(files, lastUserMsg, { provider: activeProvider });
         const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
         exploreContext = await Promise.race([explorePromise, timeoutPromise]);
       }
@@ -1387,9 +1396,7 @@ This override applies to THIS message only — it does not change behavior for p
       const managerTools = buildManagerTools(managerState, { projectId: reqProjectId, userId: reqUserId });
 
       // Fast intent classification — use MiniMax if available (fastest), else active provider
-      const fastClientForIntent = process.env.MINIMAX_API_KEY
-        ? getAIClient("minimax")
-        : { client: activeAIClient, model: activeAIModel };
+      const fastClientForIntent = resolveAgentModel("communicator", activeProvider);
       const intent = await classifyIntent(processedMessages, fastClientForIntent.client, fastClientForIntent.model);
 
       // Question intent: answer directly without the full manager agent loop
@@ -1477,7 +1484,7 @@ This override applies to THIS message only — it does not change behavior for p
             const query = args.query as string;
             if (!query) return "Error: query is required";
             emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-            const result = await runResearchAgent(query, capturedMgr, emitFn);
+            const result = await runResearchAgent(query, capturedMgr, emitFn, { provider: activeProvider });
             // Emit research result summary so the UI shows completion
             const wordCount = result ? result.split(/\s+/).length : 0;
             const sourceCount = (result?.match(/https?:\/\//g) || []).length;
@@ -1535,6 +1542,16 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             maxIterations: 10,
             client: activeAIClient,
             model: activeAIModel,
+            phase: "manager",
+            runtimePolicy: {
+              role: "manager",
+              provider: managerDecision.provider,
+              model: activeAIModel,
+              maxIterations: 10,
+              thinkingMode: "auto",
+              routingMode: managerDecision.routingMode,
+              thinkingProfile: "adaptive",
+            },
           },
         );
 
@@ -1568,6 +1585,9 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
           const narratedText = narratedLines.filter(Boolean).join("\n\n");
           if (narratedText) {
             emit({ type: "communicator_token", token: narratedText });
+          }
+          if (managerState.memoryTouched) {
+            emit({ type: "memory_updated", source: "plan", chars: 0 });
           }
 
           if (mgrSession.projectId) {

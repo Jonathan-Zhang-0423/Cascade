@@ -26,4 +26,11 @@ describe("tool policy", () => {
     expect(shell).toContain("truncated by shell tool policy");
     expect(read).toContain("truncated by read tool policy");
   });
+
+  it("can attach role allowlists for scoped tool groups", () => {
+    expect(inferToolPolicy("read_file", ["explorer", "verifier"]).allowedRoles).toEqual(["explorer", "verifier"]);
+    expect(inferToolPolicy("write_file", ["editor", "fixer"]).allowedRoles).toEqual(["editor", "fixer"]);
+    expect(inferToolPolicy("write_file", ["editor", "fixer"]).mutatesFiles).toBe(true);
+    expect(shouldRunToolInParallel(inferToolPolicy("write_file", ["editor", "fixer"]))).toBe(false);
+  });
 });

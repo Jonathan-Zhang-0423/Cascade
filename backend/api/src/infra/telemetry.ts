@@ -30,6 +30,18 @@ export interface BuildTelemetryRecord {
   contextTokenSize?: number;
   ledgerCompletionConsistent?: boolean;
   timeToFirstEditMs?: number;
+  modelRouteDecisions?: Array<{
+    role: string;
+    provider: string;
+    model: string;
+    reason: string;
+    routingMode: string;
+    fallbackIndex: number;
+  }>;
+  explorerUsed?: boolean;
+  explorerTimeout?: boolean;
+  discoveryOnlyRounds?: number;
+  thinkingModeCounts?: Record<string, number>;
 
   fixCycles: number;
   verifierFirstPassed: boolean;
@@ -109,6 +121,11 @@ export class BuildTelemetry {
       runTestsCount: 0,
       timings: {},
       lspDiagnosticErrorCount: 0,
+      modelRouteDecisions: [],
+      explorerUsed: false,
+      explorerTimeout: false,
+      discoveryOnlyRounds: 0,
+      thinkingModeCounts: {},
     };
   }
 
@@ -140,6 +157,32 @@ export class BuildTelemetry {
 
   setLedgerCompletionConsistent(consistent: boolean): void {
     this.record.ledgerCompletionConsistent = consistent;
+  }
+
+  addModelRouteDecision(decision: {
+    role: string;
+    provider: string;
+    model: string;
+    reason: string;
+    routingMode: string;
+    fallbackIndex: number;
+  }): void {
+    this.record.modelRouteDecisions ??= [];
+    this.record.modelRouteDecisions.push(decision);
+  }
+
+  setExplorerUsed(used: boolean, timedOut = false): void {
+    this.record.explorerUsed = used;
+    this.record.explorerTimeout = timedOut;
+  }
+
+  addDiscoveryOnlyRounds(count: number): void {
+    this.record.discoveryOnlyRounds = (this.record.discoveryOnlyRounds ?? 0) + count;
+  }
+
+  addThinkingMode(mode: string, count = 1): void {
+    this.record.thinkingModeCounts ??= {};
+    this.record.thinkingModeCounts[mode] = (this.record.thinkingModeCounts[mode] ?? 0) + count;
   }
 
   setFixCycle(n: number): void {

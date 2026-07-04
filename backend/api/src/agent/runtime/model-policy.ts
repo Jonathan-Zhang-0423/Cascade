@@ -18,7 +18,7 @@ export function decideGlm52ThinkingPolicy(opts: ThinkingContext): ModelPolicyDec
   const previousToolErrorCount = opts.previousToolErrorCount ?? 0;
   const previousToolCallCount = opts.previousToolCallCount ?? 0;
   const isInitialTurn = iteration === 0;
-  const isPlanningLike = phase === "manager" || phase === "research" || phase === "verifier";
+  const isPlanningLike = phase === "manager" || phase === "research" || phase === "verifier" || phase === "fixer";
   const isRecoveryTurn = consecutiveNoToolCalls > 0 || previousToolErrorCount > 0;
   const isLateTurn = iteration >= Math.max(20, Math.floor(maxIterations * 0.65));
   const isStalledLateTurn = isLateTurn && previousToolCallCount === 0;
@@ -36,4 +36,3 @@ export function decideGlm52ThinkingPolicy(opts: ThinkingContext): ModelPolicyDec
 
   return { thinkingEnabled: false, reasoningEffort: "none", reason: "mechanical-tool-execution" };
 }
-

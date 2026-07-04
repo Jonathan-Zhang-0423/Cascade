@@ -4,7 +4,7 @@ import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency"
 import type { SseEmit } from "../../infra/sse";
 import type OpenAI from "openai";
 import { createModelAdapter, type AgentLoopPhase, type ModelAdapter } from "../providers/model-adapter";
-import type { ToolPolicy } from "../runtime/types";
+import type { RuntimePolicy, ToolPolicy } from "../runtime/types";
 import { compactToolResultForPolicy, inferToolPolicy, shouldRunToolInParallel } from "../runtime/tool-policy";
 import {
   createPart,
@@ -38,6 +38,10 @@ export interface AgentLoopResult {
   exitArgs?: Record<string, unknown>;
   exhausted?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
+  telemetry?: {
+    discoveryOnlyRounds: number;
+    thinkingModeCounts: Record<string, number>;
+  };
 }
 
 interface PendingToolCall {
@@ -106,6 +110,8 @@ export interface AgentLoopOpts {
   adapter?: ModelAdapter;
   /** Tool metadata used for conservative in-turn parallelism and result compaction. */
   toolPolicies?: Record<string, ToolPolicy>;
+  /** Runtime policy supplied by orchestration. Keeps agent-loop behavior model/role aware. */
+  runtimePolicy?: RuntimePolicy;
 }
 
 export async function runAgentLoop(
@@ -139,7 +145,13 @@ export async function runAgentLoop(
   let previousToolCallCount = 0;
   let previousToolErrorCount = 0;
   let consecutiveDiscoveryToolRounds = 0;
+  let discoveryOnlyRounds = 0;
+  const thinkingModeCounts: Record<string, number> = {};
   let exhausted = false;
+  const discoveryNudgeMinIteration =
+    opts.runtimePolicy?.stallPolicy?.discoveryNudgeMinIteration ?? READ_ONLY_STALL_NUDGE_MIN_ITERATION;
+  const discoveryNudgeThreshold =
+    opts.runtimePolicy?.stallPolicy?.discoveryNudgeThreshold ?? READ_ONLY_STALL_NUDGE_THRESHOLD;
 
   // Model adapter: encapsulates per-model thinking params, timeout, and
   // reasoning extraction. Auto-created from client+model if not provided.
@@ -184,11 +196,14 @@ export async function runAgentLoop(
     const sys = messages[0] as any;
     if (!sys || sys.role !== "system") return;
     const content = sys.content as string;
-    // Strip the bulky sections (skills, capabilities, memory) — they were
-    // only needed for initial context. The agent has internalized them.
+    // Strip bulky skills, but preserve project-memory constraints. Follow-up
+    // agents need this durable reminder to avoid deleting prior work.
     const stripped = content
       .replace(/\n\n## Technology & Capability Skill Guidance[\s\S]*?(?=\n\n## |$)/, "\n\n(skill guidance compacted — conventions already applied)")
-      .replace(/\n\n## Project Memory[\s\S]*?(?=\n\n## |$)/, "");
+      .replace(
+        /\n\n## Project Memory[\s\S]*?(?=\n\n## |$)/,
+        "\n\n## Project Memory (compacted)\nPrior implemented behavior, file ownership, conventions, fixes, and gotchas remain authoritative. Preserve existing user-facing behavior and extend prior work unless the current user explicitly asks to change it.",
+      );
     if (stripped.length < content.length * 0.8) {
       sys.content = stripped;
     }
@@ -236,6 +251,8 @@ export async function runAgentLoop(
             });
             const thinkingType = (thinkingParam as any).thinking?.type ?? (extraBody as any)?.thinking?.type ?? "none";
             const reasoningEffort = (thinkingParam as any).reasoning_effort ?? (extraBody as any)?.reasoning_effort ?? "none";
+            const thinkingModeKey = `${thinkingType}:${reasoningEffort}`;
+            thinkingModeCounts[thinkingModeKey] = (thinkingModeCounts[thinkingModeKey] ?? 0) + 1;
             console.log(
               `[agent-loop] thinking config model=${activeModel} adapter=${adapter.name} iteration=${iteration + 1} ` +
                 `phase=${opts.phase ?? "unknown"} thinking=${thinkingType} reasoning_effort=${reasoningEffort} ` +
@@ -619,13 +636,14 @@ export async function runAgentLoop(
         consecutiveDiscoveryToolRounds = 0;
       } else if (areAllDiscoveryTools(toolCalls)) {
         consecutiveDiscoveryToolRounds++;
+        discoveryOnlyRounds++;
       } else {
         consecutiveDiscoveryToolRounds = 0;
       }
 
       if (
-        iteration + 1 >= READ_ONLY_STALL_NUDGE_MIN_ITERATION &&
-        consecutiveDiscoveryToolRounds >= READ_ONLY_STALL_NUDGE_THRESHOLD &&
+        iteration + 1 >= discoveryNudgeMinIteration &&
+        consecutiveDiscoveryToolRounds >= discoveryNudgeThreshold &&
         !shouldExit &&
         iteration < maxIterations - 1
       ) {
@@ -684,5 +702,9 @@ export async function runAgentLoop(
     tokenUsage: totalInputTokens + totalOutputTokens > 0
       ? { input: totalInputTokens, output: totalOutputTokens, total: totalInputTokens + totalOutputTokens }
       : undefined,
+    telemetry: {
+      discoveryOnlyRounds,
+      thinkingModeCounts,
+    },
   };
 }

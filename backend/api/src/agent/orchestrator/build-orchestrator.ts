@@ -5,7 +5,13 @@ import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type Commun
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop } from "../loop/agent-loop";
-import { buildFallbackChain, withFallback, getFastClient, type AIProvider } from "../providers/kimi-client";
+import { type AIProvider } from "../providers/kimi-client";
+import {
+  resolveAgentModel,
+  resolveAgentModelChain,
+  withModelFallback,
+  type AgentModelDecision,
+} from "../providers/agent-model-router";
 import { storage, PROJECT_MEMORY_MAX } from "../../infra/storage";
 import { BuildTelemetry, type BuildTelemetryRecord } from "../../infra/telemetry";
 import {
@@ -24,6 +30,7 @@ import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../mcp/mcp-c
 import { McpManager } from "../mcp/mcp-client";
 import { buildMcpAliasTools, buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
 import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
+import { runExploreAgent } from "./explore-agent";
 import { ToolRegistry } from "../tools/tool-registry";
 import type { ToolHandler, ToolSchema } from "../loop/agent-loop";
 import type { AgentRunSpec, ToolPolicy } from "../runtime/types";
@@ -93,6 +100,8 @@ export interface BuildSessionState {
   todoLedger?: TodoLedger;
   /** Immediate per-build summary injected into the next round even if long-term memory distillation is still pending. */
   completedRoundSummary?: string;
+  /** Fast scanner output for this request, used to reduce repeated discovery by the editor. */
+  explorerSummary?: string;
 }
 
 function normalizeSteps(plan: BuildPlan): BuildStep[] {
@@ -100,7 +109,32 @@ function normalizeSteps(plan: BuildPlan): BuildStep[] {
   return raw.map((s, i) => ({ ...s, step: s.step ?? i + 1 }));
 }
 
-export function buildResearchTool(mcpManager: McpManager): {
+function extractExplorerSuggestedFiles(summary: string | undefined): string[] {
+  if (!summary) return [];
+  const files = new Set<string>();
+  const pathPattern = /\/project\/[^\s,'"`)]+/g;
+  for (const match of summary.matchAll(pathPattern)) {
+    files.add(match[0].replace(/[.,;:]+$/, ""));
+  }
+  return Array.from(files).slice(0, 8);
+}
+
+function fillMissingRequiredFiles(steps: BuildStep[], suggestedFiles: string[], existingFiles: BuildFile[]): BuildStep[] {
+  if (suggestedFiles.length === 0 && existingFiles.length === 0) return steps;
+  const fallback = suggestedFiles.length > 0
+    ? suggestedFiles
+    : existingFiles
+        .filter((f) => /\.(tsx?|jsx?|html|css|json|vue|svelte|dart|kt|swift)$/.test(f.path))
+        .map((f) => f.path)
+        .slice(0, 5);
+  if (fallback.length === 0) return steps;
+  return steps.map((step) => {
+    if (Array.isArray(step.required_files) && step.required_files.length > 0) return step;
+    return { ...step, required_files: fallback };
+  });
+}
+
+export function buildResearchTool(mcpManager: McpManager, provider?: AIProvider): {
   schemas: ToolSchema[];
   handlers: Record<string, ToolHandler>;
 } {
@@ -128,7 +162,7 @@ export function buildResearchTool(mcpManager: McpManager): {
       const query = args.query as string;
       if (!query) return "Error: query is required";
       emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-      const result = await runResearchAgent(query, mcpManager, emitFn);
+      const result = await runResearchAgent(query, mcpManager, emitFn, { provider });
       const wordCount = result ? result.split(/\s+/).length : 0;
       const sourceCount = (result?.match(/https?:\/\//g) || []).length;
       const summaryLine = sourceCount > 0
@@ -173,7 +207,7 @@ function buildEditorToolset(
     registry.register("mcp", mcpTools.schemas, mcpTools.handlers);
     const mcpAliasTools = buildMcpAliasTools(mcpManager);
     registry.register("mcp-aliases", mcpAliasTools.schemas, mcpAliasTools.handlers);
-    const researchTools = buildResearchTool(mcpManager);
+    const researchTools = buildResearchTool(mcpManager, session.provider);
     registry.register("research", researchTools.schemas, researchTools.handlers);
   }
 
@@ -395,7 +429,7 @@ async function distillProjectMemory(
 ): Promise<void> {
   if (!session.projectId) return;
   const existing = await storage.getProjectMemory(session.projectId);
-  const { client, model } = getFastClient();
+  const { client, model } = resolveAgentModel("memory", session.provider ?? "glm");
   const prompt = [
     "You maintain a concise, durable MEMORY doc for a software project. Rewrite it to incorporate what this build round revealed.",
     "Keep ONLY durable, project-specific learnings: implemented user-facing behavior that future work must preserve, changed files/modules and their ownership, architecture/tools/conventions in use, bugs hit and their fixes, recurring gotchas, regression risks, and ideas to revisit. Drop one-off trivia and anything already obvious. Merge duplicates. Use short markdown bullet sections.",
@@ -498,22 +532,29 @@ export function buildBuilderInitialMessage(
     completedRoundSummary: session.completedRoundSummary,
     projectMemory: session.projectMemory,
     skillContent: session.skillContent,
+    externalGuidance: session.explorerSummary,
   });
   const runtimeContextSection = `\n\n## Runtime Context Packet\n\n${renderContextPacket(contextPacket, {
     includeProjectMemory: false,
     includeSkillContent: false,
-    includeExternalGuidance: false,
+    includeExternalGuidance: true,
   })}`;
 
   const existingFilesWarning = allFiles.length > 0
-    ? `\n\nExisting project files contain working code. Preserve them unless a plan step explicitly says otherwise. Read an existing file before editing it unless it was pre-loaded or you just wrote it.\n`
+    ? `\n\nExisting project files contain working code. Preserve them unless a plan step explicitly says otherwise. Prefer the explorer summary and required_files to choose targeted reads; do not repeat broad grep/list_files discovery unless a specific missing fact blocks the edit. Read an existing file before editing it unless it was pre-loaded or you just wrote it.\n`
     : "\n\nThis is an empty project. Start by creating the required files with write_file; do not spend tool rounds searching for files that do not exist.\n";
 
   const modePrefix = mode === "fix"
     ? `You are in FIX MODE. The quality reviewer found issues that need to be addressed.\n\n${previousIssues ? `Issues to fix:\n${previousIssues}\n\n` : ""}`
     : "";
 
-  return `${modePrefix}${existingFilesWarning}Here is the build plan you need to implement:
+  const followUpGuard = allFiles.length > 0
+    ? "\n\nFollow-up modification rule: make the smallest safe delta on top of the current app. Do not reset, simplify, recreate, or remove existing screens, state, handlers, styles, or assets unless the current plan explicitly requests that change."
+    : "";
+
+  return `${modePrefix}${existingFilesWarning}${followUpGuard}
+
+Here is the build plan you need to implement:
 
 ## Original Request
 ${session.userRequest}
@@ -606,7 +647,7 @@ async function runBuilderParallelWaves(
   session: BuildSessionState,
   waves: Wave[],
   builderSystemPrompt: string,
-  providerChainEditor: AIProvider[],
+  editorDecisions: AgentModelDecision[],
   partCtx: PartEmitContext,
   emit: SseEmit,
   userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
@@ -626,7 +667,7 @@ async function runBuilderParallelWaves(
         // Each sub-loop gets tools scoped to just this step, so mark_step_complete
         // does not try to auto-advance to a different wave's step.
         const subTools = buildEditorToolset(session, [step], emit, userSkillsLoaded);
-        await withFallback(providerChainEditor, async (client, model) => {
+        await withModelFallback(editorDecisions, async (client, model) => {
           await runAgentLoop(
             builderSystemPrompt,
             [{ role: "user", content: subInitialMessage }],
@@ -639,6 +680,15 @@ async function runBuilderParallelWaves(
               client,
               model,
               phase: "editor",
+              runtimePolicy: {
+                role: "editor",
+                maxIterations: 30,
+                thinkingMode: "auto",
+                stallPolicy: {
+                  discoveryNudgeMinIteration: 20,
+                  discoveryNudgeThreshold: 4,
+                },
+              },
               partCtx,
               sessionId: session.id,
               toolPolicies: subTools.policies,
@@ -653,9 +703,35 @@ async function runBuilderParallelWaves(
 export async function runBuildSession(session: BuildSessionState, rawEmit: SseEmit): Promise<void> {
   const emit: SseEmit = rawEmit;
   const { plan, userRequest } = session;
-  const normalizedSteps = normalizeSteps(plan);
-  const totalSteps = normalizedSteps.length;
   const initialFiles = filesMapToArray(session.files);
+  let normalizedSteps = normalizeSteps(plan);
+  let explorerTimedOut = false;
+  if (initialFiles.length > 0) {
+    try {
+      const explorePromise = runExploreAgent(initialFiles, userRequest, { provider: session.provider });
+      const timeoutPromise = new Promise<string>((resolve) => setTimeout(() => {
+        explorerTimedOut = true;
+        resolve("");
+      }, 8000));
+      session.explorerSummary = await Promise.race([explorePromise, timeoutPromise]);
+      const suggestedFiles = extractExplorerSuggestedFiles(session.explorerSummary);
+      normalizedSteps = fillMissingRequiredFiles(normalizedSteps, suggestedFiles, initialFiles);
+      if (session.explorerSummary) {
+        emit({
+          type: "context_summary",
+          role: "explorer",
+          estimatedTokens: Math.ceil(session.explorerSummary.length / 4),
+          fileCount: suggestedFiles.length,
+          stepCount: normalizedSteps.length,
+          hasProjectMemory: false,
+          hasRoundSummary: false,
+        });
+      }
+    } catch (err) {
+      console.warn(`[BuildSession ${session.id}] explorer failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  const totalSteps = normalizedSteps.length;
   session.todoLedger = new TodoLedger(normalizedSteps);
 
   const userProvider = session.provider ?? "glm";
@@ -670,9 +746,11 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     userLang: session.userLang,
   });
 
-  // Per-phase optimal provider selection — respects user preference, optimizes by phase
-  // Each chain: [user's provider first if available, then system defaults for that phase]
-  const providerChainEditor = buildFallbackChain("editor", userProvider);
+  const editorDecisions = resolveAgentModelChain("editor", userProvider);
+  for (const decision of editorDecisions) {
+    telemetry.addModelRouteDecision(decision);
+  }
+  const providerChainEditor = editorDecisions.map((decision) => decision.provider);
 
   // Part-based emission context — all agent loops feed into this
   const partCtx: PartEmitContext = { parts: session.parts, files: session.files };
@@ -702,6 +780,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
     projectMemory: session.projectMemory,
     skillContent: session.skillContent,
   });
+  telemetry.setExplorerUsed(Boolean(session.explorerSummary), explorerTimedOut);
   const estimatedContextTokens = estimateContextPacketTokens(editorContextPacket);
   telemetry.setContextTokenSize(estimatedContextTokens);
   emit({
@@ -741,7 +820,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
   try {
     await telemetry.time("builder", async () => {
       if (shouldRunParallel) {
-        await runBuilderParallelWaves(session, waves, builderSystemPrompt, providerChainEditor, partCtx, emit, userSkillsLoaded);
+        await runBuilderParallelWaves(session, waves, builderSystemPrompt, editorDecisions, partCtx, emit, userSkillsLoaded);
       } else {
         const builderInitialMessage = buildBuilderInitialMessage(session, normalizedSteps, "build");
         // Shared exit signal: completing the final plan step trips this so the
@@ -756,7 +835,7 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         console.log(
           `[BuildSession ${session.id}] Tool registry sources: ${builderTools.sources.join(", ") || "(none)"}; tools=${builderTools.schemas.length}`,
         );
-        const loopResult = await withFallback(providerChainEditor, async (client, model) => {
+        const loopResult = await withModelFallback(editorDecisions, async (client, model, decision) => {
           const builderRunSpec: AgentRunSpec = {
             systemPrompt: builderSystemPrompt,
             initialMessages: [{ role: "user", content: builderInitialMessage }],
@@ -764,10 +843,14 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
             handlers: builderTools.handlers,
             runtime: {
               role: "editor",
-              provider: userProvider,
+              provider: decision.provider,
               model,
               maxIterations: BUILDER_MAX_ITERATIONS,
               thinkingMode: "auto",
+              routingMode: decision.routingMode,
+              thinkingProfile: "adaptive",
+              maxOutputTokens: 16384,
+              contextCompactionProfile: "preserve-memory",
               contextBudgetTokens: 120_000,
               stallPolicy: {
                 discoveryNudgeMinIteration: 20,
@@ -793,9 +876,14 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
               sessionId: session.id,
               exitSignal: builderExitSignal,
               toolPolicies: builderRunSpec.runtime.toolPolicies,
+              runtimePolicy: builderRunSpec.runtime,
             },
           );
         });
+        telemetry.addDiscoveryOnlyRounds(loopResult.telemetry?.discoveryOnlyRounds ?? 0);
+        for (const [mode, count] of Object.entries(loopResult.telemetry?.thinkingModeCounts ?? {})) {
+          telemetry.addThinkingMode(mode, count);
+        }
         if (loopResult.exhausted && !builderExitSignal.exit && !loopResult.exitTool) {
           const completed = builderTools.state.getCompletedStepCount();
           const message =
@@ -864,7 +952,9 @@ export async function runBuildSession(session: BuildSessionState, rawEmit: SseEm
         totalSteps: normalizedSteps.length,
         stepTitles: normalizedSteps.map(s => s.title),
       } as CommunicatorEvent);
-      const { client, model } = getFastClient();
+      const communicatorDecision = resolveAgentModel("communicator", session.provider ?? "glm");
+      const { client, model } = communicatorDecision;
+      telemetry.addModelRouteDecision(communicatorDecision);
       const summaryCompletion = await client.chat.completions.create({
         model,
         messages: [
