@@ -233,7 +233,6 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => {
         const id = generateId();
-        const isWeb = !framework || framework === "web";
         // Only persist lightweight UI state to localStorage — files/messages
         // are persisted server-side. This keeps localStorage usage minimal.
         const lightState = {
@@ -265,29 +264,6 @@ export const useProjectStore = create<ProjectStoreState>()(
         }));
 
         await syncProjectToServer(id, name, emoji, framework, initialPrompt);
-
-        if (isWeb) {
-          const flatFiles: { path: string; content: string }[] = [];
-          type FileNode = { name: string; path: string; type: "file"; content?: string };
-          type FolderNode = { name: string; path: string; type: "folder"; children: (FileNode | FolderNode)[] };
-          function flattenNode(nodes: readonly (FileNode | FolderNode)[]) {
-            for (const n of nodes) {
-              if (n.type === "file") {
-                flatFiles.push({ path: n.path, content: n.content || "" });
-              }
-              if (n.type === "folder" && n.children) {
-                flattenNode(n.children);
-              }
-            }
-          }
-          flattenNode(BLANK_FILES);
-          fetch(`/api/projects/${id}/files`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ files: flatFiles }),
-          }).catch(() => {});
-        }
 
         return id;
       },

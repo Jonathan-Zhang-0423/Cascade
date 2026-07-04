@@ -44,6 +44,7 @@ export class BuildStreamInstance {
   private thinkingStartTime: number | null = null;
   private currentStepNum = 0;   // 当前执行步骤号，用于给 actionLog entry 打标
   private executing = false;    // 防止并发 execute() 调用
+  private activePlanMessageId: string | null | undefined = undefined;
   userConfirmation = "";
 
   constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
@@ -75,6 +76,24 @@ export class BuildStreamInstance {
     if (typeof ev.chatSessionId === "string" && ev.chatSessionId !== this.chatSessionId) return false;
     if (typeof ev.sessionId === "string" && this.sessionId && ev.sessionId !== this.sessionId) return false;
     return true;
+  }
+
+  private findPlanMessageId(plan: ManagerPlan): string | null {
+    const messages = this.actions.getManagerMessages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].plan === plan) return messages[i].id;
+    }
+    const planSignature = JSON.stringify(plan);
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const candidate = messages[i].plan;
+      if (!candidate) continue;
+      try {
+        if (JSON.stringify(candidate) === planSignature) return messages[i].id;
+      } catch {
+        // Ignore non-serializable plan payloads; manager plans should be JSON.
+      }
+    }
+    return null;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -128,7 +147,7 @@ export class BuildStreamInstance {
         if (!this.reader) {
           this.actions.setChatMode("build");
           this.state.set({ buildPhase: "thinking" });
-          await this.connect(this.sessionId, this.lastEventId);
+          await this.connect(this.sessionId, this.lastEventId, isDirect ? null : undefined);
         }
         return;
       }
@@ -153,6 +172,8 @@ export class BuildStreamInstance {
     const plan: ManagerPlan = isDirect
       ? { mode: "direct" as const, summary: opts!.userMessage!, steps: [{ step: 1, title: opts!.userMessage!, description: opts!.userMessage! }], needs_input: [] }
       : existingPlan!;
+    const planMessageId = isDirect ? null : this.findPlanMessageId(plan);
+    this.activePlanMessageId = planMessageId;
 
     const normalizedSteps = normalizeSteps(plan);
     const messages = this.actions.getManagerMessages();
@@ -478,7 +499,7 @@ export class BuildStreamInstance {
               }
             });
             this.state.set({ taskStatuses: finalStatuses });
-            this.actions.freezeLatestPlanStatuses(finalStatuses);
+            this.actions.freezeLatestPlanStatuses(finalStatuses, undefined, planMessageId);
             const changedFiles: string[] = ev.changedFiles || [];
             const summaryText = ev.summaryText || "";
             this.actions.setCompletionData({ changedFiles, summary: summaryText });
@@ -627,13 +648,17 @@ export class BuildStreamInstance {
   /**
    * Reconnect to an existing build session.
    */
-  async connect(sessionId: string, lastEventId: number): Promise<void> {
+  async connect(sessionId: string, lastEventId: number, planMessageId?: string | null): Promise<void> {
     if (this.disposed) return;
     this.sessionId = sessionId;
     this.state.set({ sessionId, isReconnecting: true });
     const myGen = ++this.generation;
 
     const plan = this.actions.getManagerPlan();
+    const freezePlanMessageId = planMessageId === undefined
+      ? (this.activePlanMessageId !== undefined ? this.activePlanMessageId : (plan ? this.findPlanMessageId(plan) : null))
+      : planMessageId;
+    this.activePlanMessageId = freezePlanMessageId;
     const nSteps = plan ? normalizeSteps(plan) : [];
     const messages = this.actions.getManagerMessages();
     const firstUserMsg = messages.find((m) => m.role === "user");
@@ -791,7 +816,7 @@ export class BuildStreamInstance {
               if (finalStatuses[key] !== "done") finalStatuses[key] = "done";
             });
             this.state.set({ taskStatuses: finalStatuses });
-            this.actions.freezeLatestPlanStatuses(finalStatuses);
+            this.actions.freezeLatestPlanStatuses(finalStatuses, undefined, freezePlanMessageId);
             const changedFiles2: string[] = ev.changedFiles || [];
             const summaryText2 = ev.summaryText || "";
             this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
@@ -921,6 +946,7 @@ export class BuildStreamInstance {
       finalArtifact?: unknown;
       projectId?: string | null;
       chatSessionId?: string | null;
+      payload?: { mode?: string } | Record<string, unknown>;
     } | null> => {
       try {
         const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
@@ -945,6 +971,10 @@ export class BuildStreamInstance {
 
       if (data?.active) {
         const hasSnapshot = this.hydrateFromBackendStatus(savedSessionId, data);
+        const mode = data.payload && typeof data.payload === "object" ? (data.payload as any).mode : undefined;
+        this.activePlanMessageId = mode === "direct"
+          ? null
+          : (this.actions.getManagerPlan() ? this.findPlanMessageId(this.actions.getManagerPlan()!) : null);
         this.actions.setChatMode("build");
         this.state.set({ buildPhase: "thinking" });
         this.restoreTaskStatuses();
@@ -956,7 +986,7 @@ export class BuildStreamInstance {
           hasSnapshot && snapshot && typeof snapshot.lastEventId === "number"
             ? snapshot.lastEventId
             : -1;
-        await this.connect(savedSessionId, resumeEventId);
+        await this.connect(savedSessionId, resumeEventId, this.activePlanMessageId);
       } else {
         try { localStorage.removeItem(this.storageKey); } catch {}
         this.state.set({ isReconnecting: false });

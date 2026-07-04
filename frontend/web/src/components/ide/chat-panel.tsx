@@ -514,20 +514,22 @@ export function ChatPanel() {
         {showThinking && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || mgrPreparingPlan) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+        {(isManagerResponding || mgrPreparingPlan || mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
           <BuildLivePanel
             entries={mgrLiveActionLog}
             thinkingText={mgrLiveThinkingText || undefined}
             narrationText={mgrLiveNarrationText || undefined}
+            forceLive={isManagerResponding || mgrPreparingPlan}
           />
         )}
-        {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
+        {(buildPhase !== null || liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
           <BuildLivePanel
             entries={liveActionLog}
             thinkingText={liveThinkingText || undefined}
             narrationText={liveNarrationText || undefined}
             thinkingElapsedSec={thinkingElapsedSec}
             isCompleted={!isExecuting && buildPhase === null}
+            forceLive={buildPhase !== null || isReconnecting}
             completionSummary={completionData?.summary || undefined}
             stepNarrations={liveStepNarrations}
           />

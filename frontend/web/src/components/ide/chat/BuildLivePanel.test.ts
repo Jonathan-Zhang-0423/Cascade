@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { shouldRenderLiveFallback } from "./BuildLivePanel";
 import { shouldShowBuildCostSummary } from "./build-live-panel-utils";
 import type { ActionLogEntry } from "./chat-types";
 
@@ -32,5 +33,22 @@ describe("shouldShowBuildCostSummary", () => {
       entry("narration"),
       entry("thinking"),
     ])).toBe(false);
+  });
+});
+
+describe("shouldRenderLiveFallback", () => {
+  it("shows LiveBar when execution is active before the first token or action arrives", () => {
+    expect(shouldRenderLiveFallback({ forceLive: true })).toBe(true);
+  });
+
+  it("keeps LiveBar visible when loose thinking or narration text exists", () => {
+    expect(shouldRenderLiveFallback({ thinkingText: "thinking" })).toBe(true);
+    expect(shouldRenderLiveFallback({ narrationText: "working" })).toBe(true);
+  });
+
+  it("does not duplicate LiveBar for completed, persisted, or already-live segment states", () => {
+    expect(shouldRenderLiveFallback({ forceLive: true, isCompleted: true })).toBe(false);
+    expect(shouldRenderLiveFallback({ forceLive: true, isPersisted: true })).toBe(false);
+    expect(shouldRenderLiveFallback({ forceLive: true, hasLiveSegment: true })).toBe(false);
   });
 });

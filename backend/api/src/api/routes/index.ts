@@ -455,6 +455,7 @@ function sessionStatusPayload(session: {
   chatSessionId?: string | null;
   actionLog?: Record<string, unknown>[];
   todoLedger?: { snapshot: () => unknown };
+  payload?: Record<string, unknown>;
 }) {
   let ledger = session.ledgerSnapshot ?? {};
   try {
@@ -475,6 +476,7 @@ function sessionStatusPayload(session: {
     done: session.done,
     projectId: session.projectId || null,
     chatSessionId: normalizeChatSessionId(session.chatSessionId),
+    payload: session.payload ?? {},
     snapshot: currentSnapshot,
     ledger,
     finalArtifact: session.finalArtifact ?? null,

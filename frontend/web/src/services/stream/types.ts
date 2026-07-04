@@ -92,6 +92,7 @@ export interface StoreActions {
   freezeLatestPlanStatuses: (
     statuses?: Record<string, TaskStatus>,
     failureReasons?: Record<string, string>,
+    planMessageId?: string | null,
   ) => void;
 
   // Build state

@@ -38,11 +38,36 @@ export function registerProjectsRoutes(app: Express): void {
 
   const projectFilesSchema = z.object({
     files: z.array(z.object({ path: z.string().min(1), content: z.string() })),
+    allowDestructiveOverwrite: z.boolean().optional(),
   });
 
   const singleFileSchema = z.object({ path: z.string().min(1), content: z.string() });
 
   const deleteFileSchema = z.object({ path: z.string().min(1) });
+
+  function sameFileSet(
+    a: { path: string; content: string }[],
+    b: { path: string; content: string }[],
+  ): boolean {
+    if (a.length !== b.length) return false;
+    const bMap = new Map(b.map((file) => [file.path, file.content]));
+    return a.every((file) => bMap.get(file.path) === file.content);
+  }
+
+  function looksLikeFrontendStarterFiles(files: { path: string; content: string }[]): boolean {
+    if (files.length !== 4) return false;
+    const byPath = new Map(files.map((file) => [file.path, file.content]));
+    const index = byPath.get("/project/index.html");
+    return (
+      typeof index === "string" &&
+      index.includes("<title>My App</title>") &&
+      index.includes('<script src="app.js"></script>') &&
+      byPath.get("/project/style.css") === "" &&
+      byPath.get("/project/app.js") === "" &&
+      typeof byPath.get("/project/cascade.md") === "string" &&
+      byPath.get("/project/cascade.md")!.includes("_Generated after planning is complete._")
+    );
+  }
 
   app.post("/api/projects", requireInviteCode, async (req, res) => {
     try {
@@ -321,34 +346,7 @@ export function registerProjectsRoutes(app: Express): void {
       const projectId = req.params.id;
       const projectForAccess = await assertProjectAccess(req, res, projectId);
       if (!projectForAccess) return;
-      let files = await storage.getProjectFiles(projectId);
-
-      const project = projectForAccess;
-      if (project && project.framework && project.framework !== "web") {
-        const paths = files.map((f: { path: string }) => f.path);
-        const webSignatures = new Set([
-          "/project/index.html", "/project/style.css", "/project/app.js",
-          "/project/script.js", "/project/cascade.md",
-        ]);
-        const hasOnlyWebFiles = paths.length > 0 && paths.every((p: string) => webSignatures.has(p));
-        if (hasOnlyWebFiles) {
-          const templateFiles = getTemplateFiles(project.framework as Framework);
-          if (templateFiles.length > 0) {
-            await storage.upsertProjectFiles(
-              projectId,
-              templateFiles.map((f) => ({ path: f.path, content: f.content }))
-            );
-            const templatePaths = new Set(templateFiles.map((t) => t.path));
-            for (const wp of paths) {
-              if (!templatePaths.has(wp)) {
-                await storage.deleteProjectFile(projectId, wp);
-              }
-            }
-            files = await storage.getProjectFiles(projectId);
-            console.log(`Repaired corrupted ${project.framework} project ${projectId}: replaced web files with framework templates`);
-          }
-        }
-      }
+      const files = await storage.getProjectFiles(projectId);
 
       res.json({ files });
     } catch (error: any) {
@@ -366,6 +364,30 @@ export function registerProjectsRoutes(app: Express): void {
       }
       const project = await assertProjectAccess(req, res, req.params.id);
       if (!project) return;
+      const existingFiles = await storage.getProjectFiles(req.params.id);
+      const allowDestructiveOverwrite = parsed.data.allowDestructiveOverwrite === true;
+
+      if (!allowDestructiveOverwrite) {
+        if (parsed.data.files.length === 0 && existingFiles.length > 0) {
+          res.status(409).json({ error: "Refusing to replace existing project files with an empty file set" });
+          return;
+        }
+        if (
+          existingFiles.length > 0 &&
+          looksLikeFrontendStarterFiles(parsed.data.files) &&
+          !sameFileSet(existingFiles, parsed.data.files)
+        ) {
+          res.status(409).json({ error: "Refusing to overwrite existing project files with starter template files" });
+          return;
+        }
+
+        for (const file of parsed.data.files) {
+          await storage.upsertProjectFile(req.params.id, file.path, file.content);
+        }
+        res.json({ ok: true, mode: "non_destructive" });
+        return;
+      }
+
       await storage.upsertProjectFiles(req.params.id, parsed.data.files);
       res.json({ ok: true });
     } catch (error: any) {

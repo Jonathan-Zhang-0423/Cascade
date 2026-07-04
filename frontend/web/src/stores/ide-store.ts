@@ -407,7 +407,7 @@ interface IDEState {
   setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
-  freezeLatestPlanStatuses: (statuses?: Record<string, TaskStatus>, failureReasons?: Record<string, string>) => void;
+  freezeLatestPlanStatuses: (statuses?: Record<string, TaskStatus>, failureReasons?: Record<string, string>, planMessageId?: string | null) => void;
 
   userId: string | null;
   setUserId: (id: string | null) => void;
@@ -477,6 +477,22 @@ _Populated after the first plan is created._
     ],
   },
 ];
+
+const defaultFilesHash = flattenFilesForHash(defaultFiles);
+
+export function isDefaultProjectFileSet(files: FileNode[]): boolean {
+  return flattenFilesForHash(files) === defaultFilesHash;
+}
+
+export function getUnsafeFullFileSyncReason(
+  files: FileNode[],
+  options: { allowDestructiveOverwrite?: boolean } = {},
+): "empty" | "starter-template" | null {
+  if (options.allowDestructiveOverwrite) return null;
+  if (flattenToFlatFiles(files).length === 0) return "empty";
+  if (isDefaultProjectFileSet(files)) return "starter-template";
+  return null;
+}
 
 function flattenFilesForHash(files: FileNode[]): string {
   const parts: string[] = [];
@@ -793,7 +809,11 @@ if (typeof window !== "undefined") {
 }
 
 let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingServerSync: { projectId: string; files: { path: string; content: string }[] } | null = null;
+let pendingServerSync: {
+  projectId: string;
+  files: { path: string; content: string }[];
+  allowDestructiveOverwrite: boolean;
+} | null = null;
 const singleFileSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function singleFileSyncKey(projectId: string, path: string) {
@@ -818,30 +838,53 @@ function cancelAllSingleFileSyncs(projectId?: string) {
   }
 }
 
-function syncFilesToServer(projectId: string, files: FileNode[]) {
+function syncFilesToServer(
+  projectId: string,
+  files: FileNode[],
+  options: { allowDestructiveOverwrite?: boolean } = {},
+) {
   cancelAllSingleFileSyncs(projectId);
   const flat = flattenToFlatFiles(files);
 
+  const unsafeReason = getUnsafeFullFileSyncReason(files, options);
+  if (unsafeReason) {
+    console.warn(`[files-sync] skipped ${unsafeReason} full file sync`, { projectId });
+    return;
+  }
+
   if (serverSyncTimer) clearTimeout(serverSyncTimer);
-  pendingServerSync = { projectId, files: flat };
+  pendingServerSync = { projectId, files: flat, allowDestructiveOverwrite: options.allowDestructiveOverwrite === true };
 
   serverSyncTimer = setTimeout(() => {
     if (!pendingServerSync) return;
-    const { projectId: pid, files: flatFiles } = pendingServerSync;
+    const { projectId: pid, files: flatFiles, allowDestructiveOverwrite } = pendingServerSync;
     pendingServerSync = null;
     serverSyncTimer = null;
 
     fetch(`/api/projects/${pid}/files`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files: flatFiles }),
+      body: JSON.stringify({
+        files: flatFiles,
+        ...(allowDestructiveOverwrite ? { allowDestructiveOverwrite: true } : {}),
+      }),
     }).catch(() => {});
   }, 1000);
 }
 
 function refreshPendingFullFileSync(projectId: string, files: FileNode[]) {
   if (pendingServerSync?.projectId === projectId) {
-    pendingServerSync = { projectId, files: flattenToFlatFiles(files) };
+    const unsafeReason = getUnsafeFullFileSyncReason(files, {
+      allowDestructiveOverwrite: pendingServerSync.allowDestructiveOverwrite,
+    });
+    if (unsafeReason) {
+      console.warn(`[files-sync] kept pending full sync; refusing to replace it with ${unsafeReason} files`, { projectId });
+      return;
+    }
+    pendingServerSync = {
+      ...pendingServerSync,
+      files: flattenToFlatFiles(files),
+    };
   }
 }
 
@@ -1092,7 +1135,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       },
     ];
 
-    const isNonWeb = framework && framework !== "web";
+    const entryFile = getMainEntryFile(framework);
 
     // Backfill seq on old persisted messages that lack it.
     // Sort by timestamp, assign monotonically from seqStart upward.
@@ -1137,10 +1180,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     const baseState = saved ? {
       projectId: id,
       projectFramework: framework || "web",
-      files: saved.files || (isNonWeb ? [] : defaultFiles),
-      openFiles: saved.openFiles || ["/project/index.html"],
-      activeFile: saved.activeFile || "/project/index.html",
-      previewFile: saved.previewFile || "/project/index.html",
+      files: [],
+      openFiles: saved.openFiles || [entryFile],
+      activeFile: saved.activeFile || entryFile,
+      previewFile: saved.previewFile || entryFile,
       chatMessages: chatMsgsWithSeq,
       pendingPrompt: saved.pendingPrompt || null,
       pendingPromptMode: (saved.pendingPromptMode === "manager" || saved.pendingPromptMode === "build") ? saved.pendingPromptMode : null,
@@ -1196,10 +1239,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     } : {
       projectId: id,
       projectFramework: framework || "web",
-      files: defaultFiles,
-      openFiles: ["/project/index.html"],
-      activeFile: "/project/index.html",
-      previewFile: "/project/index.html",
+      files: [],
+      openFiles: [entryFile],
+      activeFile: entryFile,
+      previewFile: entryFile,
       chatMessages: defaultChat,
       pendingPrompt: null,
       pendingPromptMode: null,
@@ -1351,20 +1394,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     fetchWithRetry().then((serverFiles) => {
       if (!serverFiles || serverFiles.length === 0) return;
-      // If a build session is still active for this project, the SSE replay
-      // path will re-apply every code_applied event and reconstruct file
-      // contents authoritatively. Overwriting from the server here would
-      // race against the (debounced) syncFilesToServer + the in-flight build
-      // tools, and could briefly flash stale content before the replay
-      // catches up. Skip it; the build's mid-write DB upserts and the SSE
-      // replay together cover refresh-during-build.
-      let buildInFlight = false;
-      try {
-        const prefix = `cascade-build-session-${id}-`;
-        buildInFlight = Object.keys(localStorage).some((key) => key.startsWith(prefix));
-      } catch {}
-      if (buildInFlight) return;
-
       const fileTree = rebuildFileTree(serverFiles);
       const currentState = get();
       if (currentState.projectId !== id) return;
@@ -1519,7 +1548,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set(next);
     debouncedPersist(next);
     if (state.projectId) {
-      syncFilesToServer(state.projectId, restoredTree);
+      syncFilesToServer(state.projectId, restoredTree, { allowDestructiveOverwrite: true });
     }
   },
 
@@ -2078,15 +2107,20 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       return next;
     }),
 
-  freezeLatestPlanStatuses: (statuses, failureReasons) =>
+  freezeLatestPlanStatuses: (statuses, failureReasons, planMessageId) =>
     set((state) => {
-      // Snapshot the current live taskStatuses onto the most recent plan-bearing
-      // manager message. Called on build all_complete so historical PlanCards
-      // keep their final state after newer plans take over `taskStatuses`.
+      // Snapshot the current live taskStatuses onto the plan-bearing manager
+      // message that launched this build. Direct builds have no plan target and
+      // must not rewrite the previous plan's frozen completion state.
+      if (planMessageId === null) return state;
       const msgs = [...state.managerMessages];
       let lastPlanIdx = -1;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].plan) { lastPlanIdx = i; break; }
+      if (planMessageId) {
+        lastPlanIdx = msgs.findIndex((msg) => msg.id === planMessageId && !!msg.plan);
+      } else {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].plan) { lastPlanIdx = i; break; }
+        }
       }
       if (lastPlanIdx === -1) return state;
       const target = msgs[lastPlanIdx];

@@ -95,10 +95,12 @@ function LiveBar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phrase]);
 
+  const visiblePhrase = phrase.slice(0, Math.max(1, charCount));
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-muted-foreground/60 font-mono text-[10.5px]">
-      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-      <span>{phrase.slice(0, charCount)}<AnimatedDots /></span>
+    <span className="inline-flex min-w-[120px] items-center gap-1.5 rounded-sm border border-border/35 bg-muted/25 px-1.5 py-px text-muted-foreground/80 font-mono text-[10.5px] leading-4">
+      <Loader2 className="w-3 h-3 animate-spin shrink-0 text-muted-foreground/70" />
+      <span className="truncate whitespace-nowrap">{visiblePhrase}<AnimatedDots /></span>
     </span>
   );
 }
@@ -136,6 +138,7 @@ interface BuildLivePanelProps {
   thinkingElapsedSec?: number | null;
   segments?: NarrationSegment[];
   isCompleted?: boolean;
+  forceLive?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
   completionSummary?: string;
   stepNarrations?: Record<number, string>;
@@ -156,6 +159,22 @@ function BrailleSpinner() {
     <span className="text-[#818cf8]">
       {BRAILLE_FRAMES[frame % BRAILLE_FRAMES.length]}
     </span>
+  );
+}
+
+export function shouldRenderLiveFallback(args: {
+  isCompleted?: boolean;
+  isPersisted?: boolean;
+  forceLive?: boolean;
+  hasLiveSegment?: boolean;
+  thinkingText?: string;
+  narrationText?: string;
+}): boolean {
+  if (args.isCompleted || args.isPersisted || args.hasLiveSegment) return false;
+  return Boolean(
+    args.forceLive ||
+    args.thinkingText?.trim() ||
+    args.narrationText?.trim(),
   );
 }
 
@@ -987,6 +1006,7 @@ export function BuildLivePanel({
   thinkingElapsedSec: _thinkingElapsedSec,
   segments,
   isCompleted,
+  forceLive = false,
   tokenUsage,
   completionSummary,
   stepNarrations = {},
@@ -1092,12 +1112,15 @@ export function BuildLivePanel({
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
-  const hasLooseLiveActivity =
-    !isCompleted &&
-    !isPersisted &&
-    (Boolean(_thinkingText?.trim()) || Boolean(narrationText?.trim()));
   const hasLiveSegment = renderSegments.some((seg) => seg.isLive);
-  const showLooseLiveBar = hasLooseLiveActivity && !hasLiveSegment;
+  const showLooseLiveBar = shouldRenderLiveFallback({
+    isCompleted,
+    isPersisted,
+    forceLive,
+    hasLiveSegment,
+    thinkingText: _thinkingText,
+    narrationText,
+  });
 
   // Thinking is now per-step inside SegmentView; keep only the live status fallback global.
   const showTrailingNarration = false;

@@ -65,7 +65,9 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
   const freezeLatestPlanInDB = async (
     statuses?: Record<string, TaskStatus>,
     failureReasons?: Record<string, string>,
+    planMessageId?: string | null,
   ) => {
+    if (planMessageId === null) return;
     const sid = sessionId ?? "main";
     try {
       const params = new URLSearchParams({ kind: "manager", limit: "100", sessionId: sid });
@@ -73,10 +75,12 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
       if (!resp.ok) return;
       const data = await resp.json();
       const messages = Array.isArray(data?.messages) ? data.messages : [];
-      const target = [...messages].reverse().find((m: any) => {
-        if (typeof m?.metadata !== "string" || !m.metadata) return false;
-        try { return !!JSON.parse(m.metadata)?.plan; } catch { return false; }
-      });
+      const target = planMessageId
+        ? messages.find((m: any) => m?.clientId === planMessageId)
+        : [...messages].reverse().find((m: any) => {
+            if (typeof m?.metadata !== "string" || !m.metadata) return false;
+            try { return !!JSON.parse(m.metadata)?.plan; } catch { return false; }
+          });
       if (!target) return;
       let metadata: Record<string, unknown> = {};
       if (typeof target.metadata === "string" && target.metadata) {
@@ -122,9 +126,9 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     setManagerResponding: (v) => { store().setManagerResponding(v, sessionId ?? "main"); },
     updateTaskStatus: (id, s) => { if (guard()) store().updateTaskStatus(id, s); },
     setTaskFailureReason: (id, reason) => { if (guard()) store().setTaskFailureReason(id, reason); },
-    freezeLatestPlanStatuses: (statuses, failureReasons) => {
-      if (guard()) store().freezeLatestPlanStatuses(statuses, failureReasons);
-      else freezeLatestPlanInDB(statuses, failureReasons);
+    freezeLatestPlanStatuses: (statuses, failureReasons, planMessageId) => {
+      if (guard()) store().freezeLatestPlanStatuses(statuses, failureReasons, planMessageId);
+      else freezeLatestPlanInDB(statuses, failureReasons, planMessageId);
     },
     setAiResponding: (v) => { if (guard()) store().setAiResponding(v); },
     setExecutingTaskIndex: (idx) => { if (guard()) store().setExecutingTaskIndex(idx); },
