@@ -10,6 +10,32 @@ function unique(values: string[]): string[] {
   return values.filter((value, index, all) => value && all.indexOf(value) === index);
 }
 
+function inferChangeMode(userIntent?: string, completedRoundSummary?: string, projectMemory?: string): "new-build" | "follow-up" {
+  const text = `${userIntent ?? ""}\n${completedRoundSummary ?? ""}\n${projectMemory ?? ""}`.toLowerCase();
+  const followUpSignals = [
+    "fix",
+    "bug",
+    "again",
+    "now ",
+    "next",
+    "add ",
+    "change",
+    "update",
+    "modify",
+    "keep",
+    "preserve",
+    "修",
+    "改",
+    "再",
+    "继续",
+    "新增",
+    "添加",
+    "保留",
+  ];
+  if (completedRoundSummary || projectMemory) return "follow-up";
+  return followUpSignals.some((signal) => text.includes(signal)) ? "follow-up" : "new-build";
+}
+
 function truncate(value: string, limit: number): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > limit ? `${compact.slice(0, limit)}...` : compact;
@@ -81,6 +107,7 @@ export function buildManagerContextPacket(args: {
   externalGuidance?: string;
 }): ContextPacket {
   const filePaths = unique(args.files.map((f) => f.path));
+  const changeMode = inferChangeMode(args.userIntent, args.completedRoundSummary, args.projectMemory);
   return {
     projectId: args.projectId,
     projectIdentity: filePaths.length > 0
@@ -95,6 +122,12 @@ export function buildManagerContextPacket(args: {
     preservationConstraints: [
       "Treat existing user-facing behavior as current project truth.",
       "Plans must extend prior work and must not delete, rewrite, or regress completed features unless the user explicitly asks.",
+      ...(changeMode === "follow-up"
+        ? [
+            "This is a follow-up/change request: plan the smallest safe delta on top of the existing app.",
+            "Include required_files for every file that may be touched so the editor can inspect current code before changing it.",
+          ]
+        : []),
     ],
   };
 }
@@ -112,6 +145,7 @@ export function buildEditorContextPacket(args: {
 }): ContextPacket {
   const filePaths = unique(args.files.map((f) => f.path));
   const requiredFiles = unique(args.steps.flatMap((s) => s.required_files ?? []));
+  const changeMode = inferChangeMode(args.userIntent, args.completedRoundSummary, args.projectMemory);
   return {
     projectId: args.projectId,
     projectIdentity: filePaths.length > 0
@@ -132,6 +166,13 @@ export function buildEditorContextPacket(args: {
       "Preserve unrelated existing code.",
       "Preserve prior user-facing behavior unless the current plan explicitly changes it.",
       "Prefer targeted edits for existing files.",
+      ...(changeMode === "follow-up"
+        ? [
+            "This is an incremental follow-up: inspect current behavior before editing and change only the files/regions needed for the new request.",
+            "Do not reset, simplify, or recreate existing screens, state models, event handlers, styles, or assets unless the plan explicitly names that regression as desired.",
+            "When modifying an existing file, use edit_file/patch_file/hash_patch_file whenever possible; use write_file only for true full rewrites with the latest expected_hash.",
+          ]
+        : []),
     ],
   };
 }

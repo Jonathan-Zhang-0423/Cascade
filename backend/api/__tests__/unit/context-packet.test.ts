@@ -49,4 +49,25 @@ describe("ContextPacket", () => {
     expect(rendered).not.toContain("Long skill");
     expect(rendered).not.toContain("Long guidance");
   });
+
+  it("adds stricter incremental safeguards for follow-up requests", () => {
+    const packet = buildEditorContextPacket({
+      files: [{ path: "/project/app.js" }, { path: "/project/style.css" }],
+      userIntent: "现在修一下移动端按钮 bug",
+      plan: { summary: "Fix mobile button" },
+      steps: [{ step: 1, title: "Fix", description: "Patch button behavior", required_files: ["/project/app.js"] }],
+      completedRoundSummary: "Previous round implemented inventory and settlement.",
+      projectMemory: "Implemented behavior: inventory and settlement must be preserved.",
+    });
+
+    const rendered = renderContextPacket(packet, {
+      includeProjectMemory: false,
+      includeSkillContent: false,
+      includeExternalGuidance: false,
+    });
+
+    expect(rendered).toContain("incremental follow-up");
+    expect(rendered).toContain("Do not reset, simplify, or recreate existing screens");
+    expect(rendered).toContain("expected_hash");
+  });
 });

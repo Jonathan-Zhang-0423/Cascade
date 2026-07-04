@@ -1,5 +1,6 @@
 import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
+import { createHash } from "crypto";
 import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
 import type { BuildSessionState, BuildStep, SseEmit } from "../orchestrator/build-orchestrator";
 import { buildAstTools } from "./ast-tools";
@@ -27,6 +28,10 @@ function matchesPathFilter(filePath: string, include?: string, exclude?: string)
   if (include && !globToRegExp(include).test(normalized)) return false;
   if (exclude && globToRegExp(exclude).test(normalized)) return false;
   return true;
+}
+
+function fileVersionHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 12);
 }
 
 async function mirrorFileChangeToDiskAndLsp(
@@ -223,6 +228,7 @@ export function buildBuilderTools(
   // deterministically once the final step is done — without depending on the
   // model to emit a separate finish_build tool call.
   const completedSteps = new Set<number | string>();
+  const lastReadHashes = new Map<string, string>();
 
   const schemas: ToolSchema[] = [
     {
@@ -240,6 +246,10 @@ export function buildBuilderTools(
             content: {
               type: "string",
               description: "The complete file content to write",
+            },
+            expected_hash: {
+              type: "string",
+              description: "Required when overwriting an existing file unless you just read it this session. Use the File version hash from read_file.",
             },
           },
           required: ["path", "content"],
@@ -511,8 +521,20 @@ export function buildBuilderTools(
     write_file: async (args, emit) => {
       const path_ = args.path as string;
       const content = args.content as string;
+      const expectedHash = typeof args.expected_hash === "string" ? args.expected_hash.trim() : "";
       if (!path_ || typeof content !== "string") {
         return "Error: path and content are required";
+      }
+      const current = session.files.get(path_);
+      if (current !== undefined) {
+        const currentHash = fileVersionHash(current);
+        const lastReadHash = lastReadHashes.get(path_);
+        if (expectedHash && expectedHash !== currentHash) {
+          return `Error: ${path_} changed since the version you are trying to overwrite (expected_hash=${expectedHash}, current_hash=${currentHash}). Re-read the file and prefer edit_file/patch_file/hash_patch_file for targeted changes.`;
+        }
+        if (!expectedHash && lastReadHash !== currentHash) {
+          return `Error: refusing full overwrite of existing file ${path_} without a current read. Call read_file first and then either use targeted edit_file/patch_file/hash_patch_file, or retry write_file with expected_hash=${currentHash} if a true full rewrite is required.`;
+        }
       }
       const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, content);
       telemetry?.incr("writeFileCount");
@@ -731,6 +753,8 @@ export function buildBuilderTools(
       if (content === undefined) {
         return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
       }
+      const versionHash = fileVersionHash(content);
+      lastReadHashes.set(path, versionHash);
 
       // Hard cap on file content to prevent context window exhaustion.
       const MAX_READ_CHARS = 32000;
@@ -746,7 +770,7 @@ export function buildBuilderTools(
       } catch {
         // silent — block indexing is best-effort
       }
-      return `File: ${path}\n\n${truncatedContent}${blockSuffix}`;
+      return `File: ${path}\nFile version hash: ${versionHash}\n\n${truncatedContent}${blockSuffix}`;
     },
 
     mark_step_complete: async (args, emit) => {

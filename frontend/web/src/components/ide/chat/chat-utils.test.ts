@@ -50,6 +50,7 @@ describe("buildManagerHistory", () => {
     expect(out[0].content).toContain("build a calculator");
     expect(out[0].content).toContain("Changed/touched files: a.js");
     expect(out[0].content).toContain("Preservation constraint");
+    expect(out[0].content).toContain("Follow-up discipline");
     // The new request survives verbatim and is the only thing after the summary.
     expect(out.slice(1)).toEqual([{ role: "user", content: "now add a dark mode toggle" }]);
     // Crucially, the old plan text is NOT present — no contamination.
@@ -81,6 +82,7 @@ describe("buildManagerHistory", () => {
     expect(out[0].content).toContain("Built inventory model and loot UI");
     expect(out[0].content).toContain("Step 2/3: Settlement overlay");
     expect(out[0].content).toContain("must not delete, rewrite, or regress prior features");
+    expect(out[0].content).toContain("avoid full-file rewrites");
     expect(out.slice(1)).toEqual([{ role: "user", content: "now add enemy patrols" }]);
   });
 

@@ -155,6 +155,7 @@ function summarizeCompletedRound(buildResult: unknown, previousUserRequest?: str
     parts.push(`Implemented steps: ${stepSummaries.map((s) => truncateForHistory(s, 160)).join(" | ")}.`);
   }
   parts.push("Preservation constraint: treat the completed work, changed files, and existing user-facing behavior as part of the current project. Future plans must build on top of them and must not delete, rewrite, or regress prior features unless the user explicitly asks.");
+  parts.push("Follow-up discipline: for the next request, plan an incremental delta, name the files likely to be touched, inspect current implementations before editing, and avoid full-file rewrites when a targeted patch can preserve existing behavior.");
   parts.push("Now the user has a new request — focus on it while preserving the existing project.");
   return parts.join(" ");
 }
