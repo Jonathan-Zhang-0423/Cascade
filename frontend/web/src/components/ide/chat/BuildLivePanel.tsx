@@ -34,30 +34,24 @@ function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () 
 }
 
 import {
-  FileText,
-  Trash2,
-  PencilLine,
-  Wrench,
-  Terminal,
   Brain,
   Sparkles,
-  Circle,
   Clock,
   ChevronRight,
   ChevronDown,
   RotateCcw,
   History,
-  ShieldCheck,
-  GitMerge,
-  Zap,
-  ListChecks,
   DollarSign,
-  Globe,
-  type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
 import { normalizeActionLogEntry, rebuildSegmentsFromActionLog, stringifyLogValue } from "./action-log-normalize";
 import { shouldShowBuildCostSummary } from "./build-live-panel-utils";
+import {
+  describeActionForTimeline,
+  getActionToneStyle,
+  getActionToolMeta,
+  isControlOnlyToolLabel,
+} from "./tool-display";
 
 interface BuildLivePanelProps {
   entries: ActionLogEntry[];
@@ -187,29 +181,6 @@ function extractThinkingNarration(text: string): string {
   return "正在思考解决方案";
 }
 
-// ── E. getActionNarration ─────────────────────────────────────────────────
-const TOOL_NARRATION: Record<string, string> = {
-  read_file: "读取文件",
-  list_files: "查看文件列表",
-  grep: "搜索项目文件",
-  write_file: "编辑文件",
-  edit_file: "修改文件",
-  patch_file: "修改文件",
-  hash_patch_file: "修改文件",
-  ast_search: "搜索代码结构",
-  ast_replace: "替换代码结构",
-  lsp_diagnostics: "检查类型错误",
-  lsp_find_references: "查找符号引用",
-  lsp_goto_definition: "跳转到定义",
-  shell_run: "运行命令",
-  run_tests: "运行测试",
-  mcp_search: "联网搜索",
-  fetch_url: "读取网页",
-  research: "联网调研",
-  update_project_memory: "更新项目记忆",
-  submit_interaction_script: "保存演示脚本",
-};
-
 // Tools that are pure control-flow signals — never shown as user-facing actions.
 const HIDDEN_TOOLS = new Set([
   "mark_step_complete",
@@ -219,26 +190,10 @@ const HIDDEN_TOOLS = new Set([
   "report_issue",
 ]);
 
-function fileName(entry: ActionLogEntry): string {
-  if (entry.filePath) return entry.filePath.split("/").pop() || entry.filePath;
-  return entry.label || "";
-}
-
 function getActionNarration(entry: ActionLogEntry): string {
-  switch (entry.type) {
-    case "file_read":      return `读取了 ${fileName(entry)}`;
-    case "file_write":     return `编辑了 ${fileName(entry)}`;
-    case "file_delete":    return `删除了 ${fileName(entry)}`;
-    case "thinking":       return extractThinkingNarration(entry.detail);
-    case "tool_call":      return TOOL_NARRATION[entry.label] || `调用了 ${entry.label}`;
-    case "research":       return entry.label.toLowerCase().includes("complete") ? `研究完成 — ${entry.detail}` : `🔍 搜索: ${entry.detail || entry.label}`;
-    case "terminal_command": return `执行命令：${entry.label}`;
-    case "code_applied":   return `应用了 ${fileName(entry)}`;
-    case "code_review":    return entry.label || "代码审查";
-    case "capabilities":   return entry.label || "能力激活";
-    case "plan":           return entry.label || "任务计划";
-    default:               return entry.label || "";
-  }
+  return entry.type === "thinking"
+    ? extractThinkingNarration(entry.detail)
+    : describeActionForTimeline(entry);
 }
 
 // ── E2. summarizeActions — 根据 actions 生成智能简短 narration ─────────────
@@ -296,7 +251,7 @@ function summarizeActions(actions: ActionLogEntry[]): string {
   }
   if (parts.length === 0 && tools.length > 0) {
     const named = tools
-      .map((a) => TOOL_NARRATION[a.label] || a.label)
+      .map((a) => getActionToolMeta(a).shortLabel || getActionToolMeta(a).label || a.label)
       .filter(Boolean)
       .slice(0, 2)
       .join("、");
@@ -351,41 +306,6 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
   }
 }
 
-// ── H. toDisplayType ──────────────────────────────────────────────────────
-type ActionType = "thinking" | "read" | "edit" | "delete" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
-
-function toDisplayType(raw: string): ActionType {
-  switch (raw) {
-    case "thinking":       return "thinking";
-    case "file_read":      return "read";
-    case "file_write":     return "edit";
-    case "file_delete":    return "delete";
-    case "code_applied":   return "apply";
-    case "code_review":    return "review";
-    case "capabilities":   return "capabilities";
-    case "plan":           return "plan";
-    case "tool_call":      return "tool";
-    case "research":       return "research";
-    case "terminal_command": return "terminal";
-    default:               return "other";
-  }
-}
-
-const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
-  thinking:     { icon: Brain,       color: "text-muted-foreground/50" },
-  read:         { icon: FileText,    color: "text-muted-foreground/50" },
-  edit:         { icon: PencilLine,  color: "text-muted-foreground/50" },
-  delete:       { icon: Trash2,      color: "text-muted-foreground/50" },
-  apply:        { icon: GitMerge,    color: "text-muted-foreground/50" },
-  review:       { icon: ShieldCheck, color: "text-muted-foreground/50" },
-  capabilities: { icon: Zap,         color: "text-muted-foreground/50" },
-  plan:         { icon: ListChecks,  color: "text-muted-foreground/50" },
-  tool:         { icon: Wrench,      color: "text-muted-foreground/50" },
-  terminal:     { icon: Terminal,    color: "text-muted-foreground/50" },
-  research:     { icon: Globe,       color: "text-cyan-400/70" },
-  other:        { icon: Circle,      color: "text-muted-foreground/50" },
-};
-
 // ── G. ActionDetailRow ────────────────────────────────────────────────────
 // Single collapsible action: [chevron] [icon] [Chinese narration].
 // Wrapped in memo so parent re-renders (e.g. on scroll) don't reset the
@@ -396,9 +316,9 @@ const ActionDetailRow = memo(function ActionDetailRow({
   entry: ActionLogEntry;
 }) {
   const [open, setOpen] = useState(false);
-  const dt = toDisplayType(entry.type);
-  const meta = ACTION_META[dt];
-  const Icon = meta.icon;
+  const toolMeta = getActionToolMeta(entry);
+  const tone = getActionToneStyle(entry);
+  const Icon = toolMeta.icon;
   const narration = getActionNarration(entry);
   const detail = getActionDetail(entry);
 
@@ -410,7 +330,7 @@ const ActionDetailRow = memo(function ActionDetailRow({
       >
         <ChevronRight className={cn("w-3 h-3 shrink-0 transition-transform", open && "rotate-90")} />
         <span className="w-6 h-6 flex items-center justify-center shrink-0">
-          <Icon className={cn("w-3.5 h-3.5", meta.color)} />
+          <Icon className={cn("w-3.5 h-3.5", tone.iconText)} />
         </span>
         <span className="truncate">{narration}</span>
       </button>
@@ -504,7 +424,7 @@ const SegmentView = memo(function SegmentView({
 
   const thinkingEntry = actions.find((a) => a.type === "thinking");
   const nonThinkingActions = actions.filter(
-    (a) => a.type !== "thinking" && !(a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)),
+    (a) => a.type !== "thinking" && !(a.type === "tool_call" && (HIDDEN_TOOLS.has(a.label) || isControlOnlyToolLabel(a.label))),
   );
 
   // Nothing to show at all — show spinner if live (waiting for first action),
@@ -577,18 +497,21 @@ const SegmentView = memo(function SegmentView({
                 )}
                 <span className="flex items-center gap-1.5 shrink-0">
                   {(() => {
-                    const counts = new Map<ActionType, number>();
+                    const counts = new Map<string, { count: number; entry: ActionLogEntry }>();
                     for (const a of nonThinkingActions) {
-                      const dt = toDisplayType(a.type);
-                      counts.set(dt, (counts.get(dt) ?? 0) + 1);
+                      const meta = getActionToolMeta(a);
+                      const key = `${meta.tone}:${meta.name}`;
+                      const current = counts.get(key);
+                      counts.set(key, { count: (current?.count ?? 0) + 1, entry: current?.entry ?? a });
                     }
-                    return Array.from(counts.entries()).slice(0, 3).map(([dt, count]) => {
-                      const meta = ACTION_META[dt];
+                    return Array.from(counts.entries()).slice(0, 3).map(([key, item]) => {
+                      const meta = getActionToolMeta(item.entry);
+                      const tone = getActionToneStyle(item.entry);
                       const Icon = meta.icon;
                       return (
-                        <span key={dt} className="inline-flex items-center gap-0.5">
-                          <Icon className={cn("w-3 h-3", meta.color)} />
-                          <span className={cn("text-[10px]", meta.color)}>×{count}</span>
+                        <span key={key} className="inline-flex items-center gap-0.5">
+                          <Icon className={cn("w-3 h-3", tone.iconText)} />
+                          <span className={cn("text-[10px]", tone.mutedText)}>×{item.count}</span>
                         </span>
                       );
                     });

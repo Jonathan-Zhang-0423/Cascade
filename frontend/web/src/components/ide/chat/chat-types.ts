@@ -62,6 +62,7 @@ export const KNOWN_MGR_EVENT_TYPES: Set<string> = new Set([
   "plan_ready",
   "manager_done",
   "manager_error",
+  "memory_updated",
   "action_log",
 ]);
 
@@ -69,6 +70,7 @@ export const MGR_SOURCE_MAP: Record<string, LLMEventSource> = {
   communicator_token: "communicator",
   communicator_narration_starting: "communicator",
   communicator_error: "communicator",
+  memory_updated: "manager",
 };
 
 export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([

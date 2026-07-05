@@ -399,6 +399,16 @@ export class BuildStreamInstance {
                 precedingNarration: commAccumulated || undefined,
               });
             }
+          } else if (type === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            this.appendActionLog({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
+              precedingNarration: commAccumulated || undefined,
+            });
           } else if (type === "code_applied") {
             // Write code_applied action entry so it shows in the step's action row
             const filePath = ev.filePath || "";
@@ -780,6 +790,16 @@ export class BuildStreamInstance {
                 precedingNarration: commAccumulated || undefined,
               });
             }
+          } else if (type === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            this.appendActionLog({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
+              precedingNarration: commAccumulated || undefined,
+            });
           } else if (type === "thinking_token") {
             thinkingAccumulated += ev.token || "";
             this.state.set({ thinkingText: thinkingAccumulated });

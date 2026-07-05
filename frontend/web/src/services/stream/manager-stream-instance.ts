@@ -6,7 +6,7 @@ import {
   INITIAL_MANAGER_STREAM_STATE,
 } from "./types";
 import type { ActionLogEntry, ManagerSseEvent } from "@/components/ide/chat/chat-types";
-import { normalizeActionLogEntry } from "@/components/ide/chat/action-log-normalize";
+import { normalizeActionLogEntry, stringifyLogValue } from "@/components/ide/chat/action-log-normalize";
 import {
   KNOWN_MGR_EVENT_TYPES,
   MGR_SOURCE_MAP,
@@ -246,6 +246,18 @@ export class ManagerStreamInstance {
               detail: ev.detail,
               timestamp: Date.now(),
               filePath: ev.filePath,
+            });
+            if (isCurrentProject) {
+              this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
+            }
+          } else if (evType === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            const actionEntry: ActionLogEntry = normalizeActionLogEntry({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
             });
             if (isCurrentProject) {
               this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
