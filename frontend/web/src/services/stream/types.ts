@@ -32,6 +32,7 @@ export interface BuildStreamState {
   isReconnecting: boolean;
   thinkingElapsedSec: number | null;
   sessionId: string | null;
+  activePlanMessageId?: string | null;
   stepNarrations: Record<number, string>;
   /** Per-session task statuses — survives project switching (unlike the global
    *  store's taskStatuses which is reset on loadProject). Source of truth for
@@ -47,6 +48,7 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   isReconnecting: false,
   thinkingElapsedSec: null,
   sessionId: null,
+  activePlanMessageId: undefined,
   stepNarrations: {},
   taskStatuses: {},
 };

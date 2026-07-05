@@ -1,8 +1,7 @@
 import type { ChatMessage, ManagerMessage } from "@/stores/ide-store";
 import { useIDEStore } from "@/stores/ide-store";
-import { useEffect, useRef, useState, useSyncExternalStore, useMemo } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ActionLogEntry } from "./chat-types";
-import { ActionLogCollapsed } from "./action-log";
 import {
   MessageBubble,
   CheckpointMarker,
@@ -65,23 +64,6 @@ export function ChatMessageList({
     slot ? () => slot.build.state.getSnapshot().actionLog : () => [],
   );
 
-  // Build map: stepNumber (number) → ActionLogEntry[]
-  const stepActionsMap = useMemo(() => {
-    const map = new Map<number, ActionLogEntry[]>();
-    let currentStep = -1;
-    for (const entry of liveActionLog) {
-      if (entry.type === "step") {
-        const m = entry.label.match(/Step\s+(\d+)/i);
-        currentStep = m ? parseInt(m[1], 10) : currentStep + 1;
-        if (!map.has(currentStep)) map.set(currentStep, []);
-      } else if (currentStep >= 0) {
-        const bucket = map.get(currentStep);
-        if (bucket) bucket.push(entry);
-        else map.set(currentStep, [entry]);
-      }
-    }
-    return map;
-  }, [liveActionLog]);
   const lastPlanMsgId = [...managerMessages]
     .reverse()
     .find((m) => m.plan)?.id;
@@ -256,7 +238,7 @@ export function ChatMessageList({
                 fixCycle={useLiveStatuses ? fixCycle : undefined}
                 liveNarration={useLiveStatuses ? liveNarrationText : undefined}
                 completionData={useLiveStatuses ? completionData : undefined}
-                stepActionsMap={useLiveStatuses ? stepActionsMap : undefined}
+                liveActionLog={useLiveStatuses ? liveActionLog : undefined}
               />
             </div>
           );

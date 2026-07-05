@@ -125,6 +125,7 @@ export function useActiveStream() {
       liveThinkingText: buildState.thinkingText,
       liveNarrationText: buildState.narrationText,
       liveStepNarrations: buildState.stepNarrations,
+      activePlanMessageId: buildState.activePlanMessageId,
       isReconnecting: buildState.isReconnecting,
       thinkingElapsedSec: buildState.thinkingElapsedSec,
       handleExecutePlan,

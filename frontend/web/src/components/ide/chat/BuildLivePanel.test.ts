@@ -38,17 +38,17 @@ describe("shouldShowBuildCostSummary", () => {
 
 describe("shouldRenderLiveFallback", () => {
   it("shows LiveBar when execution is active before the first token or action arrives", () => {
-    expect(shouldRenderLiveFallback({ forceLive: true })).toBe(true);
+    expect(shouldRenderLiveFallback({ showLiveStatus: true })).toBe(true);
   });
 
-  it("keeps LiveBar visible when loose thinking or narration text exists", () => {
-    expect(shouldRenderLiveFallback({ thinkingText: "thinking" })).toBe(true);
-    expect(shouldRenderLiveFallback({ narrationText: "working" })).toBe(true);
+  it("does not show a loose LiveBar for thinking or narration text alone", () => {
+    expect(shouldRenderLiveFallback({ thinkingText: "thinking" })).toBe(false);
+    expect(shouldRenderLiveFallback({ narrationText: "working" })).toBe(false);
   });
 
   it("does not duplicate LiveBar for completed, persisted, or already-live segment states", () => {
-    expect(shouldRenderLiveFallback({ forceLive: true, isCompleted: true })).toBe(false);
-    expect(shouldRenderLiveFallback({ forceLive: true, isPersisted: true })).toBe(false);
-    expect(shouldRenderLiveFallback({ forceLive: true, hasLiveSegment: true })).toBe(false);
+    expect(shouldRenderLiveFallback({ showLiveStatus: true, isCompleted: true })).toBe(false);
+    expect(shouldRenderLiveFallback({ showLiveStatus: true, isPersisted: true })).toBe(false);
+    expect(shouldRenderLiveFallback({ showLiveStatus: true, hasLiveSegment: true })).toBe(false);
   });
 });

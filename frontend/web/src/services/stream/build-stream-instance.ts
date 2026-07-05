@@ -146,7 +146,10 @@ export class BuildStreamInstance {
         // Session 还在跑但 SSE 断了（如刷新页面）——重连，不要启动新 session
         if (!this.reader) {
           this.actions.setChatMode("build");
-          this.state.set({ buildPhase: "thinking" });
+          this.state.set({
+            buildPhase: "thinking",
+            activePlanMessageId: isDirect ? null : this.activePlanMessageId,
+          });
           await this.connect(this.sessionId, this.lastEventId, isDirect ? null : undefined);
         }
         return;
@@ -174,6 +177,7 @@ export class BuildStreamInstance {
       : existingPlan!;
     const planMessageId = isDirect ? null : this.findPlanMessageId(plan);
     this.activePlanMessageId = planMessageId;
+    this.state.set({ activePlanMessageId: planMessageId });
 
     const normalizedSteps = normalizeSteps(plan);
     const messages = this.actions.getManagerMessages();
@@ -202,7 +206,7 @@ export class BuildStreamInstance {
     // A refresh before POST completes leaves a key pointing to a session
     // that may not exist yet; attemptReconnect handles this with a short retry.
     try { localStorage.setItem(this.storageKey, sessionId); } catch {}
-    this.state.set({ buildPhase: "thinking" });
+    this.state.set({ buildPhase: "thinking", activePlanMessageId: planMessageId });
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -606,7 +610,8 @@ export class BuildStreamInstance {
       const isCurrentGen = myGen === this.generation;
       if (isCurrentGen) {
         this.sessionId = null;
-        this.state.set({ sessionId: null, isReconnecting: false });
+        this.activePlanMessageId = undefined;
+        this.state.set({ sessionId: null, isReconnecting: false, activePlanMessageId: undefined });
         this.reader = null;
         // Only remove the localStorage key if we are NOT waiting to reconnect.
         // If reconnectTimer is set, we still need the key for the next attempt
@@ -659,6 +664,7 @@ export class BuildStreamInstance {
       ? (this.activePlanMessageId !== undefined ? this.activePlanMessageId : (plan ? this.findPlanMessageId(plan) : null))
       : planMessageId;
     this.activePlanMessageId = freezePlanMessageId;
+    this.state.set({ activePlanMessageId: freezePlanMessageId });
     const nSteps = plan ? normalizeSteps(plan) : [];
     const messages = this.actions.getManagerMessages();
     const firstUserMsg = messages.find((m) => m.role === "user");
@@ -976,7 +982,7 @@ export class BuildStreamInstance {
           ? null
           : (this.actions.getManagerPlan() ? this.findPlanMessageId(this.actions.getManagerPlan()!) : null);
         this.actions.setChatMode("build");
-        this.state.set({ buildPhase: "thinking" });
+        this.state.set({ buildPhase: "thinking", activePlanMessageId: this.activePlanMessageId });
         this.restoreTaskStatuses();
         if (!Object.values(this.state.get().taskStatuses).includes("running")) {
           this.actions.setExecutingTaskIndex(0);
@@ -1027,7 +1033,8 @@ export class BuildStreamInstance {
       this.reader = null;
     }
     this.sessionId = null;
-    this.state.set({ sessionId: null });
+    this.activePlanMessageId = undefined;
+    this.state.set({ sessionId: null, activePlanMessageId: undefined });
     try { localStorage.removeItem(this.storageKey); } catch {}
   }
 
@@ -1268,7 +1275,7 @@ export class BuildStreamInstance {
   private clearLive(): void {
     // Keep stepNarrations — narration tokens can arrive after all_complete,
     // and BuildLivePanel uses them to fill persisted segment narrations.
-    this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
+    this.state.set({ thinkingText: "", narrationText: "", actionLog: [], activePlanMessageId: undefined });
   }
 
   private clearLiveTimer(): void {

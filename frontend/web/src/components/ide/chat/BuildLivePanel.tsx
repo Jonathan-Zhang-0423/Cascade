@@ -4,6 +4,7 @@ import { useT } from "@/lib/i18n";
 import { useIDEStore } from "@/stores/ide-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLanguageStore } from "@/stores/language-store";
+import { ActionLogLiveBar, AnimatedDots } from "./live-action-status";
 
 // ── useTypewriter — 打字机逐字显示 hook ───────────────────────────────────
 function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () => void): string {
@@ -32,78 +33,6 @@ function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () 
   return displayed;
 }
 
-// ── AnimatedDots — 从左到右逐个显示的三点动画 ─────────────────────────────
-function AnimatedDots() {
-  return (
-    <>
-      <style>{`
-        @keyframes dot-fade {
-          0%, 20%   { opacity: 0; }
-          40%, 100% { opacity: 1; }
-        }
-        .anim-dot-1 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0s;    }
-        .anim-dot-2 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.3s;  }
-        .anim-dot-3 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.6s;  }
-      `}</style>
-      <span aria-hidden="true">
-        <span className="anim-dot-1">.</span>
-        <span className="anim-dot-2">.</span>
-        <span className="anim-dot-3">.</span>
-      </span>
-    </>
-  );
-}
-
-// ── LiveBar — 转圈圈 + 打字机文字 + 三点（完全复用 TypingIndicator 逻辑）────
-const LIVE_PHRASES_ZH = [
-  "正在脑洞大开中", "灵感正在路上，请稍候", "AI 正在认真思考，不是在摸鱼",
-  "代码宇宙正在重组中", "正在向平行宇宙借点智慧", "思维发动机预热中",
-  "正在把你的想法翻译成代码语言", "正在解锁最优解", "AI 大脑正在高速运转",
-  "正在召唤代码精灵", "把咖啡因转化为代码中", "正在对齐神经元",
-  "想法正在结晶", "正在量子计算最优解", "大模型正在认真上班",
-  "正在把文字变成魔法", "灵感女神正在降临", "正在高速检索知识库",
-];
-const LIVE_PHRASES_EN = [
-  "Brainwaves detected, processing", "Consulting the code oracle",
-  "Firing up the neural engines", "Turning caffeine into code",
-  "Assembling brilliant thoughts", "Summoning the AI muse",
-  "Untangling the idea spaghetti", "Crunching possibilities",
-  "Downloading inspiration", "Aligning neurons, please hold",
-  "Searching all known universes", "Cooking up something great",
-  "Connecting the creative dots", "Spinning up the idea turbine",
-];
-
-function LiveBar() {
-  const { lang } = useLanguageStore();
-  const phrases = lang === "zh" ? LIVE_PHRASES_ZH : LIVE_PHRASES_EN;
-  const phrase = useRef(phrases[Math.floor(Math.random() * phrases.length)]).current;
-
-  const [charCount, setCharCount] = useState(0);
-  useEffect(() => {
-    let i = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      if (i < phrase.length) {
-        i++; setCharCount(i);
-        timer = setTimeout(tick, 90);
-      } else {
-        timer = setTimeout(() => { i = 0; setCharCount(0); timer = setTimeout(tick, 90); }, 2400);
-      }
-    };
-    timer = setTimeout(tick, 90);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phrase]);
-
-  const visiblePhrase = phrase.slice(0, Math.max(1, charCount));
-
-  return (
-    <span className="inline-flex min-w-[120px] items-center gap-1.5 rounded-sm border border-border/35 bg-muted/25 px-1.5 py-px text-muted-foreground/80 font-mono text-[10.5px] leading-4">
-      <Loader2 className="w-3 h-3 animate-spin shrink-0 text-muted-foreground/70" />
-      <span className="truncate whitespace-nowrap">{visiblePhrase}<AnimatedDots /></span>
-    </span>
-  );
-}
 import {
   FileText,
   Trash2,
@@ -118,7 +47,6 @@ import {
   ChevronDown,
   RotateCcw,
   History,
-  Loader2,
   ShieldCheck,
   GitMerge,
   Zap,
@@ -138,10 +66,11 @@ interface BuildLivePanelProps {
   thinkingElapsedSec?: number | null;
   segments?: NarrationSegment[];
   isCompleted?: boolean;
-  forceLive?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
   completionSummary?: string;
   stepNarrations?: Record<number, string>;
+  activeStepNumber?: number | null;
+  showLiveStatus?: boolean;
 }
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -165,17 +94,13 @@ function BrailleSpinner() {
 export function shouldRenderLiveFallback(args: {
   isCompleted?: boolean;
   isPersisted?: boolean;
-  forceLive?: boolean;
+  showLiveStatus?: boolean;
   hasLiveSegment?: boolean;
   thinkingText?: string;
   narrationText?: string;
 }): boolean {
   if (args.isCompleted || args.isPersisted || args.hasLiveSegment) return false;
-  return Boolean(
-    args.forceLive ||
-    args.thinkingText?.trim() ||
-    args.narrationText?.trim(),
-  );
+  return Boolean(args.showLiveStatus);
 }
 
 // ── A. stripMarkdown ──────────────────────────────────────────────────────
@@ -552,7 +477,7 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
         <span className="truncate text-muted-foreground/70">
           {isLive ? <>{t("chat.thinkingLive")}<AnimatedDots /></> : t("agent.thinking")}
         </span>
-        {isLive && <LiveBar />}
+        {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
       </button>
       {open && thinkingSummary && (
         <div className="pl-[34px] pb-1">
@@ -593,12 +518,12 @@ const SegmentView = memo(function SegmentView({
       <div className="mb-0.5 px-3.5" data-testid="segment-view">
         <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
           <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-          {isLive && <LiveBar />}
           {displayText0 && (
             <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
               {displayText0}
             </span>
           )}
+          {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
         </div>
       </div>
     );
@@ -670,7 +595,7 @@ const SegmentView = memo(function SegmentView({
                   })()}
                 </span>
                 {isLive && (
-                  <LiveBar />
+                  <ActionLogLiveBar className="ml-auto shrink-0" />
                 )}
               </div>
             )}
@@ -684,7 +609,7 @@ const SegmentView = memo(function SegmentView({
             >
               <ChevronDown className="w-3 h-3 shrink-0 mt-[1px]" />
               {segment.narration ? (
-                <span className="ml-2 text-[10.5px] text-foreground/80 leading-relaxed">
+                <span className="ml-2 flex-1 min-w-0 truncate text-[10.5px] text-foreground/80 leading-relaxed">
                   {segment.narration
                     .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
                     .replace(/^•\s*/, "")
@@ -693,15 +618,16 @@ const SegmentView = memo(function SegmentView({
                     .trim()}
                 </span>
               ) : stepTitle ? (
-                <span className="ml-1 text-[10px] text-muted-foreground/35">
+                <span className="ml-1 flex-1 min-w-0 truncate text-[10px] text-muted-foreground/35">
                   {stepTitle}
                 </span>
               ) : null}
+              {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
             </button>
             <div className="border-l border-border/40 ml-1 pl-2 mt-0.5">
               {/* thinking row first */}
               {thinkingEntry && (
-                <ThinkingActionRow entry={thinkingEntry} isLive={isLive && nonThinkingActions.length === 0} t={t} />
+                <ThinkingActionRow entry={thinkingEntry} isLive={false} t={t} />
               )}
               {nonThinkingActions.map((a, i) => (
                 <ActionDetailRow key={i} entry={a} />
@@ -1001,15 +927,15 @@ function CheckpointSummary() {
 
 export function BuildLivePanel({
   entries,
-  thinkingText: _thinkingText,
-  narrationText,
+  narrationText: _narrationText,
   thinkingElapsedSec: _thinkingElapsedSec,
   segments,
   isCompleted,
-  forceLive = false,
   tokenUsage,
   completionSummary,
   stepNarrations = {},
+  activeStepNumber = null,
+  showLiveStatus = false,
 }: BuildLivePanelProps) {
   const t = useT();
   const projectId = useIDEStore((s) => s.projectId);
@@ -1029,10 +955,11 @@ export function BuildLivePanel({
     })) : undefined,
     [segments],
   );
-  const persistedSegments = useMemo<NarrationSegment[] | undefined>(
-    () => rebuildSegmentsFromActionLog(safeEntries, safeSegments) ?? safeSegments,
+  const rebuiltSegments = useMemo<NarrationSegment[] | undefined>(
+    () => rebuildSegmentsFromActionLog(safeEntries, safeSegments),
     [safeEntries, safeSegments],
   );
+  const persistedSegments = rebuiltSegments ?? safeSegments;
 
   // 打字机效果只触发一次：用 localStorage 记录"已展示完毕"
   // 刷新/重进项目后直接完整显示，不重复动画
@@ -1049,7 +976,7 @@ export function BuildLivePanel({
     if (!completionSummary) setSummaryDone(true);
   }, [completionSummary]);
 
-  const isPersisted = !!persistedSegments && persistedSegments.length > 0;
+  const isPersisted = !showLiveStatus && !!persistedSegments && persistedSegments.length > 0;
 
   // Persisted 模式：优先用 summarizeActions，actions 为空则保留原有 narration
   const mergedSegments = useMemo<NarrationSegment[]>(() => {
@@ -1070,13 +997,17 @@ export function BuildLivePanel({
     // 这样即使 tool call 在 step entry 之前到达，也能正确归入对应步骤。
     const segByStep = new Map<number, NarrationSegment>();
     let maxStepNum = 0;
+    let currentStepNum = 0;
+    let activeStepNum = 0;
 
     for (const entry of safeEntries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
         const match = entry.label?.match(/Step\s*(\d+)/i);
-        const stepNum = match ? parseInt(match[1], 10) : (maxStepNum + 1);
+        const stepNum = match ? parseInt(match[1], 10) : (currentStepNum > 0 ? currentStepNum + 1 : maxStepNum + 1);
         maxStepNum = Math.max(maxStepNum, stepNum);
+        currentStepNum = stepNum;
+        activeStepNum = stepNum;
         if (!segByStep.has(stepNum)) {
           const seg: NarrationSegment = { id: String(stepNum), narration: "", actions: [], isLive: false, stepLabel: entry.label };
           segByStep.set(stepNum, seg);
@@ -1086,8 +1017,10 @@ export function BuildLivePanel({
         }
       } else {
         const sn = (entry as any).stepNum as number | undefined;
-        const targetStep = (sn != null && sn > 0) ? sn : (maxStepNum > 0 ? maxStepNum : 1);
+        const targetStep = (sn != null && sn > 0) ? sn : (currentStepNum > 0 ? currentStepNum : 1);
         maxStepNum = Math.max(maxStepNum, targetStep);
+        if (currentStepNum === 0) currentStepNum = targetStep;
+        activeStepNum = targetStep;
         if (!segByStep.has(targetStep)) {
           segByStep.set(targetStep, { id: String(targetStep), narration: "", actions: [], isLive: false });
         }
@@ -1104,30 +1037,21 @@ export function BuildLivePanel({
       const summary = summarizeActions(seg.actions);
       seg.narration = summary;
     }
-    if (segs.length > 0 && !isCompleted) {
-      segs[segs.length - 1] = { ...segs[segs.length - 1], isLive: true };
+    const liveStepNum = activeStepNumber && activeStepNumber > 0 ? activeStepNumber : activeStepNum;
+    if (showLiveStatus && liveStepNum > 0 && !isCompleted) {
+      const idx = segs.findIndex((seg) => seg.id === String(liveStepNum));
+      if (idx >= 0) segs[idx] = { ...segs[idx], isLive: true };
     }
     return segs;
-  }, [safeEntries, isPersisted, isCompleted]);
+  }, [safeEntries, isPersisted, isCompleted, activeStepNumber, showLiveStatus]);
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
-
-  const hasLiveSegment = renderSegments.some((seg) => seg.isLive);
-  const showLooseLiveBar = shouldRenderLiveFallback({
-    isCompleted,
-    isPersisted,
-    forceLive,
-    hasLiveSegment,
-    thinkingText: _thinkingText,
-    narrationText,
-  });
 
   // Thinking is now per-step inside SegmentView; keep only the live status fallback global.
   const showTrailingNarration = false;
 
   const hasAnyContent =
     renderSegments.length > 0 ||
-    showLooseLiveBar ||
     (isPersisted && (persistedSegments?.length ?? 0) > 0);
 
   if (!hasAnyContent) return null;
@@ -1154,18 +1078,9 @@ export function BuildLivePanel({
         );
       })}
 
-      {showLooseLiveBar && (
-        <div className="mb-0.5 px-3.5" data-testid="loose-live-bar">
-          <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
-            <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-            <LiveBar />
-          </div>
-        </div>
-      )}
-
       {/* Trailing live narration not yet bound to an action */}
       {showTrailingNarration && (
-        <NarrationBlock text={narrationText!} isLive />
+        <NarrationBlock text={_narrationText!} isLive />
       )}
 
       {/* Completion summary — 打字机效果逐字出现，完成后再显示 CostSummary */}

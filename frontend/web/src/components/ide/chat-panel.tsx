@@ -84,6 +84,7 @@ export function ChatPanel() {
     liveThinkingText,
     liveNarrationText,
     liveStepNarrations,
+    activePlanMessageId,
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
@@ -388,6 +389,9 @@ export function ChatPanel() {
   }, [isManagerResponding, handleExecutePlan, autoExecutePlanRef]);
 
   const isExecuting = executingTaskIndex !== null || buildPhase !== null;
+  const showStandaloneBuildLog =
+    activePlanMessageId === null &&
+    (buildPhase !== null || liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText);
 
   // Derive a single AgentStatus from all the boolean flags — highest priority wins
   const agentStatus: AgentStatus = (() => {
@@ -514,22 +518,20 @@ export function ChatPanel() {
         {showThinking && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || mgrPreparingPlan || mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+        {mgrLiveActionLog.length > 0 && (
           <BuildLivePanel
             entries={mgrLiveActionLog}
             thinkingText={mgrLiveThinkingText || undefined}
             narrationText={mgrLiveNarrationText || undefined}
-            forceLive={isManagerResponding || mgrPreparingPlan}
           />
         )}
-        {(buildPhase !== null || liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
+        {showStandaloneBuildLog && (
           <BuildLivePanel
             entries={liveActionLog}
             thinkingText={liveThinkingText || undefined}
             narrationText={liveNarrationText || undefined}
             thinkingElapsedSec={thinkingElapsedSec}
             isCompleted={!isExecuting && buildPhase === null}
-            forceLive={buildPhase !== null || isReconnecting}
             completionSummary={completionData?.summary || undefined}
             stepNarrations={liveStepNarrations}
           />
