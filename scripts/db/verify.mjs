@@ -13,34 +13,76 @@ if (!DATABASE_URL) {
 }
 
 // 与 database/schema/*.ts 保持一致。
-// session 由 connect-pg-simple 运行时自建——应用启动过才会存在。
 const EXPECTED_TABLES = [
-  "users",
-  "projects",
-  "project_files",
-  "user_skills",
-  "project_skills",
+  "admin_audit_log",
+  "admin_users",
+  "agent_session_events",
+  "agent_sessions",
+  "app_comments",
+  "app_likes",
+  "changelog_entries",
   "chat_messages",
-  "waitlist_subscribers",
+  "chat_sessions",
   "invite_codes",
-  "otp_codes",
   "manager_sessions",
+  "notifications",
+  "otp_codes",
+  "project_files",
+  "project_videos",
+  "projects",
+  "project_skills",
+  "published_apps",
   "session",
+  "subscription_grants",
+  "user_feedback",
+  "users",
+  "user_skills",
+  "waitlist_subscribers",
 ];
 
-// 关键唯一约束 / 索引（名称取自各 schema 文件中的显式声明）。
+// 关键唯一约束 / 索引（名称取自各 schema 文件中的显式声明和 Drizzle 默认命名）。
 const EXPECTED_INDEXES = [
-  "users_email_unique",
-  "users_phone_unique",
-  "users_github_id_unique",
-  "project_files_project_id_path_key",
-  "chat_messages_project_client_unique",
-  "chat_messages_project_kind_seq_idx",
-  "user_skills_user_name_unique",
-  "project_skills_project_name_unique",
-  "manager_sessions_project_active_idx",
-  "otp_codes_target_purpose_created_idx",
   "IDX_session_expire",
+  "admin_users_username_unique",
+  "agent_session_events_pkey",
+  "agent_session_events_session_idx",
+  "agent_sessions_project_active_idx",
+  "agent_sessions_project_chat_active_idx",
+  "agent_sessions_type_status_idx",
+  "agent_sessions_user_idx",
+  "app_comments_app_id_idx",
+  "app_comments_created_at_idx",
+  "app_comments_user_id_idx",
+  "app_likes_app_id_idx",
+  "app_likes_app_user_uniq",
+  "app_likes_user_id_idx",
+  "changelog_published_at_idx",
+  "chat_messages_project_session_client_unique",
+  "chat_messages_project_session_kind_seq_idx",
+  "chat_messages_session_idx",
+  "chat_sessions_project_idx",
+  "invite_codes_code_unique",
+  "manager_sessions_project_active_idx",
+  "notifications_user_idx",
+  "otp_codes_target_purpose_created_idx",
+  "project_files_project_id_path_key",
+  "project_skills_project_name_unique",
+  "published_apps_project_id_idx",
+  "published_apps_project_user_uniq",
+  "published_apps_user_id_idx",
+  "published_apps_view_count_idx",
+  "published_apps_visibility_published_at_idx",
+  "user_feedback_created_idx",
+  "user_feedback_user_idx",
+  "user_skills_user_name_unique",
+  "users_email_unique",
+  "users_github_id_unique",
+  "users_phone_unique",
+  "users_referral_code_unique",
+  "users_username_unique",
+  "users_wechat_open_id_unique",
+  "users_wechat_union_id_unique",
+  "waitlist_subscribers_email_unique",
 ];
 
 const client = new pg.Client({ connectionString: DATABASE_URL });
@@ -60,7 +102,7 @@ try {
     if (present.has(t)) {
       console.log(`  ✓ ${t}`);
     } else {
-      const hint = t === "session" ? "（需应用至少成功启动一次）" : "";
+      const hint = t === "session" ? "（登录态表应由 db:push 建好）" : "";
       console.error(`  ✗ 缺失：${t} ${hint}`);
       missing++;
     }
