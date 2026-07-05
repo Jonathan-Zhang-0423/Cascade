@@ -73,15 +73,15 @@ import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
-import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
+import type { ManagerSessionState } from "../../agent/tools/agent-tools";
+import { buildAgentToolkit } from "../../agent/tools/toolkit";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
 import { resolveAgentModel } from "../../agent/providers/agent-model-router";
 import { setupPreviewServer } from "../../compiler/preview-server";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
 import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
-import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
-import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { getMcpToolNames } from "../../agent/mcp/mcp-tools";
 import { isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
 import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
 
@@ -2029,9 +2029,6 @@ This override applies to THIS message only — it does not change behavior for p
         systemPrompt = `${systemPrompt}\n\n## Existing Codebase Context (from fast scan)\n${exploreContext}`;
       }
 
-      const managerState: ManagerSessionState = {};
-      const managerTools = buildManagerTools(managerState, { projectId: reqProjectId, userId: reqUserId });
-
       // Fast intent classification — use MiniMax if available (fastest), else active provider
       const fastClientForIntent = resolveAgentModel("communicator", activeProvider);
       const intent = await classifyIntent(processedMessages, fastClientForIntent.client, fastClientForIntent.model);
@@ -2071,12 +2068,6 @@ This override applies to THIS message only — it does not change behavior for p
         return;
       }
 
-
-
-      const activeTools = managerTools.schemas;
-      const activeHandlers = managerTools.handlers;
-      const activeExitTools = ["submit_plan"];
-
       // MCP: Always start built-in search; merge user config on top.
       // Gives the planner access to web search and research capabilities.
       let mgrMcpManager: McpManager | null = null;
@@ -2094,45 +2085,6 @@ This override applies to THIS message only — it does not change behavior for p
         mgrMcpManager = new McpManager();
         await mgrMcpManager.connect(mergedConfig);
         if (mgrMcpManager.getAvailableTools().length > 0) {
-          const mcpTools = buildMcpTools(mgrMcpManager, emit);
-          activeTools.push(...mcpTools.schemas);
-          Object.assign(activeHandlers, mcpTools.handlers);
-
-          // Register research tool for the manager
-          activeTools.push({
-            type: "function",
-            function: {
-              name: "research",
-              description: "Search the web for current information to inform your planning. Use when you need to look up latest APIs, library versions, best practices, or technical details before creating the plan.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "The research question — be specific.",
-                  },
-                },
-                required: ["query"],
-              },
-            },
-          });
-          const capturedMgr = mgrMcpManager;
-          activeHandlers["research"] = async (args, emitFn) => {
-            const query = args.query as string;
-            if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-            const result = await runResearchAgent(query, capturedMgr, emitFn, { provider: activeProvider });
-            // Emit research result summary so the UI shows completion
-            const wordCount = result ? result.split(/\s+/).length : 0;
-            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
-            const summaryLine = sourceCount > 0
-              ? `Found ${sourceCount} source(s), ${wordCount} words`
-              : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            const sanitized = sanitizeResearchResult(result);
-            return sanitized || "(No findings)";
-          };
-
           // Add MCP guidance to system prompt
           const mcpToolNames = getMcpToolNames(mgrMcpManager);
           systemPrompt += `\n\n## External Research Tools (MCP)
@@ -2156,6 +2108,41 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
         console.warn("[manager-chat] MCP setup failed:", err instanceof Error ? err.message : err);
         mgrMcpManager = null;
       }
+
+      const managerState: ManagerSessionState = {};
+      const managerSessionForTools: BuildSessionState = {
+        id: mgrSessionId,
+        projectId: reqProjectId,
+        userId: reqUserId,
+        aborted: false,
+        files: new Map((files ?? []).map((f) => [f.path, f.content])),
+        plan: { steps: [] },
+        userRequest: allConversationText,
+        userLang: detectedLang,
+        provider: activeProvider,
+        framework: resolvedFramework || (files && files.length > 0 ? detectFramework(files) : "web"),
+        events: mgrSession.events,
+        nextEventId: mgrSession.nextEventId,
+        done: false,
+        sseWriters: mgrSession.sseWriters,
+        parts: [],
+        status: { type: "busy", agent: "manager" },
+      };
+      const managerTools = buildAgentToolkit("manager", {
+        session: managerSessionForTools,
+        managerState,
+        memoryCtx: { projectId: reqProjectId, userId: reqUserId },
+        mcpManager: mgrMcpManager,
+        emit,
+        provider: activeProvider,
+      });
+      if (managerTools.toolManifest) {
+        systemPrompt = `${systemPrompt}\n\n${managerTools.toolManifest}`;
+      }
+
+      const activeTools = managerTools.schemas;
+      const activeHandlers = managerTools.handlers;
+      const activeExitTools = ["submit_plan"];
 
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
@@ -2188,7 +2175,9 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
               thinkingMode: "auto",
               routingMode: managerDecision.routingMode,
               thinkingProfile: "adaptive",
+              toolPolicies: managerTools.policies,
             },
+            toolPolicies: managerTools.policies,
           },
         );
 

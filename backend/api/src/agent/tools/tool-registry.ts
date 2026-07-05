@@ -48,8 +48,9 @@ export class ToolRegistry {
 
   /** Names that cannot be overridden by external sources (MCP, modalities). */
   private static PROTECTED_NAMES = new Set([
-    "write_file", "read_file", "list_files", "grep", "edit_file",
-    "patch_file", "hash_patch_file", "delete_file",
+    "write_file", "read_file", "read_many_files", "read_file_range",
+    "file_info", "list_files", "grep", "edit_file",
+    "patch_file", "hash_patch_file", "move_file", "delete_file",
     "mark_step_complete", "finish_build", "submit_plan",
     "update_project_memory", "ast_search", "ast_replace",
     "lsp_diagnostics", "lsp_find_references", "lsp_goto_definition",
@@ -64,6 +65,10 @@ export class ToolRegistry {
     "verifier",
     "reviewer",
     "manager",
+    "explorer",
+    "mcp-aliases",
+    "research",
+    "toolkit",
   ]);
 
   /**

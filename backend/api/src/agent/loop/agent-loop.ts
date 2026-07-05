@@ -54,6 +54,9 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 const DISCOVERY_TOOL_NAMES = new Set([
   "read_file",
+  "read_many_files",
+  "read_file_range",
+  "file_info",
   "list_files",
   "grep",
   "ast_search",
@@ -494,11 +497,15 @@ export async function runAgentLoop(
         const toolsWithOwnLogs = new Set([
           "write_file",
           "read_file",
+          "read_many_files",
+          "read_file_range",
+          "file_info",
           "list_files",
           "grep",
           "edit_file",
           "patch_file",
           "hash_patch_file",
+          "move_file",
           "delete_file",
           "ast_search",
           "ast_replace",
@@ -533,12 +540,34 @@ export async function runAgentLoop(
 
       let result = "";
       const handler = handlers[tc.name];
+      const policy = getPolicy(tc.name);
+      const role = opts.runtimePolicy?.role;
 
       let handlerSucceeded = false;
       let errorCount = 0;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
         errorCount++;
+        if (toolPart && partCtx) {
+          updateToolState(partCtx, emit, toolPart, {
+            status: "error",
+            input: args,
+            error: result,
+            startedAt: (toolPart.state as any).startedAt ?? Date.now(),
+            completedAt: Date.now(),
+          });
+        }
+      } else if (policy.allowedRoles && (!role || !policy.allowedRoles.includes(role))) {
+        result = role
+          ? `Error: tool "${tc.name}" is not available for role "${role}"`
+          : `Error: tool "${tc.name}" requires a runtime role (${policy.allowedRoles.join(", ")})`;
+        errorCount++;
+        emit({
+          type: "action_log",
+          actionType: "tool_error",
+          label: tc.name,
+          detail: result,
+        });
         if (toolPart && partCtx) {
           updateToolState(partCtx, emit, toolPart, {
             status: "error",

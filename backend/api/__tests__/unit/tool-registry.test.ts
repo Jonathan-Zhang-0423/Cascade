@@ -57,6 +57,20 @@ describe("ToolRegistry", () => {
     expect(handlers["submit_plan"]).toBeDefined();
   });
 
+  it("allows MCP alias and research sources to register protected convenience names", () => {
+    const reg = new ToolRegistry();
+    reg.register("mcp-aliases", [makeSchema("mcp_search"), makeSchema("fetch_url")], {
+      mcp_search: async () => "search",
+      fetch_url: async () => "fetch",
+    });
+    reg.register("research", [makeSchema("research")], { research: async () => "research" });
+    const { schemas, handlers } = reg.build();
+    expect(schemas.map((s) => s.function.name)).toEqual(["mcp_search", "fetch_url", "research"]);
+    expect(handlers["mcp_search"]).toBeDefined();
+    expect(handlers["fetch_url"]).toBeDefined();
+    expect(handlers["research"]).toBeDefined();
+  });
+
   it("skips schemas without matching handlers", () => {
     const reg = new ToolRegistry();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

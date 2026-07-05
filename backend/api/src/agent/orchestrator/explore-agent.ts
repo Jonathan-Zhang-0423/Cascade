@@ -1,9 +1,11 @@
-import { runAgentLoop, type ToolHandler, type ToolSchema } from "../loop/agent-loop";
+import { runAgentLoop } from "../loop/agent-loop";
 import { resolveAgentModel, type AIProvider } from "../providers/agent-model-router";
+import { buildAgentToolkit } from "../tools/toolkit";
+import type { BuildSessionState } from "./build-orchestrator";
 
 const EXPLORE_SYSTEM_PROMPT = `You are a fast codebase scanner. Your job is to quickly understand the most relevant parts of an existing project for a given user request.
 
-Use list_files, grep, and read_file to inspect only the most relevant files. Then return a concise summary using exactly these headings:
+Use list_files, grep, read_many_files, read_file_range, file_info, and LSP/AST read-only tools to inspect only the most relevant files. Then return a concise summary using exactly these headings:
 
 relevantFiles:
 - exact paths the editor should read or touch
@@ -35,103 +37,29 @@ ${fileList}
 
 Read the most relevant files and return a concise summary of the codebase patterns relevant to this request.`;
 
-  const fileMap = new Map(files.map(f => [f.path, f.content]));
-
-  const schemas: ToolSchema[] = [
-    {
-      type: "function",
-      function: {
-        name: "list_files",
-        description: "List project files, optionally filtered by a substring or extension.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Optional substring to filter paths" },
-            limit: { type: "number", description: "Maximum paths to return" },
-          },
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "grep",
-        description: "Search project files for a literal or regex pattern. Returns matching paths and snippets.",
-        parameters: {
-          type: "object",
-          properties: {
-            pattern: { type: "string", description: "Text or regex pattern to search" },
-            include: { type: "string", description: "Optional path substring or extension filter" },
-            max_results: { type: "number", description: "Maximum matching lines to return" },
-          },
-          required: ["pattern"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "read_file",
-        description: "Read the content of a file to understand the existing codebase.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: { type: "string", description: "File path to read" },
-          },
-          required: ["path"],
-        },
-      },
-    },
-  ];
-
-  const handlers: Record<string, ToolHandler> = {
-    list_files: async (args) => {
-      const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
-      const limit = Math.min(Math.max(Number(args.limit) || 200, 1), 500);
-      const paths = Array.from(fileMap.keys())
-        .filter((p) => !query || p.toLowerCase().includes(query))
-        .slice(0, limit);
-      return paths.length > 0 ? paths.join("\n") : "(no matching files)";
-    },
-    grep: async (args) => {
-      const rawPattern = String(args.pattern ?? "");
-      if (!rawPattern) return "Error: pattern is required";
-      const include = typeof args.include === "string" ? args.include.toLowerCase() : "";
-      const maxResults = Math.min(Math.max(Number(args.max_results) || 50, 1), 120);
-      let regex: RegExp;
-      try {
-        regex = new RegExp(rawPattern, "i");
-      } catch {
-        regex = new RegExp(rawPattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      }
-      const results: string[] = [];
-      for (const [path, content] of fileMap) {
-        if (include && !path.toLowerCase().includes(include)) continue;
-        const lines = content.split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-          if (!regex.test(lines[i])) continue;
-          results.push(`${path}:${i + 1}: ${lines[i].trim().slice(0, 180)}`);
-          if (results.length >= maxResults) return results.join("\n");
-        }
-      }
-      return results.length > 0 ? results.join("\n") : "(no matches)";
-    },
-    read_file: async (args) => {
-      const path = args.path as string;
-      const content = fileMap.get(path);
-      if (content === undefined) {
-        return `File not found: ${path}. Available: ${Array.from(fileMap.keys()).join(", ")}`;
-      }
-      return `File: ${path}\n\n${content}`;
-    },
+  const explorerSession: BuildSessionState = {
+    id: `explore-${Date.now()}`,
+    aborted: false,
+    files: new Map(files.map(f => [f.path, f.content])),
+    plan: { steps: [] },
+    userRequest,
+    userLang: "English",
+    provider: opts?.provider,
+    events: [],
+    nextEventId: 1,
+    done: false,
+    sseWriters: new Set(),
+    parts: [],
+    status: { type: "busy", agent: "explorer" },
   };
+  const toolkit = buildAgentToolkit("explorer", { session: explorerSession });
 
   try {
     const result = await runAgentLoop(
-      EXPLORE_SYSTEM_PROMPT,
+      `${EXPLORE_SYSTEM_PROMPT}\n\n${toolkit.toolManifest}`,
       [{ role: "user", content: initialMessage }],
-      schemas,
-      handlers,
+      toolkit.schemas,
+      toolkit.handlers,
       () => {},  // no SSE emission — we only want the final text
       {
         maxIterations: 5,
@@ -139,6 +67,17 @@ Read the most relevant files and return a concise summary of the codebase patter
           model,
           disableThinking: true,
           phase: "research",
+          toolPolicies: toolkit.policies,
+          runtimePolicy: {
+            role: "explorer",
+            provider: decision.provider,
+            model,
+            maxIterations: 5,
+            thinkingMode: "disabled",
+            routingMode: decision.routingMode,
+            thinkingProfile: "disabled",
+            toolPolicies: toolkit.policies,
+          },
         },
       );
     return result.finalText.trim();

@@ -4,7 +4,7 @@ import { EDITOR_AGENT_SYSTEM_PROMPT } from "../prompts/editor-prompt";
 import { COMMUNICATOR_AGENT_SYSTEM_PROMPT, buildCommunicatorMessage, type CommunicatorEvent } from "../prompts/communicator-prompt";
 import { detectSkillsFromText, loadSkills, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
-import { runAgentLoop } from "../loop/agent-loop";
+import { runAgentLoop, type ToolHandler, type ToolSchema } from "../loop/agent-loop";
 import { type AIProvider } from "../providers/kimi-client";
 import {
   resolveAgentModel,
@@ -15,7 +15,6 @@ import {
 import { storage, PROJECT_MEMORY_MAX } from "../../infra/storage";
 import { BuildTelemetry, type BuildTelemetryRecord } from "../../infra/telemetry";
 import {
-  buildBuilderTools,
   type BuilderToolState,
 } from "../tools/agent-tools";
 import { getMobilePromptSupplement } from "../prompts/mobile-prompt-supplements";
@@ -28,11 +27,9 @@ import { groupStepsIntoWaves, hasParallelOpportunity, type Wave } from "./step-d
 import { loadUserSkills } from "../../skills/user-skill-loader";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../mcp/mcp-config";
 import { McpManager } from "../mcp/mcp-client";
-import { buildMcpAliasTools, buildMcpTools, getMcpToolNames } from "../mcp/mcp-tools";
-import { runResearchAgent, sanitizeResearchResult } from "../mcp/research-agent";
+import { getMcpToolNames } from "../mcp/mcp-tools";
 import { runExploreAgent } from "./explore-agent";
-import { ToolRegistry } from "../tools/tool-registry";
-import type { ToolHandler, ToolSchema } from "../loop/agent-loop";
+import { buildAgentToolkit } from "../tools/toolkit";
 import type { AgentRunSpec, ToolPolicy } from "../runtime/types";
 import { buildEditorContextPacket, estimateContextPacketTokens, renderContextPacket } from "../runtime/context-packet";
 import { TodoLedger } from "../runtime/todo-ledger";
@@ -144,48 +141,6 @@ function fillMissingRequiredFiles(steps: BuildStep[], suggestedFiles: string[], 
   });
 }
 
-export function buildResearchTool(mcpManager: McpManager, provider?: AIProvider): {
-  schemas: ToolSchema[];
-  handlers: Record<string, ToolHandler>;
-} {
-  const schemas: ToolSchema[] = [
-    {
-      type: "function",
-      function: {
-        name: "research",
-        description: "Run a focused research sub-agent to find external information from the web. Use this when you need current docs, API references, best practices, version numbers, or any information not available in the project files. The sub-agent will search the web and return a synthesized answer.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: {
-              type: "string",
-              description: "The research question - be specific. E.g. 'What is the latest TailwindCSS v4 configuration format?' or 'How to configure ESLint flat config for TypeScript?'",
-            },
-          },
-          required: ["query"],
-        },
-      },
-    },
-  ];
-  const handlers: Record<string, ToolHandler> = {
-    research: async (args, emitFn) => {
-      const query = args.query as string;
-      if (!query) return "Error: query is required";
-      emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-      const result = await runResearchAgent(query, mcpManager, emitFn, { provider });
-      const wordCount = result ? result.split(/\s+/).length : 0;
-      const sourceCount = (result?.match(/https?:\/\//g) || []).length;
-      const summaryLine = sourceCount > 0
-        ? `Found ${sourceCount} source(s), ${wordCount} words`
-        : `${wordCount} words`;
-      emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-      const sanitized = sanitizeResearchResult(result);
-      return sanitized || "(No findings)";
-    },
-  };
-  return { schemas, handlers };
-}
-
 function buildEditorToolset(
   session: BuildSessionState,
   steps: BuildStep[],
@@ -204,32 +159,40 @@ function buildEditorToolset(
   handlers: Record<string, ToolHandler>;
   policies: Record<string, ToolPolicy>;
   sources: string[];
+  toolManifest: string;
   state: BuilderToolState;
 } {
-  const registry = new ToolRegistry();
-  const builtinTools = buildBuilderTools(session, steps, options?.telemetry, options?.exitSignal, {
-    allowedStepIds: options?.allowedStepIds,
-    completeOnlyCurrentStep: options?.completeOnlyCurrentStep,
-    currentStepId: options?.currentStepId,
+  const toolkit = buildAgentToolkit("editor", {
+    session,
+    planSteps: steps,
+    telemetry: options?.telemetry,
+    exitSignal: options?.exitSignal,
+    builderOptions: {
+      allowedStepIds: options?.allowedStepIds,
+      completeOnlyCurrentStep: options?.completeOnlyCurrentStep,
+      currentStepId: options?.currentStepId,
+    },
+    mcpManager: options?.mcpManager,
+    emit,
+    provider: session.provider,
+    userSkillTools: userSkillsLoaded.toolSchemas.length > 0 || Object.keys(userSkillsLoaded.toolHandlers).length > 0
+      ? {
+          schemas: userSkillsLoaded.toolSchemas,
+          handlers: userSkillsLoaded.toolHandlers,
+        }
+      : undefined,
   });
-  registry.register("builder", builtinTools.schemas, builtinTools.handlers);
-
-  if (userSkillsLoaded.toolSchemas.length > 0 || Object.keys(userSkillsLoaded.toolHandlers).length > 0) {
-    registry.register("user-skills", userSkillsLoaded.toolSchemas, userSkillsLoaded.toolHandlers);
-  }
-
-  const mcpManager = options?.mcpManager;
-  if (mcpManager && mcpManager.getAvailableTools().length > 0) {
-    const mcpTools = buildMcpTools(mcpManager, emit);
-    registry.register("mcp", mcpTools.schemas, mcpTools.handlers);
-    const mcpAliasTools = buildMcpAliasTools(mcpManager);
-    registry.register("mcp-aliases", mcpAliasTools.schemas, mcpAliasTools.handlers);
-    const researchTools = buildResearchTool(mcpManager, session.provider);
-    registry.register("research", researchTools.schemas, researchTools.handlers);
-  }
-
-  const built = registry.build();
-  return { ...built, sources: registry.listSources(), state: builtinTools.state };
+  return {
+    schemas: toolkit.schemas,
+    handlers: toolkit.handlers,
+    policies: toolkit.policies,
+    sources: toolkit.sources,
+    toolManifest: toolkit.toolManifest,
+    state: toolkit.state ?? {
+      getCompletedStepCount: () => 0,
+      getCompletedSteps: () => [],
+    },
+  };
 }
 
 function withStepScope(emit: SseEmit, stepNumber: number): SseEmit {
@@ -802,7 +765,7 @@ async function runBuilderParallelWaves(
         });
         await withModelFallback(editorDecisions, async (client, model, decision) => {
           await runAgentLoop(
-            builderSystemPrompt,
+            `${builderSystemPrompt}\n\n${subTools.toolManifest}`,
             [{ role: "user", content: subInitialMessage }],
             subTools.schemas,
             subTools.handlers,
@@ -910,7 +873,7 @@ async function runBuilderSequentialSteps(
         toolPolicies: stepTools.policies,
       };
       return await runAgentLoop(
-        builderSystemPrompt,
+        `${builderSystemPrompt}\n\n${stepTools.toolManifest}`,
         [{ role: "user", content: stepInitialMessage }],
         stepTools.schemas,
         stepTools.handlers,

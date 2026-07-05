@@ -1,4 +1,4 @@
-import { mkdir, writeFile, rm } from "fs/promises";
+import { mkdir, writeFile, rm, rename } from "fs/promises";
 import path from "path";
 import { createHash } from "crypto";
 import type { ToolSchema, ToolHandler } from "../loop/agent-loop";
@@ -30,8 +30,89 @@ function matchesPathFilter(filePath: string, include?: string, exclude?: string)
   return true;
 }
 
-function fileVersionHash(content: string): string {
+export function fileVersionHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 12);
+}
+
+function normalizeProjectPath(rawPath: unknown): string | null {
+  if (typeof rawPath !== "string") return null;
+  const trimmed = rawPath.trim().replace(/\\/g, "/");
+  if (!trimmed || trimmed.includes("\0")) return null;
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const parts = withSlash.split("/");
+  if (parts.some((part) => part === "..")) return null;
+  return withSlash.replace(/\/{2,}/g, "/");
+}
+
+function resolveProjectFilePath(files: Map<string, string>, rawPath: unknown): string | null {
+  const normalized = normalizeProjectPath(rawPath);
+  if (!normalized) return null;
+  if (files.has(normalized)) return normalized;
+  const withoutLeading = normalized.replace(/^\/+/, "");
+  const projectPrefixed = `/project/${withoutLeading.replace(/^project\//, "")}`;
+  if (files.has(projectPrefixed)) return projectPrefixed;
+  return normalized;
+}
+
+function normalizeMoveDestination(rawPath: unknown, fromPath: string): string | null {
+  const normalized = normalizeProjectPath(rawPath);
+  if (!normalized) return null;
+  if (normalized.startsWith("/project/")) return normalized;
+  if (fromPath.startsWith("/project/")) {
+    return `/project/${normalized.replace(/^\/+/, "").replace(/^project\//, "")}`;
+  }
+  return normalized;
+}
+
+function lineCount(content: string): number {
+  if (content.length === 0) return 0;
+  return content.split(/\r?\n/).length;
+}
+
+function makeFileInfo(path_: string, content: string): string {
+  return [
+    `File: ${path_}`,
+    `Exists: true`,
+    `Lines: ${lineCount(content)}`,
+    `Chars: ${content.length}`,
+    `File version hash: ${fileVersionHash(content)}`,
+  ].join("\n");
+}
+
+function compactLogDetail(content: string, limit = 800): string {
+  if (content.length <= limit) return content;
+  return `${content.slice(0, limit)}\n...(log detail truncated; total ${content.length} chars)`;
+}
+
+function applyLineRange(content: string, startLineRaw: unknown, endLineRaw: unknown): {
+  ok: true;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  text: string;
+} | { ok: false; message: string } {
+  const lines = content.split(/\r?\n/);
+  const totalLines = content.length === 0 ? 0 : lines.length;
+  const startLine = Math.floor(Number(startLineRaw));
+  const endLine = Math.floor(Number(endLineRaw));
+  if (!Number.isFinite(startLine) || !Number.isFinite(endLine)) {
+    return { ok: false, message: "Error: start_line and end_line must be numbers" };
+  }
+  if (startLine < 1 || endLine < startLine) {
+    return { ok: false, message: "Error: expected 1-based line range with end_line >= start_line" };
+  }
+  if (totalLines === 0) {
+    return { ok: true, startLine: 1, endLine: 0, totalLines: 0, text: "" };
+  }
+  const clampedStart = Math.min(startLine, totalLines);
+  const clampedEnd = Math.min(endLine, totalLines);
+  return {
+    ok: true,
+    startLine: clampedStart,
+    endLine: clampedEnd,
+    totalLines,
+    text: lines.slice(clampedStart - 1, clampedEnd).join("\n"),
+  };
 }
 
 async function mirrorFileChangeToDiskAndLsp(
@@ -89,7 +170,7 @@ async function applyFileContentUpdate(
   touchedStepId?: number | string,
 ): Promise<string> {
   const fileName = filePath.split("/").pop() || filePath;
-  emit({ type: "action_log", actionType: "file_write", label: fileName, detail: content, filePath });
+  emit({ type: "action_log", actionType: "file_write", label: fileName, detail: compactLogDetail(content), filePath });
   session.files.set(filePath, content);
   session.todoLedger?.recordTouchedFile(filePath, touchedStepId);
   persistFileToDb(session, filePath, content);
@@ -204,6 +285,22 @@ export interface ReviewSessionState {
 export interface ManagerSessionState {
   plan?: Record<string, unknown>;
   memoryTouched?: boolean;
+}
+
+async function removeFileFromDiskAndLsp(session: BuildSessionState, filePath: string): Promise<void> {
+  if (!session.sessionDir) return;
+  try {
+    const abs = path.resolve(session.sessionDir, filePath.replace(/^\/+/, ""));
+    const normalizedBase = path.resolve(session.sessionDir);
+    if (!abs.startsWith(normalizedBase)) {
+      console.warn(`[agent-tools] path traversal blocked on delete: ${filePath}`);
+    } else {
+      await rm(abs, { force: true });
+    }
+  } catch (err) {
+    console.warn("[agent-tools] disk delete failed for", filePath, err instanceof Error ? err.message : err);
+  }
+  lspManager.notifyFileChange(session.id, filePath, "").catch(() => {});
 }
 
 const LATEST_PLAN_MEMORY_MARKER = "<!-- cascade:latest-plan -->";
@@ -325,6 +422,70 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "read_many_files",
+        description: "Read several known project files in one tool call. Prefer this after explorer/plan identifies multiple relevant files. Returns each file's version hash and truncated content.",
+        parameters: {
+          type: "object",
+          properties: {
+            paths: {
+              type: "array",
+              items: { type: "string" },
+              description: "Exact file paths to read, e.g. ['/project/src/App.tsx', '/project/src/styles.css']",
+            },
+            max_chars_per_file: {
+              type: "number",
+              description: "Maximum characters returned per file (default 12000, max 32000)",
+            },
+          },
+          required: ["paths"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_file_range",
+        description: "Read a precise 1-based line range from a large file. Use this when read_file output was truncated or you need exact context for a targeted edit.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to read, e.g. /project/src/App.tsx",
+            },
+            start_line: {
+              type: "number",
+              description: "1-based start line",
+            },
+            end_line: {
+              type: "number",
+              description: "1-based end line, inclusive",
+            },
+          },
+          required: ["path", "start_line", "end_line"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "file_info",
+        description: "Return metadata for a project file: existence, line count, character count, file version hash, and available block hashes. Use before risky edits or moves.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The file path to inspect, e.g. /project/src/App.tsx",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "list_files",
         description: "List project files. Use this to discover the project structure before reading or editing files.",
         parameters: {
@@ -377,6 +538,14 @@ export function buildBuilderTools(
             max_results: {
               type: "number",
               description: "Maximum matching lines to return (default 80, max 300)",
+            },
+            context_before: {
+              type: "number",
+              description: "Number of lines before each match to include (default 0, max 5)",
+            },
+            context_after: {
+              type: "number",
+              description: "Number of lines after each match to include (default 0, max 5)",
             },
           },
           required: ["pattern"],
@@ -508,6 +677,35 @@ export function buildBuilderTools(
     {
       type: "function",
       function: {
+        name: "move_file",
+        description: "Safely rename or move a project file while preserving content. Prefer this over write_file + delete_file for renames. Supports expected_hash to avoid moving a stale version.",
+        parameters: {
+          type: "object",
+          properties: {
+            from_path: {
+              type: "string",
+              description: "Current file path, e.g. /project/src/old.ts",
+            },
+            to_path: {
+              type: "string",
+              description: "New file path, e.g. /project/src/new.ts",
+            },
+            expected_hash: {
+              type: "string",
+              description: "Optional current File version hash for from_path.",
+            },
+            overwrite: {
+              type: "boolean",
+              description: "Allow replacing an existing destination file. Default false.",
+            },
+          },
+          required: ["from_path", "to_path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "finish_build",
         description: "Signal that you have finished implementing ALL plan steps and the build is complete. Call this once, after every step is done and any compile checks pass. This ENDS the build — it does NOT trigger a review.",
         parameters: {
@@ -587,7 +785,9 @@ export function buildBuilderTools(
       }
       const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, content, options?.currentStepId);
       telemetry?.incr("writeFileCount");
-      return `File written successfully: ${path_} (${content.length} chars)${diagSuffix}`;
+      const newHash = fileVersionHash(content);
+      lastReadHashes.set(path_, newHash);
+      return `File written successfully: ${path_} (${content.length} chars)\nFile version hash: ${newHash}${diagSuffix}`;
     },
 
     list_files: async (args, emit) => {
@@ -620,6 +820,8 @@ export function buildBuilderTools(
       const caseSensitive = args.case_sensitive === true;
       const useRegex = args.regex !== false;
       const maxResults = Math.min(Math.max(typeof args.max_results === "number" ? args.max_results : 80, 1), 300);
+      const contextBefore = Math.min(Math.max(typeof args.context_before === "number" ? Math.floor(args.context_before) : 0, 0), 5);
+      const contextAfter = Math.min(Math.max(typeof args.context_after === "number" ? Math.floor(args.context_after) : 0, 0), 5);
       let matcher: RegExp;
       try {
         const source = useRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -640,7 +842,21 @@ export function buildBuilderTools(
           matcher.lastIndex = 0;
           totalMatches++;
           if (matches.length < maxResults) {
-            matches.push(`${filePath}:${i + 1}: ${lines[i].trim().slice(0, 240)}`);
+            if (contextBefore === 0 && contextAfter === 0) {
+              matches.push(`${filePath}:${i + 1}: ${lines[i].trim().slice(0, 240)}`);
+            } else {
+              const start = Math.max(0, i - contextBefore);
+              const end = Math.min(lines.length - 1, i + contextAfter);
+              const snippet = lines
+                .slice(start, end + 1)
+                .map((line, offset) => {
+                  const lineNo = start + offset + 1;
+                  const marker = lineNo === i + 1 ? ">" : " ";
+                  return `${marker} ${lineNo}: ${line.slice(0, 240)}`;
+                })
+                .join("\n");
+              matches.push(`${filePath}:${i + 1}\n${snippet}`);
+            }
           }
         }
       }
@@ -685,7 +901,9 @@ export function buildBuilderTools(
         : current.replace(oldContent, newContent);
       const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       telemetry?.incr("patchFileCount");
-      return `File edited successfully: ${path_} (${replaceAll ? occurrences : 1} replacement(s), ${oldContent.length} chars -> ${newContent.length} chars)${diagSuffix}`;
+      const newHash = fileVersionHash(patched);
+      lastReadHashes.set(path_, newHash);
+      return `File edited successfully: ${path_} (${replaceAll ? occurrences : 1} replacement(s), ${oldContent.length} chars -> ${newContent.length} chars)\nFile version hash: ${newHash}${diagSuffix}`;
     },
 
     patch_file: async (args, emit) => {
@@ -713,7 +931,9 @@ export function buildBuilderTools(
       const patched = current.replace(oldContent, newContent);
       const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       telemetry?.incr("patchFileCount");
-      return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)${diagSuffix}`;
+      const newHash = fileVersionHash(patched);
+      lastReadHashes.set(path_, newHash);
+      return `File patched successfully: ${path_} (replaced ${oldContent.length} chars with ${newContent.length} chars)\nFile version hash: ${newHash}${diagSuffix}`;
     },
 
     hash_patch_file: async (args, emit) => {
@@ -751,7 +971,9 @@ export function buildBuilderTools(
       const diagSuffix = await applyFileContentUpdate(session, telemetry, emit, path_, patched, options?.currentStepId);
       const label = match.name ? `${match.kind} ${match.name}` : match.kind;
       telemetry?.incr("hashPatchFileCount");
-      return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)${diagSuffix}`;
+      const newHash = fileVersionHash(patched);
+      lastReadHashes.set(path_, newHash);
+      return `File patched: ${path_}, block [${regionHash}] ${label} replaced (${newContent.length} chars)\nFile version hash: ${newHash}${diagSuffix}`;
     },
 
     delete_file: async (args, emit) => {
@@ -774,27 +996,76 @@ export function buildBuilderTools(
       emit({ type: "file_deleted", filePath: path_ });
 
       // Remove the disk mirror + tell the LSP the file is gone (empty content).
-      if (session.sessionDir) {
-        try {
-          const abs = path.resolve(session.sessionDir, path_.replace(/^\/+/, ""));
-          const normalizedBase = path.resolve(session.sessionDir);
-          if (!abs.startsWith(normalizedBase)) {
-            console.warn(`[agent-tools] path traversal blocked on delete: ${path_}`);
-          } else {
-            await rm(abs, { force: true });
-          }
-        } catch (err) {
-          console.warn("[agent-tools] disk delete failed for", path_, err instanceof Error ? err.message : err);
-        }
-        lspManager.notifyFileChange(session.id, path_, "").catch(() => {});
-      }
+      await removeFileFromDiskAndLsp(session, path_);
 
       telemetry?.incr("deleteFileCount");
       return `File deleted: ${path_}`;
     },
 
+    move_file: async (args, emit) => {
+      const fromPath = resolveProjectFilePath(session.files, args.from_path);
+      const toPath = fromPath ? normalizeMoveDestination(args.to_path, fromPath) : normalizeProjectPath(args.to_path);
+      const expectedHash = typeof args.expected_hash === "string" ? args.expected_hash.trim() : "";
+      const overwrite = args.overwrite === true;
+      if (!fromPath || !toPath) return "Error: from_path and to_path are required project paths";
+      if (fromPath === toPath) return "Error: from_path and to_path are the same";
+      const content = session.files.get(fromPath);
+      if (content === undefined) {
+        return `Error: file not found: ${fromPath}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      if (session.files.has(toPath) && !overwrite) {
+        return `Error: destination already exists: ${toPath}. Pass overwrite=true only if replacing it is intentional.`;
+      }
+      const currentHash = fileVersionHash(content);
+      if (expectedHash && expectedHash !== currentHash) {
+        return `Error: ${fromPath} changed since the version you are trying to move (expected_hash=${expectedHash}, current_hash=${currentHash}). Re-read the file and retry.`;
+      }
+
+      const fileName = `${fromPath.split("/").pop() || fromPath} -> ${toPath.split("/").pop() || toPath}`;
+      emit({ type: "action_log", actionType: "file_write", label: fileName, detail: `${fromPath} -> ${toPath}`, filePath: toPath });
+
+      session.files.delete(fromPath);
+      session.files.set(toPath, content);
+      session.todoLedger?.recordTouchedFile(fromPath, options?.currentStepId);
+      session.todoLedger?.recordTouchedFile(toPath, options?.currentStepId);
+      if (session.projectId) {
+        try {
+          await storage.deleteProjectFile(session.projectId, fromPath);
+          await storage.upsertProjectFile(session.projectId, toPath, content);
+        } catch (err) {
+          console.warn(`[agent-tools] DB move failed for ${fromPath} -> ${toPath}:`, err instanceof Error ? err.message : err);
+        }
+      }
+      if (session.sessionDir) {
+        try {
+          const base = path.resolve(session.sessionDir);
+          const fromAbs = path.resolve(session.sessionDir, fromPath.replace(/^\/+/, ""));
+          const toAbs = path.resolve(session.sessionDir, toPath.replace(/^\/+/, ""));
+          if (!fromAbs.startsWith(base) || !toAbs.startsWith(base)) {
+            console.warn(`[agent-tools] path traversal blocked on move: ${fromPath} -> ${toPath}`);
+          } else {
+            await mkdir(path.dirname(toAbs), { recursive: true });
+            await rename(fromAbs, toAbs).catch(async () => {
+              await writeFile(toAbs, content, "utf-8");
+              await rm(fromAbs, { force: true });
+            });
+          }
+        } catch (err) {
+          console.warn(`[agent-tools] disk move failed for ${fromPath} -> ${toPath}:`, err instanceof Error ? err.message : err);
+        }
+        lspManager.notifyFileChange(session.id, fromPath, "").catch(() => {});
+        lspManager.notifyFileChange(session.id, toPath, content).catch(() => {});
+      }
+      emit({ type: "file_deleted", filePath: fromPath });
+      emit({ type: "code_applied", filePath: toPath, code: content });
+      telemetry?.addFileWritten(toPath);
+      lastReadHashes.set(toPath, currentHash);
+      lastReadHashes.delete(fromPath);
+      return `File moved: ${fromPath} -> ${toPath}\nFile version hash: ${currentHash}`;
+    },
+
     read_file: async (args, emit) => {
-      const path = args.path as string;
+      const path = resolveProjectFilePath(session.files, args.path);
       if (!path) return "Error: path is required";
       const fileName = path.split("/").pop() || path;
       const content = session.files.get(path);
@@ -820,6 +1091,83 @@ export function buildBuilderTools(
         // silent — block indexing is best-effort
       }
       return `File: ${path}\nFile version hash: ${versionHash}\n\n${truncatedContent}${blockSuffix}`;
+    },
+
+    read_many_files: async (args, emit) => {
+      const rawPaths = Array.isArray(args.paths) ? args.paths : [];
+      if (rawPaths.length === 0) return "Error: paths must be a non-empty array";
+      const maxChars = Math.min(Math.max(typeof args.max_chars_per_file === "number" ? Math.floor(args.max_chars_per_file) : 12000, 1000), 32000);
+      const normalizedPaths = rawPaths
+        .map((p) => resolveProjectFilePath(session.files, p))
+        .filter((p): p is string => !!p);
+      if (normalizedPaths.length === 0) return "Error: no valid project paths supplied";
+      const uniquePaths = Array.from(new Set(normalizedPaths)).slice(0, 20);
+      emit({
+        type: "action_log",
+        actionType: "file_read",
+        label: "read_many_files",
+        detail: uniquePaths.join(", "),
+      });
+
+      const chunks: string[] = [];
+      for (const filePath of uniquePaths) {
+        const content = session.files.get(filePath);
+        if (content === undefined) {
+          chunks.push(`--- ${filePath} ---\nFile not found.`);
+          continue;
+        }
+        const versionHash = fileVersionHash(content);
+        lastReadHashes.set(filePath, versionHash);
+        const truncated = content.length > maxChars
+          ? `${content.slice(0, maxChars)}\n\n...(file truncated at ${maxChars} chars — total ${content.length} chars; use read_file_range for precise sections)`
+          : content;
+        chunks.push(`--- ${filePath} ---\nFile version hash: ${versionHash}\nLines: ${lineCount(content)}\nChars: ${content.length}\n\n${truncated}`);
+      }
+      return chunks.join("\n\n");
+    },
+
+    read_file_range: async (args, emit) => {
+      const path = resolveProjectFilePath(session.files, args.path);
+      if (!path) return "Error: path is required";
+      const content = session.files.get(path);
+      const fileName = path.split("/").pop() || path;
+      emit({ type: "action_log", actionType: "file_read", label: `${fileName} lines`, detail: `${args.start_line}-${args.end_line}`, filePath: path });
+      if (content === undefined) {
+        return `File not found: ${path}. Available files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      const range = applyLineRange(content, args.start_line, args.end_line);
+      if (!range.ok) return range.message;
+      const versionHash = fileVersionHash(content);
+      lastReadHashes.set(path, versionHash);
+      return [
+        `File: ${path}`,
+        `File version hash: ${versionHash}`,
+        `Lines: ${range.startLine}-${range.endLine} of ${range.totalLines}`,
+        "",
+        range.text,
+      ].join("\n");
+    },
+
+    file_info: async (args, emit) => {
+      const path = resolveProjectFilePath(session.files, args.path);
+      if (!path) return "Error: path is required";
+      const content = session.files.get(path);
+      const fileName = path.split("/").pop() || path;
+      emit({ type: "action_log", actionType: "file_read", label: `Info: ${fileName}`, detail: "", filePath: path });
+      if (content === undefined) {
+        return `File: ${path}\nExists: false\nAvailable files: ${Array.from(session.files.keys()).join(", ") || "(none)"}`;
+      }
+      const versionHash = fileVersionHash(content);
+      lastReadHashes.set(path, versionHash);
+      let blockSuffix = "";
+      try {
+        const blocks = await extractBlocks(path, content);
+        const formatted = formatBlockIndex(blocks);
+        if (formatted) blockSuffix = `\n\n${formatted}`;
+      } catch {
+        // best effort
+      }
+      return `${makeFileInfo(path, content)}${blockSuffix}`;
     },
 
     mark_step_complete: async (args, emit) => {

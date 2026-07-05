@@ -5,12 +5,11 @@ import { type AIProvider } from "../providers/kimi-client";
 import { resolveAgentModelChain, withModelFallback } from "../providers/agent-model-router";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
-  buildReviewTools,
-  buildFixerTools,
   type ReviewSessionState as ReviewToolState,
   type ReviewIssue,
   type ReviewSeverity,
 } from "../tools/agent-tools";
+import { buildAgentToolkit } from "../tools/toolkit";
 import { buildReviewSystemPrompt, type ReviewStrictness } from "../prompts/verifier-prompt";
 import {
   buildBuilderSystemPrompt,
@@ -239,13 +238,18 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     session.status = { type: "busy", agent: "verifier" };
     const reviewerSystemPrompt = buildReviewerSystemPrompt(session);
     const reviewerInitialMessage = buildReviewerInitialMessage(session, planSteps);
-    const reviewTools = buildReviewTools(reviewToBuildSession(session, { steps: planSteps }), reviewState);
+    const reviewTools = buildAgentToolkit("verifier", {
+      session: reviewToBuildSession(session, { steps: planSteps }),
+      planSteps,
+      reviewState,
+      telemetry,
+    });
 
     try {
       await telemetry.time("verifier", async () => {
         await withModelFallback(verifierDecisions, async (client, model, decision) => {
           await runAgentLoop(
-            reviewerSystemPrompt,
+            `${reviewerSystemPrompt}\n\n${reviewTools.toolManifest}`,
             [{ role: "user", content: reviewerInitialMessage }],
             reviewTools.schemas,
             reviewTools.handlers,
@@ -266,7 +270,9 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
                 thinkingMode: "auto",
                 routingMode: decision.routingMode,
                 thinkingProfile: "adaptive",
+                toolPolicies: reviewTools.policies,
               },
+              toolPolicies: reviewTools.policies,
             },
           );
         });
@@ -321,13 +327,17 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     const fixerSession = reviewToBuildSession(session, { steps: targetedPlanSteps });
     const fixerSystemPrompt = buildBuilderSystemPrompt(fixerSession);
     const fixerInitialMessage = buildBuilderInitialMessage(fixerSession, targetedPlanSteps, "fix", issuesSummary);
-    const fixerTools = buildFixerTools(fixerSession, targetedPlanSteps, telemetry);
+    const fixerTools = buildAgentToolkit("fixer", {
+      session: fixerSession,
+      planSteps: targetedPlanSteps,
+      telemetry,
+    });
 
     try {
       await telemetry.time("fixer", async () => {
         const fixerLoopResult = await withModelFallback(fixerDecisions, async (client, model, decision) => {
           return await runAgentLoop(
-            fixerSystemPrompt,
+            `${fixerSystemPrompt}\n\n${fixerTools.toolManifest}`,
             [{ role: "user", content: fixerInitialMessage }],
             fixerTools.schemas,
             fixerTools.handlers,
@@ -352,7 +362,9 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
                   discoveryNudgeMinIteration: 20,
                   discoveryNudgeThreshold: 4,
                 },
+                toolPolicies: fixerTools.policies,
               },
+              toolPolicies: fixerTools.policies,
             },
           );
         });
