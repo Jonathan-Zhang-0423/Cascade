@@ -36,11 +36,8 @@ import { TodoLedger } from "../runtime/todo-ledger";
 
 const BUILDER_MAX_ITERATIONS = 200;
 
-function builderStepIterationBudget(totalSteps: number): number {
-  if (totalSteps <= 1) return BUILDER_MAX_ITERATIONS;
-  if (totalSteps === 2) return Math.min(120, BUILDER_MAX_ITERATIONS);
-  if (totalSteps <= 4) return Math.min(80, BUILDER_MAX_ITERATIONS);
-  return Math.min(60, BUILDER_MAX_ITERATIONS);
+export function builderStepIterationBudget(_totalSteps: number): number {
+  return BUILDER_MAX_ITERATIONS;
 }
 
 export interface BuildFile {
@@ -733,6 +730,7 @@ async function runBuilderParallelWaves(
   userSkillsLoaded: Awaited<ReturnType<typeof loadUserSkills>>,
 ): Promise<void> {
   const allSteps = waves.flatMap((w) => w.steps).sort((a, b) => a.step - b.step);
+  const stepMaxIterations = builderStepIterationBudget(allSteps.length);
   for (const wave of waves) {
     if (session.aborted) return;
 
@@ -772,7 +770,7 @@ async function runBuilderParallelWaves(
             stepEmit,
             {
               exitTools: ["mark_step_complete"],
-              maxIterations: 30,
+              maxIterations: stepMaxIterations,
               client,
               model,
               phase: "editor",
@@ -780,7 +778,7 @@ async function runBuilderParallelWaves(
                 role: "editor",
                 provider: decision.provider,
                 model,
-                maxIterations: 30,
+                maxIterations: stepMaxIterations,
                 thinkingMode: "auto",
                 routingMode: decision.routingMode,
                 thinkingProfile: "adaptive",

@@ -168,7 +168,14 @@ export class BuildTelemetry {
     fallbackIndex: number;
   }): void {
     this.record.modelRouteDecisions ??= [];
-    this.record.modelRouteDecisions.push(decision);
+    this.record.modelRouteDecisions.push({
+      role: decision.role,
+      provider: decision.provider,
+      model: decision.model,
+      reason: decision.reason,
+      routingMode: decision.routingMode,
+      fallbackIndex: decision.fallbackIndex,
+    });
   }
 
   setExplorerUsed(used: boolean, timedOut = false): void {
