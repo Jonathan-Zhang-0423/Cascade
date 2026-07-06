@@ -502,10 +502,10 @@ export function registerAuthRoutes(app: Express, security: Security): void {
             id,
             username: candidate,
             password: null,
-            email: channel === "email" ? normalized : null,
-            phone: channel === "sms" ? normalized : null,
-            emailVerified: channel === "email",
-            phoneVerified: channel === "sms",
+            email: normalized,
+            phone: null,
+            emailVerified: true,
+            phoneVerified: false,
           }).returning({ id: users.id, username: users.username });
           createdUserId = row.id;
           username = row.username;
