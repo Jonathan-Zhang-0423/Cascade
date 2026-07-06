@@ -1,8 +1,8 @@
 import type { Express } from "express";
-import { eq, and, desc, count, sql, isNull, or } from "drizzle-orm";
+import { eq, and, desc, count, sql, isNull, or, gt } from "drizzle-orm";
 import { db } from "../../infra/db";
 import { storage } from "../../infra/storage";
-import { users, waitlistSubscribers, inviteCodes, userFeedback, projects, chatMessages, otpCodes, notifications } from "@cascade/database";
+import { users, waitlistSubscribers, inviteCodes, userFeedback, projects, chatMessages, otpCodes, notifications, ipBans } from "@cascade/database";
 import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
 import { isEduEmail, isQizhiEmail, getTrialInfo, inviteCodePrefix, formatInviteCode } from "../services/invite-service";
 import { checkAdmin } from "../middleware/auth-middleware";
@@ -76,45 +76,53 @@ export function registerAdminRoutes(app: Express): void {
   });
 
 
-  // GET /api/admin/blocklist/ip — list all blocked IPs
-  app.get("/api/admin/blocklist/ip", (req, res) => {
+  // GET /api/admin/blocklist/ip — list all blocked IPs (DB-backed, survives restarts)
+  app.get("/api/admin/blocklist/ip", async (req, res) => {
     if (!checkAdmin(req, res)) return;
-    const now = Date.now();
-    const blocklist = (app as any)._ipBlocklist as Map<string, { blockedUntil: number; reason: string; blockedAt: number }>;
-    const list = Array.from(blocklist.entries())
-      .filter(([, v]) => v.blockedUntil > now)
-      .map(([ip, v]) => ({
-        ip,
-        reason: v.reason,
-        blockedAt: new Date(v.blockedAt).toISOString(),
-        blockedUntil: new Date(v.blockedUntil).toISOString(),
-        remainingSec: Math.ceil((v.blockedUntil - now) / 1000),
-      }));
-    res.json({ total: list.length, items: list });
+    try {
+      const now = new Date();
+      const rows = await db.select().from(ipBans).where(gt(ipBans.blockedUntil, now));
+      const nowMs = Date.now();
+      const list = rows
+        .map((r) => {
+          const until = r.blockedUntil instanceof Date ? r.blockedUntil.getTime() : 0;
+          const blockedAt = r.blockedAt instanceof Date ? r.blockedAt.getTime() : nowMs;
+          return {
+            ip: r.ip,
+            reason: r.reason ?? "",
+            blockedAt: new Date(blockedAt).toISOString(),
+            blockedUntil: new Date(until).toISOString(),
+            remainingSec: Math.max(0, Math.ceil((until - nowMs) / 1000)),
+            bannedBy: r.bannedBy ?? null,
+          };
+        })
+        .sort((a, b) => b.remainingSec - a.remainingSec);
+      res.json({ total: list.length, items: list });
+    } catch (err) {
+      console.error("[admin/blocklist/ip]", err);
+      res.status(500).json({ error: "Failed to fetch blocklist" });
+    }
   });
 
-  // DELETE /api/admin/blocklist/ip/:ip — unblock an IP
-  app.delete("/api/admin/blocklist/ip/:ip", (req, res) => {
+  // DELETE /api/admin/blocklist/ip/:ip — unblock an IP (memory + DB)
+  app.delete("/api/admin/blocklist/ip/:ip", async (req, res) => {
     if (!checkAdmin(req, res)) return;
     const ip = decodeURIComponent(req.params.ip);
     const existed = (app as any)._ipBlocklist.has(ip);
-    (app as any)._ipBlocklist.delete(ip);
+    (app as any)._unbanIp?.(ip);
+    try { await db.delete(ipBans).where(eq(ipBans.ip, ip)); } catch (err) { console.error("[admin/unblock]", err); }
     res.json({ ok: true, ip, unblocked: existed });
   });
 
-  // POST /api/admin/blocklist/ip — manually block an IP
+  // POST /api/admin/blocklist/ip — manually block an IP (memory + DB)
   app.post("/api/admin/blocklist/ip", (req, res) => {
     if (!checkAdmin(req, res)) return;
     const { ip, durationHours = 1, reason = "Manual block" } = req.body as {
       ip?: string; durationHours?: number; reason?: string;
     };
     if (!ip || typeof ip !== "string") return res.status(400).json({ error: "ip required" });
-    const now = Date.now();
-    (app as any)._ipBlocklist.set(ip.trim(), {
-      blockedUntil: now + durationHours * 60 * 60 * 1000,
-      reason,
-      blockedAt: now,
-    });
+    const adminId = (req as any).adminUser?.id ?? "admin";
+    (app as any)._banIp?.(ip.trim(), reason, durationHours * 60 * 60 * 1000, adminId);
     res.json({ ok: true, ip: ip.trim(), durationHours });
   });
 

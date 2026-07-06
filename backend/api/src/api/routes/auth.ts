@@ -21,7 +21,7 @@ import type { Security } from "../middleware/security";
  * unchanged from the inline versions in registerRoutes.
  */
 export function registerAuthRoutes(app: Express, security: Security): void {
-  const { recordLoginFail, isAccountLocked, clearAccountLockout, getLockout, MAX_FAIL } = security;
+  const { recordLoginFail, isAccountLocked, clearAccountLockout, getLockout, MAX_FAIL, getClientIp, recordAuthFailure } = security;
 
   // === AUTH ===
 
@@ -79,7 +79,12 @@ export function registerAuthRoutes(app: Express, security: Security): void {
         : isPhone ? await storage.getUserByPhone(identifier)
         : await storage.getUserByUsername(identifier);
 
-      if (!user) return res.status(401).json({ error: "Invalid credentials" });
+      if (!user) {
+        // Unknown-account attempt — feed the cross-account detector so a single
+        // IP spraying many usernames gets banned (a real user just mistypes one).
+        recordAuthFailure(getClientIp(req), identifier.toLowerCase());
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
       if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
 
       // Account lockout check
@@ -92,6 +97,9 @@ export function registerAuthRoutes(app: Express, security: Security): void {
       const match = await bcrypt.compare(password, user.password);
       if (!match) {
         recordLoginFail(user.id);
+        // Cross-account signal: a real user mistypes their own password (one
+        // target); an attacker spraying many accounts trips the IP ban here.
+        recordAuthFailure(getClientIp(req), identifier.toLowerCase());
         const entry = getLockout(user.id);
         const remaining = MAX_FAIL - (entry?.failCount ?? 0);
         const msg = remaining <= 0
@@ -388,6 +396,10 @@ export function registerAuthRoutes(app: Express, security: Security): void {
 
       const verify = await verifyOtp({ channel, target: normalized, code, purpose: "login" });
       if (!verify.ok) {
+        // Feed the cross-account detector: OTP spray across many targets from
+        // one IP trips the ban. Per-target brute-force is already handled by
+        // the per-code 5-attempt lockout in the OTP service.
+        recordAuthFailure(getClientIp(req), normalized);
         const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
         return res.status(401).json({ error: errMsg });
       }

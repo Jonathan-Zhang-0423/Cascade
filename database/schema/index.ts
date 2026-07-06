@@ -20,3 +20,4 @@ export * from './app-likes';
 export * from './app-comments';
 export * from './admin-users';
 export * from './admin-audit-log';
+export * from './ip-bans';
