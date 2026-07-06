@@ -33,7 +33,7 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
   // Persist a message directly to the server when the session is in the background.
   const persistMsgToDB = (msg: { role: string; content: string; [k: string]: any }, kind: "chat" | "manager") => {
     const sid = sessionId ?? "main";
-    const clientId = crypto.randomUUID();
+    const clientId = typeof msg.id === "string" && msg.id ? msg.id : crypto.randomUUID();
     const seq = Date.now(); // use timestamp as fallback seq for background msgs
     const metadata: Record<string, unknown> = {};
     if (msg.plan) metadata.plan = msg.plan;

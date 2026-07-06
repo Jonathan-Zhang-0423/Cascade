@@ -44,7 +44,6 @@ const EXPECTED_TABLES = [
 const EXPECTED_INDEXES = [
   "IDX_session_expire",
   "admin_users_username_unique",
-  "agent_session_events_pkey",
   "agent_session_events_session_idx",
   "agent_sessions_project_active_idx",
   "agent_sessions_project_chat_active_idx",
@@ -122,6 +121,25 @@ try {
       console.error(`  ✗ 缺失：${i}`);
       missing++;
     }
+  }
+
+  const { rows: pkRows } = await client.query(
+    `
+      SELECT conname
+      FROM pg_constraint
+      WHERE conrelid = 'agent_session_events'::regclass
+        AND contype = 'p'
+        AND conkey = ARRAY[
+          (SELECT attnum FROM pg_attribute WHERE attrelid = 'agent_session_events'::regclass AND attname = 'session_id'),
+          (SELECT attnum FROM pg_attribute WHERE attrelid = 'agent_session_events'::regclass AND attname = 'event_id')
+        ]::smallint[]
+    `,
+  );
+  if (pkRows.length > 0) {
+    console.log("  ✓ agent_session_events(session_id,event_id) primary key");
+  } else {
+    console.error("  ✗ 缺失：agent_session_events(session_id,event_id) primary key");
+    missing++;
   }
 
   if (missing > 0) {

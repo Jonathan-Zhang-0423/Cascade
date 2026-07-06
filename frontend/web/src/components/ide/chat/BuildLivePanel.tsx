@@ -62,6 +62,7 @@ interface BuildLivePanelProps {
   isCompleted?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
   completionSummary?: string;
+  elapsedSec?: number | null;
   stepNarrations?: Record<number, string>;
   activeStepNumber?: number | null;
   showLiveStatus?: boolean;
@@ -856,6 +857,7 @@ export function BuildLivePanel({
   isCompleted,
   tokenUsage,
   completionSummary,
+  elapsedSec,
   stepNarrations = {},
   activeStepNumber = null,
   showLiveStatus = false,
@@ -1018,7 +1020,7 @@ export function BuildLivePanel({
       )}
 
       {/* Cost summary card — 等总结打字机完成后才显示 */}
-      {showCost && summaryDone && <CostSummary entries={safeEntries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
+      {showCost && summaryDone && <CostSummary entries={safeEntries} elapsedSec={elapsedSec ?? _thinkingElapsedSec} tokenUsage={tokenUsage} />}
 
       {/* Checkpoint card */}
       {showCost && summaryDone && <CheckpointSummary />}

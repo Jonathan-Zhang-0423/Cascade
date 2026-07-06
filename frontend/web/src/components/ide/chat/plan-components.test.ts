@@ -6,6 +6,7 @@ import {
   shouldShowPlanActionLog,
 } from "./plan-live-utils";
 import type { ActionLogEntry } from "./chat-types";
+import { collectBuildResultsForPlans } from "./ChatMessageList";
 
 const entry = (partial: Partial<ActionLogEntry>): ActionLogEntry => ({
   type: "tool_call",
@@ -13,6 +14,38 @@ const entry = (partial: Partial<ActionLogEntry>): ActionLogEntry => ({
   detail: "",
   timestamp: 1,
   ...partial,
+});
+
+describe("historical plan build results", () => {
+  it("attaches the next buildResult message to the preceding plan card", () => {
+    const planMsg: any = {
+      id: "plan-1",
+      role: "assistant",
+      content: "",
+      seq: 1,
+      timestamp: 1,
+      plan: { summary: "Build app", steps: [{ step: 1, title: "Do it" }] },
+    };
+    const resultMsg: any = {
+      id: "agent:s1:final",
+      role: "assistant",
+      content: "",
+      seq: 2,
+      timestamp: 2,
+      buildResult: {
+        actionLog: [entry({ type: "step", label: "Step 1/1: Do it", stepNum: 1 })],
+        segments: [],
+      },
+    };
+
+    const collected = collectBuildResultsForPlans([
+      { kind: "manager", msg: planMsg },
+      { kind: "manager", msg: resultMsg },
+    ]);
+
+    expect(collected.byPlanId.get("plan-1")?.id).toBe("agent:s1:final");
+    expect(collected.attachedBuildResultIds.has("agent:s1:final")).toBe(true);
+  });
 });
 
 describe("plan action log visibility", () => {

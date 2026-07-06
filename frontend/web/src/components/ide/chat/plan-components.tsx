@@ -155,6 +155,7 @@ export function TaskPlanCard({
   completionSummary,
   changedFiles,
   liveActionLog,
+  buildResult,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -173,6 +174,7 @@ export function TaskPlanCard({
   completionSummary?: string;
   changedFiles?: string[];
   liveActionLog?: ActionLogEntry[];
+  buildResult?: BuildResultData;
 }) {
   const lang = usePlanCardLang();
   const { setPlanPreview, checkpoints, restoreCheckpoint, refreshPreview } = useIDEStore();
@@ -197,7 +199,9 @@ export function TaskPlanCard({
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
   const runningStep = steps.find((task) => taskStatuses[String(task.step)] === "running");
-  const latestLogStepNumber = latestActionLogStepNumber(liveActionLog);
+  const persistedActionLog = buildResult?.actionLog as ActionLogEntry[] | undefined;
+  const displayActionLog = persistedActionLog ?? liveActionLog;
+  const latestLogStepNumber = latestActionLogStepNumber(displayActionLog);
   const inferredActiveStep =
     runningStep ??
     (isExecuting
@@ -206,7 +210,7 @@ export function TaskPlanCard({
         steps[0]
       : undefined);
   const actionLogEntries = ensureActiveStepActionLogEntry({
-    entries: liveActionLog,
+    entries: displayActionLog,
     activeStepNumber: inferredActiveStep?.step ?? null,
     activeStepTitle: inferredActiveStep?.title,
     totalSteps: total,
@@ -475,7 +479,10 @@ export function TaskPlanCard({
               entries={actionLogEntries}
               narrationText={liveNarration}
               isCompleted={isFullyComplete}
-              completionSummary={completionSummary}
+              completionSummary={buildResult?.completionData?.summary ?? completionSummary}
+              segments={buildResult?.segments as NarrationSegment[] | undefined}
+              tokenUsage={buildResult?.tokenUsage}
+              elapsedSec={buildResult?.elapsedSec ?? buildResult?.durationSec ?? buildResult?.duration}
               activeStepNumber={inferredActiveStep?.step ?? null}
               showLiveStatus={Boolean(isExecuting && !isFullyComplete)}
             />
@@ -648,6 +655,7 @@ export function ManagerMessageBubble({
   liveNarration,
   completionData,
   liveActionLog,
+  buildResult,
 }: {
   message: {
     role: string;
@@ -672,6 +680,7 @@ export function ManagerMessageBubble({
   liveNarration?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
   liveActionLog?: ActionLogEntry[];
+  buildResult?: BuildResultData;
 }) {
   if (message.role === "user") {
     return (
@@ -716,6 +725,7 @@ export function ManagerMessageBubble({
         completionSummary={completionData?.summary}
         changedFiles={completionData?.changedFiles}
         liveActionLog={liveActionLog}
+        buildResult={buildResult}
       />
     );
   }

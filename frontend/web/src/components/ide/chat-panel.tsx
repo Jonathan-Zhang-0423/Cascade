@@ -107,6 +107,7 @@ export function ChatPanel() {
   // Synchronous in-flight guard — prevents duplicate sends from rapid clicks
   // before React re-renders with the updated isManagerResponding state.
   const sendInFlightRef = useRef(false);
+  const [sendPending, setSendPending] = useState(false);
   const [mountedTick, setMountedTick] = useState(0); // forces effect re-run after 300ms
   useEffect(() => {
     const id = setTimeout(() => {
@@ -409,6 +410,8 @@ export function ChatPanel() {
   const handleStop = useCallback(() => {
     if (isExecuting) handleStopExecution();
     slot.manager.abort();
+    sendInFlightRef.current = false;
+    setSendPending(false);
     setAiResponding(false);
     setManagerResponding(false);
   }, [setAiResponding, setManagerResponding, isExecuting, handleStopExecution, slot]);
@@ -433,7 +436,11 @@ export function ChatPanel() {
     }
 
     sendInFlightRef.current = true;
-    handleManagerSend(originalPrompt).finally(() => { sendInFlightRef.current = false; });
+    setSendPending(true);
+    handleManagerSend(originalPrompt).finally(() => {
+      sendInFlightRef.current = false;
+      setSendPending(false);
+    });
   }, [managerMessages, clearManagerPlan, addManagerMessage, handleManagerSend, setChatMode]);
 
   const handleCurrentSend = useCallback(async () => {
@@ -457,7 +464,11 @@ export function ChatPanel() {
     // ────────────────────────────────────────────────────────────────────────
     if (chatMode === "build" && managerPlan && !isExecuting && !input.trim()) {
       sendInFlightRef.current = true;
-      handleExecutePlan().finally(() => { sendInFlightRef.current = false; });
+      setSendPending(true);
+      handleExecutePlan().finally(() => {
+        sendInFlightRef.current = false;
+        setSendPending(false);
+      });
       return;
     }
     const busy = isAiResponding || isManagerResponding;
@@ -470,7 +481,11 @@ export function ChatPanel() {
       setInput("");
       userTriggeredRef.current = true;
       sendInFlightRef.current = true;
-      handleDirectBuild(text).finally(() => { sendInFlightRef.current = false; });
+      setSendPending(true);
+      handleDirectBuild(text).finally(() => {
+        sendInFlightRef.current = false;
+        setSendPending(false);
+      });
       return;
     }
     if (!input.trim() || busy) {
@@ -481,14 +496,18 @@ export function ChatPanel() {
     setInput("");
     userTriggeredRef.current = true;
     sendInFlightRef.current = true;
-    handleManagerSend(undefined, text).finally(() => { sendInFlightRef.current = false; });
+    setSendPending(true);
+    handleManagerSend(undefined, text).finally(() => {
+      sendInFlightRef.current = false;
+      setSendPending(false);
+    });
   }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");
   }, [chatMode, setChatMode]);
 
-  const isBusy = isAiResponding || isManagerResponding || isExecuting;
+  const isBusy = sendPending || isAiResponding || isManagerResponding || isExecuting || mgrPreparingPlan;
 
   return (
     <div className="h-full flex flex-col relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="chat-panel">

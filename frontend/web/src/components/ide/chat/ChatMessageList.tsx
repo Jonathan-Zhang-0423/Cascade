@@ -29,11 +29,38 @@ interface ChatMessageListProps {
   setUserConfirmationInput?: (v: string) => void;
 }
 
+type MergedItem =
+  | { kind: "chat"; msg: ChatMessage; idx: number }
+  | { kind: "manager"; msg: ManagerMessage };
+
 export function shouldUseLivePlanStatuses(
   message: { id: string; plan?: unknown; frozenTaskStatuses?: unknown },
   lastPlanMsgId?: string,
 ): boolean {
   return Boolean(message.plan && message.id === lastPlanMsgId && !message.frozenTaskStatuses);
+}
+
+export function collectBuildResultsForPlans(merged: MergedItem[]): {
+  byPlanId: Map<string, ManagerMessage & { buildResult: NonNullable<ManagerMessage["buildResult"]> }>;
+  attachedBuildResultIds: Set<string>;
+} {
+  const byPlanId = new Map<string, ManagerMessage & { buildResult: NonNullable<ManagerMessage["buildResult"]> }>();
+  const attachedBuildResultIds = new Set<string>();
+  let pendingPlan: ManagerMessage | null = null;
+  for (const item of merged) {
+    if (item.kind !== "manager") continue;
+    const msg = item.msg;
+    if (msg.plan) {
+      pendingPlan = msg;
+      continue;
+    }
+    if (msg.buildResult && pendingPlan) {
+      byPlanId.set(pendingPlan.id, msg as ManagerMessage & { buildResult: NonNullable<ManagerMessage["buildResult"]> });
+      attachedBuildResultIds.add(msg.id);
+      pendingPlan = null;
+    }
+  }
+  return { byPlanId, attachedBuildResultIds };
 }
 
 export function ChatMessageList({
@@ -68,9 +95,6 @@ export function ChatMessageList({
     .reverse()
     .find((m) => m.plan)?.id;
   const lastChatIdx = chatMessages.length - 1;
-  type MergedItem =
-    | { kind: "chat"; msg: ChatMessage; idx: number }
-    | { kind: "manager"; msg: ManagerMessage };
   const merged: MergedItem[] = [
     ...chatMessages.map((msg, idx) => ({
       kind: "chat" as const,
@@ -84,6 +108,8 @@ export function ChatMessageList({
   ].sort(
     (a, b) => a.msg.seq - b.msg.seq || a.msg.timestamp - b.msg.timestamp,
   );
+
+  const { byPlanId: buildResultByPlanId, attachedBuildResultIds } = collectBuildResultsForPlans(merged);
 
   const allCheckpointSeqs = merged
     .filter(
@@ -181,6 +207,9 @@ export function ChatMessageList({
           );
         } else {
           const { msg } = item;
+          if (msg.buildResult && attachedBuildResultIds.has(msg.id)) {
+            return null;
+          }
           if (msg.role === "checkpoint" && msg.checkpointId) {
             if (msg.seq !== lastCheckpointSeq) return null;
             if (seenCheckpointIds.has(msg.checkpointId)) return null;
@@ -239,6 +268,7 @@ export function ChatMessageList({
                 liveNarration={useLiveStatuses ? liveNarrationText : undefined}
                 completionData={useLiveStatuses ? completionData : undefined}
                 liveActionLog={useLiveStatuses ? liveActionLog : undefined}
+                buildResult={buildResultByPlanId.get(msg.id)?.buildResult}
               />
             </div>
           );

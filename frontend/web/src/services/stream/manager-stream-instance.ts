@@ -117,7 +117,7 @@ export class ManagerStreamInstance {
     this.reconnectRetry = 0;
     this.resetInactivityTimer();
     this.state.set({
-      preparingPlan: false,
+      preparingPlan: true,
       thinkingText: "",
       narrationText: "",
       actionLog: [],

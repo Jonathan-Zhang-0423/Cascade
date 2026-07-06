@@ -44,8 +44,19 @@ const sessionStore = new PgSession({
   // Long SSE/build requests do not need to refresh session TTL on every
   // response. Avoid background touch queries competing with build persistence.
   disableTouch: true,
-  errorLog: (err: unknown) => {
-    console.warn("[pg-session] store error:", err instanceof Error ? err.message : err);
+  errorLog: (...args: unknown[]) => {
+    const formatted = args.map((arg) => {
+      if (arg instanceof Error) {
+        return {
+          name: arg.name,
+          message: arg.message,
+          stack: arg.stack,
+          cause: "cause" in arg ? (arg as Error & { cause?: unknown }).cause : undefined,
+        };
+      }
+      return arg;
+    });
+    console.warn("[pg-session] store error:", ...formatted);
   },
 });
 

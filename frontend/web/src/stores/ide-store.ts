@@ -99,6 +99,9 @@ export interface BuildResultData {
   tokenUsage?: { input: number; output: number; total: number };
   nextStepSuggestion?: string;
   sessionId?: string;
+  elapsedSec?: number;
+  durationSec?: number;
+  duration?: number;
 }
 
 type TaskStatus = "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
