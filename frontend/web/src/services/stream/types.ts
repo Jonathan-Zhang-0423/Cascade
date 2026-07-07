@@ -32,7 +32,12 @@ export interface BuildStreamState {
   isReconnecting: boolean;
   thinkingElapsedSec: number | null;
   sessionId: string | null;
+  activePlanMessageId?: string | null;
   stepNarrations: Record<number, string>;
+  /** Per-session task statuses — survives project switching (unlike the global
+   *  store's taskStatuses which is reset on loadProject). Source of truth for
+   *  restoring plan-card step progress when returning to an active build. */
+  taskStatuses: Record<string, TaskStatus>;
 }
 
 export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
@@ -43,7 +48,9 @@ export const INITIAL_BUILD_STREAM_STATE: BuildStreamState = {
   isReconnecting: false,
   thinkingElapsedSec: null,
   sessionId: null,
+  activePlanMessageId: undefined,
   stepNarrations: {},
+  taskStatuses: {},
 };
 
 // ─── Store Actions (injected into stream instances) ────────────────────────
@@ -57,16 +64,26 @@ export interface StreamingSnapshot {
   narrationText: string;
   sessionId: string;
   projectId: string;
+  chatSessionId?: string;
+  runType?: string;
   updatedAt: number;
   lastEventId: number;
+  actionLog?: ActionLogEntry[];
+  stepNarrations?: Record<number, string>;
+  taskStatuses?: Record<string, TaskStatus>;
+  currentStepNum?: number;
+  ledger?: unknown;
+  finalArtifact?: unknown;
 }
+
+export type StreamingSnapshotMap = Record<string, StreamingSnapshot>;
 
 export interface StoreActions {
   // Chat message operations
-  addChatMessage: (msg: { role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
+  addChatMessage: (msg: { id?: string; role: "user" | "assistant" | "checkpoint"; content: string; buildResult?: { actionLog: ActionLogEntry[]; segments?: { id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }[]; completionData?: { changedFiles: string[]; summary?: string } } }) => void;
 
   // Manager message operations
-  addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
+  addManagerMessage: (msg: Omit<ManagerMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
   clearManagerPlan: () => void;
   setManagerResponding: (v: boolean) => void;
@@ -74,7 +91,11 @@ export interface StoreActions {
   // Task status
   updateTaskStatus: (subTaskId: string, status: TaskStatus) => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
-  freezeLatestPlanStatuses: () => void;
+  freezeLatestPlanStatuses: (
+    statuses?: Record<string, TaskStatus>,
+    failureReasons?: Record<string, string>,
+    planMessageId?: string | null,
+  ) => void;
 
   // Build state
   setAiResponding: (v: boolean) => void;
@@ -106,7 +127,9 @@ export interface StoreActions {
   getManagerPlan: () => ManagerPlan | null;
   getFiles: () => FileNode[];
   getTaskStatuses: () => Record<string, TaskStatus>;
+  getConsoleErrors: () => string[];
   getStreamingSnapshot: () => StreamingSnapshot | null;
+  getStreamingSnapshotForRun: (sessionId: string, projectId: string, chatSessionId: string) => StreamingSnapshot | null;
   getMessagesReady: () => boolean;
 }
 

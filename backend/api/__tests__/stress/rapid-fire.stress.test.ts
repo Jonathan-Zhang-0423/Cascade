@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 import { installAiMock, type AiMock } from "../_helpers/ai-mock";
@@ -17,7 +17,6 @@ describeIntegration("stress: rapid-fire user behavior", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -25,6 +24,7 @@ describeIntegration("stress: rapid-fire user behavior", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    http = await createAuthenticatedClient(appCtx.baseUrl);
     ai = installAiMock({ text: "ok ".repeat(20), chunks: 10, perChunkDelayMs: 10 });
   });
   afterEach(() => ai.restore());
@@ -76,6 +76,7 @@ describeIntegration("stress: rapid-fire user behavior", () => {
 
   it("start-then-immediately-abort build sessions clean up and never wedge the project", async () => {
     const projectId = `p-${Math.random().toString(36).slice(2, 8)}`;
+    await http.post("/api/projects", { id: projectId, name: "Rapid Build" });
     // Mash "Build" then "Stop" 12 times rapidly.
     for (let i = 0; i < 12; i++) {
       const sessionId = `bs_${Math.random().toString(36).slice(2, 10)}`;
@@ -102,7 +103,7 @@ describeIntegration("stress: rapid-fire user behavior", () => {
     }
 
     // After the thrash, there must be no *active* build session wedging the project.
-    const active = await http.get(`/api/build-session/active/${projectId}`);
+    const active = await http.get(`/api/build-session/active/${projectId}?chatSessionId=main`);
     expect(active.status).toBe(404);
   });
 

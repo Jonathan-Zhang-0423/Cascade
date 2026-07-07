@@ -68,6 +68,22 @@ describe("UserSessionTracker", () => {
     expect(t.totalSessions()).toBe(3);
   });
 
+  it("double-unregister of the same session does not free a second slot", () => {
+    // Reconnect-storm guard: two cleanup paths (finally + disconnect handler)
+    // may both call unregister for one session. Set semantics make the second
+    // call a no-op, so it must never decrement another live session's slot.
+    const t = new UserSessionTracker(2);
+    t.register("u1", "a");
+    t.register("u1", "b");
+    expect(t.count("u1")).toBe(2);
+    t.unregister("u1", "a");
+    t.unregister("u1", "a"); // duplicate cleanup — must be a no-op
+    expect(t.count("u1")).toBe(1); // "b" still holds its slot
+    // The freed slot (and only one) is reusable.
+    expect(t.register("u1", "c")).toBe(true);
+    expect(t.register("u1", "d")).toBe(false); // back at cap
+  });
+
   it("high-churn register/unregister never leaks or goes negative", () => {
     const t = new UserSessionTracker(5);
     const users = ["u1", "u2", "u3"];

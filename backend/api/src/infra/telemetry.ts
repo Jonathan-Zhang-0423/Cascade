@@ -27,6 +27,21 @@ export interface BuildTelemetryRecord {
 
   stepCount: number;
   parallelWavesUsed: boolean;
+  contextTokenSize?: number;
+  ledgerCompletionConsistent?: boolean;
+  timeToFirstEditMs?: number;
+  modelRouteDecisions?: Array<{
+    role: string;
+    provider: string;
+    model: string;
+    reason: string;
+    routingMode: string;
+    fallbackIndex: number;
+  }>;
+  explorerUsed?: boolean;
+  explorerTimeout?: boolean;
+  discoveryOnlyRounds?: number;
+  thinkingModeCounts?: Record<string, number>;
 
   fixCycles: number;
   verifierFirstPassed: boolean;
@@ -106,6 +121,11 @@ export class BuildTelemetry {
       runTestsCount: 0,
       timings: {},
       lspDiagnosticErrorCount: 0,
+      modelRouteDecisions: [],
+      explorerUsed: false,
+      explorerTimeout: false,
+      discoveryOnlyRounds: 0,
+      thinkingModeCounts: {},
     };
   }
 
@@ -119,6 +139,7 @@ export class BuildTelemetry {
 
   addFileWritten(filePath: string): void {
     this.filesWrittenSet.add(filePath);
+    this.record.timeToFirstEditMs ??= Date.now() - this.record.startedAt;
   }
 
   addFixerScope(paths: string[]): void {
@@ -128,6 +149,47 @@ export class BuildTelemetry {
   setStepCount(n: number, parallelWavesUsed: boolean): void {
     this.record.stepCount = n;
     this.record.parallelWavesUsed = parallelWavesUsed;
+  }
+
+  setContextTokenSize(tokens: number): void {
+    this.record.contextTokenSize = tokens;
+  }
+
+  setLedgerCompletionConsistent(consistent: boolean): void {
+    this.record.ledgerCompletionConsistent = consistent;
+  }
+
+  addModelRouteDecision(decision: {
+    role: string;
+    provider: string;
+    model: string;
+    reason: string;
+    routingMode: string;
+    fallbackIndex: number;
+  }): void {
+    this.record.modelRouteDecisions ??= [];
+    this.record.modelRouteDecisions.push({
+      role: decision.role,
+      provider: decision.provider,
+      model: decision.model,
+      reason: decision.reason,
+      routingMode: decision.routingMode,
+      fallbackIndex: decision.fallbackIndex,
+    });
+  }
+
+  setExplorerUsed(used: boolean, timedOut = false): void {
+    this.record.explorerUsed = used;
+    this.record.explorerTimeout = timedOut;
+  }
+
+  addDiscoveryOnlyRounds(count: number): void {
+    this.record.discoveryOnlyRounds = (this.record.discoveryOnlyRounds ?? 0) + count;
+  }
+
+  addThinkingMode(mode: string, count = 1): void {
+    this.record.thinkingModeCounts ??= {};
+    this.record.thinkingModeCounts[mode] = (this.record.thinkingModeCounts[mode] ?? 0) + count;
   }
 
   setFixCycle(n: number): void {

@@ -3,8 +3,11 @@ import {
   type BuildStreamState,
   type StoreActions,
   INITIAL_BUILD_STREAM_STATE,
+  type TaskStatus,
+  type StreamingSnapshot,
 } from "./types";
 import type { ActionLogEntry, BuildSseEvent, NormalizedStep } from "@/components/ide/chat/chat-types";
+import { normalizeActionLogEntry, stringifyLogValue } from "@/components/ide/chat/action-log-normalize";
 import { KNOWN_BUILD_EVENT_TYPES, BUILD_SOURCE_MAP, validateBuildEvent } from "@/components/ide/chat/chat-types";
 import { detectLanguage, normalizeSteps } from "@/components/ide/chat/chat-utils";
 import { parseSseStream, createHeartbeatWatchdog } from "@/components/ide/chat/hooks/useSSEStream";
@@ -41,6 +44,7 @@ export class BuildStreamInstance {
   private thinkingStartTime: number | null = null;
   private currentStepNum = 0;   // 当前执行步骤号，用于给 actionLog entry 打标
   private executing = false;    // 防止并发 execute() 调用
+  private activePlanMessageId: string | null | undefined = undefined;
   userConfirmation = "";
 
   constructor(projectId: string, actions: StoreActions, chatSessionId: string = "main") {
@@ -65,6 +69,31 @@ export class BuildStreamInstance {
   // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
   private get storageKey(): string {
     return `cascade-build-session-${this.projectId}-${this.chatSessionId}`;
+  }
+
+  private isEventForCurrentRun(ev: BuildSseEvent): boolean {
+    if (typeof ev.projectId === "string" && ev.projectId !== this.projectId) return false;
+    if (typeof ev.chatSessionId === "string" && ev.chatSessionId !== this.chatSessionId) return false;
+    if (typeof ev.sessionId === "string" && this.sessionId && ev.sessionId !== this.sessionId) return false;
+    return true;
+  }
+
+  private findPlanMessageId(plan: ManagerPlan): string | null {
+    const messages = this.actions.getManagerMessages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].plan === plan) return messages[i].id;
+    }
+    const planSignature = JSON.stringify(plan);
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const candidate = messages[i].plan;
+      if (!candidate) continue;
+      try {
+        if (JSON.stringify(candidate) === planSignature) return messages[i].id;
+      } catch {
+        // Ignore non-serializable plan payloads; manager plans should be JSON.
+      }
+    }
+    return null;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -117,8 +146,11 @@ export class BuildStreamInstance {
         // Session 还在跑但 SSE 断了（如刷新页面）——重连，不要启动新 session
         if (!this.reader) {
           this.actions.setChatMode("build");
-          this.state.set({ buildPhase: "thinking" });
-          await this.connect(this.sessionId, this.lastEventId);
+          this.state.set({
+            buildPhase: "thinking",
+            activePlanMessageId: isDirect ? null : this.activePlanMessageId,
+          });
+          await this.connect(this.sessionId, this.lastEventId, isDirect ? null : undefined);
         }
         return;
       }
@@ -143,6 +175,9 @@ export class BuildStreamInstance {
     const plan: ManagerPlan = isDirect
       ? { mode: "direct" as const, summary: opts!.userMessage!, steps: [{ step: 1, title: opts!.userMessage!, description: opts!.userMessage! }], needs_input: [] }
       : existingPlan!;
+    const planMessageId = isDirect ? null : this.findPlanMessageId(plan);
+    this.activePlanMessageId = planMessageId;
+    this.state.set({ activePlanMessageId: planMessageId });
 
     const normalizedSteps = normalizeSteps(plan);
     const messages = this.actions.getManagerMessages();
@@ -171,7 +206,7 @@ export class BuildStreamInstance {
     // A refresh before POST completes leaves a key pointing to a session
     // that may not exist yet; attemptReconnect handles this with a short retry.
     try { localStorage.setItem(this.storageKey, sessionId); } catch {}
-    this.state.set({ buildPhase: "thinking" });
+    this.state.set({ buildPhase: "thinking", activePlanMessageId: planMessageId });
 
     this.actionLog = [];
     this.state.set({ actionLog: [], thinkingText: "", thinkingElapsedSec: null });
@@ -188,14 +223,9 @@ export class BuildStreamInstance {
       const now = Date.now();
       if (now - lastSnapshotFlush < 500) return;
       lastSnapshotFlush = now;
-      this.actions.setStreamingSnapshot({
-        type: "build",
+      this.persistLiveSnapshot({
         thinkingText: thinkingAccumulated,
         narrationText: commAccumulated,
-        sessionId,
-        projectId: this.projectId,
-        updatedAt: now,
-        lastEventId: this.lastEventId,
       });
     };
 
@@ -207,7 +237,7 @@ export class BuildStreamInstance {
       fetch("/api/build-session/pre-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId, projectId: this.projectId, chatSessionId: this.chatSessionId }),
         keepalive: true,
       }).catch(() => {});
 
@@ -224,7 +254,10 @@ export class BuildStreamInstance {
           taskStatuses,
           userConfirmation: userConfirmation || undefined,
           projectId: this.projectId || undefined,
+          chatSessionId: this.chatSessionId || undefined,
           framework: framework || undefined,
+          // Include recent console errors for bug-fix context (direct mode only)
+          ...(isDirect ? { consoleErrors: this.actions.getConsoleErrors?.() } : {}),
         }),
       });
 
@@ -266,6 +299,7 @@ export class BuildStreamInstance {
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
           watchdog.reset();
+          if (!this.isEventForCurrentRun(ev)) return;
           if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
 
           const type = ev.type;
@@ -281,7 +315,9 @@ export class BuildStreamInstance {
           }
 
           // ─── Event handling ─────────────────────────────────────────
-          if (type === "step_starting") {
+          if (type === "ledger_snapshot") {
+            this.applyLedgerSnapshot(ev, isCurrentProject);
+          } else if (type === "step_starting") {
             // Flush any pending thinking from the previous step before moving on
             if (thinkingAccumulated) {
               const lastIsThinking = this.actionLog.length > 0 &&
@@ -318,6 +354,7 @@ export class BuildStreamInstance {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
             }
+            this.trackTaskStatus(String(stepNum), "running");
           } else if (type === "thinking_token") {
             const token = ev.token || "";
             if (token) {
@@ -342,7 +379,6 @@ export class BuildStreamInstance {
               thinkingAccumulated = "";
             }
             commAccumulated += ev.token || "";
-            flushSnapshot();
             // Write per-step narration so StepItem can display it inline
             const prevNarrations = this.state.get().stepNarrations;
             this.state.set({
@@ -350,18 +386,29 @@ export class BuildStreamInstance {
               buildPhase: "working",
               stepNarrations: { ...prevNarrations, [this.currentStepNum]: commAccumulated },
             });
+            flushSnapshot();
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
             if (actionType) {
               this.appendActionLog({
                 type: actionType,
-                label: (ev.label as string) || "",
-                detail: (ev.detail as string) || "",
+                label: stringifyLogValue(ev.label, ""),
+                detail: stringifyLogValue(ev.detail, ""),
                 timestamp: Date.now(),
-                filePath: (ev.filePath as string) || undefined,
+                filePath: stringifyLogValue(ev.filePath, "") || undefined,
                 precedingNarration: commAccumulated || undefined,
               });
             }
+          } else if (type === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            this.appendActionLog({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
+              precedingNarration: commAccumulated || undefined,
+            });
           } else if (type === "code_applied") {
             // Write code_applied action entry so it shows in the step's action row
             const filePath = ev.filePath || "";
@@ -413,10 +460,12 @@ export class BuildStreamInstance {
             if (stepSummary && !isNaN(parsedNum)) {
               const prev = this.state.get().stepNarrations;
               this.state.set({ stepNarrations: { ...prev, [parsedNum]: stepSummary } });
+              this.persistLiveSnapshot();
             }
             this.state.set({ narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) this.actions.updateTaskStatus(resolvedKey, "done");
+            this.trackTaskStatus(resolvedKey, "done");
           } else if (type === "step_failed") {
             this.state.set({ narrationText: "" });
             commAccumulated = "";
@@ -446,55 +495,67 @@ export class BuildStreamInstance {
             });
           } else if (type === "all_complete") {
             receivedAllComplete = true;
+            const finalStatuses = { ...this.state.get().taskStatuses };
+            normalizedSteps.forEach((step) => {
+              const key = String(step.step);
+              const liveStatus = isCurrentProject ? this.actions.getTaskStatuses()[key] : finalStatuses[key];
+              if (isCurrentProject && (liveStatus === "bug" || liveStatus === "failed" || liveStatus === "running" || liveStatus === "pending")) {
+                this.actions.updateTaskStatus(key, "done");
+              }
+              if (
+                finalStatuses[key] === "bug" ||
+                finalStatuses[key] === "failed" ||
+                finalStatuses[key] === "running" ||
+                finalStatuses[key] === "pending" ||
+                finalStatuses[key] === undefined
+              ) {
+                finalStatuses[key] = "done";
+              }
+            });
+            this.state.set({ taskStatuses: finalStatuses });
+            this.actions.freezeLatestPlanStatuses(finalStatuses, undefined, planMessageId);
+            const changedFiles: string[] = ev.changedFiles || [];
+            const summaryText = ev.summaryText || "";
+            this.actions.setCompletionData({ changedFiles, summary: summaryText });
+            if (this.actionLog.length > 0) {
+              // Group by step entry — each "step" action_log entry starts a new segment.
+              // Narration comes from stepNarrations (keyed by step number), which is populated
+              // as communicator tokens arrive and finalized at step_completed. This is more
+              // reliable than precedingNarration (which is empty when actions fire before narration).
+              const stepNarrations = this.state.get().stepNarrations;
+              const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+              let currentSegStepNum = 0;
+              for (const entry of this.actionLog) {
+                if (entry.type === "narration") continue;
+                if (entry.type === "step") {
+                  // Extract step number from label e.g. "Step 2/4: ..."
+                  const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
+                  currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
+                  const narration = stepNarrations[currentSegStepNum] ?? "";
+                  segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
+                } else {
+                  if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
+                  segs[segs.length - 1].actions.push(entry);
+                }
+              }
+              this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
+              this.actions.addManagerMessage({
+                id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
+                role: "assistant",
+                content: "",
+                buildResult: {
+                  actionLog: [...this.actionLog],
+                  segments: segs,
+                  completionData: { changedFiles, summary: summaryText },
+                  tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
+                },
+              });
+              this._dbg("all_complete: addManagerMessage called with buildResult");
+            } else {
+              this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
+            }
             if (isCurrentProject) {
               this.actions.createCheckpoint("Build complete", { includeManagerThread: true });
-              normalizedSteps.forEach((step) => {
-                const key = String(step.step);
-                const s = this.actions.getTaskStatuses()[key];
-                if (s === "bug" || s === "failed" || s === "running" || s === "pending") {
-                  this.actions.updateTaskStatus(key, "done");
-                }
-              });
-              this.actions.freezeLatestPlanStatuses();
-              const changedFiles: string[] = ev.changedFiles || [];
-              const summaryText = ev.summaryText || "";
-              this.actions.setCompletionData({ changedFiles, summary: summaryText });
-              if (this.actionLog.length > 0) {
-                // Group by step entry — each "step" action_log entry starts a new segment.
-                // Narration comes from stepNarrations (keyed by step number), which is populated
-                // as communicator tokens arrive and finalized at step_completed. This is more
-                // reliable than precedingNarration (which is empty when actions fire before narration).
-                const stepNarrations = this.state.get().stepNarrations;
-                const segs: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
-                let currentSegStepNum = 0;
-                for (const entry of this.actionLog) {
-                  if (entry.type === "narration") continue;
-                  if (entry.type === "step") {
-                    // Extract step number from label e.g. "Step 2/4: ..."
-                    const stepMatch = entry.label?.match(/Step\s*(\d+)/i);
-                    currentSegStepNum = stepMatch ? parseInt(stepMatch[1], 10) : currentSegStepNum + 1;
-                    const narration = stepNarrations[currentSegStepNum] ?? "";
-                    segs.push({ id: String(segs.length), narration, actions: [], isLive: false, stepLabel: entry.label });
-                  } else {
-                    if (segs.length === 0) segs.push({ id: "0", narration: stepNarrations[1] ?? "", actions: [], isLive: false });
-                    segs[segs.length - 1].actions.push(entry);
-                  }
-                }
-                this._dbg("all_complete: actionLog.length=" + this.actionLog.length + " segs.length=" + segs.length);
-                this.actions.addManagerMessage({
-                  role: "assistant",
-                  content: "",
-                  buildResult: {
-                    actionLog: [...this.actionLog],
-                    segments: segs,
-                    completionData: { changedFiles, summary: summaryText },
-                    tokenUsage: ev.tokenUsage as { input: number; output: number; total: number } | undefined,
-                  },
-                });
-                this._dbg("all_complete: addManagerMessage called with buildResult");
-              } else {
-                this._dbg("all_complete: actionLog EMPTY, skipping buildResult message");
-              }
             }
             this.actions.setStreamingSnapshot(null);
             try { localStorage.removeItem(this.storageKey); } catch {}
@@ -559,7 +620,8 @@ export class BuildStreamInstance {
       const isCurrentGen = myGen === this.generation;
       if (isCurrentGen) {
         this.sessionId = null;
-        this.state.set({ sessionId: null, isReconnecting: false });
+        this.activePlanMessageId = undefined;
+        this.state.set({ sessionId: null, isReconnecting: false, activePlanMessageId: undefined });
         this.reader = null;
         // Only remove the localStorage key if we are NOT waiting to reconnect.
         // If reconnectTimer is set, we still need the key for the next attempt
@@ -601,13 +663,18 @@ export class BuildStreamInstance {
   /**
    * Reconnect to an existing build session.
    */
-  async connect(sessionId: string, lastEventId: number): Promise<void> {
+  async connect(sessionId: string, lastEventId: number, planMessageId?: string | null): Promise<void> {
     if (this.disposed) return;
     this.sessionId = sessionId;
     this.state.set({ sessionId, isReconnecting: true });
     const myGen = ++this.generation;
 
     const plan = this.actions.getManagerPlan();
+    const freezePlanMessageId = planMessageId === undefined
+      ? (this.activePlanMessageId !== undefined ? this.activePlanMessageId : (plan ? this.findPlanMessageId(plan) : null))
+      : planMessageId;
+    this.activePlanMessageId = freezePlanMessageId;
+    this.state.set({ activePlanMessageId: freezePlanMessageId });
     const nSteps = plan ? normalizeSteps(plan) : [];
     const messages = this.actions.getManagerMessages();
     const firstUserMsg = messages.find((m) => m.role === "user");
@@ -618,10 +685,24 @@ export class BuildStreamInstance {
     let thinkingAccumulated = "";
     let commAccumulated = "";
     let receivedAllComplete = false;
-    const snapshot = this.actions.getStreamingSnapshot();
-    if (snapshot?.type === "build") {
+    const snapshot = this.getRunSnapshot(sessionId);
+    if (snapshot) {
       thinkingAccumulated = snapshot.thinkingText || "";
       commAccumulated = snapshot.narrationText || "";
+      this.actionLog = Array.isArray(snapshot.actionLog)
+        ? snapshot.actionLog.map((entry) => normalizeActionLogEntry(entry as any))
+        : this.actionLog;
+      this.currentStepNum = typeof snapshot.currentStepNum === "number" && Number.isFinite(snapshot.currentStepNum)
+        ? snapshot.currentStepNum
+        : this.currentStepNum;
+      const restoredState: Partial<BuildStreamState> = {
+        actionLog: [...this.actionLog],
+        thinkingText: thinkingAccumulated,
+        narrationText: commAccumulated,
+      };
+      if (snapshot.stepNarrations) restoredState.stepNarrations = { ...snapshot.stepNarrations };
+      if (snapshot.taskStatuses) restoredState.taskStatuses = { ...snapshot.taskStatuses };
+      this.state.set(restoredState);
     }
 
     try {
@@ -652,11 +733,14 @@ export class BuildStreamInstance {
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
           watchdog.reset();
+          if (!this.isEventForCurrentRun(ev)) return;
           if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
           const type = ev.type;
           const isCurrentProject = this.actions.getProjectId() === this.projectId;
 
-          if (type === "step_starting") {
+          if (type === "ledger_snapshot") {
+            this.applyLedgerSnapshot(ev, isCurrentProject);
+          } else if (type === "step_starting") {
             // Flush pending thinking from previous step
             if (thinkingAccumulated) {
               const lastIsThinking = this.actionLog.length > 0 &&
@@ -672,24 +756,50 @@ export class BuildStreamInstance {
               thinkingAccumulated = "";
             }
             const stepNum = ev.stepNumber ?? 1;
+            this.currentStepNum = stepNum;
+            const lastStepEntry = [...this.actionLog].reverse().find((entry) => entry.type === "step");
+            const alreadyHasBoundary = lastStepEntry?.stepNum === stepNum ||
+              lastStepEntry?.label?.match(/Step\s*(\d+)/i)?.[1] === String(stepNum);
+            if (!alreadyHasBoundary) {
+              const totalSteps = nSteps.length || (typeof ev.totalSteps === "number" ? ev.totalSteps : stepNum);
+              this.appendActionLog({
+                type: "step",
+                label: `Step ${stepNum}/${totalSteps}: ${ev.stepTitle || ""}`,
+                detail: "",
+                timestamp: Date.now(),
+                stepNum,
+              });
+            }
             this.state.set({ buildPhase: "thinking", thinkingText: "", narrationText: "" });
+            this.persistLiveSnapshot({ thinkingText: "", narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) {
               this.actions.setExecutingTaskIndex(stepNum - 1);
               this.actions.updateTaskStatus(String(stepNum), "running");
             }
+            this.trackTaskStatus(String(stepNum), "running");
           } else if (type === "action_log") {
             const actionType = ev.actionType as ActionLogEntry["type"] | undefined;
             if (actionType) {
               this.appendActionLog({
                 type: actionType,
-                label: (ev.label as string) || "",
-                detail: (ev.detail as string) || "",
+                label: stringifyLogValue(ev.label, ""),
+                detail: stringifyLogValue(ev.detail, ""),
                 timestamp: Date.now(),
-                filePath: (ev.filePath as string) || undefined,
+                filePath: stringifyLogValue(ev.filePath, "") || undefined,
                 precedingNarration: commAccumulated || undefined,
               });
             }
+          } else if (type === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            this.appendActionLog({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
+              precedingNarration: commAccumulated || undefined,
+            });
           } else if (type === "thinking_token") {
             thinkingAccumulated += ev.token || "";
             this.state.set({ thinkingText: thinkingAccumulated });
@@ -710,8 +820,10 @@ export class BuildStreamInstance {
             }
             commAccumulated += ev.token || "";
             this.state.set({ narrationText: commAccumulated, buildPhase: "working" });
+            this.persistLiveSnapshot({ narrationText: commAccumulated });
           } else if (type === "step_completed") {
             this.state.set({ narrationText: "" });
+            this.persistLiveSnapshot({ narrationText: "" });
             commAccumulated = "";
             if (isCurrentProject) {
               const key = String(ev.stepNumber ?? 0);
@@ -722,41 +834,45 @@ export class BuildStreamInstance {
             commAccumulated = "";
           } else if (type === "all_complete") {
             receivedAllComplete = true;
-            if (isCurrentProject) {
-              nSteps.forEach((step) => {
-                const key = String(step.step);
-                const s = this.actions.getTaskStatuses()[key];
-                if (s !== "done") this.actions.updateTaskStatus(key, "done");
-              });
-              this.actions.freezeLatestPlanStatuses();
-              const changedFiles2: string[] = ev.changedFiles || [];
-              const summaryText2 = ev.summaryText || "";
-              this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
-              if (this.actionLog.length > 0) {
-                const segs2: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
-                for (const entry of this.actionLog) {
-                  if (entry.type === "narration") continue;
-                  if (entry.type === "step") {
-                    segs2.push({ id: String(segs2.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
-                  } else {
-                    if (segs2.length === 0) segs2.push({ id: "0", narration: "", actions: [], isLive: false });
-                    const last = segs2[segs2.length - 1];
-                    if (!last.narration && entry.precedingNarration) {
-                      last.narration = entry.precedingNarration;
-                    }
-                    last.actions.push(entry);
+            const finalStatuses = { ...this.state.get().taskStatuses };
+            nSteps.forEach((step) => {
+              const key = String(step.step);
+              const s = isCurrentProject ? this.actions.getTaskStatuses()[key] : finalStatuses[key];
+              if (isCurrentProject && s !== "done") this.actions.updateTaskStatus(key, "done");
+              if (finalStatuses[key] !== "done") finalStatuses[key] = "done";
+            });
+            this.state.set({ taskStatuses: finalStatuses });
+            this.actions.freezeLatestPlanStatuses(finalStatuses, undefined, freezePlanMessageId);
+            const changedFiles2: string[] = ev.changedFiles || [];
+            const summaryText2 = ev.summaryText || "";
+            this.actions.setCompletionData({ changedFiles: changedFiles2, summary: summaryText2 });
+            if (this.actionLog.length > 0) {
+              const segs2: Array<{ id: string; narration: string; actions: ActionLogEntry[]; isLive: boolean; stepLabel?: string }> = [];
+              for (const entry of this.actionLog) {
+                if (entry.type === "narration") continue;
+                if (entry.type === "step") {
+                  segs2.push({ id: String(segs2.length), narration: "", actions: [], isLive: false, stepLabel: entry.label });
+                } else {
+                  if (segs2.length === 0) segs2.push({ id: "0", narration: "", actions: [], isLive: false });
+                  const last = segs2[segs2.length - 1];
+                  if (!last.narration && entry.precedingNarration) {
+                    last.narration = entry.precedingNarration;
                   }
+                  last.actions.push(entry);
                 }
-                this.actions.addChatMessage({
-                  role: "assistant",
-                  content: "",
-                  buildResult: {
-                    actionLog: [...this.actionLog],
-                    segments: segs2,
-                    completionData: { changedFiles: changedFiles2, summary: summaryText2 },
-                  } as any,
-                });
               }
+              this.actions.addManagerMessage({
+                id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
+                role: "assistant",
+                content: "",
+                buildResult: {
+                  actionLog: [...this.actionLog],
+                  segments: segs2,
+                  completionData: { changedFiles: changedFiles2, summary: summaryText2 },
+                } as any,
+              });
+            }
+            if (isCurrentProject) {
               // Background build finished while we were away: pull the latest
               // files and refresh the preview so the user sees the result
               // without a manual page refresh. The primary path does this via
@@ -848,7 +964,16 @@ export class BuildStreamInstance {
     // was refreshed while the POST /api/build-session was still in-flight
     // (session exists in backend but response hadn't arrived yet).
     this.state.set({ isReconnecting: true });
-    const checkStatus = async (): Promise<{ active: boolean } | null> => {
+    const checkStatus = async (): Promise<{
+      active: boolean;
+      lastEventId?: number;
+      snapshot?: unknown;
+      ledger?: unknown;
+      finalArtifact?: unknown;
+      projectId?: string | null;
+      chatSessionId?: string | null;
+      payload?: { mode?: string } | Record<string, unknown>;
+    } | null> => {
       try {
         const resp = await fetch(`/api/build-session/${savedSessionId}/status`, {
           cache: "no-store", headers: { "Cache-Control": "no-cache" },
@@ -871,10 +996,23 @@ export class BuildStreamInstance {
       }
 
       if (data?.active) {
-        this.actions.setExecutingTaskIndex(0);
+        const hasSnapshot = this.hydrateFromBackendStatus(savedSessionId, data);
+        const mode = data.payload && typeof data.payload === "object" ? (data.payload as any).mode : undefined;
+        this.activePlanMessageId = mode === "direct"
+          ? null
+          : (this.actions.getManagerPlan() ? this.findPlanMessageId(this.actions.getManagerPlan()!) : null);
         this.actions.setChatMode("build");
-        this.state.set({ buildPhase: "thinking" });
-        await this.connect(savedSessionId, -1);
+        this.state.set({ buildPhase: "thinking", activePlanMessageId: this.activePlanMessageId });
+        this.restoreTaskStatuses();
+        if (!Object.values(this.state.get().taskStatuses).includes("running")) {
+          this.actions.setExecutingTaskIndex(0);
+        }
+        const snapshot = this.getRunSnapshot(savedSessionId);
+        const resumeEventId =
+          hasSnapshot && snapshot && typeof snapshot.lastEventId === "number"
+            ? snapshot.lastEventId
+            : -1;
+        await this.connect(savedSessionId, resumeEventId, this.activePlanMessageId);
       } else {
         try { localStorage.removeItem(this.storageKey); } catch {}
         this.state.set({ isReconnecting: false });
@@ -915,7 +1053,8 @@ export class BuildStreamInstance {
       this.reader = null;
     }
     this.sessionId = null;
-    this.state.set({ sessionId: null });
+    this.activePlanMessageId = undefined;
+    this.state.set({ sessionId: null, activePlanMessageId: undefined });
     try { localStorage.removeItem(this.storageKey); } catch {}
   }
 
@@ -932,10 +1071,189 @@ export class BuildStreamInstance {
   }
 
   private appendActionLog(entry: ActionLogEntry): void {
+    const normalized = normalizeActionLogEntry(entry as any);
     // 给每个 entry 打上当前步骤号，供前端分段渲染使用
-    const entryWithStep = entry.stepNum !== undefined ? entry : { ...entry, stepNum: this.currentStepNum };
+    const entryWithStep = normalized.stepNum !== undefined ? normalized : { ...normalized, stepNum: this.currentStepNum };
     this.actionLog.push(entryWithStep);
     this.state.set({ actionLog: [...this.actionLog] });
+    this.persistLiveSnapshot();
+  }
+
+  private getRunSnapshot(sessionId: string): StreamingSnapshot | null {
+    const snapshot = this.actions.getStreamingSnapshotForRun(sessionId, this.projectId, this.chatSessionId);
+    if (
+      snapshot?.type === "build" &&
+      snapshot.sessionId === sessionId &&
+      snapshot.projectId === this.projectId &&
+      (snapshot.chatSessionId || this.chatSessionId) === this.chatSessionId
+    ) {
+      return snapshot;
+    }
+    return null;
+  }
+
+  private hydrateFromBackendStatus(sessionId: string, status: any): boolean {
+    if (!status || typeof status !== "object") return false;
+    if (status.projectId && status.projectId !== this.projectId) return false;
+    if (status.chatSessionId && status.chatSessionId !== this.chatSessionId) return false;
+
+    const existing = this.getRunSnapshot(sessionId);
+    const rawSnapshot = status.snapshot && typeof status.snapshot === "object" ? status.snapshot : {};
+    const ledger = status.ledger ?? rawSnapshot.ledger;
+    const actionLog = Array.isArray(rawSnapshot.actionLog) && rawSnapshot.actionLog.length > 0
+      ? rawSnapshot.actionLog.map((entry: unknown) => normalizeActionLogEntry(entry as any))
+      : (Array.isArray(existing?.actionLog) ? existing.actionLog : []);
+    const taskStatuses: Record<string, TaskStatus> = { ...(existing?.taskStatuses ?? {}) };
+    const stepNarrations: Record<number, string> = { ...(existing?.stepNarrations ?? {}) };
+    let currentStepNum = typeof rawSnapshot.currentStepNum === "number" && Number.isFinite(rawSnapshot.currentStepNum)
+      ? rawSnapshot.currentStepNum
+      : (existing?.currentStepNum ?? 0);
+
+    const steps = ledger && typeof ledger === "object" && Array.isArray((ledger as any).steps)
+      ? (ledger as any).steps
+      : [];
+    const statusMap: Record<string, TaskStatus> = {
+      pending: "pending",
+      running: "running",
+      done: "done",
+      failed: "failed",
+    };
+    for (const step of steps) {
+      if (!step || typeof step.stepNumber !== "number") continue;
+      const mapped = statusMap[String(step.status ?? "")];
+      if (!mapped) continue;
+      const key = String(step.stepNumber);
+      taskStatuses[key] = mapped;
+      if (typeof step.summary === "string" && step.summary) {
+        stepNarrations[step.stepNumber] = step.summary;
+      }
+      if (mapped === "running") currentStepNum = step.stepNumber;
+    }
+
+    const thinkingText = typeof rawSnapshot.thinkingText === "string" && rawSnapshot.thinkingText
+      ? rawSnapshot.thinkingText
+      : (existing?.thinkingText ?? "");
+    const narrationText = typeof rawSnapshot.narrationText === "string" && rawSnapshot.narrationText
+      ? rawSnapshot.narrationText
+      : (existing?.narrationText ?? "");
+    const hasUsableSnapshot =
+      actionLog.length > 0 ||
+      Object.keys(taskStatuses).length > 0 ||
+      Boolean(thinkingText || narrationText || ledger || existing);
+    if (!hasUsableSnapshot) return false;
+
+    const snapshot: StreamingSnapshot = {
+      type: "build",
+      thinkingText,
+      narrationText,
+      sessionId,
+      projectId: this.projectId,
+      chatSessionId: this.chatSessionId,
+      runType: "build",
+      updatedAt: typeof rawSnapshot.updatedAt === "number" ? rawSnapshot.updatedAt : Date.now(),
+      lastEventId: typeof status.lastEventId === "number"
+        ? status.lastEventId
+        : (typeof rawSnapshot.lastEventId === "number" ? rawSnapshot.lastEventId : -1),
+      actionLog,
+      taskStatuses,
+      stepNarrations,
+      currentStepNum,
+      ledger,
+      finalArtifact: status.finalArtifact ?? rawSnapshot.finalArtifact,
+    };
+
+    this.actionLog = actionLog;
+    this.currentStepNum = currentStepNum;
+    this.lastEventId = snapshot.lastEventId;
+    this.state.set({
+      actionLog: [...actionLog],
+      taskStatuses,
+      stepNarrations,
+      thinkingText: snapshot.thinkingText,
+      narrationText: snapshot.narrationText,
+    });
+    this.actions.setStreamingSnapshot(snapshot);
+    return true;
+  }
+
+  private persistLiveSnapshot(overrides?: { thinkingText?: string; narrationText?: string }): void {
+    if (!this.sessionId) return;
+    const state = this.state.get();
+    this.actions.setStreamingSnapshot({
+      type: "build",
+      thinkingText: overrides?.thinkingText ?? state.thinkingText,
+      narrationText: overrides?.narrationText ?? state.narrationText,
+      sessionId: this.sessionId,
+      projectId: this.projectId,
+      chatSessionId: this.chatSessionId,
+      runType: "build",
+      updatedAt: Date.now(),
+      lastEventId: this.lastEventId,
+      actionLog: [...this.actionLog],
+      stepNarrations: { ...state.stepNarrations },
+      taskStatuses: { ...state.taskStatuses },
+      currentStepNum: this.currentStepNum,
+    });
+  }
+
+  /** Track task status in per-session state (survives project switch). */
+  private trackTaskStatus(key: string, status: "running" | "done" | "failed"): void {
+    const prev = this.state.get().taskStatuses;
+    this.state.set({ taskStatuses: { ...prev, [key]: status } });
+    this.persistLiveSnapshot();
+  }
+
+  private applyLedgerSnapshot(ev: BuildSseEvent, isCurrentProject: boolean): void {
+    const steps = ev.ledger?.steps;
+    if (!Array.isArray(steps)) return;
+
+    const statusMap: Record<string, TaskStatus> = {
+      pending: "pending",
+      running: "running",
+      done: "done",
+      failed: "failed",
+    };
+    const taskStatuses = { ...this.state.get().taskStatuses };
+    const stepNarrations = { ...this.state.get().stepNarrations };
+    let runningIndex: number | null = null;
+
+    for (const step of steps) {
+      if (typeof step.stepNumber !== "number") continue;
+      const mapped = statusMap[String(step.status ?? "")];
+      if (!mapped) continue;
+      const key = String(step.stepNumber);
+      taskStatuses[key] = mapped;
+      if (step.summary) stepNarrations[step.stepNumber] = step.summary;
+      if (mapped === "running") runningIndex = step.stepNumber - 1;
+      if (isCurrentProject) {
+        this.actions.updateTaskStatus(key, mapped);
+        if (mapped === "failed" && step.error) this.actions.setTaskFailureReason(key, step.error);
+      }
+    }
+
+    this.state.set({ taskStatuses, stepNarrations });
+    this.persistLiveSnapshot();
+    if (isCurrentProject && runningIndex !== null) {
+      this.actions.setExecutingTaskIndex(runningIndex);
+    }
+  }
+
+  /**
+   * Restore per-session task statuses into the global store. Call when the
+   * user returns to this project after viewing another one.
+   */
+  restoreTaskStatuses(): void {
+    const statuses = this.state.get().taskStatuses;
+    const keys = Object.keys(statuses);
+    if (keys.length === 0) return;
+    for (const key of keys) {
+      this.actions.updateTaskStatus(key, statuses[key]);
+    }
+    // Also restore executingTaskIndex to the highest running step
+    const runningSteps = keys.filter(k => statuses[k] === "running").map(Number).filter(n => !isNaN(n));
+    if (runningSteps.length > 0) {
+      this.actions.setExecutingTaskIndex(Math.max(...runningSteps) - 1);
+    }
   }
 
   /**
@@ -953,10 +1271,16 @@ export class BuildStreamInstance {
       });
       if (!resp.ok) return;
       const data = await resp.json();
-      const files: Array<{ path: string; content: string }> = data?.files ?? [];
-      if (!files.length) return;
+      if (!Array.isArray(data?.files)) return;
+      const files: Array<{ path: string; content: string }> = data.files;
       if (this.actions.getProjectId() !== this.projectId) return;
       const current = new Map(this.actions.getFiles().map((f) => [f.path, f.content ?? ""]));
+      const serverPaths = new Set(files.map((f) => f.path));
+      for (const filePath of current.keys()) {
+        if (!serverPaths.has(filePath)) {
+          this.actions.deleteFile(filePath);
+        }
+      }
       for (const f of files) {
         if (current.get(f.path) !== f.content) {
           await this.actions.applyCodeBlock({ filePath: f.path, code: f.content, language: "" });
@@ -971,7 +1295,7 @@ export class BuildStreamInstance {
   private clearLive(): void {
     // Keep stepNarrations — narration tokens can arrive after all_complete,
     // and BuildLivePanel uses them to fill persisted segment narrations.
-    this.state.set({ thinkingText: "", narrationText: "", actionLog: [] });
+    this.state.set({ thinkingText: "", narrationText: "", actionLog: [], activePlanMessageId: undefined });
   }
 
   private clearLiveTimer(): void {

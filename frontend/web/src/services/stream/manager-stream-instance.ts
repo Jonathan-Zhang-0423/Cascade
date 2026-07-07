@@ -6,13 +6,14 @@ import {
   INITIAL_MANAGER_STREAM_STATE,
 } from "./types";
 import type { ActionLogEntry, ManagerSseEvent } from "@/components/ide/chat/chat-types";
+import { normalizeActionLogEntry, stringifyLogValue } from "@/components/ide/chat/action-log-normalize";
 import {
   KNOWN_MGR_EVENT_TYPES,
   MGR_SOURCE_MAP,
   PROJECT_NAME_REGEX,
   validateManagerEvent,
 } from "@/components/ide/chat/chat-types";
-import { stripProjectNameMarker } from "@/components/ide/chat/chat-utils";
+import { stripProjectNameMarker, buildManagerHistory } from "@/components/ide/chat/chat-utils";
 import { parseSseStream } from "@/components/ide/chat/hooks/useSSEStream";
 import { useLLMMonitorStore, type LLMEventType } from "@/stores/llm-monitor-store";
 import { useLanguageStore } from "@/stores/language-store";
@@ -60,6 +61,13 @@ export class ManagerStreamInstance {
   // localStorage key：含 chatSessionId，确保各会话的后端 session 持久化互不干扰
   private get storageKey(): string {
     return `cascade-mgr-session-${this.projectId}-${this.chatSessionId}`;
+  }
+
+  private isEventForCurrentRun(ev: ManagerSseEvent): boolean {
+    if (typeof ev.projectId === "string" && ev.projectId !== this.projectId) return false;
+    if (typeof ev.chatSessionId === "string" && ev.chatSessionId !== this.chatSessionId) return false;
+    if (typeof ev.sessionId === "string" && this.sessionId && ev.sessionId !== this.sessionId) return false;
+    return true;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────
@@ -115,30 +123,12 @@ export class ManagerStreamInstance {
       actionLog: [],
     });
 
-    const allMessages = this.actions.getManagerMessages()
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.typing);
+    const allMessages = this.actions.getManagerMessages();
 
-    // Find the last buildResult message — everything before it is a "completed round".
-    // Compress completed rounds into a single summary to prevent the LLM from
-    // fixating on old plan context when the user sends a new request.
-    const lastBuildIdx = allMessages.reduce((acc, m, i) => (m as any).buildResult ? i : acc, -1);
-
-    let historyMessages: Array<{ role: "user" | "assistant"; content: string }>;
-    if (lastBuildIdx >= 0) {
-      // Summarize everything up to and including the buildResult as "previous round done"
-      const afterBuild = allMessages.slice(lastBuildIdx + 1);
-      const previousUserMsgs = allMessages.slice(0, lastBuildIdx + 1).filter(m => m.role === "user");
-      const lastPrevUserMsg = previousUserMsgs[previousUserMsgs.length - 1];
-      const roundSummary = lastPrevUserMsg
-        ? `[Previous round completed] User requested: "${lastPrevUserMsg.content.slice(0, 200)}". The build was executed successfully. Now the user has a new request — focus on it.`
-        : "[Previous round completed] A build was executed successfully. Now the user has a new request — focus on it.";
-      historyMessages = [
-        { role: "assistant", content: roundSummary },
-        ...afterBuild.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      ];
-    } else {
-      historyMessages = allMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-    }
+    // Compress any completed build round into a one-line summary so the planner
+    // focuses on the NEW request, not the previous round's plan. (Pure logic
+    // lives in buildManagerHistory — unit-tested in chat-utils.test.ts.)
+    const historyMessages = buildManagerHistory(allMessages as any);
 
     const controller = new AbortController();
     this.abortController = controller;
@@ -162,6 +152,8 @@ export class ManagerStreamInstance {
           thinkingText: managerThinkingAccumulated,
           narrationText: managerAccumulated,
           projectId: this.projectId,
+          chatSessionId: this.chatSessionId,
+          runType: "manager",
           updatedAt: now,
           sessionId: this.sessionId,
           lastEventId: this.lastEventId,
@@ -200,7 +192,6 @@ export class ManagerStreamInstance {
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
           this.resetInactivityTimer();
-          if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
 
           const evType = ev.type;
 
@@ -213,6 +204,9 @@ export class ManagerStreamInstance {
             }
             return;
           }
+
+          if (!this.isEventForCurrentRun(ev)) return;
+          if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
 
           if (KNOWN_MGR_EVENT_TYPES.has(evType)) {
             const source = MGR_SOURCE_MAP[evType] || "manager";
@@ -246,13 +240,25 @@ export class ManagerStreamInstance {
               this.state.set({ narrationText: commAccumulated });
             }
           } else if (evType === "action_log") {
-            const actionEntry: ActionLogEntry = {
+            const actionEntry: ActionLogEntry = normalizeActionLogEntry({
               type: ev.actionType || "tool_call",
-              label: ev.label || "",
-              detail: ev.detail || "",
+              label: ev.label,
+              detail: ev.detail,
               timestamp: Date.now(),
-              filePath: ev.filePath || undefined,
-            };
+              filePath: ev.filePath,
+            });
+            if (isCurrentProject) {
+              this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
+            }
+          } else if (evType === "memory_updated") {
+            const chars = typeof ev.chars === "number" && Number.isFinite(ev.chars) ? ev.chars : undefined;
+            const source = stringifyLogValue(ev.source, "tool");
+            const actionEntry: ActionLogEntry = normalizeActionLogEntry({
+              type: "tool_call",
+              label: "update_project_memory",
+              detail: chars ? `${chars} chars via ${source}` : `via ${source}`,
+              timestamp: Date.now(),
+            });
             if (isCurrentProject) {
               this.state.set({ actionLog: [...this.state.get().actionLog, actionEntry] });
             }
@@ -261,9 +267,17 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_ready") {
             if (isCurrentProject) {
               const plan = ev.plan;
+              const planProjectName = (plan as Record<string, unknown> | undefined)?.project_name;
+              const projectName = (typeof ev.project_name === "string" && ev.project_name.trim())
+                ? ev.project_name.trim()
+                : (typeof planProjectName === "string" ? planProjectName.trim() : "");
+              if (projectName) {
+                this.actions.renameProject(this.projectId, projectName, false);
+              }
               if (plan) {
                 this.actions.setManagerPlan(plan);
                 this.actions.addManagerMessage({
+                  id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
                   role: "assistant",
                   content: "",
                   plan,
@@ -475,7 +489,7 @@ export class ManagerStreamInstance {
       this.reader = reader;
       this.lastActivityTs = Date.now();
 
-      const existingSnapshot = this.actions.getStreamingSnapshot();
+      const existingSnapshot = this.getRunSnapshot(sessionId);
       let managerAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.narrationText : "") || "";
       let managerThinkingAccumulated = (existingSnapshot?.type === "manager" ? existingSnapshot.thinkingText : "") || "";
 
@@ -489,6 +503,8 @@ export class ManagerStreamInstance {
           thinkingText: managerThinkingAccumulated,
           narrationText: managerAccumulated,
           projectId: this.projectId,
+          chatSessionId: this.chatSessionId,
+          runType: "manager",
           updatedAt: now,
           sessionId,
           lastEventId: this.lastEventId,
@@ -501,6 +517,7 @@ export class ManagerStreamInstance {
         onHeartbeat: () => { this.lastActivityTs = Date.now(); },
         onEvent: async (ev) => {
           this.lastActivityTs = Date.now();
+          if (!this.isEventForCurrentRun(ev)) return;
           if (typeof ev.eventId === "number") this.lastEventId = ev.eventId;
           const evType = ev.type;
           const isCurrentProject = this.actions.getProjectId() === this.projectId;
@@ -519,6 +536,13 @@ export class ManagerStreamInstance {
           } else if (evType === "plan_ready") {
             if (isCurrentProject) {
               const plan = ev.plan;
+              const planProjectName = (plan as Record<string, unknown> | undefined)?.project_name;
+              const projectName = (typeof ev.project_name === "string" && ev.project_name.trim())
+                ? ev.project_name.trim()
+                : (typeof planProjectName === "string" ? planProjectName.trim() : "");
+              if (projectName) {
+                this.actions.renameProject(this.projectId, projectName, false);
+              }
               if (plan) {
                 this.actions.setManagerPlan(plan);
                 // Skip re-adding the plan message when this is a replayed event
@@ -527,6 +551,7 @@ export class ManagerStreamInstance {
                 // and duplicates the plan card.
                 if (!ev.replay) {
                   this.actions.addManagerMessage({
+                    id: ev.persistedClientId || (this.sessionId ? `agent:${this.sessionId}:final` : undefined),
                     role: "assistant",
                     content: "",
                     plan,
@@ -631,6 +656,61 @@ export class ManagerStreamInstance {
     this.state.reset({ ...INITIAL_MANAGER_STREAM_STATE });
   }
 
+  private getRunSnapshot(sessionId: string): StreamingSnapshot | null {
+    const snapshot = this.actions.getStreamingSnapshotForRun(sessionId, this.projectId, this.chatSessionId);
+    if (
+      snapshot?.type === "manager" &&
+      snapshot.sessionId === sessionId &&
+      snapshot.projectId === this.projectId &&
+      (snapshot.chatSessionId || this.chatSessionId) === this.chatSessionId
+    ) {
+      return snapshot;
+    }
+    return null;
+  }
+
+  private hydrateFromBackendStatus(sessionId: string, status: any): boolean {
+    if (!status || typeof status !== "object") return false;
+    if (status.projectId && status.projectId !== this.projectId) return false;
+    if (status.chatSessionId && status.chatSessionId !== this.chatSessionId) return false;
+    const existing = this.getRunSnapshot(sessionId);
+    const rawSnapshot = status.snapshot && typeof status.snapshot === "object" ? status.snapshot : {};
+    const actionLog = Array.isArray(rawSnapshot.actionLog) && rawSnapshot.actionLog.length > 0
+      ? rawSnapshot.actionLog.map((entry: unknown) => normalizeActionLogEntry(entry as any))
+      : (Array.isArray(existing?.actionLog) ? existing.actionLog : []);
+    const thinkingText = typeof rawSnapshot.thinkingText === "string" && rawSnapshot.thinkingText
+      ? rawSnapshot.thinkingText
+      : (existing?.thinkingText ?? "");
+    const narrationText = typeof rawSnapshot.narrationText === "string" && rawSnapshot.narrationText
+      ? rawSnapshot.narrationText
+      : (existing?.narrationText ?? "");
+    const hasUsableSnapshot = actionLog.length > 0 || Boolean(thinkingText || narrationText || existing);
+    if (!hasUsableSnapshot) return false;
+    const snapshot: StreamingSnapshot = {
+      type: "manager",
+      thinkingText,
+      narrationText,
+      sessionId,
+      projectId: this.projectId,
+      chatSessionId: this.chatSessionId,
+      runType: "manager",
+      updatedAt: typeof rawSnapshot.updatedAt === "number" ? rawSnapshot.updatedAt : Date.now(),
+      lastEventId: typeof status.lastEventId === "number"
+        ? status.lastEventId
+        : (typeof rawSnapshot.lastEventId === "number" ? rawSnapshot.lastEventId : -1),
+      actionLog,
+      finalArtifact: status.finalArtifact ?? rawSnapshot.finalArtifact,
+    };
+    this.lastEventId = snapshot.lastEventId;
+    this.state.set({
+      thinkingText: snapshot.thinkingText,
+      narrationText: snapshot.narrationText,
+      actionLog,
+    });
+    this.actions.setStreamingSnapshot(snapshot);
+    return true;
+  }
+
   /**
    * Attempt to reconnect to an active session for this project.
    * Called on project load / visibility change.
@@ -658,11 +738,11 @@ export class ManagerStreamInstance {
       });
       const data = resp.ok ? await resp.json() : null;
       if (data?.active) {
-        const snapshot = this.actions.getStreamingSnapshot();
-        const resumeEventId = (snapshot?.type === "manager" && snapshot.sessionId === sessionIdToReconnect
-          && typeof snapshot.lastEventId === "number")
+        const hasSnapshot = this.hydrateFromBackendStatus(sessionIdToReconnect, data);
+        const snapshot = this.getRunSnapshot(sessionIdToReconnect);
+        const resumeEventId = (hasSnapshot && snapshot && typeof snapshot.lastEventId === "number")
           ? snapshot.lastEventId
-          : this.lastEventId;
+          : -1;
         this.actions.setManagerResponding(true);
         await this.connect(sessionIdToReconnect, resumeEventId);
       } else {

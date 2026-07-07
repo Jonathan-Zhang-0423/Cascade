@@ -2,6 +2,7 @@ import { ManagerStreamInstance } from "./manager-stream-instance";
 import { BuildStreamInstance } from "./build-stream-instance";
 import {
   type StoreActions,
+  type TaskStatus,
   type ManagerStreamState,
   type BuildStreamState,
   INITIAL_MANAGER_STREAM_STATE,
@@ -9,6 +10,7 @@ import {
 } from "./types";
 import { useIDEStore, flattenFiles, type ManagerMessage } from "@/stores/ide-store";
 import { useProjectStore } from "@/stores/project-store";
+import { compactBuildResultForPersistence } from "@/components/ide/chat/action-log-normalize";
 
 /**
  * Create StoreActions bound to a specific project + session.
@@ -33,6 +35,13 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     const sid = sessionId ?? "main";
     const clientId = crypto.randomUUID();
     const seq = Date.now(); // use timestamp as fallback seq for background msgs
+    const metadata: Record<string, unknown> = {};
+    if (msg.plan) metadata.plan = msg.plan;
+    if (msg.thinking) metadata.thinking = msg.thinking;
+    if (msg.source) metadata.source = msg.source;
+    if (msg.buildResult) metadata.buildResult = compactBuildResultForPersistence(msg.buildResult);
+    if (msg.frozenTaskStatuses) metadata.frozenTaskStatuses = msg.frozenTaskStatuses;
+    if (msg.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = msg.frozenTaskFailureReasons;
     const body = JSON.stringify({
       messages: [{
         clientId,
@@ -42,9 +51,7 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
         seq,
         timestamp: Date.now(),
         sessionId: sid,
-        metadata: msg.plan || msg.thinking || msg.source
-          ? JSON.stringify({ plan: msg.plan, thinking: msg.thinking, source: msg.source })
-          : null,
+        metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
       }],
     });
     fetch(`/api/projects/${projectId}/messages`, {
@@ -53,6 +60,55 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
       body,
       keepalive: body.length < 60_000,
     }).catch(() => {});
+  };
+
+  const freezeLatestPlanInDB = async (
+    statuses?: Record<string, TaskStatus>,
+    failureReasons?: Record<string, string>,
+    planMessageId?: string | null,
+  ) => {
+    if (planMessageId === null) return;
+    const sid = sessionId ?? "main";
+    try {
+      const params = new URLSearchParams({ kind: "manager", limit: "100", sessionId: sid });
+      const resp = await fetch(`/api/projects/${projectId}/messages?${params.toString()}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      const target = planMessageId
+        ? messages.find((m: any) => m?.clientId === planMessageId)
+        : [...messages].reverse().find((m: any) => {
+            if (typeof m?.metadata !== "string" || !m.metadata) return false;
+            try { return !!JSON.parse(m.metadata)?.plan; } catch { return false; }
+          });
+      if (!target) return;
+      let metadata: Record<string, unknown> = {};
+      if (typeof target.metadata === "string" && target.metadata) {
+        try { metadata = JSON.parse(target.metadata); } catch { metadata = {}; }
+      }
+      metadata.frozenTaskStatuses = statuses ?? {};
+      metadata.frozenTaskFailureReasons = failureReasons ?? {};
+      const body = JSON.stringify({
+        messages: [{
+          clientId: target.clientId,
+          kind: "manager",
+          role: target.role,
+          content: target.content ?? "",
+          thinking: target.thinking ?? null,
+          source: target.source ?? null,
+          seq: target.seq,
+          timestamp: Number(target.timestamp) || Date.now(),
+          sessionId: sid,
+          metadata: JSON.stringify(metadata),
+        }],
+      });
+      fetch(`/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: body.length < 60_000,
+      }).catch(() => {});
+    } catch {}
   };
 
   return {
@@ -70,7 +126,10 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     setManagerResponding: (v) => { store().setManagerResponding(v, sessionId ?? "main"); },
     updateTaskStatus: (id, s) => { if (guard()) store().updateTaskStatus(id, s); },
     setTaskFailureReason: (id, reason) => { if (guard()) store().setTaskFailureReason(id, reason); },
-    freezeLatestPlanStatuses: () => { if (guard()) store().freezeLatestPlanStatuses(); },
+    freezeLatestPlanStatuses: (statuses, failureReasons, planMessageId) => {
+      if (guard()) store().freezeLatestPlanStatuses(statuses, failureReasons, planMessageId);
+      else freezeLatestPlanInDB(statuses, failureReasons, planMessageId);
+    },
     setAiResponding: (v) => { if (guard()) store().setAiResponding(v); },
     setExecutingTaskIndex: (idx) => { if (guard()) store().setExecutingTaskIndex(idx); },
     setChatMode: (mode) => { if (guard()) store().setChatMode(mode); },
@@ -109,7 +168,19 @@ function createStoreActions(projectId: string, sessionId: string | null): StoreA
     getManagerPlan: () => store().managerPlan,
     getFiles: () => flattenFiles(store().files),
     getTaskStatuses: () => store().taskStatuses,
+    getConsoleErrors: () => {
+      const entries = store().consoleEntries || [];
+      return entries
+        .filter((e: any) => e.level === "error" || e.level === "warn")
+        .slice(-20) // last 20 errors/warnings
+        .map((e: any) => e.message || e.text || String(e))
+        .filter(Boolean);
+    },
     getStreamingSnapshot: () => store().streamingSnapshot as any,
+    getStreamingSnapshotForRun: (agentSessionId, pid, chatSid) => {
+      const snapshots = (store() as any).streamingSnapshots || {};
+      return snapshots[`${pid}:${chatSid || "main"}:${agentSessionId}`] || null;
+    },
     getMessagesReady: () => store().messagesReady,
   };
 }

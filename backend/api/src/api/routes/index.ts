@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import https from "https";
 import OpenAI from "openai";
-import bcrypt from "bcryptjs";
 import "express-session";
 import cookieParser from "cookie-parser";
 import { spawn } from "child_process";
@@ -11,27 +10,40 @@ import { existsSync, readFileSync, readdirSync, statSync, openSync, readSync, cl
 import { tmpdir } from "os";
 import { join, resolve, basename } from "path";
 import { randomBytes } from "crypto";
-import multer from "multer";
-import archiver from "archiver";
 import { z } from "zod";
 // @ts-ignore
 import helmet from "helmet";
-// @ts-ignore
-import rateLimit from "express-rate-limit";
+import { createSecurity } from "../middleware/security";
+import { requireInviteCode, checkCaptcha, checkAdmin } from "../middleware/auth-middleware";
+import { assertProjectAccess, getRequestUserId, normalizeChatSessionId } from "../project-access";
+import { registerNotificationRoutes } from "./notifications";
+import { registerReferralRoutes } from "./referral";
+import { registerWaitlistRoutes } from "./waitlist";
+import { registerSkillsRoutes } from "./skills";
+import { registerCompileRoutes } from "./compile";
+import { registerProjectsRoutes } from "./projects";
+import { registerCodeExecRoutes } from "./code-exec";
+import { registerMiscRoutes } from "./misc";
+import { registerAuthRoutes } from "./auth";
+import { registerAdminRoutes } from "./admin";
+import {
+  isEduEmail, isQizhiEmail, getTrialInfo, inviteCodePrefix,
+  formatInviteCode,
+} from "../services/invite-service";
 import { doubaoClient, DOUBAO_MODEL, DOUBAO_LITE_MODEL } from "../../agent/providers/doubao-client";
 import { withRetry } from "../../agent/providers/retry";
 import { compressMessages } from "../../infra/context-compressor";
 import { storage } from "../../infra/storage";
 import { srcDir } from "../../infra/paths";
-import { userSessions, getConcurrencyMetrics } from "../../infra/concurrency";
+import { spawnProcess } from "../../infra/process-exec";
+import { createSessionEmit, attachSseWriter, type SseEmit, type SseCapableSession, type BufferedEvent } from "../../infra/sse";
+import { userSessions } from "../../infra/concurrency";
 import type { ChatMessageInput } from "../../infra/storage";
-import { insertProjectSchema, userSkills, projectSkills, insertUserSkillSchema, insertProjectSkillSchema, users, waitlistSubscribers, inviteCodes, subscriptionGrants, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
+import { users, projects, chatMessages, otpCodes, chatSessions, userFeedback, changelogEntries, notifications, publishedApps, appLikes, appComments } from "@cascade/database";
+import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
 import { db, pool } from "../../infra/db";
-import { eq, and, desc, count, isNull, or, sql, inArray } from "drizzle-orm";
-import { sendEmail, NOTIFICATION_EMAIL } from "../../infra/email";
-import { sendOtp, verifyOtp, normalizeTarget, type OtpChannel } from "../../auth/otp";
-import { verifyCaptcha, isCaptchaEnabled, getCaptchaAppId } from "../../infra/captcha";
-import { getTemplateFiles } from "../../compiler/templates/index";
+import { eq, and, desc, count, isNull, or, sql } from "drizzle-orm";
+import { sendEmail } from "../../infra/email";
 import { detectFramework, getLanguageForFramework, getTargetPlatformForFramework, type Framework } from "../../compiler/framework-detector";
 import { getMobilePromptSupplement } from "../../agent/prompts/mobile-prompt-supplements";
 import {
@@ -51,33 +63,27 @@ import {
   buildHolisticVerifierMessage,
 } from "../../agent/prompts/verifier-prompt";
 import { AB_TEST_SCENARIOS } from "../ab-test-scenarios";
-import { runBuildSession, type BuildSessionState, type BufferedEvent, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
+import { runBuildSession, type BuildSessionState, type BuildStep } from "../../agent/orchestrator/build-orchestrator";
 import { runReviewSession, type ReviewSessionState } from "../../agent/orchestrator/review-orchestrator";
 import type { ReviewStrictness } from "../../agent/prompts/verifier-prompt";
+import { SessionManager } from "../../agent/session/session-manager";
+import { SessionStore } from "../../agent/session/session-store";
 import { lspManager } from "../../agent/tools/lsp-manager";
 import { shellManager } from "../../agent/tools/shell-manager";
 import { detectSkillFromText, loadSkill, getSkillForFramework } from "../../skills/loader";
 import { detectCapabilitiesDetailed, loadCapabilitiesTiered } from "../../skills/capability-loader";
 import { runAgentLoop, type ToolSchema, type ToolHandler } from "../../agent/loop/agent-loop";
-import { buildManagerTools, type ManagerSessionState } from "../../agent/tools/agent-tools";
+import type { ManagerSessionState } from "../../agent/tools/agent-tools";
+import { buildAgentToolkit } from "../../agent/tools/toolkit";
 import { getAIClient, getOptimalClient, type AIProvider } from "../../agent/providers/kimi-client";
+import { resolveAgentModel } from "../../agent/providers/agent-model-router";
 import { setupPreviewServer } from "../../compiler/preview-server";
-import { compileKotlinWasm, getArtifactPath, isCompilerAvailable, checkCompilerOnStartup } from "../../compiler/kotlin-wasm/kotlin-wasm-compiler";
-import { compileSwiftWasm, getSwiftArtifactPath, isSwiftWasmAvailable, checkSwiftCompilerOnStartup } from "../../compiler/kotlin-wasm/swift-wasm-compiler";
-import { compileRnWeb, getRnArtifactPath, getVendorPath, ensureVendorBundle } from "../../compiler/rn-web/rn-web-compiler";
-import { compileFlutterWeb, getFlutterArtifactPath, isFlutterAvailable, checkFlutterOnStartup } from "../../compiler/flutter/flutter-compiler";
-import { compileWeChatWeb, getWxArtifactDir, ensureWxVendorBundle } from "../../compiler/wechat/wechat-web-compiler";
 import { runExploreAgent } from "../../agent/orchestrator/explore-agent";
-import { videoStorage } from "../../infra/video-storage";
-import { addVideoWatermark, addImageWatermark } from "../../infra/watermark";
-import { executeDslSequence, validateDslSequence } from "../video/dsl-executor";
-import { aigcSessions, runAigcAgent, type AigcSession } from "../../agent/aigc/aigc-agent";
 import { McpManager } from "../../agent/mcp/mcp-client";
 import { loadMcpConfig, getBuiltinMcpConfig, type McpConfig } from "../../agent/mcp/mcp-config";
-import { buildMcpTools, getMcpToolNames } from "../../agent/mcp/mcp-tools";
-import { runResearchAgent, sanitizeResearchResult } from "../../agent/mcp/research-agent";
+import { getMcpToolNames } from "../../agent/mcp/mcp-tools";
+import { isDefaultProjectName, sanitizeProjectName } from "../../agent/utils/project-name";
 import { registerAdminAuthRoutes } from "../../auth/admin-routes.js";
-import { adminAuthMiddleware } from "../../auth/admin-auth.js";
 
 function parseMarkdownCodeBlock(raw: string): {
   code: string;
@@ -313,73 +319,16 @@ function detectUserLanguage(
   return "English";
 }
 
-// Run execution timeout (10 s) applied to every script/binary execution phase.
-// Compiled languages use an additional compile-phase timeout before this.
-// Output is capped at MAX_OUTPUT_BYTES; processes exceeding either limit are killed.
-const EXEC_TIMEOUT_MS = 10_000;
-const MAX_OUTPUT_BYTES = 512 * 1024;
-
-function spawnProcess(
-  cmd: string,
-  args: string[],
-  opts: { cwd?: string; timeout?: number } = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
-  return new Promise((resolve) => {
-    const outChunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
-    let settled = false;
-    let timedOut = false;
-    let totalBytes = 0;
-
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd ?? process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const accumulate = (chunks: Buffer[], d: Buffer) => {
-      const remaining = MAX_OUTPUT_BYTES - totalBytes;
-      if (remaining <= 0) return;
-      const slice = remaining < d.length ? d.subarray(0, remaining) : d;
-      chunks.push(slice);
-      totalBytes += slice.length;
-      if (totalBytes >= MAX_OUTPUT_BYTES) {
-        try { child.kill("SIGKILL"); } catch {}
-      }
-    };
-
-    child.stdout?.on("data", (d: Buffer) => accumulate(outChunks, d));
-    child.stderr?.on("data", (d: Buffer) => accumulate(errChunks, d));
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        timedOut = true;
-        try { child.kill("SIGKILL"); } catch {}
-      }
-    }, opts.timeout ?? EXEC_TIMEOUT_MS);
-
-    const finish = (code: number) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({
-        stdout: Buffer.concat(outChunks).toString("utf8"),
-        stderr: Buffer.concat(errChunks).toString("utf8"),
-        exitCode: code,
-        timedOut,
-      });
-    };
-
-    child.on("close", (code) => finish(code ?? 1));
-    child.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ stdout: "", stderr: err.message, exitCode: 127, timedOut: false });
-    });
-  });
-}
 
 const buildSessions = new Map<string, BuildSessionState>();
+
+// Unified session manager (Postgres-backed, restart-survivable). Currently
+// drives manager-chat sessions; build/review migration follows.
+const sessionManager = new SessionManager(new SessionStore());
+sessionManager.start();
+sessionManager.onStartup().catch((err) =>
+  console.warn("[SessionManager] onStartup failed:", err instanceof Error ? err.message : err),
+);
 
 interface VideoJobState {
   status: "pending" | "running" | "done" | "error";
@@ -394,6 +343,8 @@ const videoJobs = new Map<string, VideoJobState>();
 interface ManagerChatSession {
   id: string;
   projectId?: string;
+  /** Chat session this manager run belongs to (isolates concurrent sessions within same project). */
+  _chatSessionId?: string;
   events: Array<{ eventId: number; data: Record<string, unknown> }>;
   nextEventId: number;
   done: boolean;
@@ -409,7 +360,7 @@ const reviewSessions = new Map<string, ReviewSessionState>();
 
 setInterval(() => {
   const now = Date.now();
-  const maxAge = 30 * 60 * 1000;
+  const maxAge = 60 * 60 * 1000; // 60 min — complex builds can take 30-45 min
   const doneRetention = 30 * 60 * 1000;
   Array.from(buildSessions.entries()).forEach(([id, session]) => {
     if (session.done) {
@@ -435,7 +386,15 @@ setInterval(() => {
     if (now - session.startedAt > maxAge) {
       // Force-release session slot for stuck manager sessions
       if ((session as any)._userId) userSessions.unregister((session as any)._userId, id);
-      managerChatSessions.delete(id);
+      // Mark done so SSE writers see closure, then let SessionManager do proper cleanup
+      session.done = true;
+      session.doneAt = now;
+      // Send [DONE] to any connected clients so they stop waiting
+      const doneLine = "data: [DONE]\n\n";
+      Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
+      // Unified cleanup via SessionManager (transition + resource disposal + slot release)
+      sessionManager.transition(id, "aborted").catch(() => {});
+      sessionManager.cleanup(id).catch(() => {});
     }
   });
   Array.from(reviewSessions.entries()).forEach(([id, session]) => {
@@ -464,83 +423,217 @@ setInterval(() => {
   });
 }, 60_000);
 
-interface SseCapableSession {
-  nextEventId: number;
-  events: BufferedEvent[];
-  sseWriters: Set<(data: string) => void>;
-  done: boolean;
-}
-
-function createSessionEmit(session: SseCapableSession): SseEmit {
-  return (data: Record<string, unknown>) => {
-    const eventId = session.nextEventId++;
-    const event: BufferedEvent = { eventId, data: { ...data, eventId } };
-    session.events.push(event);
-    const line = `data: ${JSON.stringify(event.data)}\n\n`;
-    Array.from(session.sseWriters).forEach(writer => {
-      try { writer(line); } catch {}
-    });
-  };
-}
-
-function attachSseWriter(session: SseCapableSession, res: any, lastEventId: number) {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-  res.socket?.setNoDelay?.(true);
-
-  const replayHighWater = session.nextEventId;
-  const sentEventIds = new Set<number>();
-
-  const writer = (line: string) => {
-    try {
-      const match = line.match(/^data: (.+)$/);
-      if (match) {
-        const parsed = JSON.parse(match[1]);
-        if (typeof parsed.eventId === "number" && parsed.eventId < replayHighWater) {
-          return;
-        }
-        if (typeof parsed.eventId === "number") {
-          if (sentEventIds.has(parsed.eventId)) return;
-          sentEventIds.add(parsed.eventId);
-        }
-      }
-      res.write(line); (res as any).flush?.();
-    } catch {}
-  };
-
-  session.sseWriters.add(writer);
-
-  const replayEvents = session.events.filter(e => e.eventId > lastEventId && e.eventId < replayHighWater);
-  for (const event of replayEvents) {
-    sentEventIds.add(event.eventId);
-    try { res.write(`data: ${JSON.stringify({ ...event.data, replay: true })}\n\n`); (res as any).flush?.(); } catch {}
-  }
-  if (replayEvents.length > 0) {
-    try { res.write(`data: ${JSON.stringify({ type: "replay_boundary" })}\n\n`); (res as any).flush?.(); } catch {}
-  }
-
-  const heartbeat = setInterval(() => {
-    try { res.write(": heartbeat\n\n"); (res as any).flush?.(); } catch {}
-  }, 2000);
-
-  res.on("close", () => {
-    session.sseWriters.delete(writer);
-    clearInterval(heartbeat);
-  });
-
-  if (session.done) {
-    setTimeout(() => {
-      try { res.end(); } catch {}
-    }, 100);
-  }
-}
-
-type SseEmit = (data: Record<string, unknown>) => void;
+// SSE infrastructure — shared across build/manager/review sessions.
+// Extracted to infra/sse.ts; re-imported here for route-level use.
 
 type UserIntent = "build" | "question" | "fix" | "refine";
+
+function sessionBelongsToRequest(session: {
+  userId?: string | null;
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  _chatSessionId?: string | null;
+}, reqUserId?: string, projectId?: string, chatSessionId?: string): boolean {
+  if (!reqUserId) return false;
+  if (!session.userId || session.userId !== reqUserId) return false;
+  if (projectId && session.projectId && session.projectId !== projectId) return false;
+  if (chatSessionId) {
+    const sid = normalizeChatSessionId(session.chatSessionId ?? session._chatSessionId ?? "main");
+    if (sid !== normalizeChatSessionId(chatSessionId)) return false;
+  }
+  return true;
+}
+
+function sessionStatusPayload(session: {
+  events: BufferedEvent[];
+  done: boolean;
+  aborted?: boolean;
+  currentSnapshot?: Record<string, unknown>;
+  ledgerSnapshot?: Record<string, unknown>;
+  finalArtifact?: Record<string, unknown> | null;
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  actionLog?: Record<string, unknown>[];
+  todoLedger?: { snapshot: () => unknown };
+  payload?: Record<string, unknown>;
+}) {
+  let ledger = session.ledgerSnapshot ?? {};
+  try {
+    const snapshot = session.todoLedger?.snapshot();
+    if (snapshot && typeof snapshot === "object") ledger = snapshot as Record<string, unknown>;
+  } catch {}
+  const currentSnapshot = {
+    ...(session.currentSnapshot ?? {}),
+    ...(session.actionLog ? { actionLog: session.actionLog } : {}),
+    ledger,
+    finalArtifact: session.finalArtifact ?? (session.currentSnapshot as any)?.finalArtifact ?? null,
+    updatedAt: Date.now(),
+  };
+  return {
+    active: !session.done && !session.aborted,
+    eventCount: session.events.length,
+    lastEventId: session.events.length > 0 ? session.events[session.events.length - 1].eventId : -1,
+    done: session.done,
+    projectId: session.projectId || null,
+    chatSessionId: normalizeChatSessionId(session.chatSessionId),
+    payload: session.payload ?? {},
+    snapshot: currentSnapshot,
+    ledger,
+    finalArtifact: session.finalArtifact ?? null,
+  };
+}
+
+type PersistedActionLogEntry = {
+  type: string;
+  label: string;
+  detail: string;
+  timestamp: number;
+  filePath?: string;
+  precedingNarration?: string;
+  stepNum?: number;
+  eventId?: number;
+};
+
+type PersistedNarrationSegment = {
+  id: string;
+  narration: string;
+  actions: PersistedActionLogEntry[];
+  isLive: boolean;
+  stepLabel?: string;
+};
+
+function stringifyLogValue(value: unknown, fallback = ""): string {
+  if (value == null) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  try {
+    const json = JSON.stringify(value);
+    return json == null ? fallback : json;
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateForSessionLog(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}\n...(truncated for session history; full content remains in project files)`;
+}
+
+function currentLedgerStep(session: { todoLedger?: { snapshot: () => { steps?: Array<{ status?: string; stepNumber?: number }> } } }): number | undefined {
+  try {
+    return session.todoLedger?.snapshot().steps?.find((s) => s.status === "running")?.stepNumber;
+  } catch {
+    return undefined;
+  }
+}
+
+function pushBuildActionLogEntry(
+  session: BuildSessionState & { actionLog?: Record<string, unknown>[] },
+  entry: PersistedActionLogEntry,
+): void {
+  session.actionLog ??= [];
+  const detailLimit = entry.type === "file_read"
+    ? 2000
+    : entry.type === "file_write" || entry.type === "code_applied"
+      ? 1200
+      : 1200;
+  session.actionLog.push({
+    ...entry,
+    label: truncateForSessionLog(stringifyLogValue(entry.label), 240),
+    detail: truncateForSessionLog(stringifyLogValue(entry.detail), detailLimit),
+    filePath: entry.filePath ? truncateForSessionLog(entry.filePath, 500) : undefined,
+    precedingNarration: entry.precedingNarration
+      ? truncateForSessionLog(entry.precedingNarration, 800)
+      : undefined,
+  });
+}
+
+function getPersistedActionLog(session: { actionLog?: Record<string, unknown>[] }): PersistedActionLogEntry[] {
+  return (session.actionLog ?? []).map((entry) => ({
+    type: stringifyLogValue(entry.type, "tool_call"),
+    label: stringifyLogValue(entry.label),
+    detail: stringifyLogValue(entry.detail),
+    timestamp: typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp) ? entry.timestamp : Date.now(),
+    filePath: stringifyLogValue(entry.filePath) || undefined,
+    precedingNarration: stringifyLogValue(entry.precedingNarration) || undefined,
+    stepNum: typeof entry.stepNum === "number" && Number.isFinite(entry.stepNum) ? entry.stepNum : undefined,
+    eventId: typeof entry.eventId === "number" && Number.isFinite(entry.eventId) ? entry.eventId : undefined,
+  }));
+}
+
+function parseStepFromLabel(label?: string): number | undefined {
+  const match = stringifyLogValue(label).match(/Step\s*(\d+)/i);
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function buildSegmentsFromActionLog(actionLog: PersistedActionLogEntry[]): PersistedNarrationSegment[] {
+  const byStep = new Map<number, PersistedNarrationSegment>();
+  let currentStep = 0;
+  const ensure = (stepNum: number): PersistedNarrationSegment => {
+    const existing = byStep.get(stepNum);
+    if (existing) return existing;
+    const seg: PersistedNarrationSegment = {
+      id: String(stepNum),
+      narration: "",
+      actions: [],
+      isLive: false,
+    };
+    byStep.set(stepNum, seg);
+    return seg;
+  };
+
+  for (const entry of actionLog) {
+    if (entry.type === "narration") continue;
+    if (entry.type === "step") {
+      const stepNum = entry.stepNum ?? parseStepFromLabel(entry.label) ?? currentStep + 1;
+      currentStep = stepNum;
+      const seg = ensure(stepNum);
+      seg.stepLabel = entry.label || seg.stepLabel;
+      if (entry.detail && !seg.narration) seg.narration = entry.detail;
+      continue;
+    }
+    const stepNum = entry.stepNum ?? (currentStep > 0 ? currentStep : 1);
+    currentStep = Math.max(currentStep, stepNum);
+    const seg = ensure(stepNum);
+    if (!seg.narration && entry.precedingNarration) seg.narration = entry.precedingNarration;
+    seg.actions.push(entry);
+  }
+
+  return Array.from(byStep.entries()).sort(([a], [b]) => a - b).map(([, seg]) => seg);
+}
+
+async function persistAgentManagerMessage(opts: {
+  projectId?: string | null;
+  chatSessionId?: string | null;
+  sessionId: string;
+  role?: "assistant" | "user" | "checkpoint";
+  content?: string;
+  source?: string | null;
+  seq?: number;
+  thinking?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  if (!opts.projectId) return;
+  const sessionId = normalizeChatSessionId(opts.chatSessionId);
+  const clientId = `agent:${opts.sessionId}:final`;
+  const now = Date.now();
+  await storage.upsertChatMessages(opts.projectId, [{
+    clientId,
+    kind: "manager",
+    role: opts.role ?? "assistant",
+    content: opts.content ?? "",
+    thinking: opts.thinking ?? null,
+    source: opts.source ?? null,
+    seq: typeof opts.seq === "number" ? opts.seq : now,
+    timestamp: now,
+    metadata: opts.metadata ? JSON.stringify(opts.metadata) : null,
+    sessionId,
+  }]).catch((err) => {
+    console.warn("[agent-session] persist manager message failed:", err instanceof Error ? err.message : err);
+  });
+}
 
 async function classifyIntent(
   messages: Array<{ role: string; content: string }>,
@@ -580,17 +673,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  checkCompilerOnStartup();
-  checkSwiftCompilerOnStartup();
-  checkFlutterOnStartup();
 
-  // ── Cookie parser (needed for JWT admin cookies) ────────────────────────────
+  // Admin JWT cookies must be parsed before admin auth middleware/routes run.
   app.use(cookieParser());
-
-  // ── Admin JWT auth routes + middleware ──────────────────────────────────────
   registerAdminAuthRoutes(app);
-  app.use("/api/admin", adminAuthMiddleware);
-  app.use("/api/waitlist", adminAuthMiddleware);
 
   // ── Security: Helmet ────────────────────────────────────────────────────────
   app.use(helmet({
@@ -599,134 +685,15 @@ export async function registerRoutes(
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }));
 
-  // ── Security: IP blocklist (in-memory) ──────────────────────────────────────
-  // Map<ip, { blockedUntil: number, reason: string, blockedAt: number }>
-  const ipBlocklist = new Map<string, { blockedUntil: number; reason: string; blockedAt: number }>();
-  // Track 429 hits per IP to auto-block after 3 strikes
-  const ipStrikeCount = new Map<string, { count: number; windowStart: number }>();
+  // Security: IP blocklist, account lockout, and rate limiters. Extracted to
+  // middleware/security.ts — createSecurity mounts the IP-block middleware +
+  // /api/auth rate limiters and exposes admin controls on app locals.
+  const security = createSecurity(app);
+  const { recordLoginFail, isAccountLocked, clearAccountLockout, getLockout, MAX_FAIL } = security;
 
-  // IPs that are never auto-blocked (owner / admin access)
-  const IP_WHITELIST = new Set(["36.142.94.105", "113.87.160.120", "106.120.98.170", "127.0.0.1", "::1"]);
-
-  function getClientIp(req: any): string {
-    return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
-  }
-
-  function isIpBlocked(ip: string): boolean {
-    if (IP_WHITELIST.has(ip)) return false;
-    const entry = ipBlocklist.get(ip);
-    if (!entry) return false;
-    if (entry.blockedUntil > Date.now()) return true;
-    ipBlocklist.delete(ip);
-    return false;
-  }
-
-
-  function recordIpStrike(ip: string) {
-    if (IP_WHITELIST.has(ip)) return; // 白名单 IP 不计 strike
-    const now = Date.now();
-    const WINDOW = 10 * 60 * 1000; // 10 min window
-    const entry = ipStrikeCount.get(ip) ?? { count: 0, windowStart: now };
-    if (now - entry.windowStart > WINDOW) {
-      entry.count = 1; entry.windowStart = now;
-    } else {
-      entry.count++;
-    }
-    ipStrikeCount.set(ip, entry);
-    if (entry.count >= 3) {
-      ipBlocklist.set(ip, { blockedUntil: now + 60 * 60 * 1000, reason: "Auto: 3x rate-limit violations", blockedAt: now });
-      ipStrikeCount.delete(ip);
-    }
-  }
-
-  // Expose blocklist controls on app locals for admin routes
-  (app as any)._ipBlocklist = ipBlocklist;
-
-  // Middleware: reject blocked IPs (whitelist always passes)
-  app.use((req: any, res: any, next: any) => {
-    const ip = getClientIp(req);
-    if (IP_WHITELIST.has(ip)) { next(); return; }
-    if (isIpBlocked(ip)) {
-      return res.status(403).json({ error: "Your IP has been blocked. Contact support." });
-    }
-    next();
-  });
-
-  // ── Security: Account lockout (in-memory) ───────────────────────────────────
-  // Map<userId, { failCount: number; lockedUntil: number | null }>
-  const accountLockout = new Map<string, { failCount: number; lockedUntil: number | null; lockedAt: number | null }>();
-  const MAX_FAIL = 5;
-  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-  function recordLoginFail(userId: string) {
-    const entry = accountLockout.get(userId) ?? { failCount: 0, lockedUntil: null, lockedAt: null };
-    entry.failCount++;
-    if (entry.failCount >= MAX_FAIL) {
-      entry.lockedUntil = Date.now() + LOCKOUT_MS;
-      entry.lockedAt = Date.now();
-    }
-    accountLockout.set(userId, entry);
-  }
-
-  function isAccountLocked(userId: string): boolean {
-    const entry = accountLockout.get(userId);
-    if (!entry || !entry.lockedUntil) return false;
-    if (entry.lockedUntil > Date.now()) return true;
-    // Auto-unlock
-    accountLockout.delete(userId);
-    return false;
-  }
-
-  function clearAccountLockout(userId: string) {
-    accountLockout.delete(userId);
-  }
-
-  (app as any)._accountLockout = accountLockout;
-  (app as any)._clearAccountLockout = clearAccountLockout;
-
-  // ── Security: Rate limiters ─────────────────────────────────────────────────
-  function makeRateLimiter(max: number, windowMinutes: number, message: string) {
-    return rateLimit({
-      windowMs: windowMinutes * 60 * 1000,
-      max,
-      standardHeaders: true,
-      legacyHeaders: false,
-      keyGenerator: (req: any) => getClientIp(req),
-      message: { error: message },
-      handler: (req: any, res: any, next: any, options: any) => {
-        recordIpStrike(getClientIp(req));
-        res.status(options.statusCode).json(options.message);
-      },
-      skip: (req: any) => {
-        // Never rate-limit already-blocked IPs (they get 403 earlier)
-        return false;
-      },
-    });
-  }
-
-  // 只对敏感认证操作限速，/api/auth/me 等轮询接口不受限
-  app.use("/api/auth/login", makeRateLimiter(10, 15, "Too many login attempts. Please wait 15 minutes."));
-  app.use("/api/auth/register", makeRateLimiter(5, 60, "Too many registration attempts. Please wait before trying again."));
-  app.use("/api/auth/otp/send", makeRateLimiter(10, 60, "Too many code requests. Please wait before trying again."));
-  app.use("/api/auth/otp/verify-login", makeRateLimiter(10, 15, "Too many attempts. Please wait 15 minutes."));
-  app.use("/api/auth/github", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
-  app.use("/api/auth/wechat", makeRateLimiter(10, 15, "Too many requests. Please try again later."));
-  app.use("/api/auth/reset-password", makeRateLimiter(5, 60, "Too many attempts. Please wait before trying again."));
-
-  app.get("/api/providers", (_req, res) => {
-    res.json({
-      doubao: !!process.env.DOUBAO_API_KEY,
-      kimi: !!process.env.KIMI_API_KEY,
-      minimax: !!process.env.MINIMAX_API_KEY,
-      glm: !!process.env.GLM_API_KEY,
-      "deepseek-pro": !!process.env.DEEPSEEK_API_KEY,
-      "deepseek-flash": !!process.env.DEEPSEEK_API_KEY,
-    });
-  });
-
-  app.get("/api/concurrency", (_req, res) => {
-    res.json(getConcurrencyMetrics());
-  });
+  // Misc structural routes: /api/providers, /api/concurrency, /api/config/captcha,
+  // POST /api/feedback — see routes/misc.ts.
+  registerMiscRoutes(app);
 
   // ── Security: invite-code gate ──────────────────────────────────────────────
   // Front-end guards the invite gate, but the core endpoints (project creation,
@@ -734,25 +701,6 @@ export async function registerRoutes(
   // authenticated AND the user must have redeemed an invite code. Without this,
   // a logged-in but un-gated user (e.g. a brand-new GitHub-only signup) could hit
   // these APIs directly. Returns 401 if unauthenticated, 403 if no invite code.
-  const requireInviteCode = async (req: any, res: any, next: any) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
-      const user = await storage.getUser(userId);
-      if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
-      // 手机号注册用户（phone_verified=true）直接放行，无需邀请码
-      if ((user as any).phoneVerified) { next(); return; }
-      if (!(user as any).inviteCode) {
-        res.status(403).json({ error: "Invite code required" });
-        return;
-      }
-      next();
-    } catch (err) {
-      console.error("[requireInviteCode]", err);
-      res.status(500).json({ error: "Authorization check failed" });
-    }
-  };
-
   // Temporary debug endpoint — receives client-side trace from BuildStreamInstance
   app.post("/api/_dbg", (req, res) => {
     const msg = req.body?.msg || "";
@@ -764,14 +712,21 @@ export async function registerRoutes(
     let _userId: string | undefined;
     let _sessionId: string | undefined;
     try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
+      const hasAnyProvider = !!(
+        process.env.GLM_API_KEY ||
+        process.env.DOUBAO_API_KEY ||
+        process.env.KIMI_API_KEY ||
+        process.env.MINIMAX_API_KEY ||
+        process.env.DEEPSEEK_API_KEY
+      );
+      if (!hasAnyProvider) {
+        res.status(500).json({ error: "No AI provider is configured (set GLM_API_KEY, DOUBAO_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY, or DEEPSEEK_API_KEY)" });
         return;
       }
       const {
         sessionId, plan, userRequest, userLang, files, taskStatuses, userConfirmation,
-        provider, framework: buildFramework, projectId: reqProjectId, userId: reqUserId,
-        mode: reqMode, userMessage,
+        provider, framework: buildFramework, projectId: reqProjectId,
+        mode: reqMode, userMessage, consoleErrors, chatSessionId: reqChatSessionId,
       } = req.body as {
         sessionId: string;
         plan?: any;
@@ -783,10 +738,18 @@ export async function registerRoutes(
         provider?: AIProvider;
         framework?: Framework;
         projectId?: string;
-        userId?: string;
         mode?: "plan" | "direct";
         userMessage?: string;
+        consoleErrors?: string[];
+        chatSessionId?: string;
       };
+      // chatSessionId: 前端传的当前 chat 会话 id，用于隔离同项目不同会话的 build
+      const reqChatSession = normalizeChatSessionId(reqChatSessionId);
+      const reqUserId = getRequestUserId(req);
+      if (reqProjectId) {
+        const project = await assertProjectAccess(req, res, reqProjectId);
+        if (!project) return;
+      }
 
       // Per-user session cap
       _userId = reqUserId;
@@ -794,6 +757,29 @@ export async function registerRoutes(
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
         res.status(429).json({ error: "Too many active sessions. Please wait for a running build to finish." });
         return;
+      }
+
+      // Abort any existing active build for the SAME project AND SAME chat session
+      // ONLY if it's been running for a long time (> 5 min). This prevents stale
+      // 90+ iteration sessions from interfering, but does NOT kill a build that was
+      // started moments ago (e.g. user switches projects and comes back, triggering
+      // a duplicate build from autoExecutePlan).
+      // IMPORTANT: Only abort builds belonging to the same chatSession — different
+      // chat sessions within the same project must be allowed to run concurrently.
+      if (reqProjectId) {
+        const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+        for (const [id, s] of buildSessions) {
+          if (s.projectId === reqProjectId && !s.done && !s.aborted && id !== sessionId) {
+            // Only abort if the stale build belongs to the SAME chat session
+            const staleChatSession = (s as any)._chatSessionId || "main";
+            if (staleChatSession !== reqChatSession) continue;
+            const age = Date.now() - ((s as any)._startedAt || 0);
+            if (age > STALE_THRESHOLD_MS) {
+              s.aborted = true;
+              console.log(`[build-session] aborting stale session ${id} for project ${reqProjectId} chatSession ${reqChatSession} (age: ${Math.round(age/1000)}s, new build starting)`);
+            }
+          }
+        }
       }
 
       const resolvedMode: "plan" | "direct" = reqMode || (plan ? "plan" : "direct");
@@ -833,10 +819,28 @@ export async function registerRoutes(
         // Run ExploreAgent (same as plan mode) with 8s timeout to gather codebase context
         let exploreContext = "";
         if (files && files.length > 0) {
-          const explorePromise = runExploreAgent(files, userMessage!);
+          const explorePromise = runExploreAgent(files, userMessage!, { provider: provider || "glm" });
           const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
           exploreContext = await Promise.race([explorePromise, timeoutPromise]);
         }
+
+        // Detect if this is a bug-fix request (error patterns in the message)
+        const isErrorFix = /error|bug|fix|crash|broken|doesn't work|not working|报错|修复|出错|崩溃|无法|失败/i.test(userMessage!);
+        const debugGuidance = isErrorFix
+          ? `\n\n## DEBUGGING INSTRUCTIONS (this is a bug-fix request)\n` +
+            `1. FIRST: Call read_file on the file(s) mentioned in the error to see the CURRENT code.\n` +
+            `2. Identify the exact line/function causing the error based on the error message and stack trace.\n` +
+            `3. Understand WHY the error occurs (wrong variable name? missing import? logic error?).\n` +
+            `4. Fix ONLY the bug — do NOT rewrite unrelated code or add new features.\n` +
+            `5. Write the COMPLETE fixed file content using write_file.\n` +
+            `6. If the error mentions multiple files, fix them one by one.\n`
+          : "";
+
+        // Include captured console errors from the preview (if available)
+        const consoleSection = consoleErrors && consoleErrors.length > 0
+          ? `\n\n## Browser Console Errors (captured from live preview)\n${consoleErrors.map(e => `[ERROR] ${e}`).join("\n")}\n`
+          : "";
+
         // Synthesize a single-step plan so we can reuse the entire builder pipeline
         resolvedPlan = {
           mode: "direct",
@@ -845,14 +849,14 @@ export async function registerRoutes(
             step: 1,
             title: userMessage!.length > 80 ? userMessage!.slice(0, 80) + "…" : userMessage!,
             description: exploreContext
-              ? `${userMessage}\n\n## Codebase context (fast scan)\n${exploreContext}`
-              : userMessage!,
+              ? `${userMessage}${consoleSection}${debugGuidance}\n\n## Codebase context (fast scan)\n${exploreContext}`
+              : `${userMessage}${consoleSection}${debugGuidance}`,
           }],
         };
         resolvedUserRequest = userMessage!;
       }
 
-      const session: BuildSessionState & { _startedAt: number } = {
+      const session: BuildSessionState & { _startedAt: number; _chatSessionId: string } = {
         id: sessionId,
         projectId: reqProjectId || undefined,
         userId: reqUserId || undefined,
@@ -867,38 +871,208 @@ export async function registerRoutes(
         framework: resolvedFramework,
         mode: resolvedMode,
         _startedAt: Date.now(),
+        _chatSessionId: reqChatSession,
         events: [],
         nextEventId: 0,
         done: false,
         sseWriters: new Set(),
         parts: [],
         status: { type: "idle" },
+        actionLog: [],
       };
       buildSessions.set(sessionId, session);
 
-      const emit = createSessionEmit(session);
+      // Register with unified SessionManager for persistence + restart-survival
+      const agentSession = await sessionManager.create({
+        id: sessionId,
+        type: "build",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        chatSessionId: reqChatSession,
+        runType: "build",
+        runGroupId: sessionId,
+        payload: { mode: resolvedMode, framework: resolvedFramework, chatSessionId: reqChatSession },
+      }).catch(() => {}); // non-fatal if DB insert fails — build still runs in-memory
+      await sessionManager.transition(sessionId, "running").catch(() => {});
+
+      if (agentSession) {
+        session.events = agentSession.events;
+        session.sseWriters = agentSession.sseWriters;
+        Object.defineProperty(session, "nextEventId", {
+          configurable: true,
+          get: () => agentSession.nextEventId,
+          set: (v: number) => { agentSession.nextEventId = v; },
+        });
+      }
+
+      const rawEmit = agentSession ? sessionManager.createEmit(agentSession) : createSessionEmit(session);
+      const emit: SseEmit = (data) => {
+        const type = typeof data.type === "string" ? data.type : "";
+        const stepNum = typeof (data as any).stepNumber === "number"
+          ? (data as any).stepNumber
+          : currentLedgerStep(session);
+        if (type === "action_log") {
+          pushBuildActionLogEntry(session, {
+            type: stringifyLogValue((data as any).actionType, "tool_call"),
+            label: stringifyLogValue((data as any).label),
+            detail: stringifyLogValue((data as any).detail),
+            timestamp: Date.now(),
+            filePath: stringifyLogValue((data as any).filePath) || undefined,
+            stepNum,
+          });
+        } else if (type === "step_starting") {
+          const totalSteps = typeof (data as any).totalSteps === "number" ? (data as any).totalSteps : undefined;
+          const title = stringifyLogValue((data as any).stepTitle);
+          pushBuildActionLogEntry(session, {
+            type: "step",
+            label: `Step ${stepNum ?? 1}${totalSteps ? `/${totalSteps}` : ""}: ${title}`,
+            detail: "",
+            timestamp: Date.now(),
+            stepNum: stepNum ?? 1,
+          });
+        } else if (type === "step_completed") {
+          const summary = stringifyLogValue((data as any).summary);
+          if (summary) {
+            const existing = [...(session.actionLog ?? [])].reverse().find((entry) =>
+              entry.type === "step" && entry.stepNum === (stepNum ?? currentLedgerStep(session))
+            );
+            if (existing && !existing.detail) existing.detail = truncateForSessionLog(summary, 800);
+          }
+        } else if (type === "step_failed") {
+          pushBuildActionLogEntry(session, {
+            type: "tool_call",
+            label: `Step ${stepNum ?? currentLedgerStep(session) ?? ""} failed`.trim(),
+            detail: stringifyLogValue((data as any).reason || (data as any).message),
+            timestamp: Date.now(),
+            stepNum,
+          });
+        } else if (type === "ledger_snapshot" && agentSession && (data as any).ledger && typeof (data as any).ledger === "object") {
+          agentSession.ledgerSnapshot = (data as any).ledger as any;
+          agentSession.currentSnapshot = {
+            ...agentSession.currentSnapshot,
+            ledger: (data as any).ledger,
+            actionLog: session.actionLog ?? [],
+            updatedAt: Date.now(),
+          };
+          void sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+            ledger: (data as any).ledger as any,
+          }).catch(() => {});
+        } else if (type === "all_complete") {
+          const persistedClientId = `agent:${sessionId}:final`;
+          const actionLog = getPersistedActionLog(session);
+          const ledger = session.todoLedger?.snapshot();
+          session.finalArtifact = {
+            type,
+            ...data,
+            persistedClientId,
+            actionLog,
+            segments: buildSegmentsFromActionLog(actionLog),
+            ledger,
+            completedAt: Date.now(),
+          };
+          data = { ...data, persistedClientId };
+          if (agentSession) {
+            agentSession.finalArtifact = session.finalArtifact;
+            agentSession.ledgerSnapshot = (ledger ?? {}) as any;
+            agentSession.currentSnapshot = {
+              ...agentSession.currentSnapshot,
+              finalArtifact: session.finalArtifact,
+              ledger,
+              actionLog,
+              updatedAt: Date.now(),
+            };
+            void sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+              ledger: (ledger ?? {}) as any,
+              finalArtifact: session.finalArtifact,
+            }).catch(() => {});
+          }
+        }
+        rawEmit(data);
+      };
 
       attachSseWriter(session, res, -1);
 
+      // Diagnostic: detect when the SSE response closes unexpectedly
+      res.on("close", () => {
+        if (!session.done) {
+          console.warn(`[build-session] RES CLOSED WHILE RUNNING sessionId=${sessionId} aborted=${session.aborted}`);
+        }
+      });
+
       const buildPromise = runBuildSession(session, emit)
         .catch((err: any) => {
+          console.error(`[build-session] CAUGHT ERROR sessionId=${sessionId}:`, err?.message || err);
           emit({ type: "build_error", message: err?.message || "Unknown error" });
           emit({ type: "done" });
         })
-        .finally(() => {
+        .finally(async () => {
+          console.log(`[build-session] FINALLY sessionId=${sessionId} aborted=${session.aborted}`);
           session.done = true;
           session.doneAt = Date.now();
           // Send [DONE] frame and close all connected SSE writers so clients
           // detect end-of-stream cleanly (matching what manager-chat does).
           const doneLine = "data: [DONE]\n\n";
           Array.from(session.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
-          // Unregister from per-user session tracker
+          // Unified cleanup via SessionManager: persist build events + transition + slot release
+          if (!agentSession) {
+            const store = new SessionStore();
+            await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          } else {
+            agentSession.nextEventId = session.nextEventId;
+            agentSession._dirty = true;
+            if (session.finalArtifact) {
+              agentSession.finalArtifact = session.finalArtifact;
+              agentSession.currentSnapshot = {
+                ...agentSession.currentSnapshot,
+                finalArtifact: session.finalArtifact,
+                ledger: session.todoLedger?.snapshot(),
+                actionLog: session.actionLog ?? [],
+                updatedAt: Date.now(),
+              };
+              if (session.todoLedger) agentSession.ledgerSnapshot = session.todoLedger.snapshot() as any;
+            }
+            await sessionManager.flushEvents(sessionId).catch(() => {});
+            if (session.finalArtifact) {
+              await sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+                ledger: session.todoLedger?.snapshot() as any,
+                finalArtifact: session.finalArtifact,
+              }).catch(() => {});
+            }
+          }
+          if (session.finalArtifact && session.projectId) {
+            const changedFiles = Array.isArray(session.finalArtifact.changedFiles)
+              ? session.finalArtifact.changedFiles as string[]
+              : [];
+            const summaryText = typeof session.finalArtifact.summaryText === "string"
+              ? session.finalArtifact.summaryText
+              : "";
+            const tokenUsage = (session.finalArtifact as any).tokenUsage;
+            await persistAgentManagerMessage({
+              projectId: session.projectId,
+              chatSessionId: (session as any)._chatSessionId,
+              sessionId,
+              content: "",
+              source: "manager",
+              metadata: {
+                buildResult: {
+                  actionLog: getPersistedActionLog(session),
+                  segments: buildSegmentsFromActionLog(getPersistedActionLog(session)),
+                  completionData: { changedFiles, summary: summaryText },
+                  tokenUsage,
+                  nextStepSuggestion: session.finalArtifact.nextStepSuggestion,
+                  sessionId,
+                },
+              },
+            });
+          }
+          await sessionManager.transition(sessionId, "done").catch(() => {});
+          await sessionManager.cleanup(sessionId).catch(() => {});
+          // Also clean resources directly (SessionManager.cleanup handles slot;
+          // these are build-specific resources not registered on agentSession yet)
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
-          // Clean up session directory
           if (session.sessionDir) {
             rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
           }
-          // Stop LSP servers and shell session
           lspManager.stop(session.id).catch(() => {});
           shellManager.destroyShell(session.id).catch(() => {});
           // Evict session from memory after 30 minutes to prevent unbounded growth
@@ -919,30 +1093,55 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/build-session/:sessionId/status", (req, res) => {
+  app.get("/api/build-session/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     console.log(`[build-status] sessionId=${req.params.sessionId} found=${!!session} done=${session?.done} aborted=${(session as any)?.aborted} mapSize=${buildSessions.size}`);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session.userId,
+        projectId: session.projectId,
+        _chatSessionId: (session as any)._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json(sessionStatusPayload({
+        ...session,
+        chatSessionId: (session as any)._chatSessionId,
+      }));
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "build") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done && !session.aborted,
-      eventCount: session.events.length,
-      done: session.done,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
   // Pre-register a build session ID so that a page refresh during the main
   // POST (which carries the full file payload) can still find the session via
   // the status endpoint. The main POST will overwrite this placeholder with the
   // real session data.
-  app.post("/api/build-session/pre-register", (req, res) => {
-    const { sessionId } = req.body as { sessionId?: string };
+  app.post("/api/build-session/pre-register", async (req, res) => {
+    const { sessionId, projectId, chatSessionId } = req.body as { sessionId?: string; projectId?: string; chatSessionId?: string };
     if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+    const reqUserId = getRequestUserId(req);
+    const normalizedChatSessionId = normalizeChatSessionId(chatSessionId);
+    if (projectId) {
+      const project = await assertProjectAccess(req, res, projectId);
+      if (!project) return;
+    }
     if (!buildSessions.has(sessionId)) {
       buildSessions.set(sessionId, {
         id: sessionId,
+        projectId,
+        userId: reqUserId,
         aborted: false,
         files: new Map(),
         plan: { steps: [] },
@@ -956,15 +1155,25 @@ export async function registerRoutes(
         sseWriters: new Set(),
         parts: [],
         status: { type: "idle" },
+        _chatSessionId: normalizedChatSessionId,
       } as any);
     }
     res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/console-event", (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     if (!session || session.done || session.aborted) {
       res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    if (!sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const { level, message } = req.body as { level?: string; message?: string };
@@ -980,12 +1189,45 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  app.get("/api/build-session/active/:projectId", (req, res) => {
+  app.get("/api/build-session/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     const entries = Array.from(buildSessions.entries());
-    const active = entries.find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+    const active = entries.find(([, s]) => {
+      if (s.projectId !== projectId || s.done || s.aborted) return false;
+      // If chatSessionId is provided, only match builds from the same chat session
+      const buildChatSession = normalizeChatSessionId((s as any)._chatSessionId);
+      return buildChatSession === chatSessionId && sessionBelongsToRequest({
+        userId: s.userId,
+        projectId: s.projectId,
+        _chatSessionId: (s as any)._chatSessionId,
+      }, reqUserId, projectId, chatSessionId);
+    });
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
+      return;
+    }
+    const dbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "build" }).catch(() => null);
+    if (dbSession) {
+      if (!sessionBelongsToRequest(dbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: dbSession.id,
+        active: true,
+        eventCount: dbSession.events.length,
+        chatSessionId: dbSession.chatSessionId,
+        snapshot: dbSession.currentSnapshot,
+        ledger: dbSession.ledgerSnapshot,
+      });
       return;
     }
     // No active session — do NOT fall back to a done session here. The caller
@@ -996,28 +1238,72 @@ export async function registerRoutes(
     res.status(404).json({ error: "No active build session for this project" });
   });
 
-  app.get("/api/build-session/:sessionId/stream", (req, res) => {
-    const session = buildSessions.get(req.params.sessionId);
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+  app.get("/api/build-session/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
+    const live = buildSessions.get(req.params.sessionId);
+    let session: SseCapableSession | undefined = live;
+    if (live && !sessionBelongsToRequest({
+      userId: live.userId,
+      projectId: live.projectId,
+      _chatSessionId: (live as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (!dbSession || dbSession.type !== "build") {
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+      if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      session = dbSession;
     }
     const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
     attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
   });
 
-  app.delete("/api/build-session/:sessionId", (req, res) => {
+  app.delete("/api/build-session/:sessionId", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (dbSession && !sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     if (session) {
       session.aborted = true;
     }
+    await sessionManager.transition(req.params.sessionId, "aborted").catch(() => {});
     res.json({ ok: true });
   });
 
   app.post("/api/build-session/:sessionId/input", (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = buildSessions.get(req.params.sessionId);
     if (!session || session.done || session.aborted) {
       res.status(404).json({ error: "Session not found or already done" });
+      return;
+    }
+    if (!sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const { userInput } = req.body as { userInput?: string };
@@ -1030,7 +1316,7 @@ export async function registerRoutes(
   // ─── Standalone review step (plan + build + REVIEW) ──────────────────────
   // Mirrors /api/build-session but runs the verify→fix→re-verify loop quietly
   // (no needs_input) and reports once. See review-orchestrator.ts.
-  app.post("/api/review-session", async (req, res) => {
+  app.post("/api/review-session", requireInviteCode, async (req, res) => {
     let _reviewUserId: string | undefined;
     let _reviewSessionId: string | undefined;
     try {
@@ -1041,7 +1327,7 @@ export async function registerRoutes(
       }
       const {
         sessionId, files, userRequest, planSteps, userLang,
-        provider, framework: reqFramework, projectId: reqProjectId, strictness,
+        provider, framework: reqFramework, projectId: reqProjectId, strictness, chatSessionId: reqChatSessionId,
       } = req.body as {
         sessionId: string;
         files: Array<{ path: string; content: string }>;
@@ -1052,6 +1338,7 @@ export async function registerRoutes(
         framework?: Framework;
         projectId?: string;
         strictness?: ReviewStrictness;
+        chatSessionId?: string;
       };
 
       if (!sessionId) {
@@ -1060,6 +1347,11 @@ export async function registerRoutes(
       }
 
       const reqUserId = (req.session as any)?.userId as string | undefined;
+      const reqChatSession = normalizeChatSessionId(reqChatSessionId);
+      if (reqProjectId) {
+        const project = await assertProjectAccess(req, res, reqProjectId);
+        if (!project) return;
+      }
       _reviewUserId = reqUserId;
       _reviewSessionId = sessionId;
       if (reqUserId && !userSessions.register(reqUserId, sessionId)) {
@@ -1102,10 +1394,44 @@ export async function registerRoutes(
         parts: [],
         status: { type: "idle" },
         _startedAt: Date.now(),
+        _chatSessionId: reqChatSession,
       };
       reviewSessions.set(sessionId, session);
 
-      const emit = createSessionEmit(session);
+      // Register with unified SessionManager for persistence + restart-survival
+      const agentSession = await sessionManager.create({
+        id: sessionId,
+        type: "review",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        chatSessionId: reqChatSession,
+        runType: "review",
+        runGroupId: sessionId,
+        payload: { strictness: resolvedStrictness, framework: resolvedFramework, chatSessionId: reqChatSession },
+      }).catch(() => {});
+      await sessionManager.transition(sessionId, "running").catch(() => {});
+
+      if (agentSession) {
+        session.events = agentSession.events;
+        session.sseWriters = agentSession.sseWriters;
+        Object.defineProperty(session, "nextEventId", {
+          configurable: true,
+          get: () => agentSession.nextEventId,
+          set: (v: number) => { agentSession.nextEventId = v; },
+        });
+      }
+
+      const rawEmit = agentSession ? sessionManager.createEmit(agentSession) : createSessionEmit(session);
+      const emit: SseEmit = (data) => {
+        if (data.type === "review_report" || data.type === "review_passed" || data.type === "review_done") {
+          session.finalArtifact = {
+            ...(session.finalArtifact ?? {}),
+            [String(data.type)]: data,
+            completedAt: Date.now(),
+          };
+        }
+        rawEmit(data);
+      };
       attachSseWriter(session, res, -1);
 
       runReviewSession(session, emit)
@@ -1113,9 +1439,44 @@ export async function registerRoutes(
           emit({ type: "review_error", message: err?.message || "Unknown error" });
           emit({ type: "done" });
         })
-        .finally(() => {
+        .finally(async () => {
           session.done = true;
           session.doneAt = Date.now();
+          // Persist review events + transition via SessionManager
+          if (!agentSession) {
+            const store = new SessionStore();
+            await store.flushEvents(sessionId, session.events, session.nextEventId).catch(() => {});
+          } else {
+            agentSession.nextEventId = session.nextEventId;
+            agentSession._dirty = true;
+            if (session.finalArtifact) {
+              agentSession.finalArtifact = session.finalArtifact;
+              agentSession.currentSnapshot = {
+                ...agentSession.currentSnapshot,
+                finalArtifact: session.finalArtifact,
+                updatedAt: Date.now(),
+              };
+            }
+            await sessionManager.flushEvents(sessionId).catch(() => {});
+            if (session.finalArtifact) {
+              await sessionManager.saveSnapshot(sessionId, agentSession.currentSnapshot, {
+                finalArtifact: session.finalArtifact,
+              }).catch(() => {});
+            }
+          }
+          if (session.finalArtifact && session.projectId) {
+            await persistAgentManagerMessage({
+              projectId: session.projectId,
+              chatSessionId: (session as any)._chatSessionId,
+              sessionId,
+              content: "",
+              source: "manager",
+              metadata: { reviewResult: session.finalArtifact },
+            });
+          }
+          await sessionManager.transition(sessionId, "done").catch(() => {});
+          await sessionManager.cleanup(sessionId).catch(() => {});
+          // Build-specific resource cleanup
           if (reqUserId) userSessions.unregister(reqUserId, sessionId);
           if (session.sessionDir) {
             rm(session.sessionDir, { recursive: true, force: true }).catch(() => {});
@@ -1132,83 +1493,217 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/review-session/:sessionId/status", (req, res) => {
+  app.get("/api/review-session/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = reviewSessions.get(req.params.sessionId);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session.userId,
+        projectId: session.projectId,
+        _chatSessionId: (session as any)._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json(sessionStatusPayload({ ...session, chatSessionId: (session as any)._chatSessionId }));
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "review") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done && !session.aborted,
-      eventCount: session.events.length,
-      done: session.done,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
-  app.get("/api/review-session/active/:projectId", (req, res) => {
+  app.get("/api/review-session/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     const active = Array.from(reviewSessions.entries())
-      .find(([, s]) => s.projectId === projectId && !s.done && !s.aborted);
+      .find(([, s]) =>
+        s.projectId === projectId &&
+        !s.done &&
+        !s.aborted &&
+        normalizeChatSessionId((s as any)._chatSessionId) === chatSessionId &&
+        sessionBelongsToRequest({
+          userId: s.userId,
+          projectId: s.projectId,
+          _chatSessionId: (s as any)._chatSessionId,
+        }, reqUserId, projectId, chatSessionId)
+      );
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
+      return;
+    }
+    const dbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "review" }).catch(() => null);
+    if (dbSession) {
+      if (!sessionBelongsToRequest(dbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: dbSession.id,
+        active: true,
+        eventCount: dbSession.events.length,
+        chatSessionId: dbSession.chatSessionId,
+        snapshot: dbSession.currentSnapshot,
+        finalArtifact: dbSession.finalArtifact,
+      });
       return;
     }
     res.status(404).json({ error: "No active review session for this project" });
   });
 
-  app.get("/api/review-session/:sessionId/stream", (req, res) => {
-    const session = reviewSessions.get(req.params.sessionId);
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+  app.get("/api/review-session/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
+    const live = reviewSessions.get(req.params.sessionId);
+    let session: SseCapableSession | undefined = live;
+    if (live && !sessionBelongsToRequest({
+      userId: live.userId,
+      projectId: live.projectId,
+      _chatSessionId: (live as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (!dbSession || dbSession.type !== "review") {
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+      if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      session = dbSession;
     }
     const lastEventId = parseInt(req.query.lastEventId as string);
     attachSseWriter(session, res, isNaN(lastEventId) ? -1 : lastEventId);
   });
 
-  app.delete("/api/review-session/:sessionId", (req, res) => {
+  app.delete("/api/review-session/:sessionId", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = reviewSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session.userId,
+      projectId: session.projectId,
+      _chatSessionId: (session as any)._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!session) {
+      const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+      if (dbSession && !sessionBelongsToRequest(dbSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     if (session) session.aborted = true;
+    await sessionManager.transition(req.params.sessionId, "aborted").catch(() => {});
     res.json({ ok: true });
   });
 
-  app.get("/api/manager-chat/:sessionId/status", (req, res) => {
+  app.get("/api/manager-chat/:sessionId/status", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     const session = managerChatSessions.get(req.params.sessionId);
-    if (!session) {
+    if (session) {
+      if (!sessionBelongsToRequest({
+        userId: session._userId,
+        projectId: session.projectId,
+        _chatSessionId: session._chatSessionId,
+      }, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        active: !session.done,
+        done: session.done,
+        eventCount: session.events.length,
+        projectId: session.projectId || null,
+        chatSessionId: normalizeChatSessionId(session._chatSessionId),
+      });
+      return;
+    }
+    const dbSession = await sessionManager.get(req.params.sessionId).catch(() => null);
+    if (!dbSession || dbSession.type !== "manager") {
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    res.json({
-      active: !session.done,
-      done: session.done,
-      eventCount: session.events.length,
-      projectId: session.projectId || null,
-    });
+    if (!sessionBelongsToRequest(dbSession, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    res.json(sessionStatusPayload(dbSession));
   });
 
   app.get("/api/manager-chat/active/:projectId", async (req, res) => {
     const projectId = req.params.projectId;
+    const reqUserId = getRequestUserId(req);
+    const chatSessionId = typeof req.query.chatSessionId === "string" ? normalizeChatSessionId(req.query.chatSessionId) : "";
+    if (!chatSessionId) {
+      res.status(400).json({ error: "chatSessionId query param required" });
+      return;
+    }
+    const project = await assertProjectAccess(req, res, projectId);
+    if (!project) return;
     // Check in-memory first (fast path)
     const entries = Array.from(managerChatSessions.entries());
-    const active = entries.find(([, s]) => s.projectId === projectId && !s.done);
+    const active = entries.find(([, s]) => {
+      if (s.projectId !== projectId || s.done) return false;
+      // If chatSessionId is provided, only match sessions from the same chat session
+      const sessChatSession = normalizeChatSessionId(s._chatSessionId);
+      return sessChatSession === chatSessionId && sessionBelongsToRequest({
+        userId: s._userId,
+        projectId: s.projectId,
+        _chatSessionId: s._chatSessionId,
+      }, reqUserId, projectId, chatSessionId);
+    });
     if (active) {
-      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length });
+      res.json({ sessionId: active[0], active: true, eventCount: active[1].events.length, chatSessionId });
       return;
     }
-    const done = entries.find(([, s]) => s.projectId === projectId && s.done);
-    if (done) {
-      res.json({ sessionId: done[0], active: false, eventCount: done[1].events.length, done: true });
+    const agentDbSession = await sessionManager.findActiveForProject(projectId, { chatSessionId, type: "manager" }).catch(() => null);
+    if (agentDbSession) {
+      if (!sessionBelongsToRequest(agentDbSession, reqUserId, projectId, chatSessionId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.json({
+        sessionId: agentDbSession.id,
+        active: true,
+        eventCount: agentDbSession.events.length,
+        done: false,
+        chatSessionId: agentDbSession.chatSessionId,
+        snapshot: agentDbSession.currentSnapshot,
+      });
       return;
     }
-    // Fallback: check DB for sessions that survived a restart
+    // Legacy fallback: check old manager_sessions table for sessions that
+    // survived before the unified store migration. It has no chatSessionId, so
+    // only allow it for the main session.
     try {
-      const dbSession = await storage.getActiveManagerSessionForProject(projectId);
+      const dbSession = chatSessionId === "main" ? await storage.getActiveManagerSessionForProject(projectId) : null;
       if (dbSession) {
         // Rehydrate into memory so /stream endpoint can serve it
         const events = JSON.parse(dbSession.events || "[]");
         const rehydrated: ManagerChatSession = {
           id: dbSession.id,
           projectId: dbSession.projectId ?? undefined,
+          _chatSessionId: "main",
+          _userId: reqUserId || undefined,
           events,
           nextEventId: dbSession.nextEventId,
           done: dbSession.done,
@@ -1225,7 +1720,26 @@ export async function registerRoutes(
   });
 
   app.get("/api/manager-chat/:sessionId/stream", async (req, res) => {
+    const reqUserId = getRequestUserId(req);
     let session = managerChatSessions.get(req.params.sessionId);
+    if (session && !sessionBelongsToRequest({
+      userId: session._userId,
+      projectId: session.projectId,
+      _chatSessionId: session._chatSessionId,
+    }, reqUserId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const agentSession = !session ? await sessionManager.get(req.params.sessionId).catch(() => null) : null;
+    if (agentSession && agentSession.type === "manager") {
+      if (!sessionBelongsToRequest(agentSession, reqUserId)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const lastEventId = parseInt(req.query.lastEventId as string) ?? -1;
+      sessionManager.attachWriter(agentSession.id, res, isNaN(lastEventId) ? -1 : lastEventId);
+      return;
+    }
     // If not in memory, try rehydrating from DB (post-restart scenario)
     if (!session) {
       try {
@@ -1235,6 +1749,8 @@ export async function registerRoutes(
           session = {
             id: dbRow.id,
             projectId: dbRow.projectId ?? undefined,
+            _userId: reqUserId || undefined,
+            _chatSessionId: "main",
             events,
             nextEventId: dbRow.nextEventId,
             done: dbRow.done,
@@ -1310,8 +1826,10 @@ export async function registerRoutes(
       // chatSessionId: 前端传的当前 chat 会话 id，null/undefined/"" 均归 "main"
       const reqChatSession = (reqChatSessionId && reqChatSessionId !== "") ? reqChatSessionId : "main";
       const activeProvider: AIProvider = provider || "glm";
-      // Planning uses Kimi for stable task decomposition; fallback via getOptimalClient
-      const { client: activeAIClient, model: activeAIModel } = getOptimalClient("planning", "kimi");
+      // Planning respects the selected provider when configured, then falls
+      // back through planning-specialized defaults (Kimi -> GLM -> DeepSeek).
+      const managerDecision = resolveAgentModel("manager", activeProvider);
+      const { client: activeAIClient, model: activeAIModel } = managerDecision;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         res.status(400).json({ error: "messages array is required" });
@@ -1326,27 +1844,34 @@ export async function registerRoutes(
         return;
       }
 
+      // Create session via unified SessionManager (persists to agent_sessions + live cache)
+      const agentSession = await sessionManager.create({
+        id: mgrSessionId,
+        type: "manager",
+        projectId: reqProjectId,
+        userId: reqUserId,
+        chatSessionId: reqChatSession,
+        runType: "manager",
+        runGroupId: mgrSessionId,
+        payload: { chatSessionId: reqChatSession },
+      });
+      await sessionManager.transition(mgrSessionId, "running");
+
+      // Legacy compat: keep managerChatSessions map for /status /stream /active
+      // endpoints. events + sseWriters are shared references from agentSession.
       const mgrSession: ManagerChatSession = {
         id: mgrSessionId,
         projectId: reqProjectId,
-        events: [],
-        nextEventId: 0,
+        _chatSessionId: reqChatSession,
+        events: agentSession.events,
+        get nextEventId() { return agentSession.nextEventId; },
+        set nextEventId(v: number) { agentSession.nextEventId = v; },
         done: false,
-        startedAt: Date.now(),
+        startedAt: agentSession.createdAt,
         _userId: reqUserId || undefined,
-        sseWriters: new Set(),
-      };
+        sseWriters: agentSession.sseWriters,
+      } as ManagerChatSession;
       managerChatSessions.set(mgrSessionId, mgrSession);
-
-      // Persist session to DB so it survives server restarts
-      storage.upsertManagerSession({
-        id: mgrSession.id,
-        projectId: mgrSession.projectId,
-        done: false,
-        startedAt: mgrSession.startedAt,
-        nextEventId: 0,
-        events: [],
-      }).catch((err) => console.warn("[manager-chat] failed to persist session start:", err));
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -1360,15 +1885,8 @@ export async function registerRoutes(
       };
       mgrSession.sseWriters.add(mgrWriter);
 
-      const emit = (data: Record<string, unknown>) => {
-        const eventId = mgrSession.nextEventId++;
-        const eventData = { ...data, eventId };
-        mgrSession.events.push({ eventId, data: eventData });
-        const line = `data: ${JSON.stringify(eventData)}\n\n`;
-        Array.from(mgrSession.sseWriters).forEach(w => {
-          try { w(line); } catch {}
-        });
-      };
+      // Use SessionManager emit (persists events + marks dirty for periodic flush)
+      const emit = sessionManager.getEmit(mgrSessionId);
 
       emit({ type: "session_id", sessionId: mgrSessionId });
 
@@ -1433,7 +1951,7 @@ export async function registerRoutes(
         try {
           const memory = await storage.getProjectMemory(reqProjectId);
           if (memory.trim()) {
-            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — past bugs and fixes, the architecture/tools in use, gotchas. Use it to plan better and avoid repeating mistakes. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
+            systemPrompt = `${systemPrompt}\n\n## Project Memory (learned from past sessions)\n\nAccumulated project-specific knowledge from previous sessions — implemented behavior to preserve, files/modules already changed, past bugs and fixes, architecture/tools in use, gotchas. Treat it as authoritative for THIS project: plans must extend current behavior and must not delete, rewrite, or regress prior work unless the user explicitly asks. If you learn something durable, call update_project_memory.\n\n${memory.trim()}`;
           }
         } catch (err) {
           console.warn("[manager-chat] getProjectMemory failed:", err instanceof Error ? err.message : err);
@@ -1441,9 +1959,17 @@ export async function registerRoutes(
       }
 
       const isNewProject = !files || files.length === 0;
+
+      // CRITICAL: Inject project identity into system prompt so the LLM never
+      // confuses this project with another. Also filter any stale messages from
+      // a different project that leaked through the frontend's global store.
+      const projectIdentity = files && files.length > 0
+        ? `\n\n## CURRENT PROJECT IDENTITY\nYou are working on the project with these files: ${files.map(f => f.path).join(", ")}.\nDo NOT reference or discuss any other project, app, or game that is not represented by these files. If the conversation history mentions a different project, IGNORE those references — they are from a previous session and do not apply here.`
+        : "";
+
       if (files && files.length > 0) {
         const contextMsg = buildManagerContextMessage(files);
-        systemPrompt = `${systemPrompt}\n\n${contextMsg}`;
+        systemPrompt = `${systemPrompt}${projectIdentity}\n\n${contextMsg}`;
       } else {
         systemPrompt = `${systemPrompt}\n\nThe project currently has no files.
 
@@ -1494,7 +2020,7 @@ This override applies to THIS message only — it does not change behavior for p
       let exploreContext = "";
       if (files && files.length > 0) {
         const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0]?.content ?? "";
-        const explorePromise = runExploreAgent(files, lastUserMsg);
+        const explorePromise = runExploreAgent(files, lastUserMsg, { provider: activeProvider });
         const timeoutPromise = new Promise<string>(r => setTimeout(() => r(""), 8000));
         exploreContext = await Promise.race([explorePromise, timeoutPromise]);
       }
@@ -1503,13 +2029,8 @@ This override applies to THIS message only — it does not change behavior for p
         systemPrompt = `${systemPrompt}\n\n## Existing Codebase Context (from fast scan)\n${exploreContext}`;
       }
 
-      const managerState: ManagerSessionState = {};
-      const managerTools = buildManagerTools(managerState, { projectId: reqProjectId, userId: reqUserId });
-
       // Fast intent classification — use MiniMax if available (fastest), else active provider
-      const fastClientForIntent = process.env.MINIMAX_API_KEY
-        ? getAIClient("minimax")
-        : { client: activeAIClient, model: activeAIModel };
+      const fastClientForIntent = resolveAgentModel("communicator", activeProvider);
       const intent = await classifyIntent(processedMessages, fastClientForIntent.client, fastClientForIntent.model);
 
       // Question intent: answer directly without the full manager agent loop
@@ -1537,18 +2058,15 @@ This override applies to THIS message only — it does not change behavior for p
         emit({ type: "manager_done" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+        // Unified cleanup: transition + flush + slot release
+        await sessionManager.transition(mgrSessionId, "done").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
         return;
       }
-
-
-
-      const activeTools = managerTools.schemas;
-      const activeHandlers = managerTools.handlers;
-      const activeExitTools = ["submit_plan"];
 
       // MCP: Always start built-in search; merge user config on top.
       // Gives the planner access to web search and research capabilities.
@@ -1567,45 +2085,6 @@ This override applies to THIS message only — it does not change behavior for p
         mgrMcpManager = new McpManager();
         await mgrMcpManager.connect(mergedConfig);
         if (mgrMcpManager.getAvailableTools().length > 0) {
-          const mcpTools = buildMcpTools(mgrMcpManager, emit);
-          activeTools.push(...mcpTools.schemas);
-          Object.assign(activeHandlers, mcpTools.handlers);
-
-          // Register research tool for the manager
-          activeTools.push({
-            type: "function",
-            function: {
-              name: "research",
-              description: "Search the web for current information to inform your planning. Use when you need to look up latest APIs, library versions, best practices, or technical details before creating the plan.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "The research question — be specific.",
-                  },
-                },
-                required: ["query"],
-              },
-            },
-          });
-          const capturedMgr = mgrMcpManager;
-          activeHandlers["research"] = async (args, emitFn) => {
-            const query = args.query as string;
-            if (!query) return "Error: query is required";
-            emitFn({ type: "action_log", actionType: "research", label: "Research", detail: query.slice(0, 100) });
-            const result = await runResearchAgent(query, capturedMgr, emitFn);
-            // Emit research result summary so the UI shows completion
-            const wordCount = result ? result.split(/\s+/).length : 0;
-            const sourceCount = (result?.match(/https?:\/\//g) || []).length;
-            const summaryLine = sourceCount > 0
-              ? `Found ${sourceCount} source(s), ${wordCount} words`
-              : `${wordCount} words`;
-            emitFn({ type: "action_log", actionType: "research", label: "Research complete", detail: summaryLine });
-            const sanitized = sanitizeResearchResult(result);
-            return sanitized || "(No findings)";
-          };
-
           // Add MCP guidance to system prompt
           const mcpToolNames = getMcpToolNames(mgrMcpManager);
           systemPrompt += `\n\n## External Research Tools (MCP)
@@ -1630,6 +2109,41 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
         mgrMcpManager = null;
       }
 
+      const managerState: ManagerSessionState = {};
+      const managerSessionForTools: BuildSessionState = {
+        id: mgrSessionId,
+        projectId: reqProjectId,
+        userId: reqUserId,
+        aborted: false,
+        files: new Map((files ?? []).map((f) => [f.path, f.content])),
+        plan: { steps: [] },
+        userRequest: allConversationText,
+        userLang: detectedLang,
+        provider: activeProvider,
+        framework: resolvedFramework || (files && files.length > 0 ? detectFramework(files) : "web"),
+        events: mgrSession.events,
+        nextEventId: mgrSession.nextEventId,
+        done: false,
+        sseWriters: mgrSession.sseWriters,
+        parts: [],
+        status: { type: "busy", agent: "manager" },
+      };
+      const managerTools = buildAgentToolkit("manager", {
+        session: managerSessionForTools,
+        managerState,
+        memoryCtx: { projectId: reqProjectId, userId: reqUserId },
+        mcpManager: mgrMcpManager,
+        emit,
+        provider: activeProvider,
+      });
+      if (managerTools.toolManifest) {
+        systemPrompt = `${systemPrompt}\n\n${managerTools.toolManifest}`;
+      }
+
+      const activeTools = managerTools.schemas;
+      const activeHandlers = managerTools.handlers;
+      const activeExitTools = ["submit_plan"];
+
       const emitRawToken = (data: Record<string, unknown>) => {
         if (data.type === "narration_token" && typeof data.token === "string") {
           emit({ type: "raw_token", token: data.token });
@@ -1652,6 +2166,18 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             maxIterations: 10,
             client: activeAIClient,
             model: activeAIModel,
+            phase: "manager",
+            runtimePolicy: {
+              role: "manager",
+              provider: managerDecision.provider,
+              model: activeAIModel,
+              maxIterations: 10,
+              thinkingMode: "auto",
+              routingMode: managerDecision.routingMode,
+              thinkingProfile: "adaptive",
+              toolPolicies: managerTools.policies,
+            },
+            toolPolicies: managerTools.policies,
           },
         );
 
@@ -1669,8 +2195,8 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
             console.warn("[manager-chat] submit_plan produced empty steps; surfacing as manager_error");
             emit({ type: "manager_error", reason: "empty_plan" });
           } else {
-          const projectName = typeof result.exitArgs?.project_name === "string"
-            ? result.exitArgs.project_name
+          let projectName = typeof result.exitArgs?.project_name === "string"
+            ? sanitizeProjectName(result.exitArgs.project_name)
             : undefined;
 
           emit({ type: "plan_preparing" });
@@ -1686,12 +2212,49 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
           if (narratedText) {
             emit({ type: "communicator_token", token: narratedText });
           }
-
-          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false });
+          if (managerState.memoryTouched) {
+            emit({ type: "memory_updated", source: "plan", chars: 0 });
+          }
 
           if (mgrSession.projectId) {
-            storage.updateProjectPlan(mgrSession.projectId, plan).catch(() => {});
+            try {
+              await storage.updateProjectPlan(mgrSession.projectId, plan);
+              if (projectName) {
+                const project = await storage.getProject(mgrSession.projectId);
+                if (project && isDefaultProjectName(project.name)) {
+                  await storage.updateProjectName(mgrSession.projectId, projectName);
+                }
+              }
+            } catch (err) {
+              console.warn("[manager-chat] persist plan/name failed:", err instanceof Error ? err.message : err);
+            }
           }
+
+          const persistedClientId = `agent:${mgrSessionId}:final`;
+          await persistAgentManagerMessage({
+            projectId: mgrSession.projectId,
+            chatSessionId: mgrSession._chatSessionId,
+            sessionId: mgrSessionId,
+            content: "",
+            source: "manager",
+            metadata: { plan },
+          });
+
+          const managerArtifact = { type: "plan_ready", plan, project_name: projectName, persistedClientId, completedAt: Date.now() };
+          const liveManagerAgentSession = await sessionManager.get(mgrSessionId).catch(() => null);
+          if (liveManagerAgentSession) {
+            liveManagerAgentSession.finalArtifact = managerArtifact;
+            liveManagerAgentSession.currentSnapshot = {
+              ...liveManagerAgentSession.currentSnapshot,
+              finalArtifact: managerArtifact,
+              updatedAt: Date.now(),
+            };
+            await sessionManager.saveSnapshot(mgrSessionId, liveManagerAgentSession.currentSnapshot, {
+              finalArtifact: managerArtifact,
+            }).catch(() => {});
+          }
+
+          emit({ type: "plan_ready", plan, project_name: projectName, autoExecute: false, persistedClientId });
           }
 
           emit({ type: "manager_done" });
@@ -1710,19 +2273,12 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
 
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         // Clean up MCP connections
         if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
-        // Persist final state to DB (events + done flag)
-        storage.upsertManagerSession({
-          id: mgrSession.id,
-          projectId: mgrSession.projectId,
-          done: true,
-          startedAt: mgrSession.startedAt,
-          doneAt: mgrSession.doneAt,
-          nextEventId: mgrSession.nextEventId,
-          events: mgrSession.events,
-        }).catch((err) => console.warn("[manager-chat] failed to persist session done:", err));
+        // Unified cleanup: transition + flush events + slot release
+        await sessionManager.transition(mgrSessionId, "done").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1735,19 +2291,12 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
         emit({ type: "manager_error" });
         mgrSession.done = true;
         mgrSession.doneAt = Date.now();
-        if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
         // Clean up MCP connections on error
         if (mgrMcpManager) mgrMcpManager.disconnect().catch(() => {});
-        // Persist error state to DB
-        storage.upsertManagerSession({
-          id: mgrSession.id,
-          projectId: mgrSession.projectId,
-          done: true,
-          startedAt: mgrSession.startedAt,
-          doneAt: mgrSession.doneAt,
-          nextEventId: mgrSession.nextEventId,
-          events: mgrSession.events,
-        }).catch((err2) => console.warn("[manager-chat] failed to persist session error:", err2));
+        // Unified cleanup: transition to error + flush + slot release
+        await sessionManager.transition(mgrSessionId, "error").catch(() => {});
+        await sessionManager.flushEvents(mgrSessionId).catch(() => {});
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
         const doneLine = "data: [DONE]\n\n";
         Array.from(mgrSession.sseWriters).forEach(w => { try { w(doneLine); } catch {} });
         if (!clientDisconnected) { try { res.end(); } catch {} }
@@ -1755,8 +2304,16 @@ The output from research() is raw reference material for YOUR use only. NEVER pa
     } catch (error: any) {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       console.error("Manager chat API error:", error?.message || error);
-      // Release session slot on error — prevents permanent slot leak
-      if (reqUserId && mgrSessionId) userSessions.unregister(reqUserId, mgrSessionId);
+      // Release session slot + persist on error — prevents permanent slot leak.
+      // Guard transition: only valid from non-terminal states.
+      if (mgrSessionId) {
+        if (sessionManager.isActive(mgrSessionId)) {
+          await sessionManager.transition(mgrSessionId, "error").catch(() => {});
+        }
+        await sessionManager.cleanup(mgrSessionId).catch(() => {});
+      } else if (reqUserId && mgrSessionId) {
+        userSessions.unregister(reqUserId, mgrSessionId);
+      }
       if (mgrSessionId && managerChatSessions.has(mgrSessionId)) {
         const s = managerChatSessions.get(mgrSessionId)!;
         s.done = true;
@@ -2389,3521 +2946,41 @@ Rules:
     }
   });
 
-  app.post("/api/generate-project-name", async (req, res) => {
-    try {
-      const { idea, framework } = req.body as { idea?: string; framework?: string };
-      if (!idea) {
-        res.status(400).json({ error: "idea is required" });
-        return;
-      }
-      const { client: nameClient } = getOptimalClient("planning", "doubao");
-      const frameworkHint = framework && framework !== "web" ? ` (${framework} app)` : "";
-      // Name the project in the same language as the idea (Chinese vs English),
-      // so a Chinese prompt yields a Chinese name instead of defaulting to English.
-      const isChinese = /[一-鿿]/.test(idea);
-      const langInstruction = isChinese
-        ? "用中文起名（2-4 个字或词），不要使用英文。"
-        : "Use English (2-4 words, title case).";
-      const completion = await nameClient.chat.completions.create({
-        model: DOUBAO_LITE_MODEL,
-        messages: [
-          {
-            role: "user",
-            content: `Generate a short project name for this app idea${frameworkHint}. ${langInstruction}\n\n"${idea}"\n\nRespond with ONLY the project name, nothing else.`,
-          },
-        ],
-        max_tokens: 20,
-      });
-      const name = (completion.choices[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "");
-      res.json({ name: name || "New Project" });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || "Failed to generate name" });
-    }
-  });
+  registerCodeExecRoutes(app);
 
-  app.post("/api/generate-cascade", async (req, res) => {
-    try {
-      if (!process.env.DOUBAO_API_KEY) {
-        res.status(500).json({ error: "DOUBAO_API_KEY is not configured" });
-        return;
-      }
-
-      const { plan, userPrompt, projectName, currentFiles } = req.body as {
-        plan: any;
-        userPrompt: string;
-        projectName?: string;
-        currentFiles?: { path: string; content: string }[];
-      };
-
-      if (!plan || !userPrompt) {
-        res.status(400).json({ error: "plan and userPrompt are required" });
-        return;
-      }
-
-      const systemPrompt = `You are a technical documentation writer. Generate a cascade.md file for a software project. Use both the project plan AND the actual current file tree to produce an accurate, up-to-date architecture document.
-
-Output ONLY valid markdown — no JSON, no extra text, no code fences wrapping the whole document.
-
-The document MUST have exactly these four fixed sections, plus additional project-specific sections:
-
-## Overview
-3-5 sentences describing what this project is and what it does.
-
-## User Preferences
-List any preferences or constraints expressed in the user prompt: language, framework, style, color scheme, design constraints, etc. Use bullet points.
-
-## System Architecture
-Describe the actual frontend approach, file structure, core design patterns, and how key parts connect — based on the real files if provided. Use bullet points or sub-sections.
-
-## External Dependencies
-List all libraries, frameworks, APIs, or browser APIs used. Derive from actual file contents when available (e.g. <script src="...">, import statements). Use a markdown list.
-
-Then add 1-4 additional sections with meaningful names specific to this project. Good examples:
-- ## Authentication Model (if auth is involved)
-- ## Data Flow (for interactive apps)
-- ## Game Loop (for games)
-- ## Scoring System (for games with scores)
-- ## State Management (for complex state)
-- ## Animation Strategy (for visual effects)
-
-Do NOT use a generic catch-all like "## Additional Notes". Each section name must be specific and meaningful.
-
-Keep the document concise but informative. Use technical language appropriate for a developer.
-If current files are provided, prioritize them over the plan for describing actual architecture and dependencies.`;
-
-      const stepsText = Array.isArray(plan.steps)
-        ? plan.steps.map((s: any) => `- Step ${s.step}: ${s.title}: ${s.description}`).join("\n")
-        : "";
-
-      let filesContext = "";
-      if (currentFiles && currentFiles.length > 0) {
-        const nonCascade = currentFiles.filter(f => !f.path.endsWith("cascade.md"));
-        const fileSummaries = nonCascade.slice(0, 10).map(f => {
-          const preview = f.content.slice(0, 400).replace(/\n+/g, " ").trim();
-          return `### ${f.path}\n${preview}${f.content.length > 400 ? "..." : ""}`;
-        }).join("\n\n");
-        if (fileSummaries) {
-          filesContext = `\n\nCurrent Project Files (actual implementation):\n${fileSummaries}`;
-        }
-      }
-
-      const userMessage = `Project: ${projectName || "Untitled"}
-      
-User Request: ${userPrompt}
-
-Plan Overview: ${plan.overview || plan.summary || ""}
-
-What & Why: ${plan.what_and_why || ""}
-
-Done Looks Like: ${plan.done_looks_like || ""}
-
-Plan Steps:
-${stepsText}
-
-Relevant Files from Plan: ${(plan.relevant_files || []).join(", ")}
-${filesContext}
-
-Generate the cascade.md content for this project based on both the plan and the actual current files.`;
-
-      const completion = await doubaoClient.chat.completions.create({
-        model: DOUBAO_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        stream: false,
-        max_tokens: 4096,
-      });
-
-      const content = completion.choices[0]?.message?.content || "";
-      res.json({ content });
-    } catch (error: any) {
-      console.error("Generate cascade error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to generate cascade.md" });
-    }
-  });
-
-  app.get("/api/projects", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const allProjects = await storage.getProjects(userId);
-      res.json({ projects: allProjects });
-    } catch (error: any) {
-      console.error("Get projects error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get projects" });
-    }
-  });
-
-  const createProjectSchema = insertProjectSchema;
-
-  const updateProjectSchema = z.object({ name: z.string().min(1) });
-
-  const projectFilesSchema = z.object({
-    files: z.array(z.object({ path: z.string().min(1), content: z.string() })),
-  });
-
-  const singleFileSchema = z.object({ path: z.string().min(1), content: z.string() });
-
-  const deleteFileSchema = z.object({ path: z.string().min(1) });
-
-  app.post("/api/projects", requireInviteCode, async (req, res) => {
-    try {
-      const parsed = createProjectSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      const { id, name, emoji, framework: rawFramework } = parsed.data;
-      const framework = (rawFramework || "web") as Framework;
-      const language = getLanguageForFramework(framework);
-      const targetPlatform = getTargetPlatformForFramework(framework);
-      const userId = (req.session as any)?.userId as string | undefined;
-
-      const project = await storage.createProject({
-        id,
-        name,
-        emoji: emoji ?? null,
-        framework,
-        language,
-        targetPlatform,
-        userId: userId ?? undefined,
-      });
-
-      // Initialize files from template
-      const templateFiles = getTemplateFiles(framework);
-      if (templateFiles.length > 0) {
-        await storage.upsertProjectFiles(
-          id,
-          templateFiles.map((f) => ({ path: f.path, content: f.content }))
-        );
-      }
-
-      res.json({ project });
-    } catch (error: any) {
-      console.error("Create project error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to create project" });
-    }
-  });
-
-  app.patch("/api/projects/:id", async (req, res) => {
-    try {
-      const parsed = updateProjectSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      await storage.updateProjectName(req.params.id, parsed.data.name);
-      res.json({ ok: true });
-    } catch (error: any) {
-      console.error("Update project error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to update project" });
-    }
-  });
-
-  app.get("/api/projects/:id/plan", async (req, res) => {
-    try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
-      if (!project.lastPlan) {
-        res.json({ plan: null });
-        return;
-      }
-      res.json({ plan: JSON.parse(project.lastPlan) });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to get plan" });
-    }
-  });
-
-  app.get("/api/projects/:id/build-result", async (req, res) => {
-    try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
-      if (!project.lastBuildResult) {
-        res.json({ result: null });
-        return;
-      }
-      res.json({ result: JSON.parse(project.lastBuildResult) });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to get build result" });
-    }
-  });
-
-  app.get("/api/projects/:id/messages", async (req, res) => {
-    try {
-      const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
-      const kindParam = String(req.query.kind ?? "");
-      const kind = kindParam === "chat" || kindParam === "manager" ? kindParam : undefined;
-      const beforeRaw = req.query.before;
-      const before = typeof beforeRaw === "string" && beforeRaw.length > 0 ? Number(beforeRaw) : undefined;
-      const limitRaw = req.query.limit;
-      const limit = typeof limitRaw === "string" && limitRaw.length > 0 ? Number(limitRaw) : 100;
-      // sessionId: 传了就过滤；"null" 字符串 = 主会话（sessionId IS NULL）；不传 = 全部
-      const sessionIdRaw = req.query.sessionId;
-      const sessionId = typeof sessionIdRaw === "string"
-        ? (sessionIdRaw === "null" ? null : sessionIdRaw)
-        : undefined;
-      const rows = await storage.listChatMessages(projectId, {
-        kind,
-        before: Number.isFinite(before) ? (before as number) : undefined,
-        limit: Number.isFinite(limit) ? limit : 100,
-        sessionId,
-      });
-      res.json({ messages: rows });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to list messages" });
-    }
-  });
-
-  app.post("/api/projects/:id/messages", async (req, res) => {
-    try {
-      const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
-      const body = req.body as { messages?: unknown };
-      if (!Array.isArray(body?.messages)) {
-        res.status(400).json({ error: "messages must be an array" });
-        return;
-      }
-      const allowedKinds = new Set(["chat", "manager"]);
-      const sanitized: ChatMessageInput[] = [];
-      for (const raw of body.messages) {
-        if (!raw || typeof raw !== "object") continue;
-        const m = raw as Record<string, unknown>;
-        if (typeof m.clientId !== "string" || !m.clientId) continue;
-        if (typeof m.kind !== "string" || !allowedKinds.has(m.kind)) continue;
-        if (typeof m.role !== "string") continue;
-        if (typeof m.seq !== "number" || !Number.isFinite(m.seq)) continue;
-        if (typeof m.timestamp !== "number" || !Number.isFinite(m.timestamp)) continue;
-        sanitized.push({
-          clientId: m.clientId,
-          kind: m.kind as "chat" | "manager",
-          role: m.role,
-          content: typeof m.content === "string" ? m.content : "",
-          thinking: typeof m.thinking === "string" ? m.thinking : null,
-          source: typeof m.source === "string" ? m.source : null,
-          seq: m.seq,
-          timestamp: m.timestamp,
-          metadata: typeof m.metadata === "string" ? m.metadata : null,
-          sessionId: typeof m.sessionId === "string" ? m.sessionId : null,
-        });
-      }
-      await storage.upsertChatMessages(projectId, sanitized);
-      res.json({ ok: true, count: sanitized.length });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to save messages" });
-    }
-  });
-
-  app.delete("/api/projects/:id/messages", async (req, res) => {
-    try {
-      const projectId = req.params.id;
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        res.status(404).json({ error: "Project not found" });
-        return;
-      }
-      const afterSeqRaw = req.query.afterSeq;
-      const afterSeq = typeof afterSeqRaw === "string" ? Number(afterSeqRaw) : NaN;
-      if (!Number.isFinite(afterSeq)) {
-        res.status(400).json({ error: "afterSeq query param required" });
-        return;
-      }
-      // sessionId：传了就按 session 删，不传默认删 "main"
-      const sessionIdRaw = req.query.sessionId;
-      const sessionId = typeof sessionIdRaw === "string" ? sessionIdRaw : null;
-      await storage.deleteChatMessagesAfter(projectId, afterSeq, sessionId);
-      res.json({ ok: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to delete messages" });
-    }
-  });
-
-  // ── Chat Sessions ─────────────────────────────────────────────────────────
-  // GET  /api/projects/:id/sessions       — list sessions (newest first)
-  // POST /api/projects/:id/sessions       — create new session
-  // DELETE /api/projects/:id/sessions/:sid — delete session + its messages
-
-  app.get("/api/projects/:id/sessions", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const projectId = req.params.id;
-      const rows = await db
-        .select()
-        .from(chatSessions)
-        .where(eq(chatSessions.projectId, projectId))
-        .orderBy(desc(chatSessions.createdAt));
-      res.json({ sessions: rows });
-    } catch (err) {
-      console.error("[sessions/list]", err);
-      res.status(500).json({ error: "Failed to list sessions" });
-    }
-  });
-
-  app.post("/api/projects/:id/sessions", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const projectId = req.params.id;
-      const name = (req.body as any)?.name ?? "新对话";
-      const id = randomBytes(8).toString("hex");
-      const [row] = await db.insert(chatSessions).values({
-        id,
-        projectId,
-        name: String(name).slice(0, 80),
-      }).returning();
-      res.status(201).json({ session: row });
-    } catch (err) {
-      console.error("[sessions/create]", err);
-      res.status(500).json({ error: "Failed to create session" });
-    }
-  });
-
-  app.delete("/api/projects/:id/sessions/:sid", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { sid } = req.params;
-      // cascade delete removes messages via FK
-      await db.delete(chatSessions).where(eq(chatSessions.id, sid));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[sessions/delete]", err);
-      res.status(500).json({ error: "Failed to delete session" });
-    }
-  });
-
-  app.delete("/api/projects/:id", async (req, res) => {
-    try {
-      await storage.deleteProject(req.params.id);
-      res.json({ ok: true });
-    } catch (error: any) {
-      console.error("Delete project error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to delete project" });
-    }
-  });
-
-  app.get("/api/projects/:id/files", async (req, res) => {
-    try {
-      const projectId = req.params.id;
-      let files = await storage.getProjectFiles(projectId);
-
-      const project = await storage.getProject(projectId);
-      if (project && project.framework && project.framework !== "web") {
-        const paths = files.map((f: { path: string }) => f.path);
-        const webSignatures = new Set([
-          "/project/index.html", "/project/style.css", "/project/app.js",
-          "/project/script.js", "/project/cascade.md",
-        ]);
-        const hasOnlyWebFiles = paths.length > 0 && paths.every((p: string) => webSignatures.has(p));
-        if (hasOnlyWebFiles) {
-          const templateFiles = getTemplateFiles(project.framework as Framework);
-          if (templateFiles.length > 0) {
-            await storage.upsertProjectFiles(
-              projectId,
-              templateFiles.map((f) => ({ path: f.path, content: f.content }))
-            );
-            const templatePaths = new Set(templateFiles.map((t) => t.path));
-            for (const wp of paths) {
-              if (!templatePaths.has(wp)) {
-                await storage.deleteProjectFile(projectId, wp);
-              }
-            }
-            files = await storage.getProjectFiles(projectId);
-            console.log(`Repaired corrupted ${project.framework} project ${projectId}: replaced web files with framework templates`);
-          }
-        }
-      }
-
-      res.json({ files });
-    } catch (error: any) {
-      console.error("Get project files error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to get project files" });
-    }
-  });
-
-  app.put("/api/projects/:id/files", async (req, res) => {
-    try {
-      const parsed = projectFilesSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      await storage.upsertProjectFiles(req.params.id, parsed.data.files);
-      res.json({ ok: true });
-    } catch (error: any) {
-      console.error("Upsert project files error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to save files" });
-    }
-  });
-
-  app.put("/api/projects/:id/files/single", async (req, res) => {
-    try {
-      const parsed = singleFileSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      await storage.upsertProjectFile(req.params.id, parsed.data.path, parsed.data.content);
-      res.json({ ok: true });
-    } catch (error: any) {
-      console.error("Upsert project file error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to save file" });
-    }
-  });
-
-  app.delete("/api/projects/:id/files", async (req, res) => {
-    try {
-      const parsed = deleteFileSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      await storage.deleteProjectFile(req.params.id, parsed.data.path);
-      res.json({ ok: true });
-    } catch (error: any) {
-      console.error("Delete project file error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to delete file" });
-    }
-  });
-
-  app.get("/api/projects/:id/export", async (req, res) => {
-    try {
-      const files = await storage.getProjectFiles(req.params.id);
-      if (!files || files.length === 0) {
-        res.status(404).json({ error: "No files found for this project" });
-        return;
-      }
-
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="project-${req.params.id}.zip"`);
-
-      const archive = archiver("zip", { zlib: { level: 9 } });
-      archive.on("error", (err: Error) => {
-        console.error("Archive error:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to create archive" });
-        }
-      });
-      archive.pipe(res);
-
-      for (const file of files) {
-        let relativePath = file.path.replace(/^\/project\//, "");
-        if (!relativePath) continue;
-        relativePath = relativePath.split("/").filter((seg) => seg !== ".." && seg !== "." && seg !== "").join("/");
-        if (!relativePath || relativePath.startsWith("/")) continue;
-        archive.append(file.content, { name: relativePath });
-      }
-
-      await archive.finalize();
-    } catch (error: any) {
-      console.error("Export project error:", error?.message || error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: error?.message || "Failed to export project" });
-      }
-    }
-  });
+  registerProjectsRoutes(app);
 
   // ── Multi-language code execution ──────────────────────────────────────────
-  app.post("/api/run-file", async (req, res) => {
-    const { content, extension: extRaw } = req.body as {
-      content?: string;
-      extension?: string;
-    };
 
-    if (typeof content !== "string" || typeof extRaw !== "string") {
-      res.status(400).json({ error: "content and extension are required" });
-      return;
-    }
-
-    if (content.length > 200_000) {
-      res.status(413).json({ error: "File too large to execute (max 200 KB)" });
-      return;
-    }
-
-    const ext = extRaw.toLowerCase().replace(/^\./, "");
-
-    // File types that cannot meaningfully be "run"
-    const NON_RUNNABLE = new Set([
-      "html", "css", "scss", "sass", "less", "svg",
-      "json", "yaml", "yml", "toml", "ini", "cfg",
-      "xml", "md", "markdown", "sql", "graphql", "proto",
-      "dockerfile", "vue", "svelte",
-      "h", "hpp", "hxx",
-    ]);
-    if (NON_RUNNABLE.has(ext)) {
-      res.json({ cannotRun: true });
-      return;
-    }
-
-    // Interpreted languages: [command, ...prependArgs]
-    const INTERPRET: Record<string, [string, ...string[]]> = {
-      py:   ["python3"],
-      pyw:  ["python3"],
-      js:   ["node"],
-      mjs:  ["node"],
-      cjs:  ["node"],
-      ts:   ["./node_modules/.bin/tsx"],
-      tsx:  ["./node_modules/.bin/tsx"],
-      rb:   ["ruby"],
-      php:  ["php"],
-      pl:   ["perl"],
-      pm:   ["perl"],
-      lua:  ["lua"],
-      r:    ["Rscript"],
-      sh:   ["bash"],
-      bash: ["bash"],
-      zsh:  ["bash"],
-      ex:   ["elixir"],
-      exs:  ["elixir"],
-    };
-
-    // TSX/JSX files that import React are browser code — can't run in Node.js
-    if ((ext === "tsx" || ext === "jsx") && /from\s+['"]react['"]|require\(['"]react['"]\)/.test(content)) {
-      res.json({ cannotRun: true, reason: "react" });
-      return;
-    }
-
-    const tmpId = randomBytes(8).toString("hex");
-    const tmpBase = join(tmpdir(), `cascade_${tmpId}`);
-    await mkdir(tmpBase, { recursive: true });
-
-    try {
-      let result: { stdout: string; stderr: string; exitCode: number; timedOut: boolean };
-
-      if (INTERPRET[ext]) {
-        // ── Interpreted ──────────────────────────────────────────────────────
-        const [cmd, ...pre] = INTERPRET[ext];
-        const srcFile = join(tmpBase, `main.${ext}`);
-        await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess(cmd, [...pre, srcFile], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (ext === "go") {
-        // ── Go: build to binary (compile ≤30s), then run binary (≤EXEC_TIMEOUT_MS) ──
-        const srcFile = join(tmpBase, "main.go");
-        const binFile = join(tmpBase, "main");
-        await writeFile(srcFile, content, "utf8");
-        await writeFile(join(tmpBase, "go.mod"), "module cascade_run\n\ngo 1.21\n", "utf8");
-        const compileRes = await spawnProcess(
-          "go", ["build", "-o", binFile, "."], { cwd: tmpBase, timeout: 30_000 }
-        );
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (ext === "java") {
-        // ── Java: compile (≤30s), then run class (≤EXEC_TIMEOUT_MS) ──────────
-        const classMatch = content.match(/public\s+class\s+(\w+)/);
-        const className = classMatch ? classMatch[1] : "Main";
-        const srcFile = join(tmpBase, `${className}.java`);
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess("javac", [srcFile], { cwd: tmpBase, timeout: 30_000 });
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess("java", ["-cp", tmpBase, className], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (ext === "c") {
-        // ── C: compile (≤20s), then run binary (≤EXEC_TIMEOUT_MS) ───────────
-        const srcFile = join(tmpBase, "main.c");
-        const binFile = join(tmpBase, "a.out");
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess("gcc", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (["cpp", "cc", "cxx"].includes(ext)) {
-        // ── C++: compile (≤20s), then run binary (≤EXEC_TIMEOUT_MS) ─────────
-        const srcFile = join(tmpBase, `main.${ext}`);
-        const binFile = join(tmpBase, "a.out");
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess("g++", [srcFile, "-o", binFile, "-lm"], { timeout: 20_000 });
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (ext === "rs") {
-        // ── Rust: compile (≤60s), then run binary (≤EXEC_TIMEOUT_MS) ─────────
-        const srcFile = join(tmpBase, "main.rs");
-        const binFile = join(tmpBase, "main");
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess("rustc", [srcFile, "-o", binFile], { timeout: 60_000 });
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess(binFile, [], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (["kt", "kts"].includes(ext)) {
-        // ── Kotlin: compile to jar (≤90s), then run jar (≤EXEC_TIMEOUT_MS) ───
-        const srcFile = join(tmpBase, `main.${ext}`);
-        const jarFile = join(tmpBase, "main.jar");
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess(
-          "kotlinc", [srcFile, "-include-runtime", "-d", jarFile],
-          { timeout: 90_000 }
-        );
-        result = compileRes.exitCode !== 0
-          ? compileRes
-          : await spawnProcess("java", ["-jar", jarFile], { timeout: EXEC_TIMEOUT_MS });
-
-      } else if (ext === "scala") {
-        // ── Scala: compile to classes (≤60s), then run (≤EXEC_TIMEOUT_MS) ────
-        const srcFile = join(tmpBase, "main.scala");
-        await writeFile(srcFile, content, "utf8");
-        const compileRes = await spawnProcess(
-          "scalac", [srcFile, "-d", tmpBase], { cwd: tmpBase, timeout: 60_000 }
-        );
-        if (compileRes.exitCode !== 0) {
-          result = compileRes;
-        } else {
-          // Detect top-level object name for entry point
-          const objMatch = content.match(/object\s+(\w+)/);
-          const entryPoint = objMatch ? objMatch[1] : "Main";
-          result = await spawnProcess(
-            "scala", ["-cp", tmpBase, entryPoint], { timeout: EXEC_TIMEOUT_MS }
-          );
-        }
-
-      } else if (ext === "dart") {
-        // ── Dart: JIT compile+run via dart (≤30s total for warmup + execution) ──
-        const srcFile = join(tmpBase, "main.dart");
-        await writeFile(srcFile, content, "utf8");
-        result = await spawnProcess("dart", ["run", srcFile], { timeout: 30_000 });
-
-      } else {
-        res.json({ cannotRun: true });
-        return;
-      }
-
-      res.json({
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-        timedOut: result.timedOut,
-      });
-    } catch (error: any) {
-      console.error("run-file error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Execution failed" });
-    } finally {
-      try { await rm(tmpBase, { recursive: true, force: true }); } catch {}
-    }
-  });
-
-  app.post("/api/compile/kotlin-wasm", async (req, res) => {
-    try {
-      if (!isCompilerAvailable()) {
-        res.status(503).json({
-          success: false,
-          error: "Kotlin/Wasm compiler not available",
-          errors: ["Gradle SDK not found. The compilation environment is not configured."],
-        });
-        return;
-      }
-
-      const { files } = req.body as {
-        files: Array<{ path: string; content: string }>;
-      };
-
-      if (!files || !Array.isArray(files) || files.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: "At least one Kotlin source file is required",
-          errors: ["No source files provided"],
-        });
-        return;
-      }
-
-      for (const f of files) {
-        if (f.path.includes("..") || f.path.includes("\0")) {
-          res.status(400).json({
-            success: false,
-            error: "Invalid file path",
-            errors: [`Invalid file path: ${f.path}`],
-          });
-          return;
-        }
-      }
-
-      const result = await compileKotlinWasm(files);
-      res.json(result);
-    } catch (error: any) {
-      console.error("Kotlin/Wasm compile error:", error?.message || error);
-      res.status(500).json({
-        success: false,
-        error: error?.message || "Compilation failed",
-        errors: [error?.message || "Unknown compilation error"],
-      });
-    }
-  });
-
-  app.post("/api/compile/swift-wasm", async (req, res) => {
-    try {
-      if (!isSwiftWasmAvailable()) {
-        res.status(503).json({
-          success: false,
-          error: "Swift/Wasm compiler not available",
-          errors: ["Swift toolchain not found. The SwiftWasm compilation environment is not configured."],
-        });
-        return;
-      }
-
-      const { files } = req.body as {
-        files: Array<{ path: string; content: string }>;
-      };
-
-      if (!files || !Array.isArray(files) || files.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: "At least one Swift source file is required",
-          errors: ["No source files provided"],
-        });
-        return;
-      }
-
-      for (const f of files) {
-        if (f.path.includes("..") || f.path.includes("\0")) {
-          res.status(400).json({
-            success: false,
-            error: "Invalid file path",
-            errors: [`Invalid file path: ${f.path}`],
-          });
-          return;
-        }
-      }
-
-      const result = await compileSwiftWasm(files);
-      res.json(result);
-    } catch (error: any) {
-      console.error("Swift/Wasm compile error:", error?.message || error);
-      res.status(500).json({
-        success: false,
-        error: error?.message || "Compilation failed",
-        errors: [error?.message || "Unknown compilation error"],
-      });
-    }
-  });
-
-  app.use("/api/compile/artifacts", (req, res, next) => {
-    if (req.method !== "GET") { next(); return; }
-    try {
-      const subPath = req.path.replace(/^\//, "");
-      const slashIdx = subPath.indexOf("/");
-      if (slashIdx < 0) {
-        res.status(400).json({ error: "Missing file path" });
-        return;
-      }
-
-      const buildId = subPath.slice(0, slashIdx);
-      const requestedFile = subPath.slice(slashIdx + 1);
-
-      const artifactDir = getArtifactPath(buildId) || getSwiftArtifactPath(buildId) || getRnArtifactPath(buildId) || getFlutterArtifactPath(buildId) || getWxArtifactDir(buildId);
-      if (!artifactDir) {
-        res.status(404).json({ error: "Build artifacts not found or expired" });
-        return;
-      }
-
-      if (!requestedFile || requestedFile.includes("..") || requestedFile.includes("\0")) {
-        res.status(400).json({ error: "Invalid file path" });
-        return;
-      }
-
-      const filePath = resolve(join(artifactDir, requestedFile));
-
-      if (!filePath.startsWith(artifactDir)) {
-        res.status(403).json({ error: "Access denied" });
-        return;
-      }
-
-      const ext = requestedFile.split(".").pop()?.toLowerCase() || "";
-      const mimeTypes: Record<string, string> = {
-        html: "text/html",
-        js: "application/javascript",
-        mjs: "application/javascript",
-        wasm: "application/wasm",
-        css: "text/css",
-        json: "application/json",
-        map: "application/json",
-      };
-
-      res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
-      res.setHeader("Cache-Control", "public, max-age=3600");
-
-      // COEP/COOP are required for WASM builds (SharedArrayBuffer).
-      // Do NOT set them for RN/Flutter artifacts — COEP on the embedded document
-      // blocks the iframe from loading when the parent page lacks COEP.
-      const isWasmBuild = !!getArtifactPath(buildId) || !!getSwiftArtifactPath(buildId);
-      if (isWasmBuild) {
-        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-      } else {
-        res.setHeader("Cross-Origin-Resource-Policy", "same-site");
-      }
-
-      res.sendFile(filePath);
-    } catch (error: any) {
-      console.error("Artifact serve error:", error?.message || error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: error?.message || "Failed to serve artifact" });
-      }
-    }
-  });
-
-  app.get("/api/compile/status", (_req, res) => {
-    res.json({
-      kotlinWasm: isCompilerAvailable(),
-      swiftWasm: isSwiftWasmAvailable(),
-      flutterWeb: isFlutterAvailable(),
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // React Native Web compile
-  // -------------------------------------------------------------------------
-
-  const rnWebFilesSchema = z.object({
-    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(30),
-    name: z.string().optional(),
-  });
-
-  app.post("/api/compile/rn-web", async (req, res) => {
-    try {
-      const parsed = rnWebFilesSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      const result = await compileRnWeb(parsed.data.files, parsed.data.name);
-      res.json(result);
-    } catch (error: any) {
-      console.error("RN/Web compile error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Compilation failed" });
-    }
-  });
-
-  // Serve the pre-built react-native-web vendor bundle
-  app.get("/api/compile/rn-vendor/rn-vendor.js", (_req, res) => {
-    const vendorPath = getVendorPath();
-    if (!existsSync(vendorPath)) {
-      res.status(503).json({ error: "Vendor bundle not ready yet" });
-      return;
-    }
-    res.setHeader("Content-Type", "application/javascript");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.sendFile(vendorPath);
-  });
-
-  // Kick off vendor bundle build at startup (non-blocking)
-  ensureVendorBundle().catch((err) => {
-    console.warn("[rn-web] Vendor bundle build failed at startup:", err?.message);
-  });
-
-  // -------------------------------------------------------------------------
-  // Flutter Web compile
-  // -------------------------------------------------------------------------
-
-  const flutterFilesSchema = z.object({
-    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(50),
-  });
-
-  app.post("/api/compile/flutter-web", async (req, res) => {
-    try {
-      if (!isFlutterAvailable()) {
-        res.status(503).json({
-          success: false,
-          error: "Flutter SDK not available on this server. Install Flutter and set FLUTTER_PATH.",
-        });
-        return;
-      }
-      const parsed = flutterFilesSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      const result = await compileFlutterWeb(parsed.data.files);
-      res.json(result);
-    } catch (error: any) {
-      console.error("Flutter/Web compile error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Compilation failed" });
-    }
-  });
-
-  // -------------------------------------------------------------------------
-  // WeChat Mini Program Web compile
-  // -------------------------------------------------------------------------
-
-  const wxFilesSchema = z.object({
-    files: z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(60),
-    projectId: z.string().optional(),
-  });
-
-  app.post("/api/compile/wechat-web", async (req, res) => {
-    try {
-      const parsed = wxFilesSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
-      const result = await compileWeChatWeb(parsed.data.files, parsed.data.projectId);
-      res.json(result);
-    } catch (error: any) {
-      console.error("WeChat/Web compile error:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Compilation failed" });
-    }
-  });
-
-  // Kick off wx vendor bundle build at startup (non-blocking)
-  ensureWxVendorBundle().catch((err) => {
-    console.warn("[wx-web] Vendor bundle build failed at startup:", err?.message);
-  });
+  registerCompileRoutes(app);
 
   // WeChat project export — downloads the source tree as a ZIP that can be
   // opened directly in Tencent WeChat Developer Tools for 100%-faithful preview.
-  app.get("/api/projects/:id/export-wechat", async (req, res) => {
-    try {
-      const project = await storage.getProject(req.params.id);
-      if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-      const files = await storage.getProjectFiles(req.params.id);
-      if (!files || files.length === 0) { res.status(404).json({ error: "No files found" }); return; }
-
-      const safeName = (project.name ?? "miniprogram").replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, "_").slice(0, 40);
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="${safeName}.zip"`);
-
-      const archive = archiver("zip", { zlib: { level: 6 } });
-      archive.on("error", (err: Error) => {
-        console.error("[wx-export] archive error:", err);
-        if (!res.headersSent) res.status(500).json({ error: "Failed to create archive" });
-      });
-      archive.pipe(res);
-
-      for (const file of files) {
-        // Strip /project/ prefix — the ZIP root IS the mini-program root.
-        let rel = file.path.replace(/^\/project\//, "");
-        if (!rel) continue;
-        // Sanitise path segments.
-        rel = rel.split("/").filter((s) => s && s !== ".." && s !== ".").join("/");
-        if (!rel) continue;
-        archive.append(file.content, { name: rel });
-      }
-
-      await archive.finalize();
-    } catch (err: any) {
-      console.error("[wx-export]", err?.message || err);
-      if (!res.headersSent) res.status(500).json({ error: err?.message || "Export failed" });
-    }
-  });
 
   // === REFERRAL ===
+  registerReferralRoutes(app);
 
-  const REFERRAL_GRANT_DAYS = 30;
-  // Anti-abuse: cap how many referrals earn the *inviter* a reward. Without this,
-  // someone can register N throwaway accounts, have each redeem the inviter's
-  // code, and stack unlimited free trial days. Invitees still always get their
-  // one-time reward; only the inviter's payout is bounded.
-  const REFERRAL_MAX_REWARDED = 10;
+  registerAdminRoutes(app);
 
-  // 6-character random suffix from an unambiguous charset, drawn from a CSPRNG.
-  // crypto.randomBytes (not Math.random) so issued codes are unpredictable and
-  // cannot be enumerated/guessed — Math.random is seeded PRNG output and is a
-  // real abuse vector for codes that gate paid trials.
-  // Space: 32^6 = ~1 billion combinations. charset length 32 divides 256, so
-  // `byte % 32` is bias-free.
-  function randomSuffix(): string {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const bytes = randomBytes(6);
-    let s = "";
-    for (let i = 0; i < 6; i++) s += chars[bytes[i] % chars.length];
-    return s;
-  }
+  registerNotificationRoutes(app);
 
-  // Determine the referral code prefix for a user based on their email.
-  // CASCQJ = 奇迹创坛, CASCEDU = edu, CASC = standard
-  // Format matches admin-issued invite codes: prefix + 6 random chars, no separator.
-  async function referralCodePrefix(userId: string): Promise<string> {
-    const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
-    const email = row?.email ?? "";
-    if (isQizhiEmail(email)) return "CASCQJ";
-    if (isEduEmail(email)) return "CASCEDU";
-    return "CASC";
-  }
+  registerAuthRoutes(app, security);
 
-  // Ensure the user has a referral code, generating one if absent.
-  // Retries up to 20 times on unique-constraint collision (probability negligible at scale).
-  async function ensureReferralCode(userId: string): Promise<string> {
-    const [row] = await db.select({ referralCode: users.referralCode }).from(users).where(eq(users.id, userId));
-    if (row?.referralCode) return row.referralCode;
-    const prefix = await referralCodePrefix(userId);
-    for (let i = 0; i < 20; i++) {
-      const code = `${prefix}${randomSuffix()}`;
-      try {
-        await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
-        return code;
-      } catch {
-        // unique constraint violation — retry with a new suffix
-      }
-    }
-    throw new Error("Failed to generate referral code after 20 attempts");
-  }
-
-  // Extend trialExpiresAt by N days (from now or from current expiry, whichever is later)
-  async function extendTrial(userId: string, days: number, reason: string, relatedUserId?: string): Promise<void> {
-    const [row] = await db.select({ trialExpiresAt: users.trialExpiresAt }).from(users).where(eq(users.id, userId));
-    const base = row?.trialExpiresAt && row.trialExpiresAt > new Date() ? row.trialExpiresAt : new Date();
-    const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-    await db.update(users).set({ trialExpiresAt: newExpiry }).where(eq(users.id, userId));
-    await db.insert(subscriptionGrants).values({ userId, grantedDays: days, reason, relatedUserId: relatedUserId ?? null });
-  }
-
-  // GET /api/referral/my-code — return the current user's referral code and stats
-  app.get("/api/referral/my-code", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-      const code = await ensureReferralCode(userId);
-
-      // Count how many users this person has successfully referred
-      const [{ referralCount }] = await db
-        .select({ referralCount: count() })
-        .from(users)
-        .where(eq(users.referredBy, userId));
-
-      const baseUrl = process.env.APP_BASE_URL || "http://localhost:5000";
-      res.json({
-        referralCode: code,
-        referralLink: `${baseUrl}/register?ref=${code}`,
-        referralCount: Number(referralCount),
-        grantDays: REFERRAL_GRANT_DAYS,
-      });
-    } catch (err) {
-      console.error("[referral/my-code]", err);
-      res.status(500).json({ error: "Failed to get referral code" });
-    }
-  });
-
-  // POST /api/referral/redeem — new user redeems a referral code after registration
-  // Body: { referralCode: string }
-  app.post("/api/referral/redeem", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-      const { referralCode: code } = req.body as { referralCode?: string };
-      if (!code?.trim()) return res.status(400).json({ error: "Referral code required" });
-
-      // Check the invitee hasn't already used a referral code
-      const [me] = await db.select({ referredBy: users.referredBy }).from(users).where(eq(users.id, userId));
-      if (me?.referredBy) return res.status(400).json({ error: "You have already used a referral code" });
-
-      // Look up the referrer
-      const [referrer] = await db.select({ id: users.id }).from(users).where(eq(users.referralCode, code.trim().toUpperCase()));
-      if (!referrer) return res.status(400).json({ error: "Invalid referral code" });
-      if (referrer.id === userId) return res.status(400).json({ error: "You cannot use your own referral code" });
-
-      // Record the referral. The invitee always gets their one-time reward, but
-      // the inviter's reward is capped (anti-abuse: stops mass throwaway-account
-      // referral farming). Count existing successful referrals BEFORE recording
-      // this one to decide whether the inviter is still within the reward cap.
-      const [{ priorReferrals }] = await db
-        .select({ priorReferrals: count() })
-        .from(users)
-        .where(eq(users.referredBy, referrer.id));
-
-      await db.update(users).set({ referredBy: referrer.id }).where(eq(users.id, userId));
-      await extendTrial(userId, REFERRAL_GRANT_DAYS, "referral_invitee", referrer.id);
-
-      const inviterRewarded = Number(priorReferrals) < REFERRAL_MAX_REWARDED;
-      if (inviterRewarded) {
-        await extendTrial(referrer.id, REFERRAL_GRANT_DAYS, "referral_inviter", userId);
-      }
-
-      res.json({ ok: true, grantedDays: REFERRAL_GRANT_DAYS, inviterRewarded });
-    } catch (err) {
-      console.error("[referral/redeem]", err);
-      res.status(500).json({ error: "Failed to redeem referral code" });
-    }
-  });
-
-  // ── User Feedback ─────────────────────────────────────────────────────────
-  // POST /api/feedback — submit user suggestion
-  app.post("/api/feedback", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { content, source } = req.body as { content?: string; source?: string };
-      if (!content?.trim()) return res.status(400).json({ error: "Content required" });
-      await db.insert(userFeedback).values({
-        userId,
-        content: content.trim().slice(0, 2000),
-        source: (source === "mobile" ? "mobile" : "pc"),
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[feedback]", err);
-      res.status(500).json({ error: "Failed to submit feedback" });
-    }
-  });
-
-  // GET /api/admin/feedback — list all feedback (admin only)
-  app.get("/api/admin/feedback", async (req, res) => {
-    try {
-      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
-      const rows = await db
-        .select({
-          id: userFeedback.id,
-          content: userFeedback.content,
-          source: userFeedback.source,
-          createdAt: userFeedback.createdAt,
-          repliedAt: userFeedback.repliedAt,
-          replyContent: userFeedback.replyContent,
-          username: users.username,
-          email: users.email,
-          phone: users.phone,
-        })
-        .from(userFeedback)
-        .leftJoin(users, eq(userFeedback.userId, users.id))
-        .orderBy(desc(userFeedback.createdAt))
-        .limit(500);
-      res.json({ feedback: rows });
-    } catch (err) {
-      console.error("[admin/feedback]", err);
-      res.status(500).json({ error: "Failed to fetch feedback" });
-    }
-  });
-
-  // POST /api/admin/feedback/:id/reply — 管理员回复用户建议，写入 notifications 表并标记已回复
-  app.post("/api/admin/feedback/:id/reply", async (req, res) => {
-    try {
-      if (!req.adminUser) return res.status(401).json({ error: "Unauthorized" });
-      const feedbackId = parseInt(req.params.id);
-      const { message } = req.body as { message?: string };
-      if (!message?.trim()) return res.status(400).json({ error: "Message required" });
-      const [fb] = await db.select({ userId: userFeedback.userId, content: userFeedback.content })
-        .from(userFeedback).where(eq(userFeedback.id, feedbackId));
-      if (!fb) return res.status(404).json({ error: "Feedback not found" });
-      // 写入 notifications
-      await db.insert(notifications).values({
-        userId: fb.userId,
-        type: "admin_reply",
-        title: "管理员回复了你的建议",
-        body: message.trim(),
-      });
-      // 标记 feedback 已回复
-      await db.update(userFeedback)
-        .set({ repliedAt: new Date(), replyContent: message.trim() })
-        .where(eq(userFeedback.id, feedbackId));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/feedback/reply]", err);
-      res.status(500).json({ error: "Failed to send reply" });
-    }
-  });
-
-  // GET /api/notifications — 拉取当前用户通知列表
-  app.get("/api/notifications", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const rows = await db.select().from(notifications)
-        .where(eq(notifications.userId, userId))
-        .orderBy(desc(notifications.createdAt))
-        .limit(50);
-      res.json({ notifications: rows });
-    } catch (err) {
-      console.error("[notifications]", err);
-      res.status(500).json({ error: "Failed to fetch notifications" });
-    }
-  });
-
-  // PATCH /api/notifications/:id/read — 标记单条已读
-  app.patch("/api/notifications/:id/read", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const id = parseInt(req.params.id);
-      await db.update(notifications).set({ isRead: true })
-        .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to mark read" });
-    }
-  });
-
-  // PATCH /api/notifications/read-all — 全部标记已读
-  app.patch("/api/notifications/read-all", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to mark all read" });
-    }
-  });
-
-  // === AUTH ===
-
-  // Validate an invite code and atomically mark it redeemed by the given user.
-  // Returns the trial expiry to write to users.trialExpiresAt, or an error
-  // string for the caller to map to an HTTP 400 response.
-  async function redeemInviteCode(code: string, userId: string): Promise<
-    | { ok: true; trialExpiresAt: Date; code: string }
-    | { ok: false; error: "Invalid invite code" | "Invite code already used" | "Invite code expired" }
-  > {
-    const trimmed = code.trim();
-    if (!trimmed) return { ok: false, error: "Invalid invite code" };
-    const [invite] = await db.select().from(inviteCodes).where(eq(inviteCodes.code, trimmed));
-    if (!invite) return { ok: false, error: "Invalid invite code" };
-    if (invite.redeemedByUserId) return { ok: false, error: "Invite code already used" };
-    if (new Date(invite.expiresAt).getTime() < Date.now()) return { ok: false, error: "Invite code expired" };
-    const now = new Date();
-    // Trial starts from registration time (now).
-    // For 奇绩创坛 codes: look up the subscriber's email to apply the fixed deadline.
-    let trialExpiresAt = new Date(now.getTime() + invite.trialDays * 24 * 60 * 60 * 1000);
-    if (invite.waitlistSubscriberId) {
-      const [sub] = await db.select({ email: waitlistSubscribers.email })
-        .from(waitlistSubscribers)
-        .where(eq(waitlistSubscribers.id, invite.waitlistSubscriberId));
-      if (sub && isQizhiEmail(sub.email)) {
-        trialExpiresAt = QIZHI_FREE_UNTIL < trialExpiresAt ? QIZHI_FREE_UNTIL : trialExpiresAt;
-      }
-    }
-    const updated = await db.update(inviteCodes)
-      .set({ redeemedByUserId: userId, redeemedAt: now })
-      .where(and(eq(inviteCodes.id, invite.id), isNull(inviteCodes.redeemedByUserId)))
-      .returning({ id: inviteCodes.id });
-    if (updated.length === 0) {
-      // Lost the race against another redemption.
-      return { ok: false, error: "Invite code already used" };
-    }
-    return { ok: true, trialExpiresAt, code: trimmed };
-  }
-
-  app.post("/api/auth/register", async (req, res) => {
-    // Username-based registration is closed. New users must register via
-    // email OTP, phone OTP, or GitHub OAuth.
-    return res.status(403).json({ error: "Registration via username is not available. Please sign up with email, phone, or GitHub." });
-  });
-
-  app.post("/api/auth/invite-gate", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { inviteCode } = req.body as { inviteCode?: string };
-      if (!inviteCode?.trim()) return res.status(400).json({ error: "Invite code required" });
-
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: "User not found" });
-      if ((user as any).inviteCode) {
-        // Idempotent — already redeemed.
-        return res.json({ ok: true, alreadyRedeemed: true });
-      }
-
-      const redeem = await redeemInviteCode(inviteCode, userId);
-      if (!redeem.ok) return res.status(400).json({ error: redeem.error });
-
-      await db.update(users)
-        .set({ inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt })
-        .where(eq(users.id, userId));
-
-      res.json({ ok: true, inviteCode: redeem.code, trialExpiresAt: redeem.trialExpiresAt.toISOString() });
-    } catch (err) {
-      console.error("[auth/invite-gate]", err);
-      res.status(500).json({ error: "Failed to redeem invite code" });
-    }
-  });
-
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      if (!(await checkCaptcha(req, res))) return;
-      const { username, password } = req.body as { username: string; password: string };
-      if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
-        return res.status(400).json({ error: "username and password required" });
-      }
-      const identifier = username.trim();
-
-      // Resolve user by email, phone, or username — whichever matches first.
-      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.toLowerCase());
-      const isPhone = /^\+\d{8,15}$/.test(identifier);
-      let user =
-        isEmail ? await storage.getUserByEmail(identifier.toLowerCase())
-        : isPhone ? await storage.getUserByPhone(identifier)
-        : await storage.getUserByUsername(identifier);
-
-      if (!user) return res.status(401).json({ error: "Invalid credentials" });
-      if (!user.password) return res.status(401).json({ error: "Invalid credentials" });
-
-      // Account lockout check
-      if (isAccountLocked(user.id)) {
-        const entry = accountLockout.get(user.id);
-        const remainingSec = entry?.lockedUntil ? Math.ceil((entry.lockedUntil - Date.now()) / 1000) : 900;
-        return res.status(403).json({ error: "Account temporarily locked due to too many failed attempts.", remainingSec });
-      }
-
-      const match = await bcrypt.compare(password, user.password);
-      if (!match) {
-        recordLoginFail(user.id);
-        const entry = accountLockout.get(user.id);
-        const remaining = MAX_FAIL - (entry?.failCount ?? 0);
-        const msg = remaining <= 0
-          ? "Account temporarily locked due to too many failed attempts."
-          : `Invalid credentials. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`;
-        return res.status(401).json({ error: msg });
-      }
-
-      // Success — clear any lockout
-      clearAccountLockout(user.id);
-      (req.session as any).userId = user.id;
-      await new Promise<void>((resolve, reject) =>
-        req.session.save((err) => (err ? reject(err) : resolve()))
-      );
-      res.json({
-        id: user.id,
-        username: user.username,
-        experienceLevel: (user as any).experienceLevel,
-        hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
-        inviteCode: (user as any).inviteCode ?? null,
-        phoneVerified: !!(user as any).phoneVerified,
-        trialExpiresAt: (user as any).trialExpiresAt
-          ? ((user as any).trialExpiresAt as Date).toISOString()
-          : null,
-      });
-    } catch (err) {
-      console.error("[auth/login]", err);
-      res.status(500).json({ error: "Login failed" });
-    }
-  });
-
-  app.get("/api/auth/me", async (req, res) => {
-    const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    res.json({
-      id: user.id,
-      username: user.username,
-      experienceLevel: (user as any).experienceLevel,
-      hasSetExperienceLevel: (user as any).hasSetExperienceLevel ?? false,
-      hasPassword: !!(user as any).password,
-      inviteCode: (user as any).inviteCode ?? null,
-      phoneVerified: !!(user as any).phoneVerified,
-      email: (user as any).email ?? null,
-      phone: (user as any).phone ?? null,
-      githubId: (user as any).githubId ?? null,
-      githubLogin: (user as any).githubLogin ?? null,
-      wechatOpenId: (user as any).wechatOpenId ?? null,
-      wechatNickname: (user as any).wechatNickname ?? null,
-      firstName: (user as any).firstName ?? null,
-      lastName: (user as any).lastName ?? null,
-      bio: (user as any).bio ?? null,
-      trialExpiresAt: (user as any).trialExpiresAt
-        ? ((user as any).trialExpiresAt as Date).toISOString()
-        : null,
-      avatarUrl: (user as any).avatarUrl ?? null,
-    });
-  });
-
-  app.put("/api/auth/me/username", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { username } = req.body as { username?: string };
-      if (!username || typeof username !== "string" || !username.trim()) {
-        return res.status(400).json({ error: "Username required" });
-      }
-      const trimmed = username.trim();
-      if (trimmed.length < 2 || trimmed.length > 32) {
-        return res.status(400).json({ error: "Username must be 2–32 characters" });
-      }
-      if (!/^[a-zA-Z0-9_\-一-龥]+$/.test(trimmed)) {
-        return res.status(400).json({ error: "Username contains invalid characters" });
-      }
-      const existing = await storage.getUserByUsername(trimmed);
-      if (existing && existing.id !== userId) {
-        return res.status(409).json({ error: "Username already taken" });
-      }
-      await db.update(users).set({ username: trimmed, usernameLastChangedAt: new Date() } as any).where(eq(users.id, userId));
-      res.json({ ok: true, username: trimmed });
-    } catch (err) {
-      console.error("[auth/me/username]", err);
-      res.status(500).json({ error: "Failed to update username" });
-    }
-  });
-
-  app.get("/api/auth/me/username-cooldown", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: "User not found" });
-      const lastChanged = (user as any).usernameLastChangedAt as Date | null;
-      if (!lastChanged) return res.json({ canChange: true, remainingDays: 0 });
-      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
-      const elapsed = Date.now() - lastChanged.getTime();
-      if (elapsed >= sixMonthsMs) return res.json({ canChange: true, remainingDays: 0 });
-      const remainingDays = Math.ceil((sixMonthsMs - elapsed) / (24 * 60 * 60 * 1000));
-      res.json({ canChange: false, remainingDays });
-    } catch (err) {
-      console.error("[auth/me/username-cooldown]", err);
-      res.status(500).json({ error: "Failed to check cooldown" });
-    }
-  });
-
-  app.put("/api/auth/me/profile", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { firstName, lastName, bio } = req.body as { firstName?: string; lastName?: string; bio?: string };
-      const updates: Record<string, string> = {};
-      if (typeof firstName === "string") updates.firstName = firstName.trim().slice(0, 40);
-      if (typeof lastName === "string") updates.lastName = lastName.trim().slice(0, 20);
-      if (typeof bio === "string") updates.bio = bio.trim().slice(0, 200);
-      await db.update(users).set(updates as any).where(eq(users.id, userId));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/me/profile]", err);
-      res.status(500).json({ error: "Failed to update profile" });
-    }
-  });
-
-  // Avatar upload
-  const avatarDir = join(resolve("."), "dist", "public", "avatars");
-  const avatarUpload = multer({
-    storage: multer.diskStorage({
-      destination: async (_req, _file, cb) => { await mkdir(avatarDir, { recursive: true }); cb(null, avatarDir); },
-      filename: (req, _file, cb) => { const userId = (req.session as any)?.userId ?? "unknown"; cb(null, `${userId}-${Date.now()}.jpg`); },
-    }),
-    limits: { fileSize: 2 * 1024 * 1024 },
-    fileFilter: (_req, file, cb) => {
-      if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) cb(null, true);
-      else cb(new Error("Only image files are allowed"));
-    },
-  });
-
-  app.post("/api/auth/me/avatar", avatarUpload.single("avatar"), async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-      const avatarUrl = `/avatars/${req.file.filename}`;
-      await db.update(users).set({ avatarUrl } as any).where(eq(users.id, userId));
-      res.json({ ok: true, avatarUrl });
-    } catch (err) {
-      console.error("[auth/me/avatar]", err);
-      res.status(500).json({ error: "Failed to upload avatar" });
-    }
-  });
-
-  app.put("/api/auth/me/experience", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const { experienceLevel } = req.body as { experienceLevel?: string };
-      const safeLevel = ["beginner", "intermediate", "advanced"].includes(experienceLevel ?? "")
-        ? (experienceLevel as string) : "intermediate";
-
-      await db.update(users)
-        .set({ experienceLevel: safeLevel, hasSetExperienceLevel: true })
-        .where(eq(users.id, userId));
-
-      // Seed starter skill
-      const starterPath = join(srcDir("skills", "builtin", "starters"), `${safeLevel}.md`);
-      if (existsSync(starterPath)) {
-        const content = readFileSync(starterPath, "utf-8");
-        await db.insert(userSkills).values({
-          userId,
-          name: `starter-${safeLevel}`,
-          description: `Starter guidance for ${safeLevel} developers`,
-          type: "knowledge",
-          content,
-          enabled: true,
-        }).onConflictDoNothing();
-      }
-
-      const user = await storage.getUser(userId);
-      res.json({ id: user!.id, username: user!.username, experienceLevel: safeLevel, hasSetExperienceLevel: true });
-    } catch (err) {
-      console.error("[auth/experience]", err);
-      res.status(500).json({ error: "Failed to set experience level" });
-    }
-  });
-
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) console.error("[auth/logout]", err);
-      res.status(204).end();
-    });
-  });
-
-  // Set or change the current user's password. OTP-registered users (password
-  // === null) can set one without a current password. Users who already have a
-  // password must prove it (currentPassword) so a hijacked session can't lock
-  // out the owner. On success the session is destroyed — the user must log in
-  // again with the new credential.
-  app.post("/api/auth/set-password", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-      const { password, currentPassword } = req.body as {
-        password?: string; currentPassword?: string;
-      };
-      if (typeof password !== "string" || password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: "User not found" });
-
-      if ((user as any).password) {
-        // Already has a password — require the current one to change it.
-        if (typeof currentPassword !== "string" || !currentPassword) {
-          return res.status(403).json({ error: "Current password required" });
-        }
-        const match = await bcrypt.compare(currentPassword, (user as any).password);
-        if (!match) return res.status(403).json({ error: "Current password incorrect" });
-      }
-
-      const hashed = await bcrypt.hash(password, 10);
-      await db.update(users).set({ password: hashed }).where(eq(users.id, userId));
-
-      // Force re-login with the new credential.
-      req.session.destroy((err) => {
-        if (err) console.error("[auth/set-password] session destroy", err);
-        res.json({ ok: true, reauth: true });
-      });
-    } catch (err) {
-      console.error("[auth/set-password]", err);
-      res.status(500).json({ error: "Failed to set password" });
-    }
-  });
-
-  // Send a password-reset code to an email/phone. Anti-enumeration: always
-  // returns 200 regardless of whether an account exists; only sends a code when
-  // a matching user is found. Uses a distinct OTP purpose so a reset code can't
-  // be replayed against the login endpoint (and vice versa).
-  app.post("/api/auth/reset-password/send", async (req, res) => {
-    try {
-      if (!(await checkCaptcha(req, res))) return;
-      const { channel, target } = req.body as { channel?: string; target?: string };
-      if (channel !== "email" && channel !== "sms") {
-        return res.status(400).json({ error: "Invalid channel" });
-      }
-      const normalized = normalizeTarget(channel, target ?? "");
-      if (!normalized) {
-        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
-      }
-
-      const existing = channel === "email"
-        ? await storage.getUserByEmail(normalized)
-        : await storage.getUserByPhone(normalized);
-
-      if (existing) {
-        const result = await sendOtp({ channel, target: normalized, purpose: "reset_password" });
-        if (!result.ok) {
-          return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
-        }
-        // Identical response whether or not the account exists — anti-enumeration.
-        return res.json({ ok: true, retryAfterSec: result.retryAfterSec });
-      }
-      // Account not found — return identical shape so callers can't enumerate.
-      res.json({ ok: true, retryAfterSec: 60 });
-    } catch (err) {
-      console.error("[auth/reset-password/send]", err);
-      res.status(500).json({ error: "Failed to send code" });
-    }
-  });
-
-  // Verify a reset code and set a new password. Does NOT log the user in — they
-  // sign in afterwards with the new credential. Receiving the code proves
-  // ownership of the email/phone, so the matching verified flag is also set.
-  app.post("/api/auth/reset-password/verify", async (req, res) => {
-    try {
-      const { channel, target, code, password } = req.body as {
-        channel?: string; target?: string; code?: string; password?: string;
-      };
-      if (channel !== "email" && channel !== "sms") {
-        return res.status(400).json({ error: "Invalid channel" });
-      }
-      const normalized = normalizeTarget(channel, target ?? "");
-      if (!normalized) {
-        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
-      }
-      if (!code || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "Invalid or expired code" });
-      }
-      if (typeof password !== "string" || password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
-
-      const verify = await verifyOtp({ channel, target: normalized, code, purpose: "reset_password" });
-      if (!verify.ok) {
-        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
-        return res.status(401).json({ error: errMsg });
-      }
-
-      const existing = channel === "email"
-        ? await storage.getUserByEmail(normalized)
-        : await storage.getUserByPhone(normalized);
-      // Generic 401 — don't reveal whether the account exists at this stage.
-      if (!existing) return res.status(401).json({ error: "Invalid or expired code" });
-
-      const hashed = await bcrypt.hash(password, 10);
-      const verifiedPatch = channel === "email"
-        ? { emailVerified: true }
-        : { phoneVerified: true };
-      await db.update(users)
-        .set({ password: hashed, ...verifiedPatch })
-        .where(eq(users.id, existing.id));
-
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/reset-password/verify]", err);
-      res.status(500).json({ error: "Failed to reset password" });
-    }
-  });
-
-  // 人机验证（腾讯云天御）：从请求体取 ticket/randstr，结合真实 IP 验票。
-  // 验证失败返回 403。未配置凭证时 verifyCaptcha 内部降级放行。
-  // 注意：这不替代 OTP 发送频率限制 / 验证码锁，两者叠加才完整。
-  const checkCaptcha = async (req: any, res: any): Promise<boolean> => {
-    const { ticket, randstr } = req.body as { ticket?: string; randstr?: string };
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
-    const ok = await verifyCaptcha(ticket ?? "", randstr ?? "", ip);
-    if (!ok) res.status(403).json({ error: "Captcha verification failed" });
-    return ok;
-  };
-
-  // 前端 TCaptcha 初始化所需的公开 CaptchaAppId。enabled=false 时前端跳过取票。
-  app.get("/api/config/captcha", (_req, res) => {
-    res.json({ enabled: isCaptchaEnabled(), appId: getCaptchaAppId() });
-  });
-
-  // === OTP (email + phone) ===
-
-  app.post("/api/auth/otp/send", async (req, res) => {
-    try {
-      if (!(await checkCaptcha(req, res))) return;
-      const { channel, target, purpose: rawPurpose } = req.body as { channel?: string; target?: string; purpose?: string };
-      if (channel !== "email" && channel !== "sms") {
-        return res.status(400).json({ error: "Invalid channel" });
-      }
-      const normalized = normalizeTarget(channel, target ?? "");
-      if (!normalized) {
-        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
-      }
-      const purpose = rawPurpose === "bind_email" ? "bind_email" : rawPurpose === "bind_phone" ? "bind_phone" : "login";
-      const result = await sendOtp({ channel, target: normalized, purpose });
-      if (!result.ok) {
-        return res.status(429).json({ error: "Send rate-limited", retryAfterSec: result.retryAfterSec });
-      }
-      res.json({ ok: true, retryAfterSec: result.retryAfterSec });
-    } catch (err) {
-      console.error("[auth/otp/send]", err);
-      res.status(500).json({ error: "Failed to send code" });
-    }
-  });
-
-  app.post("/api/auth/otp/verify-login", async (req, res) => {
-    try {
-      if (!(await checkCaptcha(req, res))) return;
-      const { channel, target, code, inviteCode, referralCode } = req.body as {
-        channel?: string; target?: string; code?: string; inviteCode?: string; referralCode?: string;
-      };
-      if (channel !== "email" && channel !== "sms") {
-        return res.status(400).json({ error: "Invalid channel" });
-      }
-      const normalized = normalizeTarget(channel, target ?? "");
-      if (!normalized) {
-        return res.status(400).json({ error: channel === "email" ? "Invalid email" : "Invalid phone" });
-      }
-      if (!code || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "Invalid or expired code" });
-      }
-
-      const verify = await verifyOtp({ channel, target: normalized, code, purpose: "login" });
-      if (!verify.ok) {
-        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
-        return res.status(401).json({ error: errMsg });
-      }
-
-      // Look up existing user by email or phone
-      const existing = channel === "email"
-        ? await storage.getUserByEmail(normalized)
-        : await storage.getUserByPhone(normalized);
-
-      if (existing) {
-        const verifiedPatch = channel === "email"
-          ? { emailVerified: true }
-          : { phoneVerified: true };
-        await db.update(users).set(verifiedPatch).where(eq(users.id, existing.id));
-        (req.session as any).userId = existing.id;
-        await new Promise<void>((resolve, reject) =>
-          req.session.save((err) => (err ? reject(err) : resolve()))
-        );
-        return res.json({
-          id: existing.id,
-          username: existing.username,
-          experienceLevel: (existing as any).experienceLevel,
-          hasSetExperienceLevel: (existing as any).hasSetExperienceLevel ?? false,
-          inviteCode: (existing as any).inviteCode ?? null,
-          trialExpiresAt: (existing as any).trialExpiresAt
-            ? ((existing as any).trialExpiresAt as Date).toISOString()
-            : null,
-        });
-      }
-
-      // Auto-register: phone (SMS) users bypass invite code and get 30-day free trial.
-      // Email users require a manual invite code or a valid referral code.
-      if (channel === "sms") {
-        // Create phone user directly — no invite code needed
-        let username = "";
-        let createdUserId = "";
-        for (let i = 0; i < 5; i++) {
-          const candidate = `user_${randomBytes(4).toString("hex")}`;
-          try {
-            const id = randomBytes(16).toString("hex");
-            const trialExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-            const [row] = await db.insert(users).values({
-              id,
-              username: candidate,
-              password: null,
-              phone: normalized,
-              phoneVerified: true,
-              trialExpiresAt,
-            }).returning({ id: users.id, username: users.username });
-            createdUserId = row.id;
-            username = row.username;
-            break;
-          } catch (err: any) {
-            if (!String(err?.message ?? "").includes("users_username")) throw err;
-          }
-        }
-        if (!createdUserId) {
-          return res.status(500).json({ error: "Failed to create account" });
-        }
-        let newReferralCode: string | null = null;
-        try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
-        (req.session as any).userId = createdUserId;
-        await new Promise<void>((resolve, reject) =>
-          req.session.save((err) => (err ? reject(err) : resolve()))
-        );
-        return res.status(201).json({
-          id: createdUserId,
-          username,
-          experienceLevel: "intermediate",
-          hasSetExperienceLevel: false,
-          inviteCode: null,
-          trialExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          referralCode: newReferralCode,
-        });
-      }
-
-      // Email registration: either a manual invite code or a valid referral code is required.
-      let resolvedInviteCode = inviteCode;
-      let referrerId: string | null = null;
-      if (!resolvedInviteCode?.trim() && referralCode?.trim()) {
-        const ref = referralCode.trim().toUpperCase();
-        const [referrer] = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.referralCode, ref));
-        if (!referrer) {
-          return res.status(400).json({ error: "Invalid invite code" });
-        }
-        referrerId = referrer.id;
-        // Generate a fresh single-use invite code tied to this registration.
-        const autoCode = `REFAUTO${randomSuffix()}`;
-        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-        await db.insert(inviteCodes).values({
-          code: autoCode,
-          trialDays: 14,
-          expiresAt,
-        });
-        resolvedInviteCode = autoCode;
-      }
-      if (!resolvedInviteCode?.trim()) {
-        return res.status(400).json({ error: "Invite code required" });
-      }
-
-      // Create the user first (no password, OTP is the credential)
-      let username = "";
-      let createdUserId = "";
-      for (let i = 0; i < 5; i++) {
-        const candidate = `user_${randomBytes(4).toString("hex")}`;
-        try {
-          const id = randomBytes(16).toString("hex");
-          const [row] = await db.insert(users).values({
-            id,
-            username: candidate,
-            password: null,
-            email: channel === "email" ? normalized : null,
-            phone: channel === "sms" ? normalized : null,
-            emailVerified: channel === "email",
-            phoneVerified: channel === "sms",
-          }).returning({ id: users.id, username: users.username });
-          createdUserId = row.id;
-          username = row.username;
-          break;
-        } catch (err: any) {
-          // Username collision — retry. Anything else: bail.
-          if (!String(err?.message ?? "").includes("users_username")) throw err;
-        }
-      }
-      if (!createdUserId) {
-        return res.status(500).json({ error: "Failed to create account" });
-      }
-
-      const redeem = await redeemInviteCode(resolvedInviteCode, createdUserId);
-      if (!redeem.ok) {
-        // Roll back the user so target isn't burned on a bad invite code.
-        await db.delete(users).where(eq(users.id, createdUserId));
-        return res.status(400).json({ error: redeem.error });
-      }
-
-      // Generate a unique referral code for the new user
-      let newReferralCode: string | null = null;
-      try { newReferralCode = await ensureReferralCode(createdUserId); } catch {}
-
-      await db.update(users)
-        .set({
-          inviteCode: redeem.code,
-          trialExpiresAt: redeem.trialExpiresAt,
-          ...(referrerId ? { referredBy: referrerId } : {}),
-        })
-        .where(eq(users.id, createdUserId));
-
-      (req.session as any).userId = createdUserId;
-      await new Promise<void>((resolve, reject) =>
-        req.session.save((err) => (err ? reject(err) : resolve()))
-      );
-      res.status(201).json({
-        id: createdUserId,
-        username,
-        experienceLevel: "intermediate",
-        hasSetExperienceLevel: false,
-        inviteCode: redeem.code,
-        trialExpiresAt: redeem.trialExpiresAt.toISOString(),
-        referralCode: newReferralCode,
-      });
-    } catch (err) {
-      console.error("[auth/otp/verify-login]", err);
-      res.status(500).json({ error: "Login failed" });
-    }
-  });
-
-  // Bind email to an existing logged-in account via OTP verification
-  app.post("/api/auth/bind-email", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "not_logged_in" });
-
-      const { target, code } = req.body as { target?: string; code?: string };
-      const normalized = normalizeTarget("email", target ?? "");
-      if (!normalized) return res.status(400).json({ error: "Invalid email" });
-      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
-
-      // check email not already taken by another account
-      const existing = await storage.getUserByEmail(normalized);
-      if (existing && existing.id !== userId) {
-        return res.status(409).json({ error: "Email already in use" });
-      }
-
-      const verify = await verifyOtp({ channel: "email", target: normalized, code, purpose: "bind_email" });
-      if (!verify.ok) {
-        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
-        return res.status(401).json({ error: errMsg });
-      }
-
-      await db.update(users)
-        .set({ email: normalized, emailVerified: true })
-        .where(eq(users.id, userId));
-
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/bind-email]", err);
-      res.status(500).json({ error: "Bind failed" });
-    }
-  });
-
-  app.post("/api/auth/bind-phone", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "not_logged_in" });
-
-      const { target, code } = req.body as { target?: string; code?: string };
-      const normalized = normalizeTarget("sms", target ?? "");
-      if (!normalized) return res.status(400).json({ error: "Invalid phone number" });
-      if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ error: "Invalid or expired code" });
-
-      // 先验证 OTP，证明手机所有权
-      const verify = await verifyOtp({ channel: "sms", target: normalized, code, purpose: "bind_phone" as any });
-      if (!verify.ok) {
-        const errMsg = verify.error === "locked" ? "Code locked - request a new one" : "Invalid or expired code";
-        return res.status(401).json({ error: errMsg });
-      }
-
-      // OTP 验证通过 = 证明了手机所有权，如果该手机被其他账号占用则自动转移
-      const existing = await storage.getUserByPhone(normalized);
-      if (existing && existing.id !== userId) {
-        await db.update(users)
-          .set({ phone: null, phoneVerified: false })
-          .where(eq(users.id, existing.id));
-      }
-
-      await db.update(users)
-        .set({ phone: normalized, phoneVerified: true })
-        .where(eq(users.id, userId));
-
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/bind-phone]", err);
-      res.status(500).json({ error: "Bind failed" });
-    }
-  });
-
-  // === GitHub OAuth ===
-
-  // Node's built-in fetch (an internal undici copy) ignores HTTPS_PROXY by
-  // default, which makes github.com unreachable behind a local proxy. We
-  // import undici's own fetch + ProxyAgent so the dispatcher and fetch come
-  // from the same undici version (mixing the npm package's ProxyAgent with
-  // the built-in fetch causes "invalid onRequestStart method" errors).
-  // Built lazily so prod, where HTTPS_PROXY is unset, pays no cost.
-  let githubFetch: typeof fetch = fetch;
-  let githubFetchInited = false;
-  const getGithubFetch = async (): Promise<typeof fetch> => {
-    if (githubFetchInited) return githubFetch;
-    githubFetchInited = true;
-    const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
-      || process.env.HTTP_PROXY || process.env.http_proxy;
-    if (proxyUrl) {
-      try {
-        const undici = await import("undici");
-        const dispatcher = new undici.ProxyAgent(proxyUrl);
-        githubFetch = ((url: any, init: any = {}) =>
-          (undici.fetch as any)(url, { ...init, dispatcher })) as unknown as typeof fetch;
-        console.log(`[auth/github] routing GitHub fetches via proxy ${proxyUrl}`);
-      } catch (err) {
-        console.warn("[auth/github] failed to init undici proxy fetch:", err instanceof Error ? err.message : err);
-      }
-    }
-    return githubFetch;
-  };
-
-  // 1) Kick off the OAuth dance: store a state token in the session and
-  //    redirect the browser to GitHub's authorize URL.
-  app.get("/api/auth/github", async (req, res) => {
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    if (!clientId) { res.status(500).json({ error: "GitHub OAuth not configured" }); return; }
-    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const state = randomBytes(16).toString("hex");
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    const mode = req.query.mode === "bind" ? "bind" : "login";
-    await pool.query(
-      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
-      [`github_state:${state}`, JSON.stringify({ githubOAuthState: state, mode }), expiresAt]
-    );
-    const redirectUri = `${baseUrl}/api/auth/github/callback`;
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: `${baseUrl}/api/auth/github/callback`,
-      scope: "read:user user:email",
-      state,
-      allow_signup: "true",
-    });
-    const authorizeUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
-    // ?mode=url — 前端 fetch 模式，返回 JSON 避免 302 被 SPA 路由拦截
-    if (req.query.mode === "url") {
-      res.json({ url: authorizeUrl });
-      return;
-    }
-    res.redirect(authorizeUrl);
-  });
-
-  // 2) Callback: exchange the code for an access token, fetch the user,
-  //    then either link to an existing local user (matched by verified
-  //    primary email) or create a new GitHub-only user. Finally seat the
-  //    session and send the browser back to the SPA.
-  // callback：验证 state 后跳前端页面，token 交换由浏览器完成（服务器访问 github.com 被墙）
-  app.get("/api/auth/github/callback", async (req, res) => {
-    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const { code, state } = req.query as { code?: string; state?: string };
-    if (!code || !state) {
-      res.redirect(`${baseUrl}/login?github_error=missing_params`);
-      return;
-    }
-    // 验证 state 有效（防 CSRF），验完保留，让 exchange 接口再验一次后删除
-    const row = await pool.query(
-      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
-      [`github_state:${state}`]
-    );
-    if (row.rows.length === 0) {
-      res.redirect(`${baseUrl}/login?github_error=bad_state`);
-      return;
-    }
-    // 跳前端 callback 页面，由浏览器完成 token 交换
-    res.redirect(`${baseUrl}/github-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
-  });
-
-  // exchange：前端发来 code+state，后端用固定 IP 换 token，建立 session
-  app.post("/api/auth/github/exchange", async (req, res) => {
-    try {
-      const { code, state } = req.body as { code?: string; state?: string };
-      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
-      const row = await pool.query(
-        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
-        [`github_state:${state}`]
-      );
-      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
-      const stateData = row.rows[0].sess as { mode?: string };
-      const mode = stateData.mode || "login";
-      await pool.query(`DELETE FROM session WHERE sid = $1`, [`github_state:${state}`]);
-
-      const clientId = process.env.GITHUB_CLIENT_ID!;
-      const clientSecret = process.env.GITHUB_CLIENT_SECRET!;
-      const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-
-      // github.com:443 在墙内不稳定，并发尝试多个已知 IP，取第一个成功的
-      const GITHUB_IPS = ["20.205.243.166", "20.27.177.113", "140.82.112.4", "140.82.113.4", "140.82.114.4"];
-
-      function tryTokenExchange(ghIp: string, body: string): Promise<any> {
-        return new Promise((resolve, reject) => {
-          const req2 = https.request({
-            hostname: ghIp,
-            port: 443,
-            path: "/login/oauth/access_token",
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-              Host: "github.com",
-              "Content-Length": Buffer.byteLength(body),
-            },
-            rejectUnauthorized: false,
-            timeout: 8000,
-          }, (r) => {
-            let data = "";
-            r.on("data", (c) => data += c);
-            r.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("parse error")); } });
-          });
-          req2.on("error", reject);
-          req2.on("timeout", () => { req2.destroy(); reject(new Error("timeout")); });
-          req2.write(body);
-          req2.end();
-        });
-      }
-
-      const tokenBody = JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: `${baseUrl}/api/auth/github/callback`,
-      });
-
-      const tokenData: any = await Promise.any(
-        GITHUB_IPS.map(ip => tryTokenExchange(ip, tokenBody))
-      ).catch(() => { throw new Error("all_ips_failed"); });
-
-      if (!tokenData.access_token) {
-        console.error("[github/exchange] token error:", tokenData);
-        res.status(400).json({ error: tokenData.error || "no_access_token" });
-        return;
-      }
-      const accessToken = tokenData.access_token;
-
-      const ghFetch = await getGithubFetch();
-      const userRes = await ghFetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
-      });
-      if (!userRes.ok) {
-        const errBody = await userRes.text().catch(() => "");
-        console.error("[github/exchange] user fetch failed:", userRes.status, errBody);
-        res.status(400).json({ error: "user_fetch_failed" }); return;
-      }
-      const ghUser = await userRes.json() as {
-        id: number; login: string; email: string | null; avatar_url: string | null;
-      };
-
-      let primaryEmail: string | null = ghUser.email ? ghUser.email.trim().toLowerCase() : null;
-      if (!primaryEmail) {
-        const emailsRes = await ghFetch("https://api.github.com/user/emails", {
-          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
-        });
-        if (emailsRes.ok) {
-          const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-          const picked = emails.find(e => e.primary && e.verified)?.email
-            ?? emails.find(e => e.verified)?.email ?? null;
-          primaryEmail = picked ? picked.trim().toLowerCase() : null;
-        }
-      }
-
-      const githubId = String(ghUser.id);
-
-      // === BIND MODE: 将 GitHub 绑定到已登录用户 ===
-      if (mode === "bind") {
-        const userId = (req.session as any)?.userId as string | undefined;
-        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-        // 检查该 GitHub 账号是否已被其他用户占用
-        const existingGh = await storage.getUserByGithubId(githubId);
-        if (existingGh && existingGh.id !== userId) {
-          res.status(409).json({ error: "github_already_linked" });
-          return;
-        }
-        if (!existingGh || existingGh.id !== userId) {
-          await storage.linkGithubToUser(userId, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
-        }
-        // 不覆盖 session，保持当前登录状态
-        res.json({ ok: true, bound: true, githubLogin: ghUser.login });
-        return;
-      }
-
-      // === LOGIN/REGISTER MODE (原有逻辑) ===
-      let user = await storage.getUserByGithubId(githubId);
-      if (!user && primaryEmail) {
-        const matched = await storage.getUserByEmail(primaryEmail);
-        if (matched) {
-          user = await storage.linkGithubToUser(matched.id, { githubId, avatarUrl: ghUser.avatar_url, githubLogin: ghUser.login });
-        }
-      }
-      if (!user) {
-        let candidate = ghUser.login;
-        let suffix = 0;
-        while (await storage.getUserByUsername(candidate)) {
-          suffix++;
-          candidate = `${ghUser.login}-${suffix}`;
-        }
-        user = await storage.createGithubUser({
-          username: candidate,
-          githubId,
-          email: primaryEmail,
-          avatarUrl: ghUser.avatar_url,
-          githubLogin: ghUser.login,
-        });
-      }
-
-      (req.session as any).userId = user.id;
-      await new Promise<void>((resolve, reject) =>
-        req.session.save((err) => err ? reject(err) : resolve())
-      );
-      res.json({
-        id: user.id,
-        username: user.username,
-        inviteCode: (user as any).inviteCode ?? null,
-      });
-    } catch (err) {
-      console.error("[auth/github/exchange]", err);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
-
-  // === WeChat OAuth (PC 扫码登录) ===
-
-  // 1) Initiate WeChat OAuth — redirect to WeChat QR code page
-  app.get("/api/auth/wechat", async (req, res) => {
-    const appId = process.env.WECHAT_APP_ID;
-    if (!appId) { res.status(500).json({ error: "WeChat OAuth not configured" }); return; }
-    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const state = randomBytes(16).toString("hex");
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    const mode = req.query.mode === "bind" ? "bind" : "login";
-    await pool.query(
-      `INSERT INTO session (sid, sess, expire) VALUES ($1, $2, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = $2, expire = $3`,
-      [`wechat_state:${state}`, JSON.stringify({ wechatOAuthState: state, mode }), expiresAt]
-    );
-    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/wechat/callback`);
-    const authorizeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
-    if (req.query.mode === "url") {
-      res.json({ url: authorizeUrl });
-      return;
-    }
-    res.redirect(authorizeUrl);
-  });
-
-  // 2) WeChat callback — redirect to frontend with code
-  app.get("/api/auth/wechat/callback", async (req, res) => {
-    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const { code, state } = req.query as { code?: string; state?: string };
-    if (!code || !state) {
-      res.redirect(`${baseUrl}/login?wechat_error=missing_params`);
-      return;
-    }
-    const row = await pool.query(
-      `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
-      [`wechat_state:${state}`]
-    );
-    if (row.rows.length === 0) {
-      res.redirect(`${baseUrl}/login?wechat_error=bad_state`);
-      return;
-    }
-    res.redirect(`${baseUrl}/wechat-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
-  });
-
-  // 3) Exchange code for access_token + user info, create/link user
-  app.post("/api/auth/wechat/exchange", async (req, res) => {
-    try {
-      const { code, state } = req.body as { code?: string; state?: string };
-      if (!code || !state) { res.status(400).json({ error: "missing_params" }); return; }
-
-      // Verify state
-      const row = await pool.query(
-        `SELECT sess FROM session WHERE sid = $1 AND expire > NOW()`,
-        [`wechat_state:${state}`]
-      );
-      if (row.rows.length === 0) { res.status(400).json({ error: "bad_state" }); return; }
-      const stateData = row.rows[0].sess as { mode?: string };
-      const mode = stateData.mode || "login";
-      await pool.query(`DELETE FROM session WHERE sid = $1`, [`wechat_state:${state}`]);
-
-      const appId = process.env.WECHAT_APP_ID!;
-      const appSecret = process.env.WECHAT_APP_SECRET!;
-
-      // Exchange code for access_token
-      const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appId}&secret=${appSecret}&code=${code}&grant_type=authorization_code`;
-      const tokenRes = await fetch(tokenUrl);
-      const tokenData = await tokenRes.json() as {
-        access_token?: string;
-        openid?: string;
-        unionid?: string;
-        errcode?: number;
-        errmsg?: string;
-      };
-
-      if (!tokenData.access_token || !tokenData.openid) {
-        console.error("[wechat/exchange] token error:", tokenData);
-        res.status(400).json({ error: tokenData.errmsg || "no_access_token" });
-        return;
-      }
-
-      // Fetch user info
-      const userInfoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}`;
-      const userInfoRes = await fetch(userInfoUrl);
-      const wxUser = await userInfoRes.json() as {
-        openid: string;
-        nickname: string;
-        headimgurl: string;
-        unionid?: string;
-        errcode?: number;
-      };
-
-      if (wxUser.errcode) {
-        console.error("[wechat/exchange] userinfo error:", wxUser);
-        res.status(400).json({ error: "userinfo_failed" });
-        return;
-      }
-
-      const openId = wxUser.openid;
-      const unionId = wxUser.unionid || tokenData.unionid;
-      const nickname = wxUser.nickname || "微信用户";
-      const avatar = wxUser.headimgurl || null;
-
-      // === BIND MODE: 将微信绑定到已登录用户 ===
-      if (mode === "bind") {
-        const userId = (req.session as any)?.userId as string | undefined;
-        if (!userId) { res.status(401).json({ error: "not_logged_in" }); return; }
-        // 检查该微信账号是否已被其他用户占用
-        const existingWx = await storage.getUserByWechatOpenId(openId);
-        if (existingWx && existingWx.id !== userId) {
-          res.status(409).json({ error: "wechat_already_linked" });
-          return;
-        }
-        if (!existingWx || existingWx.id !== userId) {
-          await storage.linkWechatToUser(userId, { openId, unionId, avatarUrl: avatar, nickname });
-        }
-        // 不覆盖 session，保持当前登录状态
-        res.json({ ok: true, bound: true, wechatNickname: nickname });
-        return;
-      }
-
-      // === LOGIN/REGISTER MODE (原有逻辑) ===
-      // Find or create user
-      let user = await storage.getUserByWechatOpenId(openId);
-      if (!user) {
-        // Generate unique username from nickname
-        let candidate = nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user";
-        let suffix = 0;
-        while (await storage.getUserByUsername(candidate)) {
-          suffix++;
-          candidate = `${nickname.replace(/[^a-zA-Z0-9一-鿿]/g, "") || "wx_user"}_${suffix}`;
-        }
-        user = await storage.createWechatUser({
-          username: candidate,
-          openId,
-          unionId,
-          avatarUrl: avatar,
-          nickname,
-        });
-      }
-
-      // Set session
-      (req.session as any).userId = user.id;
-      await new Promise<void>((resolve, reject) =>
-        req.session.save((err) => err ? reject(err) : resolve())
-      );
-
-      res.json({
-        id: user.id,
-        username: user.username,
-        inviteCode: (user as any).inviteCode ?? null,
-        avatarUrl: (user as any).avatarUrl ?? null,
-      });
-    } catch (err) {
-      console.error("[auth/wechat/exchange]", err);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
-
-  // === Unbind GitHub ===
-  app.post("/api/auth/unbind-github", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "not_logged_in" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: "User not found" });
-      if (!(user as any).githubId) return res.status(400).json({ error: "GitHub not linked" });
-      // 至少保留一种登录方式
-      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).wechatOpenId;
-      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
-      await db.update(users).set({ githubId: null }).where(eq(users.id, userId));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/unbind-github]", err);
-      res.status(500).json({ error: "Unbind failed" });
-    }
-  });
-
-  // === Unbind WeChat ===
-  app.post("/api/auth/unbind-wechat", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId as string | undefined;
-      if (!userId) return res.status(401).json({ error: "not_logged_in" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: "User not found" });
-      if (!(user as any).wechatOpenId) return res.status(400).json({ error: "WeChat not linked" });
-      // 至少保留一种登录方式
-      const hasOther = !!(user as any).password || !!(user as any).phone || !!(user as any).email || !!(user as any).githubId;
-      if (!hasOther) return res.status(400).json({ error: "Cannot unbind — no other login method available" });
-      await db.update(users).set({ wechatOpenId: null, wechatUnionId: null }).where(eq(users.id, userId));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[auth/unbind-wechat]", err);
-      res.status(500).json({ error: "Unbind failed" });
-    }
-  });
-
-  // === SKILLS API ===
-
-  // User Skills
-  app.get("/api/skills/user", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const skills = await db.select().from(userSkills).where(eq(userSkills.userId, userId));
-      res.json(skills);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.post("/api/skills/user", async (req, res) => {
-    try {
-      const userId = req.body?.userId as string;
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const { name, description, type, content, enabled } = req.body;
-      const parsed = insertUserSkillSchema.safeParse({ userId, name, description, type, content, enabled });
-      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
-      const [created] = await db.insert(userSkills).values(parsed.data).returning();
-      res.status(201).json(created);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.put("/api/skills/user/:id", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
-      const { name, description, type, content, enabled } = req.body;
-      const updateData = { name, description, type, content, enabled };
-      const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
-      if (Object.keys(cleanUpdate).length === 0) {
-        return res.status(400).json({ error: "No fields to update" });
-      }
-      const [updated] = await db
-        .update(userSkills)
-        .set(cleanUpdate)
-        .where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)))
-        .returning();
-      if (!updated) return res.status(404).json({ error: "Not found" });
-      res.json(updated);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/skills/user/:id", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
-      const [deleted] = await db
-        .delete(userSkills)
-        .where(and(eq(userSkills.id, id), eq(userSkills.userId, userId)))
-        .returning();
-      if (!deleted) return res.status(404).json({ error: "Not found" });
-      res.status(204).end();
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // Project Skills
-  app.get("/api/skills/project/:projectId", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const skills = await db
-        .select()
-        .from(projectSkills)
-        .where(and(eq(projectSkills.projectId, req.params.projectId), eq(projectSkills.userId, userId)));
-      res.json(skills);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.post("/api/skills/project/:projectId", async (req, res) => {
-    try {
-      const userId = req.body?.userId as string;
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const { name, description, type, content, enabled } = req.body;
-      const parsed = insertProjectSkillSchema.safeParse({
-        projectId: req.params.projectId,
-        userId,
-        name,
-        description,
-        type,
-        content,
-        enabled,
-      });
-      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
-      const [created] = await db.insert(projectSkills).values(parsed.data).returning();
-      res.status(201).json(created);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.put("/api/skills/project/:projectId/:id", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
-      const { name, description, type, content, enabled } = req.body;
-      const updateData = { name, description, type, content, enabled };
-      const cleanUpdate = Object.fromEntries(Object.entries(updateData).filter(([, v]) => v !== undefined));
-      if (Object.keys(cleanUpdate).length === 0) {
-        return res.status(400).json({ error: "No fields to update" });
-      }
-      const [updated] = await db
-        .update(projectSkills)
-        .set(cleanUpdate)
-        .where(
-          and(
-            eq(projectSkills.id, id),
-            eq(projectSkills.projectId, req.params.projectId),
-            eq(projectSkills.userId, userId),
-          ),
-        )
-        .returning();
-      if (!updated) return res.status(404).json({ error: "Not found" });
-      res.json(updated);
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/skills/project/:projectId/:id", async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || (req.body?.userId as string);
-      if (!userId) return res.status(400).json({ error: "userId is required" });
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) return res.status(400).json({ error: "id must be a number" });
-      const [deleted] = await db
-        .delete(projectSkills)
-        .where(
-          and(
-            eq(projectSkills.id, id),
-            eq(projectSkills.projectId, req.params.projectId),
-            eq(projectSkills.userId, userId),
-          ),
-        )
-        .returning();
-      if (!deleted) return res.status(404).json({ error: "Not found" });
-      res.status(204).end();
-    } catch (err) {
-      console.error("[SkillsAPI]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // === BUILTIN SKILLS ===
-
-  app.get("/api/skills/builtin", (_req, res) => {
-    try {
-      const skillsDir = srcDir("skills", "builtin");
-      const entries: Array<{ name: string; description: string; type: "knowledge" }> = [];
-
-      const scanDir = (dir: string) => {
-        if (!existsSync(dir)) return;
-        for (const file of readdirSync(dir)) {
-          const full = join(dir, file);
-          const stat = statSync(full);
-          if (stat.isDirectory()) {
-            if (file === "starters") continue; // skip internal seeding files
-            scanDir(full);
-            continue;
-          }
-          if (!file.endsWith(".md")) continue;
-          const stem = file.replace(/\.md$/, "");
-          // Use parent directory name when filename is a generic placeholder like "SKILL"
-          const name = stem === "SKILL" ? basename(dir) : stem;
-          // Read only first 200 bytes to find the heading — avoids loading full file
-          const fd = openSync(full, "r");
-          const buf = Buffer.alloc(200);
-          const bytesRead = readSync(fd, buf, 0, 200, 0);
-          closeSync(fd);
-          const firstLine = buf.subarray(0, bytesRead).toString("utf-8").split("\n").find((l) => l.startsWith("# "));
-          const description = firstLine ? firstLine.replace(/^#\s*/, "") : name;
-          entries.push({ name, description, type: "knowledge" });
-        }
-      };
-
-      scanDir(skillsDir);
-      res.json(entries);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
+  registerSkillsRoutes(app);
 
   // === WAITLIST / ADMIN INVITES ===
 
   const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
   const BATCH_SIZE = 50;
-  const TRIAL_DAYS_NORMAL = 30;
-  const TRIAL_DAYS_EDU = 60;
-  const QIZHI_FREE_UNTIL = new Date("2026-09-30T23:59:59+08:00");
   const WAITLIST_BASE_URL = process.env.BASE_URL ?? process.env.APP_BASE_URL ?? "https://cascadeai.co";
 
-  function isEduEmail(email: string): boolean {
-    const lower = email.toLowerCase();
-    return lower.endsWith(".edu.cn") || lower.endsWith(".edu");
-  }
+  // Trial/email/invite-code helpers (isEduEmail / isQizhiEmail / getTrialInfo /
+  // inviteCodePrefix / formatInviteCode) live in services/invite-service.ts.
+  // checkAdmin lives in middleware/auth-middleware.ts.
 
-  function isQizhiEmail(email: string): boolean {
-    return email.toLowerCase().endsWith("@miracleplus.com");
-  }
-
-  // CODE_EXPIRY_DAYS: how long the invite code itself remains claimable after
-  // being issued. Once the user registers, trial starts from registration time.
-  const CODE_EXPIRY_DAYS = 90;
-
-  function getTrialInfo(email: string, isEdu: boolean): { trialDays: number; codeExpiresAt: Date; label: string } {
-    const codeExpiresAt = new Date(Date.now() + CODE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-    if (isQizhiEmail(email)) {
-      // trialDays calculated at redemption time relative to QIZHI_FREE_UNTIL,
-      // so we store a sentinel value here; redeemInviteCode will recompute.
-      const daysUntilDeadline = Math.ceil((QIZHI_FREE_UNTIL.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-      return {
-        trialDays: daysUntilDeadline,
-        codeExpiresAt,
-        label: "奇绩创坛专属免费期至 2026 年 9 月 30 日（自注册之日起计算）",
-      };
-    }
-    if (isEdu) {
-      return {
-        trialDays: TRIAL_DAYS_EDU,
-        codeExpiresAt,
-        label: `教育优惠免费期 ${TRIAL_DAYS_EDU} 天（自注册之日起计算）`,
-      };
-    }
-    return {
-      trialDays: TRIAL_DAYS_NORMAL,
-      codeExpiresAt,
-      label: `免费试用期 ${TRIAL_DAYS_NORMAL} 天（自注册之日起计算）`,
-    };
-  }
-  // Prefix encodes the user tier; suffix is a 6-char CSPRNG random string.
-  // CASC = standard (30d), CASCEDU = edu (60d), CASCQJ = 奇绩创坛 (until 2026-09-30).
-  // Random (not sequential) so codes can't be guessed/enumerated to claim trials.
-  function inviteCodePrefix(email: string): string {
-    if (isQizhiEmail(email)) return "CASCQJ";
-    if (isEduEmail(email)) return "CASCEDU";
-    return "CASC";
-  }
-  function formatInviteCode(email: string): string {
-    return `${inviteCodePrefix(email)}${randomSuffix()}`;
-  }
-  function checkAdmin(req: any, res: any): boolean {
-    if (!req.adminUser) {
-      res.status(401).json({ error: "Unauthorized" });
-      return false;
-    }
-    return true;
-  }
-
-  // POST /api/waitlist — public submit
-  app.post("/api/waitlist", async (req, res) => {
-    try {
-      const schema = z.object({ email: z.string().email() });
-      const parsed = schema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ error: "Valid email required" });
-      const email = parsed.data.email.trim().toLowerCase();
-      const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
-      const isEdu = isEduEmail(email);
-
-      const existing = await db.select().from(waitlistSubscribers).where(eq(waitlistSubscribers.email, email));
-      if (existing.length > 0) {
-        return res.json({ queued: true, alreadyOnList: true });
-      }
-
-      const [sub] = await db.insert(waitlistSubscribers).values({ email, ipAddress, isEdu }).returning();
-
-      // Immediately allocate an invite code and send the invite email.
-      (async () => {
-        try {
-          const { trialDays, codeExpiresAt, label: trialLabel } = getTrialInfo(email, isEdu);
-          let code = "";
-          let allocated = false;
-          for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
-            try {
-              await db.transaction(async (tx) => {
-                code = formatInviteCode(email);
-                await tx.insert(inviteCodes).values({
-                  code,
-                  isEdu,
-                  trialDays,
-                  expiresAt: codeExpiresAt,
-                  waitlistSubscriberId: sub.id,
-                });
-              });
-              allocated = true;
-            } catch (err: any) {
-              const msg: string = err?.message ?? "";
-              if (!msg.includes("unique") && !msg.includes("duplicate")) throw err;
-            }
-          }
-          if (!allocated) {
-            console.error(`[waitlist/invite] failed to allocate code for ${email}`);
-            return;
-          }
-          const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
-          const html = `
-            <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-              <p style="margin-bottom:24px">您好！</p>
-              <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
-              <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
-                <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
-              </div>
-              <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
-              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
-                <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
-                <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
-              </div>
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
-              <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
-            </div>
-          `;
-          await sendEmail({
-            to: email,
-            subject: `您的 Cascade AI 邀请码`,
-            html,
-            text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
-          });
-          await db.update(waitlistSubscribers).set({ status: "invited" }).where(eq(waitlistSubscribers.id, sub.id));
-        } catch (err) {
-          console.error("[waitlist/invite]", err);
-          await db.update(waitlistSubscribers).set({ status: "email_failed" }).where(eq(waitlistSubscribers.id, sub.id));
-        }
-      })();
-
-      res.json({ queued: true });
-    } catch (err) {
-      console.error("[waitlist/submit]", err);
-      res.status(500).json({ error: "Failed to join waitlist" });
-    }
-  });
-
-  // GET /api/waitlist — admin list
-  app.get("/api/waitlist", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const [subs, [totalRow]] = await Promise.all([
-        db.select().from(waitlistSubscribers).orderBy(desc(waitlistSubscribers.createdAt)),
-        db.select({ total: count() }).from(waitlistSubscribers),
-      ]);
-      // Pull the most recent invite code per subscriber for the admin view.
-      const issuedCodes = await db.select().from(inviteCodes);
-      const codeBySubId = new Map<number, typeof issuedCodes[number]>();
-      for (const c of issuedCodes) {
-        if (c.waitlistSubscriberId) codeBySubId.set(c.waitlistSubscriberId, c);
-      }
-      res.json({
-        total: totalRow?.total ?? 0,
-        subscribers: subs.map((s) => {
-          const c = codeBySubId.get(s.id);
-          return {
-            id: s.id,
-            email: s.email,
-            createdAt: s.createdAt,
-            isEdu: s.isEdu,
-            status: s.status,
-            batchId: s.batchId,
-            inviteCode: c?.code ?? null,
-            invitedAt: c?.createdAt ?? null,
-            expiresAt: c?.expiresAt ?? null,
-            seqNum: c?.id ?? null,
-            registeredAt: c?.redeemedAt ?? null,
-          };
-        }),
-      });
-    } catch (err) {
-      console.error("[waitlist/list]", err);
-      res.status(500).json({ error: "Failed to fetch waitlist" });
-    }
-  });
+  registerWaitlistRoutes(app);
 
   // ── Admin: IP blocklist management ─────────────────────────────────────────
-
-  // GET /api/admin/blocklist/ip — list all blocked IPs
-  app.get("/api/admin/blocklist/ip", (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const now = Date.now();
-    const list = Array.from((app as any)._ipBlocklist.entries())
-      .filter(([, v]: [string, any]) => v.blockedUntil > now)
-      .map(([ip, v]: [string, any]) => ({
-        ip,
-        reason: v.reason,
-        blockedAt: new Date(v.blockedAt).toISOString(),
-        blockedUntil: new Date(v.blockedUntil).toISOString(),
-        remainingSec: Math.ceil((v.blockedUntil - now) / 1000),
-      }));
-    res.json({ total: list.length, items: list });
-  });
-
-  // DELETE /api/admin/blocklist/ip/:ip — unblock an IP
-  app.delete("/api/admin/blocklist/ip/:ip", (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const ip = decodeURIComponent(req.params.ip);
-    const existed = (app as any)._ipBlocklist.has(ip);
-    (app as any)._ipBlocklist.delete(ip);
-    res.json({ ok: true, ip, unblocked: existed });
-  });
-
-  // POST /api/admin/blocklist/ip — manually block an IP
-  app.post("/api/admin/blocklist/ip", (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const { ip, durationHours = 1, reason = "Manual block" } = req.body as {
-      ip?: string; durationHours?: number; reason?: string;
-    };
-    if (!ip || typeof ip !== "string") return res.status(400).json({ error: "ip required" });
-    const now = Date.now();
-    (app as any)._ipBlocklist.set(ip.trim(), {
-      blockedUntil: now + durationHours * 60 * 60 * 1000,
-      reason,
-      blockedAt: now,
-    });
-    res.json({ ok: true, ip: ip.trim(), durationHours });
-  });
-
-  // ── Admin: Account lockout management ──────────────────────────────────────
-
-  // GET /api/admin/blocklist/users — list locked accounts
-  app.get("/api/admin/blocklist/users", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const now = Date.now();
-    const locked: any[] = [];
-    for (const [userId, entry] of (app as any)._accountLockout.entries()) {
-      if (entry.lockedUntil && entry.lockedUntil > now) {
-        // fetch username
-        const user = await storage.getUser(userId).catch(() => null);
-        locked.push({
-          userId,
-          username: (user as any)?.username ?? "unknown",
-          email: (user as any)?.email ?? null,
-          failCount: entry.failCount,
-          lockedAt: entry.lockedAt ? new Date(entry.lockedAt).toISOString() : null,
-          lockedUntil: new Date(entry.lockedUntil).toISOString(),
-          remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
-        });
-      }
-    }
-    res.json({ total: locked.length, items: locked });
-  });
-
-  // DELETE /api/admin/blocklist/users/:userId — unlock an account
-  app.delete("/api/admin/blocklist/users/:userId", (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const { userId } = req.params;
-    const existed = (app as any)._accountLockout.has(userId);
-    (app as any)._clearAccountLockout(userId);
-    res.json({ ok: true, userId, unlocked: existed });
-  });
-
-  // GET /api/admin/blocklist/users/:userId — check a specific user's lockout
-  app.get("/api/admin/blocklist/users/:userId", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    const { userId } = req.params;
-    const entry = (app as any)._accountLockout.get(userId);
-    const now = Date.now();
-    if (!entry || !entry.lockedUntil || entry.lockedUntil <= now) {
-      return res.json({ locked: false, userId });
-    }
-    const user = await storage.getUser(userId).catch(() => null);
-    res.json({
-      locked: true,
-      userId,
-      username: (user as any)?.username ?? "unknown",
-      failCount: entry.failCount,
-      lockedUntil: new Date(entry.lockedUntil).toISOString(),
-      remainingSec: Math.ceil((entry.lockedUntil - now) / 1000),
-    });
-  });
-
-  // ── Admin: Creator Square dashboard ────────────────────────────────────────
-
-  // GET /api/admin/square — aggregate stats + per-user breakdown
-  // Query param: ?filter=all|active|takendown (default: all)
-  app.get("/api/admin/square", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const filter = (req.query.filter as string) ?? "all";
-      const filterCond =
-        filter === "active" ? eq(publishedApps.adminTakenDown, false) :
-        filter === "takendown" ? eq(publishedApps.adminTakenDown, true) :
-        undefined;
-
-      // Total (all records regardless of filter)
-      const [{ total }] = await db.select({ total: count() }).from(publishedApps);
-      const [{ totalActive }] = await db.select({ totalActive: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, false));
-      const [{ totalTakenDown }] = await db.select({ totalTakenDown: count() }).from(publishedApps).where(eq(publishedApps.adminTakenDown, true));
-
-      // By framework (active only for stats)
-      const byFramework = await db
-        .select({ framework: publishedApps.framework, cnt: count() })
-        .from(publishedApps)
-        .where(eq(publishedApps.adminTakenDown, false))
-        .groupBy(publishedApps.framework)
-        .orderBy(desc(count()));
-
-      // By visibility (active only)
-      const byVisibility = await db
-        .select({ visibility: publishedApps.visibility, cnt: count() })
-        .from(publishedApps)
-        .where(eq(publishedApps.adminTakenDown, false))
-        .groupBy(publishedApps.visibility);
-
-      // Top view_count (active only)
-      const topViewed = await db
-        .select({
-          id: publishedApps.id,
-          title: publishedApps.title,
-          framework: publishedApps.framework,
-          viewCount: publishedApps.viewCount,
-          forkCount: publishedApps.forkCount,
-          authorUsername: users.username,
-          publishedAt: publishedApps.publishedAt,
-        })
-        .from(publishedApps)
-        .innerJoin(users, eq(publishedApps.userId, users.id))
-        .where(eq(publishedApps.adminTakenDown, false))
-        .orderBy(desc(publishedApps.viewCount))
-        .limit(10);
-
-      // Per-user breakdown (all records)
-      const perUser = await db
-        .select({
-          userId: publishedApps.userId,
-          authorUsername: users.username,
-          appCount: count(),
-          totalViews: sql<number>`sum(${publishedApps.viewCount})`,
-          totalForks: sql<number>`sum(${publishedApps.forkCount})`,
-        })
-        .from(publishedApps)
-        .innerJoin(users, eq(publishedApps.userId, users.id))
-        .groupBy(publishedApps.userId, users.username)
-        .orderBy(desc(count()));
-
-      // All apps with filter applied, up to 100
-      const recentQuery = db
-        .select({
-          id: publishedApps.id,
-          title: publishedApps.title,
-          framework: publishedApps.framework,
-          visibility: publishedApps.visibility,
-          isOpenSource: publishedApps.isOpenSource,
-          viewCount: publishedApps.viewCount,
-          forkCount: publishedApps.forkCount,
-          adminTakenDown: publishedApps.adminTakenDown,
-          authorUsername: users.username,
-          publishedAt: publishedApps.publishedAt,
-        })
-        .from(publishedApps)
-        .innerJoin(users, eq(publishedApps.userId, users.id))
-        .orderBy(desc(publishedApps.publishedAt))
-        .limit(100);
-
-      const recent = filterCond
-        ? await recentQuery.where(filterCond)
-        : await recentQuery;
-
-      res.json({ total, totalActive, totalTakenDown, byFramework, byVisibility, topViewed, perUser, recent });
-    } catch (err) {
-      console.error("[admin/square]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // PATCH /api/admin/square/:id/takedown — admin soft takedown
-  app.patch("/api/admin/square/:id/takedown", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      await db.update(publishedApps)
-        .set({ adminTakenDown: true, updatedAt: new Date() })
-        .where(eq(publishedApps.id, req.params.id));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/square/takedown]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // PATCH /api/admin/square/:id/restore — admin restore a taken-down app
-  app.patch("/api/admin/square/:id/restore", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      await db.update(publishedApps)
-        .set({ adminTakenDown: false, updatedAt: new Date() })
-        .where(eq(publishedApps.id, req.params.id));
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/square/restore]", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // POST /api/admin/send-invites — manual bulk send by IDs
-  app.post("/api/admin/send-invites", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const ids = (req.body as { ids?: number[] })?.ids;
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ error: "No subscriber IDs provided" });
-      }
-      const sent = await sendInvitesForSubscribers(ids);
-      res.json({ success: true, sent });
-    } catch (err) {
-      console.error("[admin/send-invites]", err);
-      res.status(500).json({ error: "Failed to send invites" });
-    }
-  });
-
-  // POST /api/admin/bulk-message — send custom email and/or in-app notification to selected waitlist subscribers.
-  // Email goes straight to the subscriber's address. In-app notification requires a real user
-  // account, so subscribers who never registered are matched by email against `users` and
-  // skipped if no match is found — reported back as notificationSkipped.
-  app.post("/api/admin/bulk-message", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const { subscriberIds, subject, content, viaEmail, viaNotification } = req.body as {
-        subscriberIds?: number[];
-        subject?: string;
-        content?: string;
-        viaEmail?: boolean;
-        viaNotification?: boolean;
-      };
-      if (!Array.isArray(subscriberIds) || subscriberIds.length === 0) {
-        return res.status(400).json({ error: "No subscriber IDs provided" });
-      }
-      const trimmedContent = (content ?? "").trim();
-      const trimmedSubject = (subject ?? "").trim();
-      if (!trimmedContent) return res.status(400).json({ error: "Content required" });
-      if (!viaEmail && !viaNotification) return res.status(400).json({ error: "Select at least one channel" });
-      if (viaEmail && !trimmedSubject) return res.status(400).json({ error: "Subject required for email" });
-
-      const targets = await db.select().from(waitlistSubscribers).where(inArray(waitlistSubscribers.id, subscriberIds));
-
-      let notificationSent = 0;
-      let notificationSkipped = 0;
-      if (viaNotification && targets.length > 0) {
-        const matchedUsers = await db.select().from(users).where(inArray(users.email, targets.map((t) => t.email)));
-        if (matchedUsers.length > 0) {
-          await db.insert(notifications).values(
-            matchedUsers.map((u) => ({
-              userId: u.id,
-              type: "system",
-              title: trimmedSubject || "系统通知",
-              body: trimmedContent,
-            }))
-          );
-        }
-        notificationSent = matchedUsers.length;
-        notificationSkipped = targets.length - matchedUsers.length;
-      }
-
-      let emailSent = 0;
-      let emailFailed = 0;
-      if (viaEmail) {
-        const escapeHtml = (s: string) =>
-          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        const paragraphs = trimmedContent
-          .split("\n")
-          .map((line) => `<p style="margin:0 0 16px">${escapeHtml(line) || "&nbsp;"}</p>`)
-          .join("");
-        const html = `
-          <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-            ${paragraphs}
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
-            <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
-          </div>
-        `;
-        for (const sub of targets) {
-          try {
-            await sendEmail({ to: sub.email, subject: trimmedSubject, html, text: trimmedContent });
-            emailSent++;
-          } catch (err) {
-            console.error("[admin/bulk-message] send failed", err, sub.email);
-            emailFailed++;
-          }
-          // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
-          await new Promise((r) => setTimeout(r, 600));
-        }
-      }
-
-      res.json({ ok: true, emailSent, emailFailed, notificationSent, notificationSkipped });
-    } catch (err) {
-      console.error("[admin/bulk-message]", err);
-      res.status(500).json({ error: "Failed to send bulk message" });
-    }
-  });
-
-  // GET /api/admin/confirm-batch?token=... — link target from notification email
-  app.get("/api/admin/confirm-batch", async (req, res) => {
-    const token = req.query.token as string | undefined;
-    if (!token || !ADMIN_SECRET) return res.status(400).send("Invalid token");
-    let batchId: number;
-    try {
-      const decoded = Buffer.from(token, "base64url").toString();
-      const [batchStr, secret] = decoded.split(":");
-      if (secret !== ADMIN_SECRET) return res.status(401).send("Invalid token");
-      batchId = parseInt(batchStr, 10);
-      if (isNaN(batchId)) throw new Error("bad batchId");
-    } catch {
-      return res.status(400).send("Invalid token");
-    }
-    try {
-      const subsInBatch = await db.select({ id: waitlistSubscribers.id })
-        .from(waitlistSubscribers)
-        .where(and(
-          eq(waitlistSubscribers.batchId, batchId),
-          eq(waitlistSubscribers.status, "pending"),
-        ));
-      const sent = await sendInvitesForSubscribers(subsInBatch.map((s) => s.id));
-      res.send(`<html><body style="font-family:sans-serif;padding:40px;max-width:500px;margin:auto">
-        <h2>邀请码已发送</h2>
-        <p>成功向 <strong>${sent}</strong> 位用户发送了邀请码。</p>
-        <a href="/admin" style="color:#2563eb">返回后台</a>
-      </body></html>`);
-    } catch (err) {
-      console.error("[admin/confirm-batch]", err);
-      res.status(500).send("发送失败，请在后台手动重试。");
-    }
-  });
-
-  // ── Helpers (waitlist) ──────────────────────────────────────────────────
-  async function notifyAdminOfBatch(pending: number): Promise<void> {
-    const nextBatchId = Math.floor(pending / BATCH_SIZE);
-    // Tag the BATCH_SIZE most recent untagged pending subscribers.
-    const untagged = await db.select().from(waitlistSubscribers)
-      .where(and(eq(waitlistSubscribers.status, "pending"), isNull(waitlistSubscribers.batchId)))
-      .orderBy(waitlistSubscribers.createdAt);
-    const slice = untagged.slice(0, BATCH_SIZE);
-    if (slice.length === 0) return;
-    await Promise.all(slice.map((u) =>
-      db.update(waitlistSubscribers)
-        .set({ batchId: nextBatchId })
-        .where(eq(waitlistSubscribers.id, u.id))
-    ));
-
-    if (!ADMIN_SECRET) return;
-    const token = Buffer.from(`${nextBatchId}:${ADMIN_SECRET}`).toString("base64url");
-    const confirmUrl = `${WAITLIST_BASE_URL}/api/admin/confirm-batch?token=${token}`;
-    const listHtml = slice
-      .map((u, i) => `<tr><td style="padding:4px 12px">${i + 1}</td><td style="padding:4px 12px">${u.email}</td><td style="padding:4px 12px">${u.isEdu ? "EDU" : "普通"}</td></tr>`)
-      .join("");
-    const html = `
-      <h2>Waitlist Batch #${nextBatchId} — ${slice.length} 位新用户</h2>
-      <table border="1" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
-        <thead><tr><th style="padding:4px 12px">#</th><th style="padding:4px 12px">Email</th><th style="padding:4px 12px">类型</th></tr></thead>
-        <tbody>${listHtml}</tbody>
-      </table>
-      <br/>
-      <a href="${confirmUrl}" style="display:inline-block;padding:12px 24px;background:#111827;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
-        确认并发送邀请码给这 ${slice.length} 位用户
-      </a>
-    `;
-    await sendEmail({
-      to: NOTIFICATION_EMAIL,
-      subject: `[CascadeAI] Waitlist Batch #${nextBatchId} — ${slice.length} 位用户待确认`,
-      html,
-      text: `Waitlist Batch #${nextBatchId}，共 ${slice.length} 位用户。确认链接：${confirmUrl}`,
-    });
-  }
-
-  async function sendInvitesForSubscribers(subscriberIds: number[]): Promise<number> {
-    if (subscriberIds.length === 0) return 0;
-
-    // Pull the target subscribers (pending or email_failed — the latter need a retry).
-    const allTargets = await db.select().from(waitlistSubscribers)
-      .where(or(
-        eq(waitlistSubscribers.status, "pending"),
-        eq(waitlistSubscribers.status, "email_failed"),
-      ));
-    const targets = allTargets.filter((s) => subscriberIds.includes(s.id));
-    if (targets.length === 0) return 0;
-
-    // Codes are random (prefix + CSPRNG suffix). Each subscriber's INSERT runs in
-    // its own short transaction so a unique-constraint collision (negligibly rare)
-    // rolls back only that subscriber and is retried with a fresh suffix, never
-    // aborting the whole batch.
-    let sent = 0;
-
-    for (const sub of targets) {
-      const { trialDays, codeExpiresAt, label: trialLabel } = getTrialInfo(sub.email, sub.isEdu);
-
-      // For email_failed retries: a code was already allocated — reuse it.
-      // For pending: allocate a new code inside a transaction to avoid races.
-      let code: string;
-      const [existing] = await db
-        .select()
-        .from(inviteCodes)
-        .where(eq(inviteCodes.waitlistSubscriberId, sub.id));
-
-      if (existing) {
-        code = existing.code;
-      } else {
-        // Codes are now random (prefix + CSPRNG suffix), so no COUNT/sequence is
-        // needed. Insert inside a transaction and retry on the (negligible, ~1 in
-        // 1e9) unique-constraint collision with a freshly-drawn suffix; a collision
-        // rolls back only this subscriber, not the whole batch.
-        let allocated = false;
-        let allocatedCode = "";
-        for (let attempt = 0; attempt < 5 && !allocated; attempt++) {
-          try {
-            await db.transaction(async (tx) => {
-              allocatedCode = formatInviteCode(sub.email);
-              await tx.insert(inviteCodes).values({
-                code: allocatedCode,
-                isEdu: sub.isEdu,
-                trialDays,
-                expiresAt: codeExpiresAt,
-                waitlistSubscriberId: sub.id,
-              });
-            });
-            allocated = true;
-          } catch (err: any) {
-            const msg: string = err?.message ?? "";
-            if (!msg.includes("unique") && !msg.includes("duplicate")) throw err;
-            console.warn(`[invite-code] unique collision for subscriber ${sub.id}, attempt ${attempt + 1}`);
-          }
-        }
-        if (!allocated) {
-          console.error(`[invite-code] failed to allocate unique code for subscriber ${sub.id} after 5 attempts`);
-          continue;
-        }
-        code = allocatedCode;
-      }
-
-      const codeExpiryStr = codeExpiresAt.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
-      const html = `
-        <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-          <p style="margin-bottom:24px">您好！</p>
-          <p style="margin-bottom:24px">感谢申请使用 Cascade AI，您的专属邀请码如下：</p>
-          <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin-bottom:32px">
-            <span style="font-size:28px;font-weight:800;letter-spacing:4px;color:#111827">${code}</span>
-          </div>
-          <p style="margin-bottom:24px">请前往 <a href="${WAITLIST_BASE_URL}" style="color:#2563eb">http://cascadeai.cn/</a> 注册时填写邀请码。</p>
-          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
-            <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#92400e">${trialLabel}</p>
-            <p style="margin:0;font-size:13px;color:#b45309">免费期从您<strong>完成注册之日</strong>起开始计算。邀请码领取截止日期：<strong>${codeExpiryStr}</strong>，请在此日期前完成注册，逾期邀请码将失效。</p>
-          </div>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
-          <p style="color:#9ca3af;font-size:12px">CascadeAI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
-        </div>
-      `;
-
-      // --- Fix #2: send the email FIRST; only mark the subscriber as
-      // "invited" if the send succeeds.  On failure, mark "email_failed" so
-      // the next manual re-run (which also selects email_failed) can retry.
-      try {
-        await sendEmail({
-          to: sub.email,
-          subject: `您的 Cascade AI 邀请码`,
-          html,
-          text: `您好！\n\n感谢申请使用 Cascade AI，您的专属邀请码如下：\n\n${code}\n\n请前往 http://cascadeai.cn/ 注册时填写邀请码。\n\n${trialLabel}\n免费期从您完成注册之日起开始计算。邀请码领取截止日期：${codeExpiryStr}，请在此日期前完成注册，逾期邀请码将失效。`,
-        });
-        await db.update(waitlistSubscribers)
-          .set({ status: "invited" })
-          .where(eq(waitlistSubscribers.id, sub.id));
-        sent++;
-        // 限速：Resend 免费套餐 2 req/s，每封间隔 600ms 留余量
-        await new Promise(r => setTimeout(r, 600));
-      } catch (err) {
-        console.error("[invite-email] send failed, marking email_failed", err, sub.email);
-        await db.update(waitlistSubscribers)
-          .set({ status: "email_failed" })
-          .where(eq(waitlistSubscribers.id, sub.id));
-        // 失败后也等一下再继续，避免连续触发限速
-        await new Promise(r => setTimeout(r, 600));
-      }
-    }
-    return sent;
-  }
-
-  // GET /api/admin/export-csv — download waitlist as CSV
-  // DELETE /api/admin/otp-limit/:target — clear OTP rate-limit records for an
-  // email or phone so the user can request a new code immediately.
-  app.delete("/api/admin/otp-limit/:target", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const target = decodeURIComponent(req.params.target).trim().toLowerCase();
-      if (!target) return res.status(400).json({ error: "target required" });
-      const deleted = await db.delete(otpCodes).where(eq(otpCodes.target, target)).returning({ id: otpCodes.id });
-      res.json({ ok: true, deleted: deleted.length });
-    } catch (err) {
-      console.error("[admin/otp-limit]", err);
-      res.status(500).json({ error: "Failed to clear OTP limit" });
-    }
-  });
-
-  // GET /api/admin/otp-limit/:target — show OTP records for a target
-  app.get("/api/admin/otp-limit/:target", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const target = decodeURIComponent(req.params.target).trim().toLowerCase();
-      if (!target) return res.status(400).json({ error: "target required" });
-      const rows = await db.select({
-        id: otpCodes.id, channel: otpCodes.channel, purpose: otpCodes.purpose,
-        attempts: otpCodes.attempts, expiresAt: otpCodes.expiresAt,
-        consumedAt: otpCodes.consumedAt, createdAt: otpCodes.createdAt,
-      }).from(otpCodes).where(eq(otpCodes.target, target))
-        .orderBy(desc(otpCodes.createdAt));
-      res.json({ items: rows });
-    } catch (err) {
-      console.error("[admin/otp-limit]", err);
-      res.status(500).json({ error: "Failed to fetch OTP records" });
-    }
-  });
-
-  app.get("/api/admin/export-csv", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const subs = await db.select().from(waitlistSubscribers).orderBy(waitlistSubscribers.createdAt);
-      const codes = await db.select().from(inviteCodes);
-      const codeBySubId = new Map(codes.filter((c) => c.waitlistSubscriberId != null).map((c) => [c.waitlistSubscriberId!, c]));
-
-      function emailType(email: string, isEdu: boolean): string {
-        if (isQizhiEmail(email)) return "奇绩创坛";
-        if (isEdu || email.match(/\.edu(\.cn)?(\.|\b)/i)) return "教育";
-        return "其他";
-      }
-
-      function csvField(v: string | null | undefined): string {
-        if (v == null || v === "") return "";
-        return `"${v.replace(/"/g, '""')}"`;
-      }
-
-      const header = "id,email,邮箱类型,是否发送确认邮件,是否发送邀请码,邀请码,IP地址,注册时间\n";
-      const rows = subs.map((s) => {
-        const code = codeBySubId.get(s.id);
-        return [
-          s.id,
-          csvField(s.email),
-          emailType(s.email, s.isEdu),
-          s.confirmationEmailSentAt ? "是" : "否",
-          s.status === "invited" ? "是" : "否",
-          csvField(code?.code ?? null),
-          csvField(s.ipAddress ?? null),
-          s.createdAt.toISOString(),
-        ].join(",");
-      }).join("\n");
-
-      const csv = "﻿" + header + rows; // BOM for Excel UTF-8
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", 'attachment; filename="waitlist.csv"');
-      res.send(csv);
-    } catch (err) {
-      console.error("[admin/export-csv]", err);
-      res.status(500).json({ error: "Failed to export CSV" });
-    }
-  });
-
-  // POST /api/admin/sheet-update — write-back from Google Sheet to DB
-  app.post("/api/admin/sheet-update", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const { applySheetUpdate } = await import("../../infra/sheets-sync.js");
-      const updates = req.body.updates;
-      if (!Array.isArray(updates)) return res.status(400).json({ error: "updates must be an array" });
-      const changed = await applySheetUpdate(updates);
-      res.json({ ok: true, changed });
-    } catch (err) {
-      console.error("[admin/sheet-update]", err);
-      res.status(500).json({ error: "Failed to apply updates" });
-    }
-  });
-
-  // POST /api/admin/sync-sheets-now — manually trigger immediate sync
-  app.post("/api/admin/sync-sheets-now", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      const { syncToSheets } = await import("../../infra/sheets-sync.js");
-      await syncToSheets();
-      res.json({ ok: true });
-    } catch (err) {
-      console.error("[admin/sync-sheets-now]", err);
-      res.status(500).json({ error: "Sync failed" });
-    }
-  });
-
-  // GET /api/admin/users — 用户总览：注册状态、最后活跃、项目数、剩余免费期。
-  // 活跃时间 = 该用户名下所有项目最新一条 chat_messages 的时间戳（最贴近真实使用）。
-  app.get("/api/admin/users", async (req, res) => {
-    if (!checkAdmin(req, res)) return;
-    try {
-      // 每用户项目数。
-      const projectCounts = await db
-        .select({ userId: projects.userId, n: count() })
-        .from(projects)
-        .groupBy(projects.userId);
-      const projectCountMap = new Map<string, number>();
-      for (const row of projectCounts) {
-        if (row.userId) projectCountMap.set(row.userId, Number(row.n));
-      }
-
-      // 每用户最后活跃时间：关联 projects → chat_messages 取最大时间戳（bigint 毫秒）。
-      const activity = await db
-        .select({ userId: projects.userId, lastTs: sql<string>`max(${chatMessages.timestamp})` })
-        .from(chatMessages)
-        .innerJoin(projects, eq(chatMessages.projectId, projects.id))
-        .groupBy(projects.userId);
-      const lastActiveMap = new Map<string, number>();
-      for (const row of activity) {
-        if (row.userId && row.lastTs != null) lastActiveMap.set(row.userId, Number(row.lastTs));
-      }
-
-      const allUsers = await db.select().from(users);
-      const now = Date.now();
-      const items = allUsers.map((u) => {
-        const trialMs = u.trialExpiresAt ? new Date(u.trialExpiresAt).getTime() : null;
-        const lastActiveTs = lastActiveMap.get(u.id) ?? null;
-        return {
-          id: u.id,
-          username: u.username,
-          email: u.email,
-          phone: u.phone,
-          githubId: u.githubId ?? null,
-          wechatOpenId: u.wechatOpenId ?? null,
-          // 已激活 = 已兑换邀请码（通过邀请码门）。
-          activated: !!u.inviteCode,
-          authMethod: u.githubId ? "github" : u.wechatOpenId ? "wechat" : u.email ? "email" : u.phone ? "phone" : "other",
-          projectCount: projectCountMap.get(u.id) ?? 0,
-          lastActiveAt: lastActiveTs ? new Date(lastActiveTs).toISOString() : null,
-          trialExpiresAt: u.trialExpiresAt ? new Date(u.trialExpiresAt).toISOString() : null,
-          // 剩余免费期（秒）；已过期为 0，无试用期为 null。
-          trialRemainingSec: trialMs != null ? Math.max(0, Math.floor((trialMs - now) / 1000)) : null,
-        };
-      });
-      // 最近活跃优先（无活跃记录的排末尾）。
-      items.sort((a, b) => {
-        const ta = a.lastActiveAt ? Date.parse(a.lastActiveAt) : 0;
-        const tb = b.lastActiveAt ? Date.parse(b.lastActiveAt) : 0;
-        return tb - ta;
-      });
-
-      res.json({
-        total: items.length,
-        activated: items.filter((i) => i.activated).length,
-        items,
-      });
-    } catch (err) {
-      console.error("[admin/users]", err);
-      res.status(500).json({ error: "Failed to load users" });
-    }
-  });
-
-  // ── Helpers (waitlist) — confirmation email ─────────────────────────────
-  async function sendWaitlistConfirmationEmail(email: string, markSent = true): Promise<void> {
-    const logoSvg = `data:image/svg+xml;base64,${Buffer.from('<svg viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="175" y="155" width="56" height="260" fill="#111111"/><rect x="355" y="275" width="56" height="245" fill="#111111"/><rect x="540" y="380" width="65" height="255" fill="#111111"/></svg>').toString("base64")}`;
-    const html = `
-      <div style="font-family:'Helvetica Neue',sans-serif;max-width:560px;margin:0 auto;padding:48px 24px;color:#111827">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px">
-          <img src="${logoSvg}" alt="Cascade AI" width="28" height="28" style="display:inline-block;vertical-align:middle"/>
-          <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111827;vertical-align:middle">Cascade AI</span>
-        </div>
-        <h2 style="font-size:22px;font-weight:700;margin-bottom:16px;color:#111827">Thanks for signing up!</h2>
-        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">Hi there,</p>
-        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
-          Thanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.
-        </p>
-        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:16px">
-          Our engineering team is shipping non&#8209;stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)
-        </p>
-        <p style="color:#374151;font-size:15px;line-height:1.7;margin-bottom:4px">Jonathan</p>
-        <p style="color:#6b7280;font-size:14px;line-height:1.6;margin-bottom:32px">Founder, Cascade AI</p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0"/>
-        <p style="color:#9ca3af;font-size:12px">Cascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}</p>
-      </div>
-    `;
-    await sendEmail({
-      to: email,
-      subject: "Thanks for signing up!",
-      html,
-      text: `Hi there,\n\nThanks for checking out Cascade AI! We're stoked to invite you to our founding user cohort — your first month is on us.\n\nOur engineering team is shipping non‑stop to build an AI Agent that redefines how developers build with AI. We'll drop full launch details as we inch closer to the big day. Stay tuned for updates :)\n\nJonathan\nFounder, Cascade AI\n\nCascade AI · ${WAITLIST_BASE_URL.replace(/^https?:\/\//, "")}`,
-    });
-    if (markSent) {
-      await db.update(waitlistSubscribers)
-        .set({ confirmationEmailSentAt: new Date() })
-        .where(eq(waitlistSubscribers.email, email));
-    }
-  }
 
   setupPreviewServer(httpServer, app);
 
@@ -5926,188 +3003,115 @@ Generate the cascade.md content for this project based on both the plan and the 
     jobId: string,
     projectId: string,
     duration: 10 | 20 | 30,
-    videoDbId?: string,
   ): Promise<void> {
     const job = videoJobs.get(jobId)!;
     const tmpDir = join(tmpdir(), `cascade-video-${jobId}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let context: any = null;
-    let previewToken: string | null = null;
+    let ffmpegAbort: (() => void) | null = null;
     let aborted = false;
-
-    const updateDb = (patch: Parameters<typeof storage.updateProjectVideo>[1]) => {
-      if (videoDbId) storage.updateProjectVideo(videoDbId, patch).catch(() => {});
-    };
-
-    const stopPreview = () => {
-      if (previewToken) {
-        fetch(`http://localhost:${PORT}/api/preview-server/stop`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: previewToken }),
-        }).catch(() => {});
-        previewToken = null;
-      }
-    };
 
     const timeout = setTimeout(() => {
       aborted = true;
-      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
+      if (ffmpegAbort) ffmpegAbort();
       job.status = "error";
       job.error = "timeout";
       job.finishedAt = Date.now();
       activeVideoJobs = Math.max(0, activeVideoJobs - 1);
-      updateDb({ status: "error", errorMessage: "timeout", finishedAt: new Date() });
-      stopPreview();
     }, VIDEO_TIMEOUT_MS);
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      // ── Step 1: Start preview-serve (NO login required, 100% reliable) ──
-      const projectFiles = await storage.getProjectFiles(projectId).catch(() => []);
-      if (projectFiles.length === 0) {
-        throw new Error("Project has no files to preview");
-      }
-      const startRes = await fetch(`http://localhost:${PORT}/api/preview-server/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: projectFiles.map(f => ({ path: f.path, content: f.content })) }),
-      });
-      if (!startRes.ok) throw new Error(`preview-server/start failed: ${startRes.status}`);
-      const startData = await startRes.json() as { token: string; url: string };
-      previewToken = startData.token;
-      const previewUrl = startData.url.replace(/^https?:\/\/[^/]+/, `http://localhost:${PORT}`);
-
-      // ── Step 2: Launch Playwright ──
+      // dynamic import via variable so tsc does not resolve the module at compile time
       const pwModule = "playwright";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { chromium } = await import(/* @vite-ignore */ pwModule) as any;
       browser = await chromium.launch({ args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-      context = await browser.newContext({
-        viewport: { width: 390, height: 844 },
-        recordVideo: { dir: tmpDir, size: { width: 390, height: 844 } },
-      });
-      const page = await context.newPage();
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`http://localhost:${PORT}/preview/${projectId}`, { waitUntil: "networkidle", timeout: 30_000 });
+
       job.status = "running";
-      job.progress = 5;
+      const totalFrames = duration * 10;
+      const intervalMs = 100;
 
-      // ── Step 3: Load App — use "load" not "networkidle" for reliability ──
-      await page.goto(previewUrl, { waitUntil: "load", timeout: 30_000 });
-      // Extra wait for JS frameworks to finish rendering
-      await new Promise<void>((r) => setTimeout(r, 3000));
-      job.progress = 15;
-
-      // ── Step 4: Interactions ──
-      const projectRow = await storage.getProject(projectId).catch(() => null);
-      const rawSequence = projectRow?.actionSequence;
-
-      if (rawSequence) {
-        // Use Builder-generated DSL script (precise, app-specific)
-        try {
-          const parsed = JSON.parse(rawSequence);
-          const validation = validateDslSequence(parsed);
-          if (validation.valid && validation.actions) {
-            job.progress = 20;
-            const result = await executeDslSequence(page, validation.actions);
-            if (result.failed > 0) console.warn(`[video] ${result.failed} DSL steps failed`);
-          }
-        } catch (e) {
-          console.warn("[video] DSL error:", e instanceof Error ? e.message : e);
-        }
-      } else {
-        // Generic fallback: scroll + click visible buttons
-        try {
-          await page.mouse.wheel(0, 300);
-          await new Promise<void>((r) => setTimeout(r, 1000));
-          await page.mouse.wheel(0, 300);
-          await new Promise<void>((r) => setTimeout(r, 1000));
-          const buttons = await page.$$("button, [role=\'button\'], input[type=\'button\'], input[type=\'submit\']");
-          for (const btn of buttons.slice(0, 3)) {
-            try { await btn.click({ timeout: 2000 }); await new Promise<void>((r) => setTimeout(r, 1500)); } catch {}
-          }
-          await page.mouse.wheel(0, -600);
-          await new Promise<void>((r) => setTimeout(r, 1000));
-        } catch (e) {
-          console.warn("[video] generic interactions failed:", e instanceof Error ? e.message : e);
-        }
+      for (let i = 0; i < totalFrames; i++) {
+        if (aborted) return;
+        const framePath = join(tmpDir, `frame_${String(i).padStart(4, "0")}.png`);
+        await page.screenshot({ path: framePath });
+        const pct = Math.floor(((i + 1) / totalFrames) * 90);
+        job.progress = pct;
+        await new Promise<void>((r) => setTimeout(r, intervalMs));
       }
 
-      job.progress = 60;
-
-      // ── Step 5: Fill remaining time precisely ──
-      const usedMs = 3000 + (rawSequence ? 15000 : 8000);
-      const remainingMs = Math.max(2000, duration * 1000 - usedMs);
-      await new Promise<void>((r) => setTimeout(r, remainingMs));
-      job.progress = 80;
-
-      // ── Step 6: Flush video file ──
-      const videoHandle = await page.video();
-      await context.close(); context = null;
-      await browser.close(); browser = null;
-      stopPreview();
+      await browser.close();
+      browser = null;
 
       if (aborted) return;
 
-      const rawVideoPath = await videoHandle?.path();
-      if (!rawVideoPath || !existsSync(rawVideoPath)) throw new Error("Playwright produced no video file");
+      const outputPath = join(tmpDir, "output.mp4");
+      const ffResult = await new Promise<{ exitCode: number; timedOut: boolean }>((resolve) => {
+        const child = spawn("ffmpeg", [
+          "-framerate", "10",
+          "-i", join(tmpDir, "frame_%04d.png"),
+          "-c:v", "libx264",
+          "-pix_fmt", "yuv420p",
+          "-y",
+          outputPath,
+        ], { cwd: tmpDir });
 
-      // ── Step 7: Watermark ──
-      const watermarkedPath = rawVideoPath.replace(/\.\w+$/, "-wm.mp4");
-      try {
-        await addVideoWatermark(rawVideoPath, watermarkedPath);
-        rm(rawVideoPath, { force: true }).catch(() => {});
-      } catch (wmErr) {
-        console.warn("[video] watermark failed:", wmErr instanceof Error ? wmErr.message : wmErr);
-        const { rename } = await import("fs/promises");
-        await rename(rawVideoPath, watermarkedPath);
+        ffmpegAbort = () => { try { child.kill("SIGKILL"); } catch {} };
+
+        let settled = false;
+        const ffTimer = setTimeout(() => {
+          if (!settled) { settled = true; try { child.kill("SIGKILL"); } catch {} resolve({ exitCode: 1, timedOut: true }); }
+        }, 60_000);
+
+        child.on("close", (code) => {
+          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: code ?? 1, timedOut: false }); }
+        });
+        child.on("error", () => {
+          if (!settled) { settled = true; clearTimeout(ffTimer); resolve({ exitCode: 1, timedOut: false }); }
+        });
+      });
+
+      // delete frame PNGs, keep only MP4
+      const frames = readdirSync(tmpDir).filter((f) => f.endsWith(".png"));
+      await Promise.all(frames.map((f) => rm(join(tmpDir, f), { force: true })));
+
+      if (aborted) return;
+
+      if (ffResult.exitCode !== 0 || !existsSync(outputPath)) {
+        throw new Error("ffmpeg failed");
       }
 
-      // ── Step 8: Persist ──
-      const storagePath = await videoStorage.save(jobId, watermarkedPath);
-      job.outputPath = storagePath;
+      job.outputPath = outputPath;
       job.progress = 100;
       job.status = "done";
       job.finishedAt = Date.now();
-      updateDb({ status: "done", localPath: storagePath, finishedAt: new Date() });
-
     } catch (err: unknown) {
       if (!aborted) {
-        const msg = err instanceof Error ? err.message : "unknown";
         job.status = "error";
-        job.error = msg;
+        job.error = err instanceof Error ? err.message : "unknown";
         job.finishedAt = Date.now();
-        updateDb({ status: "error", errorMessage: msg, finishedAt: new Date() });
       }
     } finally {
       clearTimeout(timeout);
       if (!aborted) activeVideoJobs = Math.max(0, activeVideoJobs - 1);
-      try { context?.close(); } catch {}
       try { browser?.close(); } catch {}
-      stopPreview();
-      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   app.post("/api/video/generate", async (req, res) => {
-    const { projectId, duration: rawDuration } = req.body as { projectId?: string; duration?: number };
-    // Default to 30s if not specified or invalid
-    const duration = (!rawDuration || !ALLOWED_DURATIONS.has(rawDuration)) ? 30 : rawDuration;
-    if (!projectId) {
-      res.status(400).json({ error: "projectId required" });
+    const { projectId, duration } = req.body as { projectId?: string; duration?: number };
+    if (!projectId || !duration || !ALLOWED_DURATIONS.has(duration)) {
+      res.status(400).json({ error: "invalid_duration" });
       return;
     }
     if (activeVideoJobs >= MAX_VIDEO_JOBS) {
       res.status(429).json({ error: "too_many_jobs" });
-      return;
-    }
-
-    // Only Web framework previews are stable enough for recording
-    const project = await storage.getProject(projectId).catch(() => null);
-    if (project && project.framework && project.framework !== "web") {
-      res.status(422).json({ error: "unsupported_framework", framework: project.framework });
       return;
     }
 
@@ -6122,26 +3126,8 @@ Generate the cascade.md content for this project based on both the plan and the 
     });
     activeVideoJobs++;
 
-    // Create persistent DB record
-    const userId = (req.session as any)?.userId as string | undefined;
-    let videoDbId: string | undefined;
-    try {
-      const { randomUUID } = await import("crypto");
-      const dbRecord = await storage.createProjectVideo({
-        id: randomUUID(),
-        projectId,
-        userId: userId ?? null,
-        status: "pending",
-        duration: duration as number,
-        style: "raw",
-      });
-      videoDbId = dbRecord.id;
-    } catch (e) {
-      console.warn("[video/generate] DB record failed:", e);
-    }
-
-    recordPreview(jobId, projectId, duration as 10 | 20 | 30, videoDbId).catch(() => {});
-    res.json({ jobId, videoId: videoDbId });
+    recordPreview(jobId, projectId, duration as 10 | 20 | 30).catch(() => {});
+    res.json({ jobId });
   });
 
   app.get("/api/video/status/:jobId", (req, res) => {
@@ -6150,27 +3136,23 @@ Generate the cascade.md content for this project based on both the plan and the 
     res.json({ status: job.status, progress: job.progress, error: job.error ?? undefined });
   });
 
-  // Persistent file download by DB videoId
-  app.get("/api/video/file/:videoId", async (req, res) => {
-    const record = await storage.getProjectVideo(req.params.videoId).catch(() => null);
-    if (!record || record.status !== "done") { res.status(404).end(); return; }
-    if (record.cosUrl) { res.redirect(302, record.cosUrl); return; }
-    const localPath = record.localPath;
-    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="demo.mp4"`);
-    res.sendFile(localPath);
-  });
-
-  // Legacy download by in-memory jobId (kept for compatibility)
   app.get("/api/video/download/:jobId", (req, res) => {
     const job = videoJobs.get(req.params.jobId);
-    if (!job || job.status !== "done" || !job.outputPath) { res.status(404).end(); return; }
-    const localPath = videoStorage.getLocalPath(job.outputPath);
-    if (!localPath || !existsSync(localPath)) { res.status(404).end(); return; }
+    if (!job || job.status !== "done" || !job.outputPath || !existsSync(job.outputPath)) {
+      res.status(404).end();
+      return;
+    }
+    const filePath = job.outputPath;
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename="preview-${job.duration}s.mp4"`);
-    res.sendFile(localPath);
+
+    // clean up after response finishes
+    res.on("finish", () => {
+      rm(filePath, { force: true }).catch(() => {});
+      videoJobs.delete(req.params.jobId);
+    });
+
+    res.sendFile(filePath);
   });
 
   app.post("/api/video/send-email/:jobId", async (req, res) => {
@@ -6220,31 +3202,21 @@ Generate the cascade.md content for this project based on both the plan and the 
 
   // ── Creator Square ────────────────────────────────────────────────────────────
 
-  // GET /api/square — list published apps
+  // GET /api/square — list published apps (public)
   app.get("/api/square", async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const offset = parseInt(req.query.offset as string) || 0;
       const framework = req.query.framework as string | undefined;
-      const category = req.query.category as string | undefined;
       const sort = (req.query.sort as string) || "latest";
       const q = (req.query.q as string | undefined)?.trim() || "";
-      const author = (req.query.author as string | undefined)?.trim() || "";
-      const currentUserId = (req.session as any)?.userId as string | undefined;
+      const author = (req.query.author as string | undefined)?.trim() || ""; // username filter
 
-      // Visibility rule:
-      //   - public: visible to everyone
-      //   - link_only: NOT listed publicly, BUT always visible to the owner regardless of filter
-      //   - private: never listed
-      const visibilityWhere = currentUserId
-        ? sql`(${publishedApps.visibility} = 'public' OR (${publishedApps.userId} = ${currentUserId} AND ${publishedApps.visibility} = 'link_only'))`
-        : eq(publishedApps.visibility, "public");
-
+      // Only public apps are visible in the listing (link_only = not listed, private = not listed, admin taken down = hidden)
       const baseWhere = and(
-        visibilityWhere,
+        eq(publishedApps.visibility, "public"),
         eq(publishedApps.adminTakenDown, false),
         ...(framework ? [eq(publishedApps.framework, framework)] : []),
-        ...(category ? [eq(publishedApps.category, category)] : []),
         ...(author ? [sql`lower(${users.username}) = ${author.toLowerCase()}`] : []),
       );
 
@@ -6271,7 +3243,6 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: publishedApps.visibility,
           previewScreenshot: publishedApps.previewScreenshot,
           framework: publishedApps.framework,
-          category: publishedApps.category,
           viewCount: publishedApps.viewCount,
           forkCount: publishedApps.forkCount,
           likeCount: publishedApps.likeCount,
@@ -6359,21 +3330,6 @@ Generate the cascade.md content for this project based on both the plan and the 
       const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
       if (!project) { res.status(403).json({ error: "forbidden" }); return; }
 
-      // Auto-classify app category based on title + description
-      const classifyCategory = (t: string, d: string): string => {
-        const text = (t + " " + d).toLowerCase();
-        if (/游戏|game|play|棋|snake|tetris|puzzle|quiz/.test(text)) return "games";
-        if (/学习|learn|教|study|单词|quiz|课|exam|test|知识/.test(text)) return "education";
-        if (/图表|chart|dashboard|可视化|visual|数据|data|统计|report/.test(text)) return "data-viz";
-        if (/画|draw|write|写作|生成|create|art|design|音乐|video/.test(text)) return "creative";
-        if (/聊天|chat|社交|social|message|留言|论坛|community/.test(text)) return "social";
-        if (/商|shop|finance|金融|支付|pay|电商|订单|invoice/.test(text)) return "business";
-        if (/天气|weather|食谱|cook|健康|health|生活|日历|calendar|todo|habit/.test(text)) return "lifestyle";
-        if (/工具|tool|util|convert|计算|calc|timer|clock|效率|productivity/.test(text)) return "tools";
-        return "other";
-      };
-      const autoCategory = classifyCategory(title.trim(), description?.trim() ?? "");
-
       // Scope lookup to (projectId + userId) — prevents cross-user collisions
       const [existing] = await db.select().from(publishedApps)
         .where(and(eq(publishedApps.projectId, projectId), eq(publishedApps.userId, userId)));
@@ -6389,7 +3345,6 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
-          category: autoCategory,
           updatedAt: new Date(),
         }).where(and(eq(publishedApps.id, appId), eq(publishedApps.userId, userId)));
       } else {
@@ -6403,7 +3358,6 @@ Generate the cascade.md content for this project based on both the plan and the 
           visibility: (visibility ?? "public") as any,
           previewScreenshot: previewScreenshot ?? null,
           framework: detectedFramework,
-          category: autoCategory,
         });
       }
 
@@ -6647,7 +3601,7 @@ Generate the cascade.md content for this project based on both the plan and the 
               isRead: false,
             });
           })
-          .catch((err) => { console.error("[square/like/notif]", err); });
+          .catch(() => {});
       }
     } catch (err) {
       console.error("[square/like]", err);
@@ -6726,34 +3680,34 @@ Generate the cascade.md content for this project based on both the plan and the 
         createdAt: now,
         updatedAt: now,
       });
-
-      // Fetch author username and app owner in one join
-      const [notifRow] = await db.select({
-        appTitle: publishedApps.title,
-        ownerId: publishedApps.userId,
-        authorUsername: users.username,
-      })
-        .from(publishedApps)
-        .innerJoin(users, eq(users.id, userId))
-        .where(eq(publishedApps.id, req.params.id))
-        .limit(1);
-
-      const authorUsername = notifRow?.authorUsername ?? "unknown";
-
+      const user = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+      const authorUsername = user[0]?.username ?? "unknown";
       res.json({
-        comment: { id, content, createdAt: now, userId, authorUsername }
+        comment: {
+          id,
+          content,
+          createdAt: now,
+          userId,
+          authorUsername,
+        }
       });
 
-      // Send notification to app owner (fire-and-forget, after response)
-      if (notifRow && notifRow.ownerId !== userId) {
-        db.insert(notifications).values({
-          userId: notifRow.ownerId,
-          type: "app_comment",
-          title: "有人评论了你的应用",
-          body: `@${authorUsername} 评论了你分享的「${notifRow.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
-          isRead: false,
-        }).catch((err) => { console.error("[square/comment/notif]", err); });
-      }
+      // Send notification to app owner (fire-and-forget)
+      db.select({ appTitle: publishedApps.title, ownerId: publishedApps.userId })
+        .from(publishedApps)
+        .where(eq(publishedApps.id, req.params.id))
+        .limit(1)
+        .then(([row]) => {
+          if (!row || row.ownerId === userId) return; // don't notify self-comment
+          return db.insert(notifications).values({
+            userId: row.ownerId,
+            type: "app_comment",
+            title: "有人评论了你的应用",
+            body: `@${authorUsername} 评论了你分享的「${row.appTitle}」：${content.slice(0, 50)}${content.length > 50 ? "…" : ""}`,
+            isRead: false,
+          });
+        })
+        .catch(() => {});
     } catch (err) {
       console.error("[square/comments/post]", err);
       res.status(500).json({ error: "failed" });
@@ -6853,6 +3807,7 @@ Generate the cascade.md content for this project based on both the plan and the 
       messageCount: session.messages.length,
     });
   });
+
 
   // ─────────────────────────────────────────────────────────────────────────────
 

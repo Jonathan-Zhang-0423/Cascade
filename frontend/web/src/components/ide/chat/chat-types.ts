@@ -62,6 +62,7 @@ export const KNOWN_MGR_EVENT_TYPES: Set<string> = new Set([
   "plan_ready",
   "manager_done",
   "manager_error",
+  "memory_updated",
   "action_log",
 ]);
 
@@ -69,6 +70,7 @@ export const MGR_SOURCE_MAP: Record<string, LLMEventSource> = {
   communicator_token: "communicator",
   communicator_narration_starting: "communicator",
   communicator_error: "communicator",
+  memory_updated: "manager",
 };
 
 export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
@@ -81,6 +83,13 @@ export const KNOWN_BUILD_EVENT_TYPES: Set<string> = new Set([
   "step_failed",
   "step_cancelled",
   "code_applied",
+  "file_deleted",
+  "capabilities_active",
+  "ledger_snapshot",
+  "context_summary",
+  "memory_updated",
+  "tool_batch_started",
+  "tool_batch_completed",
   "build_complete",
   "all_complete",
   "build_error",
@@ -98,6 +107,13 @@ export const BUILD_SOURCE_MAP: Record<string, LLMEventSource> = {
   step_failed: "manager",
   step_cancelled: "manager",
   build_complete: "manager",
+  file_deleted: "editor",
+  capabilities_active: "editor",
+  ledger_snapshot: "manager",
+  context_summary: "editor",
+  memory_updated: "editor",
+  tool_batch_started: "editor",
+  tool_batch_completed: "editor",
   all_complete: "manager",
   build_error: "editor",
   done: "manager",
@@ -140,8 +156,14 @@ export interface ManagerSseEvent {
   eventId?: number;
   replay?: boolean;
   sessionId?: string;
+  projectId?: string;
+  chatSessionId?: string;
+  runType?: string;
+  runGroupId?: string;
+  persistedClientId?: string;
   token?: string;
   plan?: ManagerPlan;
+  project_name?: string;
   autoExecute?: boolean;
   label?: string;
   detail?: string;
@@ -202,6 +224,12 @@ export interface BuildSseEvent {
   type: string;
   eventId?: number;
   replay?: boolean;
+  sessionId?: string;
+  projectId?: string;
+  chatSessionId?: string;
+  runType?: string;
+  runGroupId?: string;
+  persistedClientId?: string;
   token?: string;
   label?: string;
   detail?: string;
@@ -217,6 +245,20 @@ export interface BuildSseEvent {
   fixCycle?: number;
   items?: string[];
   changedFiles?: string[];
+  capabilities?: Array<{ name: string; score?: number; tier?: string }>;
+  ledger?: {
+    steps?: Array<{
+      stepNumber?: number;
+      status?: string;
+      title?: string;
+      summary?: string;
+      touchedFiles?: string[];
+      error?: string;
+    }>;
+    allDone?: boolean;
+    completedCount?: number;
+    totalCount?: number;
+  };
   summary?: string;
   summaryText?: string;
   content?: string;

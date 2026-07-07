@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getMainEntryFile } from "@/lib/preview-adapters";
 import { useLanguageStore } from "@/stores/language-store";
+import { compactBuildResultForPersistence } from "@/components/ide/chat/action-log-normalize";
 
 function getWelcomeMessage(): string {
   const lang = useLanguageStore.getState().lang;
@@ -86,18 +87,21 @@ export interface VerificationResult {
 }
 
 export interface BuildResultData {
-  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string }[];
+  actionLog: { type: string; label: string; detail: string; timestamp: number; filePath?: string; precedingNarration?: string; stepNum?: number }[];
   segments?: {
     id: string;
     narration: string;
-    actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string }[];
+    actions: { type: string; label: string; detail: string; timestamp: number; filePath?: string; stepNum?: number }[];
     isLive: boolean;
+    stepLabel?: string;
   }[];
   completionData?: { changedFiles: string[]; userLang?: string; summary?: string };
   tokenUsage?: { input: number; output: number; total: number };
   nextStepSuggestion?: string;
   sessionId?: string;
 }
+
+type TaskStatus = "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
 
 export interface ManagerMessage {
   id: string;
@@ -117,7 +121,7 @@ export interface ManagerMessage {
   // Snapshot of taskStatuses captured when this plan's build finished.
   // Lets historical PlanCards render their final state instead of reverting
   // to all-pending once a newer plan takes over the live `taskStatuses`.
-  frozenTaskStatuses?: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  frozenTaskStatuses?: Record<string, TaskStatus>;
   frozenTaskFailureReasons?: Record<string, string>;
 }
 
@@ -146,8 +150,16 @@ export interface StreamingSnapshot {
   narrationText: string;
   sessionId?: string;
   projectId: string;
+  chatSessionId?: string;
+  runType?: string;
   updatedAt: number;
   lastEventId?: number;
+  actionLog?: BuildResultData["actionLog"];
+  stepNarrations?: Record<number, string>;
+  taskStatuses?: Record<string, TaskStatus>;
+  currentStepNum?: number;
+  ledger?: unknown;
+  finalArtifact?: unknown;
 }
 
 // A persisted streaming snapshot older than this is treated as dead on reload —
@@ -302,8 +314,9 @@ interface IDEState {
   managerMessages: ManagerMessage[];
   _nextSeq: number;
   streamingSnapshot: StreamingSnapshot | null;
+  streamingSnapshots: Record<string, StreamingSnapshot>;
   executingTaskIndex: number | null;
-  taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
+  taskStatuses: Record<string, TaskStatus>;
   taskFailureReasons: Record<string, string>;
   isManagerResponding: boolean;
   /** Per-session responding state. Key = sessionId. True while that session's manager stream is active. */
@@ -347,12 +360,13 @@ interface IDEState {
   openFile: (path: string) => void;
   closeFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
-  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp" | "seq">) => void;
+  addChatMessage: (message: Omit<ChatMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   updateLastAssistantMessage: (content: string) => void;
   addConsoleEntry: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
   clearConsole: () => void;
   setActiveTool: (tool: ToolPanel) => void;
   setAiResponding: (v: boolean) => void;
+  setIdePageMounted: (v: boolean) => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   toggleConsole: () => void;
@@ -369,9 +383,9 @@ interface IDEState {
 
   setChatMode: (mode: ChatMode) => void;
   setManagerPlan: (plan: ManagerPlan | null) => void;
-  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq">) => void;
+  addManagerMessage: (message: Omit<ManagerMessage, "id" | "timestamp" | "seq"> & { id?: string }) => void;
   loadOlderMessages: (kind: "chat" | "manager", limit?: number) => Promise<number>;
-  updateTaskStatus: (subTaskId: string, status: "pending" | "running" | "done" | "failed" | "needs-input" | "bug") => void;
+  updateTaskStatus: (subTaskId: string, status: TaskStatus) => void;
   setTaskFailureReason: (subTaskId: string, reason: string) => void;
   setExecutingTaskIndex: (index: number | null) => void;
   setManagerResponding: (v: boolean, sessionId?: string) => void;
@@ -393,7 +407,7 @@ interface IDEState {
   setPlanPreview: (open: boolean, data?: { summary?: string; overview?: string; steps: { title?: string; description?: string }[] } | null) => void;
 
   updateManagerMessageThinking: (index: number, thinking: string) => void;
-  freezeLatestPlanStatuses: () => void;
+  freezeLatestPlanStatuses: (statuses?: Record<string, TaskStatus>, failureReasons?: Record<string, string>, planMessageId?: string | null) => void;
 
   userId: string | null;
   setUserId: (id: string | null) => void;
@@ -464,6 +478,22 @@ _Populated after the first plan is created._
   },
 ];
 
+const defaultFilesHash = flattenFilesForHash(defaultFiles);
+
+export function isDefaultProjectFileSet(files: FileNode[]): boolean {
+  return flattenFilesForHash(files) === defaultFilesHash;
+}
+
+export function getUnsafeFullFileSyncReason(
+  files: FileNode[],
+  options: { allowDestructiveOverwrite?: boolean } = {},
+): "empty" | "starter-template" | null {
+  if (options.allowDestructiveOverwrite) return null;
+  if (flattenToFlatFiles(files).length === 0) return "empty";
+  if (isDefaultProjectFileSet(files)) return "starter-template";
+  return null;
+}
+
 function flattenFilesForHash(files: FileNode[]): string {
   const parts: string[] = [];
   const collect = (nodes: FileNode[]) => {
@@ -507,8 +537,12 @@ function persistState(state: IDEState) {
     if (!snap) return null;
     const tt = (snap as { thinkingText?: string }).thinkingText;
     const nt = (snap as { narrationText?: string }).narrationText;
+    const compactedActionLog = Array.isArray(snap.actionLog)
+      ? snap.actionLog.map((entry) => compactBuildResultForPersistence({ actionLog: [entry] }).actionLog?.[0] ?? entry)
+      : snap.actionLog;
     return {
       ...snap,
+      actionLog: compactedActionLog,
       ...(typeof tt === "string" && tt.length > MAX_SNAPSHOT_TEXT
         ? { thinkingText: tt.slice(-MAX_SNAPSHOT_TEXT) }
         : {}),
@@ -519,6 +553,12 @@ function persistState(state: IDEState) {
   };
   // chatMessages, managerMessages, files are now persisted server-side (DB).
   // localStorage only holds lightweight UI/session state.
+  const compactSnapshots = Object.fromEntries(
+    Object.entries(state.streamingSnapshots || {})
+      .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .slice(0, 8)
+      .map(([key, snap]) => [key, truncateSnapshot(snap as any)]),
+  );
   const toSave = {
     openFiles: state.openFiles,
     activeFile: state.activeFile,
@@ -529,6 +569,7 @@ function persistState(state: IDEState) {
     chatMode: state.chatMode,
     _nextSeq: state._nextSeq,
     streamingSnapshot: truncateSnapshot(state.streamingSnapshot),
+    streamingSnapshots: compactSnapshots,
     managerPlan: state.managerPlan,
     taskStatuses: state.taskStatuses,
     taskFailureReasons: state.taskFailureReasons,
@@ -555,9 +596,9 @@ function persistState(state: IDEState) {
       return;
     }
   }
-  // Quota fallback: drop streamingSnapshot (often the largest remaining accumulator)
+  // Quota fallback: drop streamingSnapshot(s) (often the largest remaining accumulator)
   try {
-    localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null }));
+    localStorage.setItem(key, JSON.stringify({ ...toSave, streamingSnapshot: null, streamingSnapshots: {} }));
     console.warn("[persistState] dropped streamingSnapshot to fit quota");
   } catch (err) {
     console.warn("[persistState] still over quota, skipping save:", err);
@@ -658,6 +699,14 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
   if (typeof row.metadata === "string" && row.metadata) {
     try { metadata = JSON.parse(row.metadata); } catch {}
   }
+  let buildResult = metadata?.buildResult;
+  if (buildResult && typeof buildResult === "object") {
+    try {
+      buildResult = compactBuildResultForPersistence(buildResult);
+    } catch {
+      buildResult = { actionLog: [], segments: [] };
+    }
+  }
   return {
     id: row.clientId,
     role: row.role,
@@ -671,7 +720,7 @@ function dbRowToManagerMessage(row: any): ManagerMessage {
     checkpointId: metadata?.checkpointId,
     thinking: row.thinking ?? undefined,
     preparingPlan: metadata?.preparingPlan,
-    buildResult: metadata?.buildResult,
+    buildResult,
     errorCode: metadata?.errorCode,
     frozenTaskStatuses: metadata?.frozenTaskStatuses,
     frozenTaskFailureReasons: metadata?.frozenTaskFailureReasons,
@@ -703,7 +752,7 @@ function managerMessageToDbInput(m: ManagerMessage, projectId: string, sessionId
   if (m.hidden) metadata.hidden = m.hidden;
   if (m.checkpointId) metadata.checkpointId = m.checkpointId;
   if (m.preparingPlan) metadata.preparingPlan = m.preparingPlan;
-  if (m.buildResult) metadata.buildResult = m.buildResult;
+  if (m.buildResult) metadata.buildResult = compactBuildResultForPersistence(m.buildResult as any);
   if (m.errorCode) metadata.errorCode = m.errorCode;
   if (m.frozenTaskStatuses) metadata.frozenTaskStatuses = m.frozenTaskStatuses;
   if (m.frozenTaskFailureReasons) metadata.frozenTaskFailureReasons = m.frozenTaskFailureReasons;
@@ -760,26 +809,106 @@ if (typeof window !== "undefined") {
 }
 
 let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingServerSync: { projectId: string; files: { path: string; content: string }[] } | null = null;
+let pendingServerSync: {
+  projectId: string;
+  files: { path: string; content: string }[];
+  allowDestructiveOverwrite: boolean;
+} | null = null;
+const singleFileSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function syncFilesToServer(projectId: string, files: FileNode[]) {
+function singleFileSyncKey(projectId: string, path: string) {
+  return `${projectId}\n${path}`;
+}
+
+function cancelSingleFileSync(projectId: string, path: string) {
+  const key = singleFileSyncKey(projectId, path);
+  const timer = singleFileSyncTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    singleFileSyncTimers.delete(key);
+  }
+}
+
+function cancelAllSingleFileSyncs(projectId?: string) {
+  for (const [key, timer] of singleFileSyncTimers) {
+    if (!projectId || key.startsWith(`${projectId}\n`)) {
+      clearTimeout(timer);
+      singleFileSyncTimers.delete(key);
+    }
+  }
+}
+
+function syncFilesToServer(
+  projectId: string,
+  files: FileNode[],
+  options: { allowDestructiveOverwrite?: boolean } = {},
+) {
+  cancelAllSingleFileSyncs(projectId);
   const flat = flattenToFlatFiles(files);
 
+  const unsafeReason = getUnsafeFullFileSyncReason(files, options);
+  if (unsafeReason) {
+    console.warn(`[files-sync] skipped ${unsafeReason} full file sync`, { projectId });
+    return;
+  }
+
   if (serverSyncTimer) clearTimeout(serverSyncTimer);
-  pendingServerSync = { projectId, files: flat };
+  pendingServerSync = { projectId, files: flat, allowDestructiveOverwrite: options.allowDestructiveOverwrite === true };
 
   serverSyncTimer = setTimeout(() => {
     if (!pendingServerSync) return;
-    const { projectId: pid, files: flatFiles } = pendingServerSync;
+    const { projectId: pid, files: flatFiles, allowDestructiveOverwrite } = pendingServerSync;
     pendingServerSync = null;
     serverSyncTimer = null;
 
     fetch(`/api/projects/${pid}/files`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files: flatFiles }),
+      body: JSON.stringify({
+        files: flatFiles,
+        ...(allowDestructiveOverwrite ? { allowDestructiveOverwrite: true } : {}),
+      }),
     }).catch(() => {});
   }, 1000);
+}
+
+function refreshPendingFullFileSync(projectId: string, files: FileNode[]) {
+  if (pendingServerSync?.projectId === projectId) {
+    const unsafeReason = getUnsafeFullFileSyncReason(files, {
+      allowDestructiveOverwrite: pendingServerSync.allowDestructiveOverwrite,
+    });
+    if (unsafeReason) {
+      console.warn(`[files-sync] kept pending full sync; refusing to replace it with ${unsafeReason} files`, { projectId });
+      return;
+    }
+    pendingServerSync = {
+      ...pendingServerSync,
+      files: flattenToFlatFiles(files),
+    };
+  }
+}
+
+function syncSingleFileToServer(projectId: string, path: string, content: string, delayMs = 500) {
+  cancelSingleFileSync(projectId, path);
+  const key = singleFileSyncKey(projectId, path);
+  const timer = setTimeout(() => {
+    singleFileSyncTimers.delete(key);
+    fetch(`/api/projects/${projectId}/files/single`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, content }),
+    }).catch(() => {});
+  }, delayMs);
+  singleFileSyncTimers.set(key, timer);
+}
+
+function deleteSingleFileFromServer(projectId: string, path: string) {
+  cancelSingleFileSync(projectId, path);
+  fetch(`/api/projects/${projectId}/files`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  }).catch(() => {});
 }
 
 async function fetchFilesFromServer(projectId: string): Promise<{ path: string; content: string }[] | null> {
@@ -880,6 +1009,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   managerMessages: [],
   _nextSeq: 1,
   streamingSnapshot: null,
+  streamingSnapshots: {},
   executingTaskIndex: null,
   taskStatuses: {},
   taskFailureReasons: {},
@@ -1005,7 +1135,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       },
     ];
 
-    const isNonWeb = framework && framework !== "web";
+    const entryFile = getMainEntryFile(framework);
 
     // Backfill seq on old persisted messages that lack it.
     // Sort by timestamp, assign monotonically from seqStart upward.
@@ -1050,10 +1180,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     const baseState = saved ? {
       projectId: id,
       projectFramework: framework || "web",
-      files: saved.files || (isNonWeb ? [] : defaultFiles),
-      openFiles: saved.openFiles || ["/project/index.html"],
-      activeFile: saved.activeFile || "/project/index.html",
-      previewFile: saved.previewFile || "/project/index.html",
+      files: [],
+      openFiles: saved.openFiles || [entryFile],
+      activeFile: saved.activeFile || entryFile,
+      previewFile: saved.previewFile || entryFile,
       chatMessages: chatMsgsWithSeq,
       pendingPrompt: saved.pendingPrompt || null,
       pendingPromptMode: (saved.pendingPromptMode === "manager" || saved.pendingPromptMode === "build") ? saved.pendingPromptMode : null,
@@ -1077,6 +1207,17 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         const age = Date.now() - (typeof snap.updatedAt === "number" ? snap.updatedAt : 0);
         return age <= STREAMING_SNAPSHOT_MAX_AGE_MS ? snap : null;
       })(),
+      streamingSnapshots: (() => {
+        const raw = saved.streamingSnapshots && typeof saved.streamingSnapshots === "object"
+          ? saved.streamingSnapshots
+          : {};
+        const now = Date.now();
+        return Object.fromEntries(Object.entries(raw).filter(([, value]) => {
+          const snap = value as any;
+          const age = now - (typeof snap?.updatedAt === "number" ? snap.updatedAt : 0);
+          return snap && typeof snap.sessionId === "string" && age <= STREAMING_SNAPSHOT_MAX_AGE_MS;
+        })) as Record<string, StreamingSnapshot>;
+      })(),
       managerPlan: (saved.managerMessages || []).slice().reverse().find((m: ManagerMessage) => m.plan)?.plan || saved.managerPlan || null,
       executingTaskIndex: null,
       taskStatuses: saved.taskStatuses || (mgrMsgsWithSeq as ManagerMessage[]).slice().reverse().find((m) => m.plan && m.frozenTaskStatuses)?.frozenTaskStatuses || {},
@@ -1098,10 +1239,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     } : {
       projectId: id,
       projectFramework: framework || "web",
-      files: defaultFiles,
-      openFiles: ["/project/index.html"],
-      activeFile: "/project/index.html",
-      previewFile: "/project/index.html",
+      files: [],
+      openFiles: [entryFile],
+      activeFile: entryFile,
+      previewFile: entryFile,
       chatMessages: defaultChat,
       pendingPrompt: null,
       pendingPromptMode: null,
@@ -1116,6 +1257,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       managerMessages: [],
       _nextSeq: 2,
       streamingSnapshot: null,
+      streamingSnapshots: {},
       managerPlan: null,
       executingTaskIndex: null,
       taskStatuses: {},
@@ -1252,19 +1394,6 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
     fetchWithRetry().then((serverFiles) => {
       if (!serverFiles || serverFiles.length === 0) return;
-      // If a build session is still active for this project, the SSE replay
-      // path will re-apply every code_applied event and reconstruct file
-      // contents authoritatively. Overwriting from the server here would
-      // race against the (debounced) syncFilesToServer + the in-flight build
-      // tools, and could briefly flash stale content before the replay
-      // catches up. Skip it; the build's mid-write DB upserts and the SSE
-      // replay together cover refresh-during-build.
-      let buildInFlight = false;
-      try {
-        buildInFlight = !!localStorage.getItem(`cascade-build-session-${id}`);
-      } catch {}
-      if (buildInFlight) return;
-
       const fileTree = rebuildFileTree(serverFiles);
       const currentState = get();
       if (currentState.projectId !== id) return;
@@ -1313,7 +1442,16 @@ export const useIDEStore = create<IDEState>((set, get) => ({
   },
 
   setStreamingSnapshot: (snapshot: StreamingSnapshot | null) => {
-    set({ streamingSnapshot: snapshot });
+    set((state) => {
+      if (!snapshot) return { streamingSnapshot: null };
+      const chatSessionId = snapshot.chatSessionId || state.currentSessionId || "main";
+      const key = `${snapshot.projectId}:${chatSessionId}:${snapshot.sessionId}`;
+      const nextMap = { ...(state.streamingSnapshots || {}), [key]: { ...snapshot, chatSessionId } };
+      return {
+        streamingSnapshot: { ...snapshot, chatSessionId },
+        streamingSnapshots: nextMap,
+      };
+    });
     const state = get();
     persistState(state);
   },
@@ -1410,7 +1548,7 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     set(next);
     debouncedPersist(next);
     if (state.projectId) {
-      syncFilesToServer(state.projectId, restoredTree);
+      syncFilesToServer(state.projectId, restoredTree, { allowDestructiveOverwrite: true });
     }
   },
 
@@ -1420,6 +1558,8 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         ...state,
         activeFile: path,
         previewOverrideHtml: null,
+        layoutMode: "code" as const,
+        codeVisible: true,
         openFiles: state.openFiles.includes(path)
           ? state.openFiles
           : [...state.openFiles, path],
@@ -1433,6 +1573,9 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       const next = {
         ...state,
         activeFile: path,
+        previewOverrideHtml: null,
+        layoutMode: "code" as const,
+        codeVisible: true,
         openFiles: state.openFiles.includes(path)
           ? state.openFiles
           : [...state.openFiles, path],
@@ -1464,17 +1607,27 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       };
       debouncedPersist(next);
       if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+        refreshPendingFullFileSync(state.projectId, next.files);
+        syncSingleFileToServer(state.projectId, path, content);
       }
       return next;
     }),
 
   addChatMessage: (message) =>
     set((state) => {
+      const existingIndex = message.id ? state.chatMessages.findIndex((m) => m.id === message.id) : -1;
+      if (existingIndex >= 0) {
+        const msgs = [...state.chatMessages];
+        msgs[existingIndex] = { ...msgs[existingIndex], ...message, id: msgs[existingIndex].id };
+        const next = { ...state, chatMessages: msgs };
+        debouncedPersist(next);
+        if (state.projectId) queueMessageUpload(state.projectId, chatMessageToDbInput(msgs[existingIndex], state.projectId, state.currentSessionId));
+        return next;
+      }
       const seq = state._nextSeq;
       const newMsg: ChatMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: message.id || crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };
@@ -1544,22 +1697,35 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addFile: (parentPath, name, type) =>
     set((state) => {
+      const normalizedParentPath = parentPath || "/project";
+      const newPath = `${normalizedParentPath}/${name}`;
+      const alreadyExists = !!findFileNode(state.files, newPath);
       const next = {
         ...state,
-        files: addFileToTree(state.files, parentPath, name, type),
+        files: addFileToTree(state.files, normalizedParentPath, name, type),
+        activeFile: type === "file" ? newPath : state.activeFile,
+        openFiles:
+          type === "file" && !state.openFiles.includes(newPath)
+            ? [...state.openFiles, newPath]
+            : state.openFiles,
+        layoutMode: type === "file" ? ("code" as const) : state.layoutMode,
+        codeVisible: type === "file" ? true : state.codeVisible,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+      if (state.projectId && type === "file" && !alreadyExists) {
+        refreshPendingFullFileSync(state.projectId, next.files);
+        syncSingleFileToServer(state.projectId, newPath, "", 0);
       }
       return next;
     }),
 
   renameFile: (oldPath, newName) =>
     set((state) => {
+      const renamedBefore = collectFlatFilesUnderPath(state.files, oldPath);
       const newFiles = renameFileInTree(state.files, oldPath, newName);
       const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
       const newPath = `${parentPath}/${newName}`;
+      const renamedAfter = collectFlatFilesUnderPath(newFiles, newPath);
       const newOpenFiles = state.openFiles.map((f) => {
         if (f === oldPath) return newPath;
         if (f.startsWith(oldPath + "/")) return newPath + f.substring(oldPath.length);
@@ -1578,14 +1744,18 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
+      const projectId = state.projectId;
+      if (projectId) {
+        refreshPendingFullFileSync(projectId, next.files);
+        renamedBefore.forEach((file) => deleteSingleFileFromServer(projectId, file.path));
+        renamedAfter.forEach((file) => syncSingleFileToServer(projectId, file.path, file.content, 0));
       }
       return next;
     }),
 
   deleteFile: (path) =>
     set((state) => {
+      const deletedFiles = collectFlatFilesUnderPath(state.files, path);
       const newFiles = deleteFileFromTree(state.files, path);
       const newOpenFiles = state.openFiles.filter(
         (f) => f !== path && !f.startsWith(path + "/")
@@ -1603,15 +1773,10 @@ export const useIDEStore = create<IDEState>((set, get) => ({
         activeFile: newActiveFile,
       };
       debouncedPersist(next);
-      if (state.projectId) {
-        syncFilesToServer(state.projectId, next.files);
-        if (path) {
-          fetch(`/api/projects/${state.projectId}/files`, {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path }),
-          }).catch(() => {});
-        }
+      const projectId = state.projectId;
+      if (projectId) {
+        refreshPendingFullFileSync(projectId, next.files);
+        deletedFiles.forEach((file) => deleteSingleFileFromServer(projectId, file.path));
       }
       return next;
     }),
@@ -1658,10 +1823,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
 
   addManagerMessage: (message) =>
     set((state) => {
+      const existingIndex = message.id ? state.managerMessages.findIndex((m) => m.id === message.id) : -1;
+      if (existingIndex >= 0) {
+        const msgs = [...state.managerMessages];
+        msgs[existingIndex] = { ...msgs[existingIndex], ...message, id: msgs[existingIndex].id };
+        const next = { ...state, managerMessages: msgs };
+        debouncedPersist(next);
+        if (state.projectId) queueMessageUpload(state.projectId, managerMessageToDbInput(msgs[existingIndex], state.projectId, state.currentSessionId));
+        return next;
+      }
       const seq = state._nextSeq;
       const newMsg: ManagerMessage = {
         ...message,
-        id: crypto.randomUUID(),
+        id: message.id || crypto.randomUUID(),
         timestamp: Date.now(),
         seq,
       };
@@ -1704,15 +1878,19 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     }
   },
 
-  updateTaskStatus: (subTaskId, status) =>
+  updateTaskStatus: (subTaskId, status) => {
     set((state) => ({
       taskStatuses: { ...state.taskStatuses, [subTaskId]: status },
-    })),
+    }));
+    debouncedPersist(get());
+  },
 
-  setTaskFailureReason: (subTaskId, reason) =>
+  setTaskFailureReason: (subTaskId, reason) => {
     set((state) => ({
       taskFailureReasons: { ...state.taskFailureReasons, [subTaskId]: reason },
-    })),
+    }));
+    debouncedPersist(get());
+  },
 
   setExecutingTaskIndex: (index) => set({ executingTaskIndex: index }),
 
@@ -1929,22 +2107,27 @@ export const useIDEStore = create<IDEState>((set, get) => ({
       return next;
     }),
 
-  freezeLatestPlanStatuses: () =>
+  freezeLatestPlanStatuses: (statuses, failureReasons, planMessageId) =>
     set((state) => {
-      // Snapshot the current live taskStatuses onto the most recent plan-bearing
-      // manager message. Called on build all_complete so historical PlanCards
-      // keep their final state after newer plans take over `taskStatuses`.
+      // Snapshot the current live taskStatuses onto the plan-bearing manager
+      // message that launched this build. Direct builds have no plan target and
+      // must not rewrite the previous plan's frozen completion state.
+      if (planMessageId === null) return state;
       const msgs = [...state.managerMessages];
       let lastPlanIdx = -1;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].plan) { lastPlanIdx = i; break; }
+      if (planMessageId) {
+        lastPlanIdx = msgs.findIndex((msg) => msg.id === planMessageId && !!msg.plan);
+      } else {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].plan) { lastPlanIdx = i; break; }
+        }
       }
       if (lastPlanIdx === -1) return state;
       const target = msgs[lastPlanIdx];
       msgs[lastPlanIdx] = {
         ...target,
-        frozenTaskStatuses: { ...state.taskStatuses },
-        frozenTaskFailureReasons: { ...state.taskFailureReasons },
+        frozenTaskStatuses: { ...(statuses ?? state.taskStatuses) },
+        frozenTaskFailureReasons: { ...(failureReasons ?? state.taskFailureReasons) },
       };
       const next = { ...state, managerMessages: msgs };
       debouncedPersist(next);
@@ -2106,6 +2289,29 @@ export function findFileContent(
     }
   }
   return undefined;
+}
+
+function findFileNode(files: FileNode[], path: string): FileNode | undefined {
+  for (const file of files) {
+    if (file.path === path) return file;
+    if (file.children) {
+      const found = findFileNode(file.children, path);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function flattenNodeToFlatFiles(node: FileNode): FlatFile[] {
+  if (node.type === "file") {
+    return [{ path: node.path, content: node.content || "" }];
+  }
+  return (node.children || []).flatMap((child) => flattenNodeToFlatFiles(child));
+}
+
+function collectFlatFilesUnderPath(files: FileNode[], path: string): FlatFile[] {
+  const node = findFileNode(files, path);
+  return node ? flattenNodeToFlatFiles(node) : [];
 }
 
 export function getFileLanguage(path: string): string {

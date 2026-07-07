@@ -224,6 +224,49 @@ async upsertProjectFile(projectId, path, content) {
 
 **状态**：✅ 已修复并验证（生产构建可正常 `build` + `start`）。
 
+---
+
+## 加固轮次（refactor/hardening 分支）
+
+本轮目标：从**可达性、冗余性、正确性、健壮性**四维度系统加固，遵循「先测后改」。
+
+### 概览
+
+| # | 级别 | 缺陷 / 改动 | 状态 |
+|---|------|------|------|
+| 6 | 🔴 SEV-1 | 集成测试基线全红（auth 模型改为 OTP-only 后测试未跟进，74 个用例静默失败）| ✅ 已修复 |
+| 7 | 🟠 SEV-2 | 上一轮 build 的 plan 泄漏进下一轮 manager 请求（"还问上一轮问题"）| ✅ 已修复 |
+| 8 | 🟢 SEV-4 | E2E 导航 helper 引用已不存在的 testid → concurrent-projects 套件全红 | ✅ 已修复 |
+| — | — | 删除死代码（extractCodeBlocks / generateCascade / /api/generate-cascade）| ✅ |
+| — | — | 抽离 syntax-highlight 模块 + 核心解析器补测（先测后改）| ✅ |
+
+> 探索阶段标记的两个"严重并发风险"（信号量交接 orphan slot、session tracker 双重 unregister）经特征测试验证**均为非缺陷**——原语本身正确，已用回归测试锁定。真实泄漏在路由层（错误/断连路径漏 unregister），已在 main 修复并合并。
+
+---
+
+## 🔴 SEV-1: 集成测试基线全红 — auth 模型迁移后测试未同步
+
+**文件**：`backend/api/__tests__/` 多个套件 + `_helpers/db.ts`
+**根因**：commit `b79b1b1` 关闭了用户名注册/登录（改为 OTP + OAuth），并给 `/api/projects`、`/api/manager-chat`、`/api/build-session` 加了 `requireInviteCode`。但测试套件仍按旧的用户名注册流程编写，导致 74 个集成/压力用例长期静默失败——基线不可信，无法作为重构安全网。
+
+**修复**：
+- 新增 `createAuthenticatedClient()` helper，驱动真实 OTP verify-login 流程（DB 直接 seed bcrypt 哈希验证码 → verify-login 换 session cookie）。
+- 接入所有命中受保护路由的套件。
+- 新增 `resetRateLimiters()` 测试 seam（express-rate-limit 的内存 store 是模块级共享，序列化测试会累积 429）。
+- 重写 `auth.test.ts` 适配 OTP-only 模型。
+- 结果：**74 → 0 失败，506 个 vitest 用例全绿**。
+
+---
+
+## 🟠 SEV-2: 上一轮 build 的 plan 泄漏进下一轮 manager 请求
+
+**文件**：`frontend/web/src/components/ide/chat/chat-utils.tsx`（`buildManagerHistory`）
+**发现于**：把内联逻辑抽成纯函数并补测时暴露。
+**根因**：`buildResult` 标记消息的 `content` 为空。原逻辑先按 `content` 过滤再算"已完成轮次"边界 → 标记消息被丢弃 → 压缩从不触发 → 上一轮的完整 plan 泄漏进下一轮 prompt，manager 因此反复追问上一轮的问题。
+
+**修复**：先在**原始消息列表**上定位 buildResult 边界，再对保留的消息做 content/typing 过滤。6 个单元测试锁定契约（无 build 透传、单/多轮压缩、buildResult 末位、无污染）。
+
+
 
 
 

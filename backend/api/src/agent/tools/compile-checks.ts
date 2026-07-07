@@ -4,7 +4,7 @@ import type { Framework } from "../../compiler/framework-detector";
  * AG-11: Framework-specific compile / static-analysis check commands.
  *
  * Each framework has its own way to surface static errors quickly. The
- * editor agent runs this command before calling request_review; the
+ * editor agent runs this command before calling finish_build; the
  * verifier agent runs it during review. Treating non-zero exit as a bug
  * catches compile/type errors the per-file LSP check misses (cross-file
  * type errors, missing imports, etc.).
@@ -65,15 +65,15 @@ export function getCompileCheck(framework: Framework): CompileCheck | null {
 
 /**
  * Build a prompt fragment telling the editor agent to run the compile check
- * before request_review, with framework-appropriate guidance.
+ * before finish_build, with framework-appropriate guidance.
  */
 export function buildEditorCompileCheckPrompt(framework: Framework): string {
   const check = getCompileCheck(framework);
   if (!check) {
     return "";
   }
-  return `\n## Pre-review compile check (${check.label})
-Before calling request_review, run \`shell_run('${check.command}')\`. ${check.guidance} If the command exits non-zero, fix the reported errors with write_file or patch_file and re-run the check. Only call request_review when the command exits cleanly. If shell_run is unavailable, note that in your completion and proceed.`;
+  return `\n## Pre-build-finish compile check (${check.label})
+Before calling finish_build, run \`shell_run('${check.command}')\`. ${check.guidance} If the command exits non-zero, fix the reported errors with write_file, patch_file, or edit_file and re-run the check. Only call finish_build when the command exits cleanly. If shell_run is unavailable, say so briefly in the finish_build summary and proceed.`;
 }
 
 /**

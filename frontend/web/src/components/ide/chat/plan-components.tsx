@@ -28,20 +28,19 @@ import {
   X,
   LayoutGrid,
   Ban,
-  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
 import { MediaPlanCard } from "./MediaPlanCard";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 import { BuildLivePanel } from "./BuildLivePanel";
+import { ensureActiveStepActionLogEntry, latestActionLogStepNumber, shouldShowPlanActionLog } from "./plan-live-utils";
 
 function StepItem({
   task,
   status,
   failureReason,
   isCompleted,
-  stepActions,
 }: {
   task: ManagerSubTask;
   status?: "pending" | "running" | "done" | "failed" | "needs-input" | "bug";
@@ -50,7 +49,6 @@ function StepItem({
   showNumber?: boolean;
   isLast?: boolean;
   liveNarration?: string;
-  stepActions?: ActionLogEntry[];
 }) {
   const s = status || "pending";
   const lang = usePlanCardLang();
@@ -156,7 +154,7 @@ export function TaskPlanCard({
   liveNarration,
   completionSummary,
   changedFiles,
-  stepActionsMap,
+  liveActionLog,
 }: {
   plan: ManagerPlan;
   taskStatuses: Record<string, "pending" | "running" | "done" | "failed" | "needs-input" | "bug">;
@@ -174,7 +172,7 @@ export function TaskPlanCard({
   liveNarration?: string;
   completionSummary?: string;
   changedFiles?: string[];
-  stepActionsMap?: Map<number, ActionLogEntry[]>;
+  liveActionLog?: ActionLogEntry[];
 }) {
   const lang = usePlanCardLang();
   const { setPlanPreview, checkpoints, restoreCheckpoint, refreshPreview } = useIDEStore();
@@ -189,6 +187,7 @@ export function TaskPlanCard({
   const isPreExecution = doneCount === 0 && !isExecuting && !isFullyComplete && onExecute;
 
   const [expanded, setExpanded] = useState(true);
+  const [actionLogOpen, setActionLogOpen] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [rollbackRestored, setRollbackRestored] = useState(false);
@@ -197,6 +196,26 @@ export function TaskPlanCard({
   const doneLooksLike = plan.narrated_done_looks_like || plan.done_looks_like;
   const outOfScope = plan.narrated_out_of_scope || plan.out_of_scope;
   const overview = plan.overview;
+  const runningStep = steps.find((task) => taskStatuses[String(task.step)] === "running");
+  const latestLogStepNumber = latestActionLogStepNumber(liveActionLog);
+  const inferredActiveStep =
+    runningStep ??
+    (isExecuting
+      ? steps.find((task) => task.step === latestLogStepNumber) ??
+        steps.find((task) => taskStatuses[String(task.step)] !== "done") ??
+        steps[0]
+      : undefined);
+  const actionLogEntries = ensureActiveStepActionLogEntry({
+    entries: liveActionLog,
+    activeStepNumber: inferredActiveStep?.step ?? null,
+    activeStepTitle: inferredActiveStep?.title,
+    totalSteps: total,
+    isExecuting: isExecuting && !isFullyComplete,
+  });
+  const showPlanActionLog = shouldShowPlanActionLog({
+    isExecuting: isExecuting && !isFullyComplete,
+    hasEntries: actionLogEntries.length > 0,
+  });
 
   if (minimized) {
     return (
@@ -305,7 +324,6 @@ export function TaskPlanCard({
                     isCompleted={isFullyComplete}
                     showNumber
                     isLast={idx === steps.length - 1}
-                    stepActions={stepActionsMap?.get(task.step)}
                   />
                 );
               })}
@@ -435,6 +453,36 @@ export function TaskPlanCard({
         </div>
       </div>
 
+      {showPlanActionLog && (
+        <div
+          className="mx-2.5 -mt-0.5 mb-1 bg-[var(--panel-mid-bg)]"
+          data-testid="plan-action-log"
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-1.5 px-3.5 py-1.5 text-left font-mono text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            onClick={() => setActionLogOpen((open) => !open)}
+            data-testid="button-toggle-plan-action-log"
+          >
+            {actionLogOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <span>ActionLog</span>
+            {isExecuting && !isFullyComplete && (
+              <span className="ml-auto text-[#4f82ff]/70">running</span>
+            )}
+          </button>
+          {actionLogOpen && (
+            <BuildLivePanel
+              entries={actionLogEntries}
+              narrationText={liveNarration}
+              isCompleted={isFullyComplete}
+              completionSummary={completionSummary}
+              activeStepNumber={inferredActiveStep?.step ?? null}
+              showLiveStatus={Boolean(isExecuting && !isFullyComplete)}
+            />
+          )}
+        </div>
+      )}
+
       <RegeneratePlanDialog
         open={regenerateOpen}
         onOpenChange={setRegenerateOpen}
@@ -550,6 +598,7 @@ export function BuildResultCard({
       narration: s.narration,
       actions: s.actions as ActionLogEntry[],
       isLive: false,
+      stepLabel: s.stepLabel,
     }),
   );
 
@@ -598,7 +647,7 @@ export function ManagerMessageBubble({
   fixCycle,
   liveNarration,
   completionData,
-  stepActionsMap,
+  liveActionLog,
 }: {
   message: {
     role: string;
@@ -622,7 +671,7 @@ export function ManagerMessageBubble({
   fixCycle?: number;
   liveNarration?: string;
   completionData?: { changedFiles: string[]; summary: string } | null;
-  stepActionsMap?: Map<number, ActionLogEntry[]>;
+  liveActionLog?: ActionLogEntry[];
 }) {
   if (message.role === "user") {
     return (
@@ -666,7 +715,7 @@ export function ManagerMessageBubble({
         liveNarration={liveNarration}
         completionSummary={completionData?.summary}
         changedFiles={completionData?.changedFiles}
-        stepActionsMap={stepActionsMap}
+        liveActionLog={liveActionLog}
       />
     );
   }

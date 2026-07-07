@@ -15,6 +15,7 @@ import { FlutterWebPreview } from "./flutter-web-preview";
 import { WeChatPreview } from "./wechat-preview";
 import { ConsolePanel } from "./console-panel";
 import { FileTree } from "./file-tree";
+import { CodeEditor } from "./code-editor";
 import { CheckpointPanel } from "./CheckpointPanel";
 
 // Preview iframe capability policy. Kept in one place so the iOS/Android
@@ -103,7 +104,7 @@ function NewFilePanel({ onCreated, onCancel }: { onCreated: () => void; onCancel
     // 如果用户已经带了扩展名就不重复加
     const hasExt = raw.includes(".");
     const finalName = hasExt ? raw : `${raw}.${selectedExt}`;
-    addFile("", finalName, "file");
+    addFile("/project", finalName, "file");
     onCreated();
   };
 
@@ -239,6 +240,7 @@ export function PreviewPanel({
     customDeviceHeight,
     setCustomDeviceDimensions,
     projectId,
+    currentSessionId,
     isConsoleOpen,
     toggleConsole,
     planPreviewOpen,
@@ -362,7 +364,7 @@ export function PreviewPanel({
         // Forward errors/warnings to the active build session so the verifier can see them
         if ((level === "error" || level === "warn") && projectId) {
           try {
-            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}`);
+            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}-${currentSessionId || "main"}`);
             if (sessionId) {
               fetch(`/api/build-session/${sessionId}/console-event`, {
                 method: "POST",
@@ -376,7 +378,7 @@ export function PreviewPanel({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addConsoleEntry, projectId]);
+  }, [addConsoleEntry, projectId, currentSessionId]);
 
   const handleRefresh = () => {
     clearConsole();
@@ -688,8 +690,13 @@ export function PreviewPanel({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <FileTree />
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            <div className="w-[260px] min-w-[200px] max-w-[360px] shrink-0 border-r overflow-hidden" style={{ borderColor: "var(--panel-divider)" }}>
+              <FileTree />
+            </div>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <CodeEditor />
+            </div>
           </div>
         </div>
       )}

@@ -20,6 +20,8 @@ export const describeIntegration = hasTestDb ? describe : describe.skip;
 // Every app-managed table, child-first isn't needed because we use CASCADE.
 const ALL_TABLES = [
   "chat_messages",
+  "agent_session_events",
+  "agent_sessions",
   "project_files",
   "project_skills",
   "user_skills",
@@ -31,6 +33,7 @@ const ALL_TABLES = [
 ];
 
 let guardChecked = false;
+let existingTablesCache: string[] | null = null;
 
 /**
  * Safety guard: refuse to truncate unless the connection string clearly targets
@@ -56,9 +59,19 @@ function assertTestDb() {
 export async function truncateAll(): Promise<void> {
   if (!hasTestDb) return;
   assertTestDb();
+  if (!existingTablesCache) {
+    const rows = await db.execute(sql`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+    `);
+    const existing = new Set((rows as any).rows?.map((row: any) => row.table_name) ?? []);
+    existingTablesCache = ALL_TABLES.filter((table) => existing.has(table));
+  }
+  if (existingTablesCache.length === 0) return;
   // Single statement, RESTART IDENTITY resets serial counters, CASCADE handles FKs.
   await db.execute(
-    sql.raw(`TRUNCATE TABLE ${ALL_TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`),
+    sql.raw(`TRUNCATE TABLE ${existingTablesCache.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`),
   );
 }
 
@@ -85,4 +98,47 @@ export async function seedInviteCode(
     expiresAt: opts.expiresAt ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
   });
   return code;
+}
+
+/**
+ * Register a test user and return an authenticated HttpClient.
+ *
+ * Username register/login is disabled (the app is OTP + OAuth only), so this
+ * drives the real OTP verify-login path: seed a bcrypt-hashed code straight
+ * into otp_codes, then POST /api/auth/otp/verify-login with an invite code,
+ * which auto-registers the user and seats the session cookie on the client.
+ */
+export async function createAuthenticatedClient(
+  baseUrl: string,
+  opts: { target?: string } = {},
+): Promise<import("./http-client").HttpClient> {
+  const { HttpClient } = await import("./http-client");
+  const bcrypt = (await import("bcryptjs")).default;
+  const { otpCodes } = await import("@cascade/database");
+
+  const http = new HttpClient(baseUrl);
+  const target = opts.target ?? `u${Math.random().toString(36).slice(2, 10)}@example.com`;
+  const code = "123456";
+  const codeHash = await bcrypt.hash(code, 10);
+
+  // Seed a valid, unconsumed login OTP on the DB clock.
+  await db.insert(otpCodes).values({
+    channel: "email",
+    target,
+    codeHash,
+    purpose: "login",
+    expiresAt: sql`now() + interval '10 minutes'`,
+  });
+
+  const invite = await seedInviteCode();
+  const res = await http.post("/api/auth/otp/verify-login", {
+    channel: "email",
+    target,
+    code,
+    inviteCode: invite,
+  });
+  if (res.status !== 201 && res.status !== 200) {
+    throw new Error(`createAuthenticatedClient: verify-login returned ${res.status}: ${res.text}`);
+  }
+  return http;
 }

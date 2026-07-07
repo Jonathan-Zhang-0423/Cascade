@@ -4,6 +4,7 @@ import { useT } from "@/lib/i18n";
 import { useIDEStore } from "@/stores/ide-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLanguageStore } from "@/stores/language-store";
+import { ActionLogLiveBar, AnimatedDots } from "./live-action-status";
 
 // ── useTypewriter — 打字机逐字显示 hook ───────────────────────────────────
 function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () => void): string {
@@ -32,99 +33,25 @@ function useTypewriter(text: string, enabled: boolean, charMs = 18, onDone?: () 
   return displayed;
 }
 
-// ── AnimatedDots — 从左到右逐个显示的三点动画 ─────────────────────────────
-function AnimatedDots() {
-  return (
-    <>
-      <style>{`
-        @keyframes dot-fade {
-          0%, 20%   { opacity: 0; }
-          40%, 100% { opacity: 1; }
-        }
-        .anim-dot-1 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0s;    }
-        .anim-dot-2 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.3s;  }
-        .anim-dot-3 { animation: dot-fade 1.2s ease-in-out infinite; animation-delay: 0.6s;  }
-      `}</style>
-      <span aria-hidden="true">
-        <span className="anim-dot-1">.</span>
-        <span className="anim-dot-2">.</span>
-        <span className="anim-dot-3">.</span>
-      </span>
-    </>
-  );
-}
-
-// ── LiveBar — 转圈圈 + 打字机文字 + 三点（完全复用 TypingIndicator 逻辑）────
-const LIVE_PHRASES_ZH = [
-  "正在脑洞大开中", "灵感正在路上，请稍候", "AI 正在认真思考，不是在摸鱼",
-  "代码宇宙正在重组中", "正在向平行宇宙借点智慧", "思维发动机预热中",
-  "正在把你的想法翻译成代码语言", "正在解锁最优解", "AI 大脑正在高速运转",
-  "正在召唤代码精灵", "把咖啡因转化为代码中", "正在对齐神经元",
-  "想法正在结晶", "正在量子计算最优解", "大模型正在认真上班",
-  "正在把文字变成魔法", "灵感女神正在降临", "正在高速检索知识库",
-];
-const LIVE_PHRASES_EN = [
-  "Brainwaves detected, processing", "Consulting the code oracle",
-  "Firing up the neural engines", "Turning caffeine into code",
-  "Assembling brilliant thoughts", "Summoning the AI muse",
-  "Untangling the idea spaghetti", "Crunching possibilities",
-  "Downloading inspiration", "Aligning neurons, please hold",
-  "Searching all known universes", "Cooking up something great",
-  "Connecting the creative dots", "Spinning up the idea turbine",
-];
-
-function LiveBar() {
-  const { lang } = useLanguageStore();
-  const phrases = lang === "zh" ? LIVE_PHRASES_ZH : LIVE_PHRASES_EN;
-  const phrase = useRef(phrases[Math.floor(Math.random() * phrases.length)]).current;
-
-  const [charCount, setCharCount] = useState(0);
-  useEffect(() => {
-    let i = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      if (i < phrase.length) {
-        i++; setCharCount(i);
-        timer = setTimeout(tick, 90);
-      } else {
-        timer = setTimeout(() => { i = 0; setCharCount(0); timer = setTimeout(tick, 90); }, 2400);
-      }
-    };
-    timer = setTimeout(tick, 90);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phrase]);
-
-  return (
-    <span className="inline-flex items-center gap-1.5 text-muted-foreground/60 font-mono text-[10.5px]">
-      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-      <span>{phrase.slice(0, charCount)}<AnimatedDots /></span>
-    </span>
-  );
-}
 import {
-  FileText,
-  PencilLine,
-  Wrench,
-  Terminal,
   Brain,
   Sparkles,
-  Circle,
   Clock,
   ChevronRight,
   ChevronDown,
   RotateCcw,
   History,
-  Loader2,
-  ShieldCheck,
-  GitMerge,
-  Zap,
-  ListChecks,
   DollarSign,
-  Globe,
-  type LucideIcon,
 } from "lucide-react";
 import type { ActionLogEntry, NarrationSegment } from "./chat-types";
+import { normalizeActionLogEntry, rebuildSegmentsFromActionLog, stringifyLogValue } from "./action-log-normalize";
+import { shouldShowBuildCostSummary } from "./build-live-panel-utils";
+import {
+  describeActionForTimeline,
+  getActionToneStyle,
+  getActionToolMeta,
+  isControlOnlyToolLabel,
+} from "./tool-display";
 
 interface BuildLivePanelProps {
   entries: ActionLogEntry[];
@@ -136,6 +63,8 @@ interface BuildLivePanelProps {
   tokenUsage?: { input: number; output: number; total: number };
   completionSummary?: string;
   stepNarrations?: Record<number, string>;
+  activeStepNumber?: number | null;
+  showLiveStatus?: boolean;
 }
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -154,6 +83,18 @@ function BrailleSpinner() {
       {BRAILLE_FRAMES[frame % BRAILLE_FRAMES.length]}
     </span>
   );
+}
+
+export function shouldRenderLiveFallback(args: {
+  isCompleted?: boolean;
+  isPersisted?: boolean;
+  showLiveStatus?: boolean;
+  hasLiveSegment?: boolean;
+  thinkingText?: string;
+  narrationText?: string;
+}): boolean {
+  if (args.isCompleted || args.isPersisted || args.hasLiveSegment) return false;
+  return Boolean(args.showLiveStatus);
 }
 
 // ── A. stripMarkdown ──────────────────────────────────────────────────────
@@ -240,21 +181,6 @@ function extractThinkingNarration(text: string): string {
   return "正在思考解决方案";
 }
 
-// ── E. getActionNarration ─────────────────────────────────────────────────
-const TOOL_NARRATION: Record<string, string> = {
-  read_file: "读取文件",
-  write_file: "编辑文件",
-  patch_file: "修改文件",
-  hash_patch_file: "修改文件",
-  ast_search: "搜索代码结构",
-  ast_replace: "替换代码结构",
-  lsp_diagnostics: "检查类型错误",
-  lsp_find_references: "查找符号引用",
-  lsp_goto_definition: "跳转到定义",
-  shell_run: "运行命令",
-  run_tests: "运行测试",
-};
-
 // Tools that are pure control-flow signals — never shown as user-facing actions.
 const HIDDEN_TOOLS = new Set([
   "mark_step_complete",
@@ -264,26 +190,10 @@ const HIDDEN_TOOLS = new Set([
   "report_issue",
 ]);
 
-function fileName(entry: ActionLogEntry): string {
-  if (entry.filePath) return entry.filePath.split("/").pop() || entry.filePath;
-  return entry.label || "";
-}
-
 function getActionNarration(entry: ActionLogEntry): string {
-  switch (entry.type) {
-    case "file_read":      return `读取了 ${fileName(entry)}`;
-    case "file_write":     return `编辑了 ${fileName(entry)}`;
-    case "file_delete":    return `删除了 ${fileName(entry)}`;
-    case "thinking":       return extractThinkingNarration(entry.detail);
-    case "tool_call":      return TOOL_NARRATION[entry.label] || `调用了 ${entry.label}`;
-    case "research":       return entry.label.toLowerCase().includes("complete") ? `研究完成 — ${entry.detail}` : `🔍 搜索: ${entry.detail || entry.label}`;
-    case "terminal_command": return `执行命令：${entry.label}`;
-    case "code_applied":   return `应用了 ${fileName(entry)}`;
-    case "code_review":    return entry.label || "代码审查";
-    case "capabilities":   return entry.label || "能力激活";
-    case "plan":           return entry.label || "任务计划";
-    default:               return entry.label || "";
-  }
+  return entry.type === "thinking"
+    ? extractThinkingNarration(entry.detail)
+    : describeActionForTimeline(entry);
 }
 
 // ── E2. summarizeActions — 根据 actions 生成智能简短 narration ─────────────
@@ -295,6 +205,8 @@ function summarizeActions(actions: ActionLogEntry[]): string {
   const deletes = actions.filter(a => a.type === "file_delete");
   const terms   = actions.filter(a => a.type === "terminal_command");
   const reviews = actions.filter(a => a.type === "code_review");
+  const research = actions.filter(a => a.type === "research");
+  const tools = actions.filter(a => a.type === "tool_call");
 
   // 取文件名（去掉路径前缀）
   const name = (entry: ActionLogEntry) =>
@@ -334,6 +246,17 @@ function summarizeActions(actions: ActionLogEntry[]): string {
   }
 
   if (reviews.length > 0) parts.push("代码审查");
+  if (research.length > 0) {
+    parts.push(research.length === 1 ? "完成了联网调研" : `完成了 ${research.length} 次联网调研`);
+  }
+  if (parts.length === 0 && tools.length > 0) {
+    const named = tools
+      .map((a) => getActionToolMeta(a).shortLabel || getActionToolMeta(a).label || a.label)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("、");
+    parts.push(named ? `调用了 ${named}${tools.length > 2 ? ` 等 ${tools.length} 个工具` : ""}` : `调用了 ${tools.length} 个工具`);
+  }
 
   return parts.join("，");
 }
@@ -383,39 +306,6 @@ function getActionDetail(entry: ActionLogEntry): ActionDetail {
   }
 }
 
-// ── H. toDisplayType ──────────────────────────────────────────────────────
-type ActionType = "thinking" | "read" | "edit" | "apply" | "review" | "capabilities" | "plan" | "tool" | "terminal" | "research" | "other";
-
-function toDisplayType(raw: string): ActionType {
-  switch (raw) {
-    case "thinking":       return "thinking";
-    case "file_read":      return "read";
-    case "file_write":     return "edit";
-    case "code_applied":   return "apply";
-    case "code_review":    return "review";
-    case "capabilities":   return "capabilities";
-    case "plan":           return "plan";
-    case "tool_call":      return "tool";
-    case "research":       return "research";
-    case "terminal_command": return "terminal";
-    default:               return "other";
-  }
-}
-
-const ACTION_META: Record<ActionType, { icon: LucideIcon; color: string }> = {
-  thinking:     { icon: Brain,       color: "text-muted-foreground/50" },
-  read:         { icon: FileText,    color: "text-muted-foreground/50" },
-  edit:         { icon: PencilLine,  color: "text-muted-foreground/50" },
-  apply:        { icon: GitMerge,    color: "text-muted-foreground/50" },
-  review:       { icon: ShieldCheck, color: "text-muted-foreground/50" },
-  capabilities: { icon: Zap,         color: "text-muted-foreground/50" },
-  plan:         { icon: ListChecks,  color: "text-muted-foreground/50" },
-  tool:         { icon: Wrench,      color: "text-muted-foreground/50" },
-  terminal:     { icon: Terminal,    color: "text-muted-foreground/50" },
-  research:     { icon: Globe,       color: "text-cyan-400/70" },
-  other:        { icon: Circle,      color: "text-muted-foreground/50" },
-};
-
 // ── G. ActionDetailRow ────────────────────────────────────────────────────
 // Single collapsible action: [chevron] [icon] [Chinese narration].
 // Wrapped in memo so parent re-renders (e.g. on scroll) don't reset the
@@ -426,9 +316,9 @@ const ActionDetailRow = memo(function ActionDetailRow({
   entry: ActionLogEntry;
 }) {
   const [open, setOpen] = useState(false);
-  const dt = toDisplayType(entry.type);
-  const meta = ACTION_META[dt];
-  const Icon = meta.icon;
+  const toolMeta = getActionToolMeta(entry);
+  const tone = getActionToneStyle(entry);
+  const Icon = toolMeta.icon;
   const narration = getActionNarration(entry);
   const detail = getActionDetail(entry);
 
@@ -440,7 +330,7 @@ const ActionDetailRow = memo(function ActionDetailRow({
       >
         <ChevronRight className={cn("w-3 h-3 shrink-0 transition-transform", open && "rotate-90")} />
         <span className="w-6 h-6 flex items-center justify-center shrink-0">
-          <Icon className={cn("w-3.5 h-3.5", meta.color)} />
+          <Icon className={cn("w-3.5 h-3.5", tone.iconText)} />
         </span>
         <span className="truncate">{narration}</span>
       </button>
@@ -507,7 +397,7 @@ const ThinkingActionRow = memo(function ThinkingActionRow({
         <span className="truncate text-muted-foreground/70">
           {isLive ? <>{t("chat.thinkingLive")}<AnimatedDots /></> : t("agent.thinking")}
         </span>
-        {isLive && <LiveBar />}
+        {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
       </button>
       {open && thinkingSummary && (
         <div className="pl-[34px] pb-1">
@@ -534,7 +424,7 @@ const SegmentView = memo(function SegmentView({
 
   const thinkingEntry = actions.find((a) => a.type === "thinking");
   const nonThinkingActions = actions.filter(
-    (a) => a.type !== "thinking" && !(a.type === "tool_call" && HIDDEN_TOOLS.has(a.label)),
+    (a) => a.type !== "thinking" && !(a.type === "tool_call" && (HIDDEN_TOOLS.has(a.label) || isControlOnlyToolLabel(a.label))),
   );
 
   // Nothing to show at all — show spinner if live (waiting for first action),
@@ -548,12 +438,12 @@ const SegmentView = memo(function SegmentView({
       <div className="mb-0.5 px-3.5" data-testid="segment-view">
         <div className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]">
           <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground/40" />
-          {isLive && <LiveBar />}
           {displayText0 && (
             <span className="ml-2 text-[10.5px] text-muted-foreground/40 truncate min-w-0 max-w-[50%]">
               {displayText0}
             </span>
           )}
+          {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
         </div>
       </div>
     );
@@ -607,25 +497,28 @@ const SegmentView = memo(function SegmentView({
                 )}
                 <span className="flex items-center gap-1.5 shrink-0">
                   {(() => {
-                    const counts = new Map<ActionType, number>();
+                    const counts = new Map<string, { count: number; entry: ActionLogEntry }>();
                     for (const a of nonThinkingActions) {
-                      const dt = toDisplayType(a.type);
-                      counts.set(dt, (counts.get(dt) ?? 0) + 1);
+                      const meta = getActionToolMeta(a);
+                      const key = `${meta.tone}:${meta.name}`;
+                      const current = counts.get(key);
+                      counts.set(key, { count: (current?.count ?? 0) + 1, entry: current?.entry ?? a });
                     }
-                    return Array.from(counts.entries()).slice(0, 3).map(([dt, count]) => {
-                      const meta = ACTION_META[dt];
+                    return Array.from(counts.entries()).slice(0, 3).map(([key, item]) => {
+                      const meta = getActionToolMeta(item.entry);
+                      const tone = getActionToneStyle(item.entry);
                       const Icon = meta.icon;
                       return (
-                        <span key={dt} className="inline-flex items-center gap-0.5">
-                          <Icon className={cn("w-3 h-3", meta.color)} />
-                          <span className={cn("text-[10px]", meta.color)}>×{count}</span>
+                        <span key={key} className="inline-flex items-center gap-0.5">
+                          <Icon className={cn("w-3 h-3", tone.iconText)} />
+                          <span className={cn("text-[10px]", tone.mutedText)}>×{item.count}</span>
                         </span>
                       );
                     });
                   })()}
                 </span>
                 {isLive && (
-                  <LiveBar />
+                  <ActionLogLiveBar className="ml-auto shrink-0" />
                 )}
               </div>
             )}
@@ -639,7 +532,7 @@ const SegmentView = memo(function SegmentView({
             >
               <ChevronDown className="w-3 h-3 shrink-0 mt-[1px]" />
               {segment.narration ? (
-                <span className="ml-2 text-[10.5px] text-foreground/80 leading-relaxed">
+                <span className="ml-2 flex-1 min-w-0 truncate text-[10.5px] text-foreground/80 leading-relaxed">
                   {segment.narration
                     .replace(/^#{1,6}\s*Step\s*\d+[:/：]?\s*/i, "")
                     .replace(/^•\s*/, "")
@@ -648,15 +541,16 @@ const SegmentView = memo(function SegmentView({
                     .trim()}
                 </span>
               ) : stepTitle ? (
-                <span className="ml-1 text-[10px] text-muted-foreground/35">
+                <span className="ml-1 flex-1 min-w-0 truncate text-[10px] text-muted-foreground/35">
                   {stepTitle}
                 </span>
               ) : null}
+              {isLive && <ActionLogLiveBar className="ml-auto shrink-0" />}
             </button>
             <div className="border-l border-border/40 ml-1 pl-2 mt-0.5">
               {/* thinking row first */}
               {thinkingEntry && (
-                <ThinkingActionRow entry={thinkingEntry} isLive={isLive && nonThinkingActions.length === 0} t={t} />
+                <ThinkingActionRow entry={thinkingEntry} isLive={false} t={t} />
               )}
               {nonThinkingActions.map((a, i) => (
                 <ActionDetailRow key={i} entry={a} />
@@ -956,17 +850,39 @@ function CheckpointSummary() {
 
 export function BuildLivePanel({
   entries,
-  thinkingText: _thinkingText,
-  narrationText,
+  narrationText: _narrationText,
   thinkingElapsedSec: _thinkingElapsedSec,
   segments,
   isCompleted,
   tokenUsage,
   completionSummary,
   stepNarrations = {},
+  activeStepNumber = null,
+  showLiveStatus = false,
 }: BuildLivePanelProps) {
   const t = useT();
   const projectId = useIDEStore((s) => s.projectId);
+  const safeEntries = useMemo(
+    () => (Array.isArray(entries) ? entries : []).map((entry) => normalizeActionLogEntry(entry as any)),
+    [entries],
+  );
+  const safeSegments = useMemo<NarrationSegment[] | undefined>(
+    () => Array.isArray(segments) ? segments.map((seg, index) => ({
+      id: stringifyLogValue(seg.id, String(index)),
+      narration: stringifyLogValue(seg.narration, ""),
+      actions: Array.isArray(seg.actions)
+        ? seg.actions.map((entry) => normalizeActionLogEntry(entry as any))
+        : [],
+      isLive: Boolean(seg.isLive),
+      stepLabel: stringifyLogValue(seg.stepLabel, ""),
+    })) : undefined,
+    [segments],
+  );
+  const rebuiltSegments = useMemo<NarrationSegment[] | undefined>(
+    () => rebuildSegmentsFromActionLog(safeEntries, safeSegments),
+    [safeEntries, safeSegments],
+  );
+  const persistedSegments = rebuiltSegments ?? safeSegments;
 
   // 打字机效果只触发一次：用 localStorage 记录"已展示完毕"
   // 刷新/重进项目后直接完整显示，不重复动画
@@ -983,16 +899,16 @@ export function BuildLivePanel({
     if (!completionSummary) setSummaryDone(true);
   }, [completionSummary]);
 
-  const isPersisted = !!segments && segments.length > 0;
+  const isPersisted = !showLiveStatus && !!persistedSegments && persistedSegments.length > 0;
 
   // Persisted 模式：优先用 summarizeActions，actions 为空则保留原有 narration
   const mergedSegments = useMemo<NarrationSegment[]>(() => {
-    if (!isPersisted || !segments) return [];
-    return segments.map((seg) => {
+    if (!isPersisted || !persistedSegments) return [];
+    return persistedSegments.map((seg) => {
       const summary = summarizeActions(seg.actions);
       return { ...seg, narration: summary || seg.narration };
     });
-  }, [isPersisted, segments]);
+  }, [isPersisted, persistedSegments]);
 
   // Live 模式：每次 entries 变化都重算 narration
   // live 最后一个 segment 用当前已有 actions 实时生成文字（哪怕只有1个action）
@@ -1004,13 +920,17 @@ export function BuildLivePanel({
     // 这样即使 tool call 在 step entry 之前到达，也能正确归入对应步骤。
     const segByStep = new Map<number, NarrationSegment>();
     let maxStepNum = 0;
+    let currentStepNum = 0;
+    let activeStepNum = 0;
 
-    for (const entry of entries) {
+    for (const entry of safeEntries) {
       if (entry.type === "narration") continue;
       if (entry.type === "step") {
         const match = entry.label?.match(/Step\s*(\d+)/i);
-        const stepNum = match ? parseInt(match[1], 10) : (maxStepNum + 1);
+        const stepNum = match ? parseInt(match[1], 10) : (currentStepNum > 0 ? currentStepNum + 1 : maxStepNum + 1);
         maxStepNum = Math.max(maxStepNum, stepNum);
+        currentStepNum = stepNum;
+        activeStepNum = stepNum;
         if (!segByStep.has(stepNum)) {
           const seg: NarrationSegment = { id: String(stepNum), narration: "", actions: [], isLive: false, stepLabel: entry.label };
           segByStep.set(stepNum, seg);
@@ -1020,8 +940,10 @@ export function BuildLivePanel({
         }
       } else {
         const sn = (entry as any).stepNum as number | undefined;
-        const targetStep = (sn != null && sn > 0) ? sn : (maxStepNum > 0 ? maxStepNum : 1);
+        const targetStep = (sn != null && sn > 0) ? sn : (currentStepNum > 0 ? currentStepNum : 1);
         maxStepNum = Math.max(maxStepNum, targetStep);
+        if (currentStepNum === 0) currentStepNum = targetStep;
+        activeStepNum = targetStep;
         if (!segByStep.has(targetStep)) {
           segByStep.set(targetStep, { id: String(targetStep), narration: "", actions: [], isLive: false });
         }
@@ -1038,29 +960,26 @@ export function BuildLivePanel({
       const summary = summarizeActions(seg.actions);
       seg.narration = summary;
     }
-    if (segs.length > 0 && !isCompleted) {
-      segs[segs.length - 1] = { ...segs[segs.length - 1], isLive: true };
+    const liveStepNum = activeStepNumber && activeStepNumber > 0 ? activeStepNumber : activeStepNum;
+    if (showLiveStatus && liveStepNum > 0 && !isCompleted) {
+      const idx = segs.findIndex((seg) => seg.id === String(liveStepNum));
+      if (idx >= 0) segs[idx] = { ...segs[idx], isLive: true };
     }
     return segs;
-  }, [entries, isPersisted, isCompleted]);
+  }, [safeEntries, isPersisted, isCompleted, activeStepNumber, showLiveStatus]);
 
   const renderSegments = isPersisted ? mergedSegments : liveSegments;
 
-  // Thinking is now per-step inside SegmentView — no global thinking state needed.
+  // Thinking is now per-step inside SegmentView; keep only the live status fallback global.
   const showTrailingNarration = false;
 
   const hasAnyContent =
     renderSegments.length > 0 ||
-    (isPersisted && (segments?.length ?? 0) > 0);
+    (isPersisted && (persistedSegments?.length ?? 0) > 0);
 
   if (!hasAnyContent) return null;
 
-  const showCost =
-    (isPersisted || isCompleted) &&
-    entries.some(
-      (e) =>
-        e.type !== "step" && e.type !== "narration" && e.type !== "thinking",
-    );
+  const showCost = shouldShowBuildCostSummary(isCompleted, safeEntries);
 
   return (
     <div
@@ -1084,7 +1003,7 @@ export function BuildLivePanel({
 
       {/* Trailing live narration not yet bound to an action */}
       {showTrailingNarration && (
-        <NarrationBlock text={narrationText!} isLive />
+        <NarrationBlock text={_narrationText!} isLive />
       )}
 
       {/* Completion summary — 打字机效果逐字出现，完成后再显示 CostSummary */}
@@ -1099,7 +1018,7 @@ export function BuildLivePanel({
       )}
 
       {/* Cost summary card — 等总结打字机完成后才显示 */}
-      {showCost && summaryDone && <CostSummary entries={entries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
+      {showCost && summaryDone && <CostSummary entries={safeEntries} elapsedSec={_thinkingElapsedSec} tokenUsage={tokenUsage} />}
 
       {/* Checkpoint card */}
       {showCost && summaryDone && <CheckpointSummary />}

@@ -1,8 +1,11 @@
 import { doubaoClient, DOUBAO_MODEL } from "../providers/doubao-client";
 import { withRetry } from "../providers/retry";
 import { aiSemaphore, CONCURRENCY_QUEUE_TIMEOUT } from "../../infra/concurrency";
-import type { SseEmit } from "../orchestrator/build-orchestrator";
+import type { SseEmit } from "../../infra/sse";
 import type OpenAI from "openai";
+import { createModelAdapter, type AgentLoopPhase, type ModelAdapter } from "../providers/model-adapter";
+import type { RuntimePolicy, ToolPolicy } from "../runtime/types";
+import { compactToolResultForPolicy, inferToolPolicy, shouldRunToolInParallel } from "../runtime/tool-policy";
 import {
   createPart,
   emitPart,
@@ -33,7 +36,12 @@ export interface AgentLoopResult {
   finalText: string;
   exitTool?: string;
   exitArgs?: Record<string, unknown>;
+  exhausted?: boolean;
   tokenUsage?: { input: number; output: number; total: number };
+  telemetry?: {
+    discoveryOnlyRounds: number;
+    thinkingModeCounts: Record<string, number>;
+  };
 }
 
 interface PendingToolCall {
@@ -44,12 +52,40 @@ interface PendingToolCall {
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
+const DISCOVERY_TOOL_NAMES = new Set([
+  "read_file",
+  "read_many_files",
+  "read_file_range",
+  "file_info",
+  "list_files",
+  "grep",
+  "ast_search",
+  "lsp_find_references",
+  "lsp_goto_definition",
+  "mcp_search",
+  "fetch_url",
+  "research",
+]);
+
+const READ_ONLY_STALL_NUDGE_THRESHOLD = 4;
+const READ_ONLY_STALL_NUDGE_MIN_ITERATION = 20;
+
+function isDiscoveryTool(name: string): boolean {
+  if (DISCOVERY_TOOL_NAMES.has(name)) return true;
+  return /^mcp_.*(search|fetch|read|get|list|query)/.test(name);
+}
+
+function areAllDiscoveryTools(toolCalls: PendingToolCall[]): boolean {
+  return toolCalls.length > 0 && toolCalls.every((tc) => isDiscoveryTool(tc.name));
+}
+
 export interface AgentLoopOpts {
   maxIterations?: number;
   exitTools?: string[];
   client?: OpenAI;
   model?: string;
   disableThinking?: boolean;
+  phase?: AgentLoopPhase;
   /** Part-based emission context. When provided, the loop emits structured
    *  Parts instead of raw SSE events directly. */
   partCtx?: PartEmitContext;
@@ -65,10 +101,20 @@ export interface AgentLoopOpts {
    * Shared exit signal. A tool handler can set `.exit = true` to force the loop
    * to stop after the current tool round, even if no exitTool was called. Used
    * by the builder so completing the last plan step ends the loop deterministically
-   * instead of waiting on the model to emit a separate request_review tool call
+   * instead of waiting on the model to emit a separate finish_build tool call
    * (which it sometimes only narrates, leaving the loop spinning to maxIterations).
    */
   exitSignal?: { exit: boolean; reason?: string };
+  /**
+   * Model adapter — encapsulates per-model thinking params, timeout, and
+   * reasoning extraction. When provided, replaces the hardcoded model detection.
+   * If omitted, auto-created from client+model via createModelAdapter().
+   */
+  adapter?: ModelAdapter;
+  /** Tool metadata used for conservative in-turn parallelism and result compaction. */
+  toolPolicies?: Record<string, ToolPolicy>;
+  /** Runtime policy supplied by orchestration. Keeps agent-loop behavior model/role aware. */
+  runtimePolicy?: RuntimePolicy;
 }
 
 export async function runAgentLoop(
@@ -98,61 +144,91 @@ export async function runAgentLoop(
   let exitArgs: Record<string, unknown> | undefined;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let emptyNudgeCount = 0; // bounded nudge counter for empty responses
+  let previousToolCallCount = 0;
+  let previousToolErrorCount = 0;
+  let consecutiveDiscoveryToolRounds = 0;
+  let discoveryOnlyRounds = 0;
+  const thinkingModeCounts: Record<string, number> = {};
+  let exhausted = false;
+  const discoveryNudgeMinIteration =
+    opts.runtimePolicy?.stallPolicy?.discoveryNudgeMinIteration ?? READ_ONLY_STALL_NUDGE_MIN_ITERATION;
+  const discoveryNudgeThreshold =
+    opts.runtimePolicy?.stallPolicy?.discoveryNudgeThreshold ?? READ_ONLY_STALL_NUDGE_THRESHOLD;
 
-  const isDoubaoModel = activeModel.toLowerCase().includes("doubao");
-  const isKimiModel = activeModel.toLowerCase().includes("kimi");
-  const isMinimaxModel = activeModel.toLowerCase().includes("minimax");
-  const isGLMModel = activeModel.toLowerCase().startsWith("glm");
-  const isGLM52 = activeModel.toLowerCase().includes("glm-5.2");
-  const isDeepseekModel = activeModel.toLowerCase().includes("deepseek");
-  const thinkingParam = opts.disableThinking
-    ? {}
-    : isDoubaoModel
-      ? { thinking: { type: "enabled", budget_tokens: 8192 } }
-      : isKimiModel
-        ? { thinking: { type: "enabled" } }
-        : isDeepseekModel
-          ? { reasoning_effort: "high" }
-          : {};
+  // Model adapter: encapsulates per-model thinking params, timeout, and
+  // reasoning extraction. Auto-created from client+model if not provided.
+  const adapter = opts.adapter ?? createModelAdapter(activeClient, activeModel);
 
-  // GLM-5.2 dynamic thinking budget: starts generous and shrinks as context
-  // grows, ensuring there's always room for narration + tool calls. The problem:
-  // GLM-5.2's deep thinking can consume the entire output budget, leaving zero
-  // tokens for narration/tool_calls, which triggers an early loop exit.
-  //
-  // Strategy: reserve at least 4096 tokens for non-thinking output. As
-  // totalOutputTokens accumulates, reduce the thinking budget proportionally.
-  const GLM52_MAX_THINKING = 4096;
-  const GLM52_MIN_THINKING = 1024;
-  const GLM52_OUTPUT_CAP = 16384; // max_tokens per request
-  const GLM52_NARRATION_RESERVE = 4096; // always keep this much for narration+tools
+  const timeoutMs = adapter.timeoutMs;
 
-  function getGlm52ThinkingBudget(): number {
-    // As output tokens accumulate across iterations, the context grows and
-    // available output budget effectively shrinks. Scale thinking budget down.
-    const pressure = Math.min(totalOutputTokens / (GLM52_OUTPUT_CAP * 3), 1);
-    const budget = Math.round(GLM52_MAX_THINKING - pressure * (GLM52_MAX_THINKING - GLM52_MIN_THINKING));
-    return Math.max(GLM52_MIN_THINKING, Math.min(GLM52_MAX_THINKING, budget));
+  // Sliding-window compaction: keep the system prompt + initial user message +
+  // the most recent tool results full; shrink OLDER tool results (mostly big
+  // read_file dumps) to a stub. Prevents context from growing unbounded over
+  // 20+ iterations, which was causing GLM-5 to time out mid-stream ('terminated').
+  const KEEP_RECENT_TOOL_RESULTS = 6; // last ~3 iterations' worth stay full
+  const OLD_TOOL_RESULT_STUB = "(earlier tool output elided to save context — call read_file again if you need it)";
+  // After N iterations, compact the system prompt by stripping the bulky
+  // skill/capability guidance (it's been absorbed by then). Saves 10-50KB.
+  const COMPACT_SYSTEM_PROMPT_AFTER = 5;
+  let systemPromptCompacted = false;
+
+  function compactOldToolResults(): void {
+    // Find indices of tool-role messages (results)
+    const toolIdxs: number[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      if ((messages[i] as any).role === "tool") toolIdxs.push(i);
+    }
+    // Stub all but the most recent KEEP_RECENT_TOOL_RESULTS — but only
+    // if the result is long (>500 chars). Short results like "File written
+    // successfully" or "Step marked complete" stay (tiny, useful context).
+    const MIN_STUB_LENGTH = 500;
+    const cutoff = toolIdxs.length - KEEP_RECENT_TOOL_RESULTS;
+    for (let k = 0; k < cutoff; k++) {
+      const idx = toolIdxs[k];
+      const m = messages[idx] as any;
+      if (typeof m.content === "string" && m.content.length > MIN_STUB_LENGTH && m.content !== OLD_TOOL_RESULT_STUB) {
+        m.content = OLD_TOOL_RESULT_STUB;
+      }
+    }
   }
 
-  function getGlmExtraBody() {
-    if (opts.disableThinking) return undefined;
-    if (isGLM52) {
-      return { thinking: { type: "enabled", budget_tokens: getGlm52ThinkingBudget() } };
+  function compactSystemPrompt(): void {
+    if (systemPromptCompacted) return;
+    systemPromptCompacted = true;
+    const sys = messages[0] as any;
+    if (!sys || sys.role !== "system") return;
+    const content = sys.content as string;
+    // Strip bulky skills, but preserve project-memory constraints. Follow-up
+    // agents need this durable reminder to avoid deleting prior work.
+    const stripped = content
+      .replace(/\n\n## Technology & Capability Skill Guidance[\s\S]*?(?=\n\n## |$)/, "\n\n(skill guidance compacted — conventions already applied)")
+      .replace(
+        /\n\n## Project Memory[\s\S]*?(?=\n\n## |$)/,
+        "\n\n## Project Memory (compacted)\nPrior implemented behavior, file ownership, conventions, fixes, and gotchas remain authoritative. Preserve existing user-facing behavior and extend prior work unless the current user explicitly asks to change it.",
+      );
+    if (stripped.length < content.length * 0.8) {
+      sys.content = stripped;
     }
-    if (isGLMModel) {
-      return { thinking: { type: "enabled", budget_tokens: 2048 } };
-    }
-    if (isMinimaxModel) return { reasoning_split: true };
-    if (isDeepseekModel) return { thinking: { type: "enabled" } };
-    return undefined;
   }
-
-  const timeoutMs = (isDoubaoModel || isKimiModel || isMinimaxModel || isGLMModel || isDeepseekModel) ? 90_000 : 30_000;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     // Each iteration is a "message" from the AI perspective
     const messageId = generatePartId();
+
+    // Compact old tool results before sending (bounds context growth)
+    compactOldToolResults();
+    // After N iterations, strip bulky skill/memory sections from system prompt
+    if (iteration >= COMPACT_SYSTEM_PROMPT_AFTER) compactSystemPrompt();
+
+    // Safety valve: if iterations are excessive relative to what a build should
+    // need, inject a strong finish reminder. A 5-step plan shouldn't need > 50
+    // iterations. This catches "infinite loop" scenarios where the agent keeps
+    // writing/reading without marking steps complete or calling finish_build.
+    if (iteration > 0 && iteration % 25 === 0 && tools.length > 0) {
+      console.warn(`[agent-loop] iteration ${iteration + 1}: injecting finish reminder (session=${sessionId})`);
+      messages.push({ role: "user", content: "IMPORTANT: You have been running for many iterations. Check the current plan ledger mentally: if a step's work is complete, call mark_step_complete for that step. Only call finish_build after every plan step has been marked complete. If any step is still running or pending, finish that step now instead of calling finish_build." } as any);
+    }
 
     // ── Step Start ──────────────────────────────────────────────────
     if (partCtx) {
@@ -160,29 +236,60 @@ export async function runAgentLoop(
       emitPart(partCtx, emit, stepStart);
     }
 
-    const response = await aiSemaphore.run(
-      () => withRetry(
-        `runAgentLoop iteration ${iteration + 1}`,
-        () => {
-          const extraBody = getGlmExtraBody();
-          return activeClient.chat.completions.create(
-            {
-              model: activeModel,
-              messages,
-              ...thinkingParam,
-              ...(extraBody ? { extra_body: extraBody } : {}),
-              tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
-              tool_choice: tools.length > 0 ? "auto" : undefined,
-              stream: true,
-              stream_options: { include_usage: true },
-              max_tokens: 16384,
-            } as any,
-            { timeout: timeoutMs },
-          );
-        },
-      ),
-      CONCURRENCY_QUEUE_TIMEOUT,
-    );
+    let response: any;
+    try {
+      response = await aiSemaphore.run(
+        () => withRetry(
+          `runAgentLoop iteration ${iteration + 1}`,
+          () => {
+            const { thinkingParam, extraBody } = adapter.getThinkingConfig({
+              disabled: opts.disableThinking,
+              outputTokensSoFar: totalOutputTokens,
+              iteration,
+              maxIterations,
+              consecutiveNoToolCalls: emptyNudgeCount,
+              previousToolCallCount,
+              previousToolErrorCount,
+              phase: opts.phase,
+            });
+            const thinkingType = (thinkingParam as any).thinking?.type ?? (extraBody as any)?.thinking?.type ?? "none";
+            const reasoningEffort = (thinkingParam as any).reasoning_effort ?? (extraBody as any)?.reasoning_effort ?? "none";
+            const thinkingModeKey = `${thinkingType}:${reasoningEffort}`;
+            thinkingModeCounts[thinkingModeKey] = (thinkingModeCounts[thinkingModeKey] ?? 0) + 1;
+            console.log(
+              `[agent-loop] thinking config model=${activeModel} adapter=${adapter.name} iteration=${iteration + 1} ` +
+                `phase=${opts.phase ?? "unknown"} thinking=${thinkingType} reasoning_effort=${reasoningEffort} ` +
+                `emptyNudges=${emptyNudgeCount} prevToolCalls=${previousToolCallCount} prevToolErrors=${previousToolErrorCount} ` +
+                `discoveryStreak=${consecutiveDiscoveryToolRounds}`,
+            );
+            return activeClient.chat.completions.create(
+              {
+                model: activeModel,
+                messages,
+                ...thinkingParam,
+                ...(extraBody ? { extra_body: extraBody } : {}),
+                tools: tools.length > 0 ? (tools as OpenAI.Chat.Completions.ChatCompletionTool[]) : undefined,
+                tool_choice: tools.length > 0 ? "auto" : undefined,
+                stream: true,
+                stream_options: { include_usage: true },
+                max_tokens: 16384,
+              } as any,
+              { timeout: timeoutMs },
+            );
+          },
+        ),
+        CONCURRENCY_QUEUE_TIMEOUT,
+      );
+    } catch (err: unknown) {
+      // If create itself fails with a transient error, retry this iteration
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/terminated|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR/i.test(msg) && iteration < maxIterations - 1) {
+        console.warn(`[agent-loop] transient error on create (iteration ${iteration + 1}): ${msg}. Retrying iteration...`);
+        iteration--; // will be incremented by the for-loop, effectively retrying
+        continue;
+      }
+      throw err;
+    }
 
     let assistantText = "";
     let reasoningContent = "";
@@ -193,6 +300,9 @@ export async function runAgentLoop(
     let reasoningPart: Part | undefined;
     let inThinkTag = false; // Filter <think> blocks from narration stream
 
+    // Wrap streaming in try/catch to handle mid-stream disconnects (terminated)
+    let streamTerminated = false;
+    try {
     for await (const chunk of response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
       const choice = chunk.choices[0];
       if (!choice) continue;
@@ -202,48 +312,24 @@ export async function runAgentLoop(
         reasoning_details?: Array<{ type?: string; text?: string }>;
       };
 
-      // ── Reasoning tokens ────────────────────────────────────────
-      if (delta.reasoning_content) {
+      // ── Reasoning tokens (model-agnostic via adapter) ─────────────
+      const reasoningToken = adapter.extractReasoning(delta);
+      if (reasoningToken) {
         if (!reasoningContent) {
           console.log(`[agent-loop] first thinking_token from ${activeModel}, iteration=${iteration + 1}`);
         }
-        reasoningContent += delta.reasoning_content;
+        reasoningContent += reasoningToken;
 
         if (partCtx) {
           if (!reasoningPart) {
             reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
-            emitPart(partCtx, emit, reasoningPart, delta.reasoning_content);
+            emitPart(partCtx, emit, reasoningPart, reasoningToken);
           } else {
             (reasoningPart as any).text = reasoningContent;
-            // Delta-only emit (part already in array)
-            emit({ type: "thinking_token", token: delta.reasoning_content });
+            emit({ type: "thinking_token", token: reasoningToken });
           }
         } else {
-          emit({ type: "thinking_token", token: delta.reasoning_content });
-        }
-      }
-
-      // MiniMax reasoning_details
-      if (delta.reasoning_details && delta.reasoning_details.length > 0) {
-        for (const rd of delta.reasoning_details) {
-          if (rd.text) {
-            if (!reasoningContent) {
-              console.log(`[agent-loop] first thinking_token (minimax) from ${activeModel}, iteration=${iteration + 1}`);
-            }
-            reasoningContent += rd.text;
-
-            if (partCtx) {
-              if (!reasoningPart) {
-                reasoningPart = createPart("reasoning", sessionId, messageId, { text: reasoningContent });
-                emitPart(partCtx, emit, reasoningPart, rd.text);
-              } else {
-                (reasoningPart as any).text = reasoningContent;
-                emit({ type: "thinking_token", token: rd.text });
-              }
-            } else {
-              emit({ type: "thinking_token", token: rd.text });
-            }
-          }
+          emit({ type: "thinking_token", token: reasoningToken });
         }
       }
 
@@ -299,25 +385,44 @@ export async function runAgentLoop(
         totalOutputTokens += u.completion_tokens ?? 0;
       }
     }
+    } catch (streamErr: unknown) {
+      // Mid-stream disconnect (terminated/ECONNRESET) — retry this iteration
+      const msg = streamErr instanceof Error ? streamErr.message : String(streamErr);
+      if (/terminated|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR/i.test(msg) && iteration < maxIterations - 1) {
+        console.warn(`[agent-loop] stream terminated mid-iteration ${iteration + 1}: ${msg}. Retrying...`);
+        streamTerminated = true;
+        iteration--; // will be incremented by the for-loop, effectively retrying
+        continue;
+      }
+      throw streamErr;
+    }
 
     const toolCalls = Object.values(toolCallsMap);
 
     if (toolCalls.length === 0) {
+      previousToolCallCount = 0;
+      previousToolErrorCount = 0;
       // ── Step Finish (no tool calls → stop) ──────────────────────
       console.warn(`[agent-loop] iteration ${iteration + 1} ended with NO tool_calls. assistantText.length=${assistantText.length} reasoningContent.length=${reasoningContent.length} model=${activeModel} sessionId=${sessionId} inputTokens=${totalInputTokens} outputTokens=${totalOutputTokens}`);
 
-      // GLM and some models sometimes fail to emit tool_calls on large contexts.
-      // If we got thinking but no text and no tools, and we haven't exhausted
-      // retries, nudge the model to continue by injecting a reminder.
-      if (assistantText.length === 0 && reasoningContent.length > 0 && iteration < maxIterations - 1 && tools.length > 0) {
-        console.log(`[agent-loop] Empty response with reasoning — nudging model to use tools. iteration=${iteration + 1}`);
-        // Push the empty assistant message and a nudge
-        messages.push({ role: "assistant", content: reasoningContent } as any);
-        messages.push({ role: "user", content: "Please continue with the implementation. Use your tools (write_file, mark_step_complete) to make progress on the plan. Do not just describe what you would do — actually do it by calling the appropriate tool." } as any);
-        continue; // retry this iteration
+      // GLM and some models sometimes fail to emit tool_calls or return
+      // completely empty responses. Nudge them to continue with tools.
+      // Bounded: max 3 consecutive nudges to avoid infinite loops.
+      const isEmptyOrThinkingOnly = assistantText.length === 0;
+      if (isEmptyOrThinkingOnly && iteration < maxIterations - 1 && tools.length > 0) {
+        emptyNudgeCount++;
+        if (emptyNudgeCount <= 3) {
+          console.log(`[agent-loop] Empty/thinking-only response — nudging model to use tools (nudge ${emptyNudgeCount}/3). iteration=${iteration + 1}`);
+          messages.push({ role: "assistant", content: "(no action taken)" } as any);
+          messages.push({ role: "user", content: "You must use your tools to make progress. Call write_file to write code, mark_step_complete when a step is done, or finish_build when all steps are complete. Do not respond without a tool call." } as any);
+          continue; // retry this iteration
+        }
       }
 
       finalText = assistantText;
+      if (iteration === maxIterations - 1) {
+        exhausted = true;
+      }
       if (partCtx) {
         const stepFinish = createPart("step-finish", sessionId, messageId, {
           step: iteration + 1,
@@ -328,23 +433,49 @@ export async function runAgentLoop(
       break;
     }
 
-    // Push assistant message with tool calls to context
+    // Model produced tool calls — reset nudge counter
+    emptyNudgeCount = 0;
+    previousToolCallCount = toolCalls.length;
+
+    // Push assistant message with tool calls to context.
+    // IMPORTANT optimizations to prevent messages[] from exploding:
+    // 1. reasoning_content is NOT kept — it's the model's per-turn scratchpad
+    //    (GLM-5 can produce 100K+ chars of reasoning). Re-sending it every
+    //    iteration is the #1 context bloat source. The model doesn't need its
+    //    own prior thinking; the resulting tool_calls capture the decisions.
+    // 2. tool_call arguments truncated (write_file content can be 50KB) — the
+    //    LLM can read_file again if it needs the content.
+    const MAX_ARGS_IN_CONTEXT = 500; // chars — enough for function name + path
     const assistantMsg = {
       role: "assistant" as const,
       content: assistantText || null,
-      ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: "function" as const,
-        function: { name: tc.name, arguments: tc.argsRaw },
+        function: {
+          name: tc.name,
+          arguments: tc.argsRaw.length > MAX_ARGS_IN_CONTEXT
+            ? tc.argsRaw.slice(0, MAX_ARGS_IN_CONTEXT) + '..."}'
+            : tc.argsRaw,
+        },
       })),
     };
     messages.push(assistantMsg as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam);
 
     let shouldExit = false;
+    let toolErrorCountThisIteration = 0;
 
-    // ── Execute tool calls with state machine ──────────────────────
-    for (const tc of toolCalls) {
+    type ToolExecutionResult = {
+      tc: PendingToolCall;
+      args: Record<string, unknown>;
+      toolResultMsg: OpenAI.Chat.Completions.ChatCompletionToolMessageParam;
+      handlerSucceeded: boolean;
+      errorCount: number;
+    };
+
+    const getPolicy = (name: string) => opts.toolPolicies?.[name] ?? inferToolPolicy(name);
+
+    const executeToolCall = async (tc: PendingToolCall): Promise<ToolExecutionResult> => {
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(tc.argsRaw || "{}") as Record<string, unknown>;
@@ -363,8 +494,36 @@ export async function runAgentLoop(
         emitPart(partCtx, emit, toolPart);
       } else {
         // Legacy: emit action_log directly for tools that don't have their own logs
-        const toolsWithOwnLogs = new Set(["write_file", "read_file", "mark_step_complete", "finish_build", "report_issue", "submit_verdict"]);
-        if (!toolsWithOwnLogs.has(tc.name)) {
+        const toolsWithOwnLogs = new Set([
+          "write_file",
+          "read_file",
+          "read_many_files",
+          "read_file_range",
+          "file_info",
+          "list_files",
+          "grep",
+          "edit_file",
+          "patch_file",
+          "hash_patch_file",
+          "move_file",
+          "delete_file",
+          "ast_search",
+          "ast_replace",
+          "lsp_diagnostics",
+          "lsp_find_references",
+          "lsp_goto_definition",
+          "shell_run",
+          "run_tests",
+          "mcp_search",
+          "fetch_url",
+          "research",
+          "mark_step_complete",
+          "finish_build",
+          "report_issue",
+          "submit_verdict",
+          "submit_review",
+        ]);
+        if (!toolsWithOwnLogs.has(tc.name) && !tc.name.startsWith("mcp_")) {
           const argsPreview = JSON.stringify(args).slice(0, 120);
           emit({ type: "action_log", actionType: "tool_call", label: tc.name, detail: argsPreview });
         }
@@ -381,10 +540,34 @@ export async function runAgentLoop(
 
       let result = "";
       const handler = handlers[tc.name];
+      const policy = getPolicy(tc.name);
+      const role = opts.runtimePolicy?.role;
 
       let handlerSucceeded = false;
+      let errorCount = 0;
       if (!handler) {
         result = `Error: unknown tool "${tc.name}"`;
+        errorCount++;
+        if (toolPart && partCtx) {
+          updateToolState(partCtx, emit, toolPart, {
+            status: "error",
+            input: args,
+            error: result,
+            startedAt: (toolPart.state as any).startedAt ?? Date.now(),
+            completedAt: Date.now(),
+          });
+        }
+      } else if (policy.allowedRoles && (!role || !policy.allowedRoles.includes(role))) {
+        result = role
+          ? `Error: tool "${tc.name}" is not available for role "${role}"`
+          : `Error: tool "${tc.name}" requires a runtime role (${policy.allowedRoles.join(", ")})`;
+        errorCount++;
+        emit({
+          type: "action_log",
+          actionType: "tool_error",
+          label: tc.name,
+          detail: result,
+        });
         if (toolPart && partCtx) {
           updateToolState(partCtx, emit, toolPart, {
             status: "error",
@@ -410,6 +593,7 @@ export async function runAgentLoop(
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           result = `Error executing tool "${tc.name}": ${message}`;
+          errorCount++;
           if (toolPart && partCtx) {
             updateToolState(partCtx, emit, toolPart, {
               status: "error",
@@ -422,21 +606,85 @@ export async function runAgentLoop(
         }
       }
 
+      result = compactToolResultForPolicy(result, getPolicy(tc.name));
+
       const toolResultMsg: OpenAI.Chat.Completions.ChatCompletionToolMessageParam = {
         role: "tool",
         tool_call_id: tc.id,
         content: result,
       };
-      messages.push(toolResultMsg);
+      return { tc, args, toolResultMsg, handlerSucceeded, errorCount };
+    };
+
+    // ── Execute tool calls with state machine ──────────────────────
+    const batches: PendingToolCall[][] = [];
+    for (const tc of toolCalls) {
+      const policy = getPolicy(tc.name);
+      const previous = batches[batches.length - 1];
+      if (shouldRunToolInParallel(policy) && previous?.every((item) => shouldRunToolInParallel(getPolicy(item.name)))) {
+        previous.push(tc);
+      } else {
+        batches.push([tc]);
+      }
+    }
+
+    for (const batch of batches) {
+      const parallel = batch.length > 1 && batch.every((tc) => shouldRunToolInParallel(getPolicy(tc.name)));
+      if (parallel) {
+        emit({ type: "tool_batch_started", tools: batch.map((tc) => tc.name) });
+      }
+      const results = parallel
+        ? await Promise.all(batch.map((tc) => executeToolCall(tc)))
+        : [await executeToolCall(batch[0])];
+
+      if (parallel) {
+        emit({ type: "tool_batch_completed", tools: batch.map((tc) => tc.name) });
+      }
+
+      for (const result of results) {
+        toolErrorCountThisIteration += result.errorCount;
+        messages.push(result.toolResultMsg);
 
       // Only treat this as an exit if the handler actually succeeded.
       // A throwing handler signals "rejected, retry" — keep looping so the
       // LLM sees the error message and can re-invoke the tool with fixed args.
       // maxIterations bounds the retry budget.
-      if (handlerSucceeded && exitTools.has(tc.name)) {
+        const toolOutput = typeof result.toolResultMsg.content === "string" ? result.toolResultMsg.content : "";
+        const softFailed = /^\s*Error:/i.test(toolOutput);
+        if (result.handlerSucceeded && !softFailed && exitTools.has(result.tc.name)) {
         shouldExit = true;
-        exitTool = tc.name;
-        exitArgs = args;
+          exitTool = result.tc.name;
+          exitArgs = result.args;
+        }
+      }
+    }
+    previousToolErrorCount = toolErrorCountThisIteration;
+
+    if (opts.phase === "editor") {
+      if (toolErrorCountThisIteration > 0) {
+        consecutiveDiscoveryToolRounds = 0;
+      } else if (areAllDiscoveryTools(toolCalls)) {
+        consecutiveDiscoveryToolRounds++;
+        discoveryOnlyRounds++;
+      } else {
+        consecutiveDiscoveryToolRounds = 0;
+      }
+
+      if (
+        iteration + 1 >= discoveryNudgeMinIteration &&
+        consecutiveDiscoveryToolRounds >= discoveryNudgeThreshold &&
+        !shouldExit &&
+        iteration < maxIterations - 1
+      ) {
+        console.warn(
+          `[agent-loop] editor discovery streak ${consecutiveDiscoveryToolRounds}; injecting action nudge ` +
+            `(session=${sessionId}, iteration=${iteration + 1}, tools=${toolCalls.map((tc) => tc.name).join(",")})`,
+        );
+        messages.push({
+          role: "user",
+          content:
+            "IMPORTANT: You have spent several consecutive rounds only reading/searching. You likely have enough context. In your next response, call write_file/edit_file/patch_file/hash_patch_file/delete_file to change files, or call mark_step_complete/finish_build if no file change is needed. Do not call read_file/grep/list_files/research again unless the last tool result was an error or a specific missing fact blocks the edit.",
+        } as any);
       }
     }
 
@@ -458,10 +706,17 @@ export async function runAgentLoop(
     }
 
     if (shouldExit) break;
+
+    if (iteration === maxIterations - 1) {
+      exhausted = true;
+    }
   }
 
-  // 迭代耗尽但没有正常退出 — 只对 builder 主循环 emit 错误，子 agent 静默退出
-  if (!exitTool && !opts.exitSignal?.exit) {
+  // 迭代耗尽但没有正常退出 — return a structured signal to the caller. The
+  // orchestrator owns final session state; emitting a fatal build_error here can
+  // race with later all_complete handling and make the UI think a build both
+  // failed and succeeded.
+  if (exhausted && !exitTool && !opts.exitSignal?.exit) {
     console.warn(`[agent-loop] maxIterations (${maxIterations}) reached without exit signal. sessionId=${sessionId}`);
     if (opts.emitOnIterationExhausted) {
       emit({ type: "build_error", message: `Agent reached iteration limit (${maxIterations}) without completing all steps. Try breaking the task into smaller steps.` });
@@ -472,8 +727,13 @@ export async function runAgentLoop(
     finalText,
     exitTool,
     exitArgs,
+    exhausted,
     tokenUsage: totalInputTokens + totalOutputTokens > 0
       ? { input: totalInputTokens, output: totalOutputTokens, total: totalInputTokens + totalOutputTokens }
       : undefined,
+    telemetry: {
+      discoveryOnlyRounds,
+      thinkingModeCounts,
+    },
   };
 }

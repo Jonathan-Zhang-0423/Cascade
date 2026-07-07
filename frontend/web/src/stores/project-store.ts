@@ -27,6 +27,11 @@ export interface ProjectEntry {
   userNamed?: boolean;
 }
 
+function isDefaultProjectName(name: string | null | undefined): boolean {
+  const normalized = (name ?? "").trim().toLowerCase();
+  return !normalized || normalized === "new project" || normalized === "新建项目" || normalized === "untitled" || normalized === "未命名";
+}
+
 interface ProjectStoreState {
   projects: ProjectEntry[];
   serverSynced: boolean;
@@ -188,13 +193,13 @@ export function migrateOldState() {
   }
 }
 
-async function syncProjectToServer(id: string, name: string, emoji?: string, framework?: string) {
+async function syncProjectToServer(id: string, name: string, emoji?: string, framework?: string, initialPrompt?: string) {
   try {
     await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ id, name, emoji, framework }),
+      body: JSON.stringify({ id, name, emoji, framework, initialPrompt }),
     });
   } catch {}
 }
@@ -228,7 +233,6 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       createProject: async (name: string, initialPrompt?: string, emoji?: string, framework?: string, initialMode?: "manager" | "build") => {
         const id = generateId();
-        const isWeb = !framework || framework === "web";
         // Only persist lightweight UI state to localStorage — files/messages
         // are persisted server-side. This keeps localStorage usage minimal.
         const lightState = {
@@ -259,30 +263,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           ],
         }));
 
-        await syncProjectToServer(id, name, emoji, framework);
-
-        if (isWeb) {
-          const flatFiles: { path: string; content: string }[] = [];
-          type FileNode = { name: string; path: string; type: "file"; content?: string };
-          type FolderNode = { name: string; path: string; type: "folder"; children: (FileNode | FolderNode)[] };
-          function flattenNode(nodes: readonly (FileNode | FolderNode)[]) {
-            for (const n of nodes) {
-              if (n.type === "file") {
-                flatFiles.push({ path: n.path, content: n.content || "" });
-              }
-              if (n.type === "folder" && n.children) {
-                flattenNode(n.children);
-              }
-            }
-          }
-          flattenNode(BLANK_FILES);
-          fetch(`/api/projects/${id}/files`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ files: flatFiles }),
-          }).catch(() => {});
-        }
+        await syncProjectToServer(id, name, emoji, framework, initialPrompt);
 
         return id;
       },
@@ -300,7 +281,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         // If AI tries to rename but user already set a custom name, skip
         if (!fromUser) {
           const existing = get().projects.find((p) => p.id === id);
-          if (existing?.userNamed) return;
+          if (existing?.userNamed || !isDefaultProjectName(existing?.name)) return;
         }
         set((s) => ({
           projects: s.projects.map((p) =>

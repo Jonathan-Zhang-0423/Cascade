@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 import { installAiMock, type AiMock } from "../_helpers/ai-mock";
@@ -16,7 +16,6 @@ describeIntegration("manager-chat lifecycle", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -24,6 +23,7 @@ describeIntegration("manager-chat lifecycle", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    http = await createAuthenticatedClient(appCtx.baseUrl);
     ai = installAiMock({
       // A minimal plan-ish payload; the route tolerates loose JSON.
       text: '{"summary":"do it","steps":[{"step":1,"title":"step","description":"d"}]}',
@@ -52,8 +52,13 @@ describeIntegration("manager-chat lifecycle", () => {
       expect(res.status).toBe(404);
     });
 
-    it("active 404 when no session for the project", async () => {
+    it("active requires chatSessionId", async () => {
       const res = await http.get(`/api/manager-chat/active/proj-${Date.now()}`);
+      expect(res.status).toBe(400);
+    });
+
+    it("active 404 when no session for the project/chat session", async () => {
+      const res = await http.get(`/api/manager-chat/active/proj-${Date.now()}?chatSessionId=main`);
       expect(res.status).toBe(404);
     });
   });
@@ -61,6 +66,7 @@ describeIntegration("manager-chat lifecycle", () => {
   describe("started planning session is observable", () => {
     it("starts a manager-chat and finds it via active/:projectId", async () => {
       const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "Manager Lifecycle Test" });
       const ac = new AbortController();
       const streamPromise = http
         .stream("POST", "/api/manager-chat", {
@@ -75,11 +81,11 @@ describeIntegration("manager-chat lifecycle", () => {
 
       // The session should appear (active or done) shortly after start.
       await waitFor(async () => {
-        const r = await http.get(`/api/manager-chat/active/${projectId}`);
+        const r = await http.get(`/api/manager-chat/active/${projectId}?chatSessionId=main`);
         return r.status === 200;
       });
 
-      const active = await http.get(`/api/manager-chat/active/${projectId}`);
+      const active = await http.get(`/api/manager-chat/active/${projectId}?chatSessionId=main`);
       expect(active.status).toBe(200);
       expect(active.body.sessionId).toBeDefined();
 
@@ -90,6 +96,36 @@ describeIntegration("manager-chat lifecycle", () => {
 
       ac.abort();
       await streamPromise;
+    });
+
+    it("persists project_name from submit_plan when the project still has a default name", async () => {
+      const projectId = `proj-${Math.random().toString(36).slice(2, 8)}`;
+      await http.post("/api/projects", { id: projectId, name: "New Project" });
+
+      ai.update({
+        responder: (params) => Array.isArray(params?.tools) && params.tools.length > 0 ? "" : "build",
+        toolCalls: [{
+          name: "submit_plan",
+          args: {
+            project_name: "Todo Forge",
+            summary: "do it",
+            steps: [{ step: 1, title: "step", description: "d" }],
+          },
+        }],
+      });
+
+      const stream = await http.stream("POST", "/api/manager-chat", {
+        body: {
+          messages: [{ role: "user", content: "build me a todo app" }],
+          files: [],
+          projectId,
+        },
+      });
+
+      expect(stream.status).toBe(200);
+      await stream.text();
+      const list = await http.get("/api/projects");
+      expect(list.body.projects.find((x: any) => x.id === projectId).name).toBe("Todo Forge");
     });
   });
 });

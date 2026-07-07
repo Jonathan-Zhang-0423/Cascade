@@ -162,6 +162,95 @@ describe("patch_file handler", () => {
   });
 });
 
+describe("agent project navigation tools", () => {
+  it("list_files filters files with include/exclude globs", async () => {
+    const session = makeSession();
+    session.files.set("/project/src/App.tsx", "app");
+    session.files.set("/project/src/App.test.tsx", "test");
+    session.files.set("/project/package.json", "{}");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.list_files(
+      { include: "/project/src/*.tsx", exclude: "**/*.test.tsx" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("/project/src/App.tsx");
+    expect(result).not.toContain("App.test.tsx");
+    expect(result).not.toContain("package.json");
+  });
+
+  it("grep returns matching file paths with line numbers", async () => {
+    const session = makeSession();
+    session.files.set("/project/src/App.tsx", "const title = 'Hello';\nexport default title;\n");
+    session.files.set("/project/src/Other.tsx", "const other = true;\n");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.grep(
+      { pattern: "title", include: "/project/src/*.tsx" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("/project/src/App.tsx:1");
+    expect(result).toContain("/project/src/App.tsx:2");
+    expect(result).not.toContain("Other.tsx");
+  });
+
+  it("grep can search literal text when regex=false", async () => {
+    const session = makeSession();
+    session.files.set("/project/a.txt", "a+b\naxb\n");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.grep(
+      { pattern: "a+b", regex: false },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("/project/a.txt:1");
+    expect(result).not.toContain("/project/a.txt:2");
+  });
+
+  it("edit_file replaces all occurrences only when expected_replacements matches", async () => {
+    const session = makeSession();
+    session.files.set("/project/app.ts", "foo\nfoo\nbar\n");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.edit_file(
+      {
+        path: "/project/app.ts",
+        old_content: "foo",
+        new_content: "baz",
+        replace_all: true,
+        expected_replacements: 2,
+      },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("File edited successfully");
+    expect(session.files.get("/project/app.ts")).toBe("baz\nbaz\nbar\n");
+  });
+
+  it("edit_file refuses replace_all when the expected count does not match", async () => {
+    const session = makeSession();
+    session.files.set("/project/app.ts", "foo\nfoo\nbar\n");
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.edit_file(
+      {
+        path: "/project/app.ts",
+        old_content: "foo",
+        new_content: "baz",
+        replace_all: true,
+        expected_replacements: 1,
+      },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("expected 1 replacement");
+    expect(session.files.get("/project/app.ts")).toBe("foo\nfoo\nbar\n");
+  });
+});
+
 describe("delete_file handler", () => {
   let tmpDir: string;
 

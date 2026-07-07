@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 
@@ -13,7 +13,6 @@ describeIntegration("projects CRUD", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -21,7 +20,9 @@ describeIntegration("projects CRUD", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    http.clearCookies();
+    // Routes are behind requireInviteCode; establish a fresh authed session
+    // each test (truncateAll wipes the user + session every time).
+    http = await createAuthenticatedClient(appCtx.baseUrl);
   });
 
   const newProject = (over: Record<string, unknown> = {}) => ({

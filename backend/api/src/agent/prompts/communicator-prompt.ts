@@ -230,12 +230,16 @@ export function buildCommunicatorMessage(ev: CommunicatorEvent): string {
 
     case "all_complete":
       lines.push(`All ${ev.totalSteps ?? ""} steps completed and verified successfully!`);
+      if (ev.stepTitles && ev.stepTitles.length > 0) {
+        lines.push(`Steps that were completed:`);
+        ev.stepTitles.forEach((title, i) => lines.push(`  ${i + 1}. ${title}`));
+      }
       if (ev.changedFiles && ev.changedFiles.length > 0) {
         lines.push(`Files that were created or updated during this build:`);
         for (const f of ev.changedFiles) {
           lines.push(`- ${f}`);
         }
-        lines.push(`Describe what was built in each file.`);
+        lines.push(`Describe what was built based on the step titles and file names above.`);
       }
       if (ev.planSummary) lines.push(`Original plan: ${ev.planSummary}`);
       break;

@@ -5,9 +5,12 @@ vi.mock("../src/agent/loop/agent-loop", () => ({
   runAgentLoop: vi.fn(),
 }));
 
-// Mock the fast client provider
+// Mock role-based model routing
+vi.mock("../src/agent/providers/agent-model-router", () => ({
+  resolveAgentModel: vi.fn(() => ({ client: { __id: "research" }, model: "research-model", provider: "minimax" })),
+}));
+
 vi.mock("../src/agent/providers/kimi-client", () => ({
-  getFastClient: vi.fn(() => ({ client: { __id: "fast" }, model: "fast-model" })),
   withFallback: vi.fn(),
   buildFallbackChain: vi.fn(() => ["doubao"]),
   getAIClient: vi.fn(() => ({ client: { __id: "test" }, model: "test-model" })),

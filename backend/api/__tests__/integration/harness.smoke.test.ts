@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, expect, it } from "vitest";
-import { describeIntegration, truncateAll, closeDb, hasTestDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, hasTestDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 
@@ -40,18 +40,20 @@ describeIntegration("harness smoke", () => {
   });
 
   it("can write and read the DB through a route", async () => {
+    const authed = await createAuthenticatedClient(appCtx.baseUrl);
     const id = `smoke-${Date.now()}`;
-    const create = await http.post("/api/projects", { id, name: "Smoke Project" });
+    const create = await authed.post("/api/projects", { id, name: "Smoke Project" });
     expect(create.status).toBe(200);
     expect(create.body.project.id).toBe(id);
 
-    const list = await http.get("/api/projects");
+    const list = await authed.get("/api/projects");
     expect(list.status).toBe(200);
     expect(list.body.projects.some((p: any) => p.id === id)).toBe(true);
   });
 
   it("truncateAll isolates tests (previous project is gone)", async () => {
-    const list = await http.get("/api/projects");
+    const authed = await createAuthenticatedClient(appCtx.baseUrl);
+    const list = await authed.get("/api/projects");
     expect(list.body.projects).toHaveLength(0);
   });
 });

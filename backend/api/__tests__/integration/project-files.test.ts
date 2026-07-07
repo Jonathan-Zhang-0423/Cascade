@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, expect, it, describe } from "vitest";
-import { describeIntegration, truncateAll, closeDb } from "../_helpers/db";
+import { describeIntegration, truncateAll, closeDb, createAuthenticatedClient } from "../_helpers/db";
 import { createTestApp, type TestApp } from "../_helpers/app-factory";
 import { HttpClient } from "../_helpers/http-client";
 
@@ -14,7 +14,6 @@ describeIntegration("project files", () => {
 
   beforeAll(async () => {
     appCtx = await createTestApp();
-    http = new HttpClient(appCtx.baseUrl);
   });
   afterAll(async () => {
     await appCtx.close();
@@ -22,6 +21,7 @@ describeIntegration("project files", () => {
   });
   beforeEach(async () => {
     await truncateAll();
+    http = await createAuthenticatedClient(appCtx.baseUrl);
   });
 
   async function makeProject(over: Record<string, unknown> = {}): Promise<string> {
@@ -37,7 +37,7 @@ describeIntegration("project files", () => {
   }
 
   describe("PUT /files (batch upsert)", () => {
-    it("inserts, updates, and deletes to converge on the provided set", async () => {
+    it("inserts and updates without deleting omitted files by default", async () => {
       const id = await makeProject();
       // Start fresh: overwrite the template with our own set.
       await http.put(`/api/projects/${id}/files`, {
@@ -45,15 +45,15 @@ describeIntegration("project files", () => {
           { path: "/project/a.ts", content: "a1" },
           { path: "/project/b.ts", content: "b1" },
         ],
+        allowDestructiveOverwrite: true,
       });
       expect(await getPaths(id)).toEqual(["/project/a.ts", "/project/b.ts"]);
 
-      // Update a, keep b, add c → the batch is authoritative, so anything not
-      // in the set is deleted. Provide a (changed), b (same), c (new).
+      // Update a and add c. Omitting b must not delete it unless the caller
+      // explicitly opts into destructive overwrite.
       await http.put(`/api/projects/${id}/files`, {
         files: [
           { path: "/project/a.ts", content: "a2" },
-          { path: "/project/b.ts", content: "b1" },
           { path: "/project/c.ts", content: "c1" },
         ],
       });
@@ -62,6 +62,24 @@ describeIntegration("project files", () => {
       const after = await http.get(`/api/projects/${id}/files`);
       const a = after.body.files.find((f: any) => f.path === "/project/a.ts");
       expect(a.content).toBe("a2");
+    });
+
+    it("deletes omitted files only with explicit destructive overwrite", async () => {
+      const id = await makeProject();
+      await http.put(`/api/projects/${id}/files`, {
+        files: [
+          { path: "/project/a.ts", content: "a1" },
+          { path: "/project/b.ts", content: "b1" },
+        ],
+        allowDestructiveOverwrite: true,
+      });
+
+      await http.put(`/api/projects/${id}/files`, {
+        files: [{ path: "/project/a.ts", content: "a2" }],
+        allowDestructiveOverwrite: true,
+      });
+
+      expect(await getPaths(id)).toEqual(["/project/a.ts"]);
     });
 
     it("rejects malformed body (missing files array) with 400", async () => {
@@ -99,10 +117,21 @@ describeIntegration("project files", () => {
       expect(await getPaths(id)).toContain(weird);
     });
 
-    it("an empty files array deletes everything", async () => {
+    it("rejects an empty files array for existing projects without explicit destructive overwrite", async () => {
+      const id = await makeProject();
+      await http.put(`/api/projects/${id}/files`, {
+        files: [{ path: "/project/x.ts", content: "1" }],
+        allowDestructiveOverwrite: true,
+      });
+      const res = await http.put(`/api/projects/${id}/files`, { files: [] });
+      expect(res.status).toBe(409);
+      expect(await getPaths(id)).toContain("/project/x.ts");
+    });
+
+    it("allows an explicit destructive overwrite to empty the file set", async () => {
       const id = await makeProject();
       await http.put(`/api/projects/${id}/files`, { files: [{ path: "/project/x.ts", content: "1" }] });
-      await http.put(`/api/projects/${id}/files`, { files: [] });
+      await http.put(`/api/projects/${id}/files`, { files: [], allowDestructiveOverwrite: true });
       expect(await getPaths(id)).toEqual([]);
     });
   });
@@ -149,8 +178,8 @@ describeIntegration("project files", () => {
     });
   });
 
-  describe("GET /files self-repair", () => {
-    it("replaces stale web-only files with the framework template for a non-web project", async () => {
+  describe("GET /files", () => {
+    it("is a pure read and never replaces files with framework templates", async () => {
       // Create a non-web project, then corrupt it to contain only web signature files.
       const id = await makeProject({ framework: "rn-expo" });
       await http.put(`/api/projects/${id}/files`, {
@@ -159,14 +188,13 @@ describeIntegration("project files", () => {
           { path: "/project/style.css", content: "" },
           { path: "/project/app.js", content: "" },
         ],
+        allowDestructiveOverwrite: true,
       });
-      // GET should detect the corruption and swap in the rn-expo template.
+
       const res = await http.get(`/api/projects/${id}/files`);
       expect(res.status).toBe(200);
-      const paths = res.body.files.map((f: any) => f.path);
-      // Web signature files should be gone; template files present.
-      expect(paths).not.toContain("/project/index.html");
-      expect(res.body.files.length).toBeGreaterThan(0);
+      const paths = res.body.files.map((f: any) => f.path).sort();
+      expect(paths).toEqual(["/project/app.js", "/project/index.html", "/project/style.css"]);
     });
   });
 });

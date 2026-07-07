@@ -75,7 +75,7 @@ export function ChatPanel() {
     mgrLiveNarrationText,
     mgrLiveActionLog,
     autoExecutePlanRef,
-    resetLiveState: resetManagerLiveState,
+    clearLiveState: clearManagerLiveState,
   } = manager;
 
   const {
@@ -84,6 +84,7 @@ export function ChatPanel() {
     liveThinkingText,
     liveNarrationText,
     liveStepNarrations,
+    activePlanMessageId,
     isReconnecting,
     thinkingElapsedSec,
     handleExecutePlan,
@@ -351,11 +352,11 @@ export function ChatPanel() {
     const prev = prevProjectIdRef.current;
     const curr = projectId;
     if (prev && curr && prev !== curr) {
-      resetManagerLiveState();
+      clearManagerLiveState();
       resetBuildLiveState();
     }
     prevProjectIdRef.current = curr;
-  }, [projectId, resetManagerLiveState, resetBuildLiveState]);
+  }, [projectId, clearManagerLiveState, resetBuildLiveState]);
 
   useEffect(() => {
     if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {
@@ -387,7 +388,10 @@ export function ChatPanel() {
     }
   }, [isManagerResponding, handleExecutePlan, autoExecutePlanRef]);
 
-  const isExecuting = executingTaskIndex !== null;
+  const isExecuting = executingTaskIndex !== null || buildPhase !== null;
+  const showStandaloneBuildLog =
+    activePlanMessageId === null &&
+    (buildPhase !== null || liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText);
 
   // Derive a single AgentStatus from all the boolean flags — highest priority wins
   const agentStatus: AgentStatus = (() => {
@@ -514,14 +518,14 @@ export function ChatPanel() {
         {showThinking && (
           <TypingIndicator />
         )}
-        {(isManagerResponding || mgrPreparingPlan) && (mgrLiveThinkingText || mgrLiveNarrationText || mgrLiveActionLog.length > 0) && (
+        {mgrLiveActionLog.length > 0 && (
           <BuildLivePanel
             entries={mgrLiveActionLog}
             thinkingText={mgrLiveThinkingText || undefined}
             narrationText={mgrLiveNarrationText || undefined}
           />
         )}
-        {(liveActionLog.length > 0 || !!liveThinkingText || !!liveNarrationText) && (
+        {showStandaloneBuildLog && (
           <BuildLivePanel
             entries={liveActionLog}
             thinkingText={liveThinkingText || undefined}

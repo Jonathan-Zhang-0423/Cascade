@@ -29,7 +29,11 @@ export function useActiveStream() {
       if (!slot.manager.isActive) {
         slot.manager.attemptReconnect().catch(() => {});
       }
-      if (!slot.build.isActive) {
+      if (slot.build.isActive) {
+        // Build still running for this project — restore its per-session task
+        // statuses into the global store (they were lost on loadProject reset).
+        slot.build.restoreTaskStatuses();
+      } else {
         slot.build.attemptReconnect().catch(() => {});
       }
     }, 200);
@@ -82,6 +86,15 @@ export function useActiveStream() {
     slot.manager.resetLive();
   }, [slot]);
 
+  const clearManagerLiveState = useCallback(() => {
+    slot.manager.state.set({
+      thinkingText: "",
+      narrationText: "",
+      actionLog: [],
+      preparingPlan: false,
+    });
+  }, [slot]);
+
   const resetBuildLiveState = useCallback(() => {
     slot.build.state.set({
       thinkingText: "",
@@ -103,6 +116,7 @@ export function useActiveStream() {
       isMgrReconnecting: mgrState.isReconnecting,
       autoExecutePlanRef: { current: slot.manager.autoExecutePlan },
       resetLiveState: resetManagerLiveState,
+      clearLiveState: clearManagerLiveState,
     },
     // Build stream
     build: {
@@ -111,6 +125,7 @@ export function useActiveStream() {
       liveThinkingText: buildState.thinkingText,
       liveNarrationText: buildState.narrationText,
       liveStepNarrations: buildState.stepNarrations,
+      activePlanMessageId: buildState.activePlanMessageId,
       isReconnecting: buildState.isReconnecting,
       thinkingElapsedSec: buildState.thinkingElapsedSec,
       handleExecutePlan,

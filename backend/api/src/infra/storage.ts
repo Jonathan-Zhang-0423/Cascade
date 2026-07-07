@@ -1,6 +1,6 @@
 import { eq, and, desc, lt, gt, sql } from "drizzle-orm";
 import { type User, type InsertUser, type Project, type InsertProject, type ProjectFile, type InsertProjectFile, type ChatMessageRow, type InsertChatMessage, type ManagerSessionRow, users, projects, projectFiles, chatMessages, managerSessions, projectSkills, projectVideos, type InsertProjectVideo, type ProjectVideo, publishedApps, type InsertPublishedApp } from "@cascade/database";
-import { db } from "./db";
+import { db, withDbRetry } from "./db";
 import { randomUUID } from "crypto";
 
 export interface ChatMessageInput {
@@ -219,7 +219,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProjectBuildResult(id: string, result: unknown): Promise<void> {
-    await db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id));
+    await withDbRetry("project build result update", () =>
+      db.update(projects).set({ lastBuildResult: JSON.stringify(result) }).where(eq(projects.id, id)),
+    );
   }
 
   async updateProjectActionSequence(id: string, actionSequence: string, durationHint?: number): Promise<void> {
@@ -251,7 +253,7 @@ export class DatabaseStorage implements IStorage {
   async setProjectMemory(projectId: string, userId: string, content: string): Promise<void> {
     if (!projectId) return;
     const safe = stripNul(content).slice(0, PROJECT_MEMORY_MAX);
-    await db
+    await withDbRetry("project memory set", () => db
       .insert(projectSkills)
       .values({
         projectId,
@@ -265,7 +267,7 @@ export class DatabaseStorage implements IStorage {
       .onConflictDoUpdate({
         target: [projectSkills.projectId, projectSkills.name],
         set: { content: safe },
-      });
+      }));
   }
 
   async getProjectFiles(projectId: string): Promise<ProjectFile[]> {
@@ -276,19 +278,19 @@ export class DatabaseStorage implements IStorage {
     // Atomic upsert: a single INSERT ... ON CONFLICT avoids the read-then-write
     // race that (without a unique constraint) produced duplicate rows and
     // cross-statement lock-ordering deadlocks under concurrent writes.
-    await db.insert(projectFiles)
+    await withDbRetry("project file upsert", () => db.insert(projectFiles)
       .values({ projectId, path: stripNul(path), content: stripNul(content) })
       .onConflictDoUpdate({
         target: [projectFiles.projectId, projectFiles.path],
         set: { content: stripNul(content) },
-      });
+      }));
   }
 
   async upsertProjectFiles(projectId: string, files: { path: string; content: string }[]): Promise<void> {
     // 用事务包裹，防止并发 build session 写同一 project 时的竞态：
     // 旧的 read-then-write-then-delete 三步非原子，并发时一个 session 的 DELETE
     // 可能删掉另一个 session 刚写进来的文件。事务加串行锁消除这个窗口。
-    await db.transaction(async (tx) => {
+    await withDbRetry("project files final upsert", () => db.transaction(async (tx) => {
       const existing = await tx.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
       const existingPaths = new Set(existing.map((f) => f.path));
       const incomingPaths = new Set(files.map((f) => f.path));
@@ -313,7 +315,7 @@ export class DatabaseStorage implements IStorage {
         await tx.delete(projectFiles)
           .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));
       }
-    });
+    }), { attempts: 4, baseDelayMs: 500 });
   }
 
   async deleteProjectFile(projectId: string, path: string): Promise<void> {
@@ -489,6 +491,7 @@ export class DatabaseStorage implements IStorage {
         forkCount: publishedApps.forkCount,
         likeCount: publishedApps.likeCount,
         adminTakenDown: publishedApps.adminTakenDown,
+        category: publishedApps.category,
         publishedAt: publishedApps.publishedAt,
         updatedAt: publishedApps.updatedAt,
         authorUsername: users.username,

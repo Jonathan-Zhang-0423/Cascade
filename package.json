@@ -12,6 +12,8 @@
     "start": "cross-env NODE_ENV=production node dist/index.mjs",
     "check": "tsc",
     "db:push": "drizzle-kit push --config=database/drizzle.config.ts --force",
+    "deploy:server": "node scripts/deploy/server.mjs",
+    "deploy:preflight": "node scripts/deploy/server.mjs --skip-install --skip-build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",

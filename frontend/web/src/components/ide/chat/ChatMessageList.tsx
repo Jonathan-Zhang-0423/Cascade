@@ -1,8 +1,7 @@
 import type { ChatMessage, ManagerMessage } from "@/stores/ide-store";
 import { useIDEStore } from "@/stores/ide-store";
-import { useEffect, useRef, useState, useSyncExternalStore, useMemo } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ActionLogEntry } from "./chat-types";
-import { ActionLogCollapsed } from "./action-log";
 import {
   MessageBubble,
   CheckpointMarker,
@@ -28,6 +27,13 @@ interface ChatMessageListProps {
   handleStopExecution?: () => void;
   handleContinueExecution?: (input?: string) => void;
   setUserConfirmationInput?: (v: string) => void;
+}
+
+export function shouldUseLivePlanStatuses(
+  message: { id: string; plan?: unknown; frozenTaskStatuses?: unknown },
+  lastPlanMsgId?: string,
+): boolean {
+  return Boolean(message.plan && message.id === lastPlanMsgId && !message.frozenTaskStatuses);
 }
 
 export function ChatMessageList({
@@ -58,23 +64,6 @@ export function ChatMessageList({
     slot ? () => slot.build.state.getSnapshot().actionLog : () => [],
   );
 
-  // Build map: stepNumber (number) → ActionLogEntry[]
-  const stepActionsMap = useMemo(() => {
-    const map = new Map<number, ActionLogEntry[]>();
-    let currentStep = -1;
-    for (const entry of liveActionLog) {
-      if (entry.type === "step") {
-        const m = entry.label.match(/Step\s+(\d+)/i);
-        currentStep = m ? parseInt(m[1], 10) : currentStep + 1;
-        if (!map.has(currentStep)) map.set(currentStep, []);
-      } else if (currentStep >= 0) {
-        const bucket = map.get(currentStep);
-        if (bucket) bucket.push(entry);
-        else map.set(currentStep, [entry]);
-      }
-    }
-    return map;
-  }, [liveActionLog]);
   const lastPlanMsgId = [...managerMessages]
     .reverse()
     .find((m) => m.plan)?.id;
@@ -210,13 +199,12 @@ export function ChatMessageList({
               />
             );
           }
-          const isLastPlan = msg.plan && msg.id === lastPlanMsgId;
           // A card that already has frozen statuses is finished — always show its
           // frozen snapshot, never the live taskStatuses. Otherwise a later build
           // (especially a direct build, which adds a buildResult instead of a new
           // plan card so this stale card stays "lastPlan") would bleed its live
           // "running" status onto this completed card's step 1.
-          const useLiveStatuses = isLastPlan && !msg.frozenTaskStatuses;
+          const useLiveStatuses = shouldUseLivePlanStatuses(msg, lastPlanMsgId);
           return (
             <div key={`m-${msg.id}`} className="space-y-2">
               <ManagerMessageBubble
@@ -250,7 +238,7 @@ export function ChatMessageList({
                 fixCycle={useLiveStatuses ? fixCycle : undefined}
                 liveNarration={useLiveStatuses ? liveNarrationText : undefined}
                 completionData={useLiveStatuses ? completionData : undefined}
-                stepActionsMap={useLiveStatuses ? stepActionsMap : undefined}
+                liveActionLog={useLiveStatuses ? liveActionLog : undefined}
               />
             </div>
           );

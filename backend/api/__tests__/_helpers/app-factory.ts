@@ -23,6 +23,8 @@ export interface TestApp {
   server: Server;
   /** http://127.0.0.1:<port> once listening. */
   baseUrl: string;
+  /** Reset in-memory rate-limiter windows (shared across tests in a file). */
+  resetRateLimiters: () => void;
   /** Stop listening and release the port. */
   close: () => Promise<void>;
 }
@@ -68,6 +70,9 @@ export async function createTestApp(): Promise<TestApp> {
     app,
     server,
     baseUrl,
+    resetRateLimiters: () => {
+      try { (app as any)._resetRateLimiters?.(); } catch {}
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections?.();

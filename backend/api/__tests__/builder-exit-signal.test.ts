@@ -9,6 +9,7 @@ vi.mock("../src/agent/tools/shell-manager", () => ({
 import { buildBuilderTools } from "../src/agent/tools/agent-tools";
 import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 import type { BuildStep } from "../src/agent/orchestrator/build-orchestrator";
+import { TodoLedger } from "../src/agent/runtime/todo-ledger";
 
 function makeSession(): BuildSessionState {
   return {
@@ -23,7 +24,7 @@ const steps: BuildStep[] = [
   { step: 2, title: "Two", description: "d2" },
 ];
 
-describe("builder exit signal (request_review bypass)", () => {
+describe("builder exit signal (finish_build bypass)", () => {
   it("trips the exit signal + emits build_complete once the LAST step is marked complete", async () => {
     const session = makeSession();
     const exitSignal = { exit: false, reason: undefined as string | undefined };
@@ -79,5 +80,67 @@ describe("builder exit signal (request_review bypass)", () => {
     await tools.handlers.mark_step_complete({ step_id: "1", summary: "x" }, emit);
     await tools.handlers.mark_step_complete({ step_id: "1", summary: "x again" }, emit);
     expect(exitSignal.exit).toBe(false);
+  });
+
+  it("rejects finish_build while the ledger still has unfinished steps", async () => {
+    const session = makeSession();
+    session.todoLedger = new TodoLedger(steps);
+    session.todoLedger.start(1);
+    const tools = buildBuilderTools(session, steps);
+    const events: Array<Record<string, unknown>> = [];
+    const emit = (d: Record<string, unknown>) => { events.push(d); };
+
+    const result = (await tools.handlers.finish_build({}, emit)) as string;
+
+    expect(result).toContain("cannot finish_build yet");
+    expect(result).toContain("1:running");
+    expect(result).toContain("2:pending");
+    expect(events.some((e) => e.type === "build_complete")).toBe(false);
+  });
+
+  it("keeps step-scoped loops from completing other steps or emitting build_complete", async () => {
+    const session = makeSession();
+    session.todoLedger = new TodoLedger(steps);
+    session.todoLedger.start(1);
+    const exitSignal = { exit: false, reason: undefined as string | undefined };
+    const tools = buildBuilderTools(session, [steps[0]], undefined, exitSignal, {
+      allowedStepIds: [1],
+      completeOnlyCurrentStep: true,
+      currentStepId: 1,
+    });
+    const events: Array<Record<string, unknown>> = [];
+    const emit = (d: Record<string, unknown>) => { events.push(d); };
+
+    const wrongStep = (await tools.handlers.mark_step_complete({ step_id: "2", summary: "wrong" }, emit)) as string;
+    expect(wrongStep).toContain("scoped to step");
+    expect(session.todoLedger.resolve(2)?.status).toBe("pending");
+    expect(exitSignal.exit).toBe(false);
+
+    const ok = (await tools.handlers.mark_step_complete({ step_id: "1", summary: "done" }, emit)) as string;
+    expect(ok).toContain("marked complete");
+    expect(exitSignal.exit).toBe(true);
+    expect(exitSignal.reason).toBe("step_complete");
+    expect(events.some((e) => e.type === "build_complete")).toBe(false);
+    expect(session.todoLedger.resolve(1)?.status).toBe("done");
+    expect(session.todoLedger.resolve(2)?.status).toBe("pending");
+  });
+
+  it("records touched files on the explicitly scoped step", async () => {
+    const session = makeSession();
+    session.files.set("/project/a.ts", "old");
+    session.todoLedger = new TodoLedger(steps);
+    session.todoLedger.start(1);
+    session.todoLedger.start(2);
+    const tools = buildBuilderTools(session, [steps[1]], undefined, undefined, {
+      allowedStepIds: [2],
+      completeOnlyCurrentStep: true,
+      currentStepId: 2,
+    });
+    const emit = () => {};
+
+    await tools.handlers.write_file({ path: "/project/b.ts", content: "new" }, emit);
+
+    expect(session.todoLedger.resolve(1)?.touchedFiles).toEqual([]);
+    expect(session.todoLedger.resolve(2)?.touchedFiles).toEqual(["/project/b.ts"]);
   });
 });

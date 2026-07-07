@@ -1,15 +1,15 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { runAgentLoop } from "../loop/agent-loop";
-import { buildFallbackChain, withFallback, type AIProvider } from "../providers/kimi-client";
+import { type AIProvider } from "../providers/kimi-client";
+import { resolveAgentModelChain, withModelFallback } from "../providers/agent-model-router";
 import { BuildTelemetry } from "../../infra/telemetry";
 import {
-  buildReviewTools,
-  buildFixerTools,
   type ReviewSessionState as ReviewToolState,
   type ReviewIssue,
   type ReviewSeverity,
 } from "../tools/agent-tools";
+import { buildAgentToolkit } from "../tools/toolkit";
 import { buildReviewSystemPrompt, type ReviewStrictness } from "../prompts/verifier-prompt";
 import {
   buildBuilderSystemPrompt,
@@ -60,6 +60,8 @@ export interface ReviewSessionState {
   sessionDir?: string;
   consoleEvents?: Array<{ level: string; message: string; timestamp: number }>;
   _startedAt?: number;
+  _chatSessionId?: string;
+  finalArtifact?: Record<string, unknown>;
 }
 
 const SEVERITY_RANK: Record<ReviewSeverity, number> = {
@@ -169,8 +171,8 @@ function issueKey(i: ReviewIssue): string {
  */
 export async function runReviewSession(session: ReviewSessionState, emit: SseEmit): Promise<void> {
   const userProvider = session.provider ?? "glm";
-  const providerChainReviewer = buildFallbackChain("verifier", userProvider);
-  const providerChainFixer = buildFallbackChain("fixer", userProvider);
+  const verifierDecisions = resolveAgentModelChain("verifier", userProvider);
+  const fixerDecisions = resolveAgentModelChain("fixer", userProvider);
 
   const telemetry = new BuildTelemetry({
     id: session.id,
@@ -179,6 +181,9 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     provider: session.provider,
     userLang: session.userLang,
   });
+  for (const decision of [...verifierDecisions, ...fixerDecisions]) {
+    telemetry.addModelRouteDecision(decision);
+  }
 
   // Seed files on disk + start LSP/shell so lsp_diagnostics and compile checks
   // work during review (same setup the build session performs).
@@ -233,18 +238,42 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     session.status = { type: "busy", agent: "verifier" };
     const reviewerSystemPrompt = buildReviewerSystemPrompt(session);
     const reviewerInitialMessage = buildReviewerInitialMessage(session, planSteps);
-    const reviewTools = buildReviewTools(reviewToBuildSession(session, { steps: planSteps }), reviewState);
+    const reviewTools = buildAgentToolkit("verifier", {
+      session: reviewToBuildSession(session, { steps: planSteps }),
+      planSteps,
+      reviewState,
+      telemetry,
+    });
 
     try {
       await telemetry.time("verifier", async () => {
-        await withFallback(providerChainReviewer, async (client, model) => {
+        await withModelFallback(verifierDecisions, async (client, model, decision) => {
           await runAgentLoop(
-            reviewerSystemPrompt,
+            `${reviewerSystemPrompt}\n\n${reviewTools.toolManifest}`,
             [{ role: "user", content: reviewerInitialMessage }],
             reviewTools.schemas,
             reviewTools.handlers,
             emit,
-            { exitTools: ["submit_review"], maxIterations: 15, client, model, partCtx, sessionId: session.id },
+            {
+              exitTools: ["submit_review"],
+              maxIterations: 15,
+              client,
+              model,
+              phase: "verifier",
+              partCtx,
+              sessionId: session.id,
+              runtimePolicy: {
+                role: "verifier",
+                provider: decision.provider,
+                model,
+                maxIterations: 15,
+                thinkingMode: "auto",
+                routingMode: decision.routingMode,
+                thinkingProfile: "adaptive",
+                toolPolicies: reviewTools.policies,
+              },
+              toolPolicies: reviewTools.policies,
+            },
           );
         });
       });
@@ -298,20 +327,51 @@ export async function runReviewSession(session: ReviewSessionState, emit: SseEmi
     const fixerSession = reviewToBuildSession(session, { steps: targetedPlanSteps });
     const fixerSystemPrompt = buildBuilderSystemPrompt(fixerSession);
     const fixerInitialMessage = buildBuilderInitialMessage(fixerSession, targetedPlanSteps, "fix", issuesSummary);
-    const fixerTools = buildFixerTools(fixerSession, targetedPlanSteps, telemetry);
+    const fixerTools = buildAgentToolkit("fixer", {
+      session: fixerSession,
+      planSteps: targetedPlanSteps,
+      telemetry,
+    });
 
     try {
       await telemetry.time("fixer", async () => {
-        await withFallback(providerChainFixer, async (client, model) => {
-          await runAgentLoop(
-            fixerSystemPrompt,
+        const fixerLoopResult = await withModelFallback(fixerDecisions, async (client, model, decision) => {
+          return await runAgentLoop(
+            `${fixerSystemPrompt}\n\n${fixerTools.toolManifest}`,
             [{ role: "user", content: fixerInitialMessage }],
             fixerTools.schemas,
             fixerTools.handlers,
             emit,
-            { exitTools: ["finish_build"], maxIterations: 50, client, model, partCtx, sessionId: session.id },
+            {
+              exitTools: ["finish_build"],
+              maxIterations: 50,
+              client,
+              model,
+              phase: "fixer",
+              partCtx,
+              sessionId: session.id,
+              runtimePolicy: {
+                role: "fixer",
+                provider: decision.provider,
+                model,
+                maxIterations: 50,
+                thinkingMode: "auto",
+                routingMode: decision.routingMode,
+                thinkingProfile: "adaptive",
+                stallPolicy: {
+                  discoveryNudgeMinIteration: 20,
+                  discoveryNudgeThreshold: 4,
+                },
+                toolPolicies: fixerTools.policies,
+              },
+              toolPolicies: fixerTools.policies,
+            },
           );
         });
+        telemetry.addDiscoveryOnlyRounds(fixerLoopResult.telemetry?.discoveryOnlyRounds ?? 0);
+        for (const [mode, count] of Object.entries(fixerLoopResult.telemetry?.thinkingModeCounts ?? {})) {
+          telemetry.addThinkingMode(mode, count);
+        }
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

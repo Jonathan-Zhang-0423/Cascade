@@ -13,7 +13,23 @@ interface ShellSession {
   framework?: Framework;
 }
 
-class ShellManager {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), Math.max(1, timeoutMs));
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+export class ShellManager {
   private docker: Docker | null = null;
   private sessions = new Map<string, ShellSession>();
   private enabled = process.env.ENABLE_SHELL === "true";
@@ -95,6 +111,8 @@ class ShellManager {
     }
 
     const cappedTimeout = Math.min(timeoutMs, COMMAND_TIMEOUT_MAX);
+    const deadline = Date.now() + cappedTimeout;
+    const remainingMs = () => Math.max(1, deadline - Date.now());
     const image = session.framework === "flutter" ? SANDBOX_IMAGE_FLUTTER : SANDBOX_IMAGE_DEFAULT;
 
     let container: Docker.Container | null = null;
@@ -102,39 +120,55 @@ class ShellManager {
       // Pull the sandbox image on first use so a missing image doesn't surface
       // as a cryptic Docker 404. Bounded by the command timeout budget.
       try {
-        await this.ensureImage(image);
+        await withTimeout(
+          this.ensureImage(image),
+          remainingMs(),
+          `Command timed out after ${cappedTimeout}ms while preparing sandbox image "${image}"`,
+        );
       } catch (pullErr) {
         const m = pullErr instanceof Error ? pullErr.message : String(pullErr);
+        if (/timed out/i.test(m)) this.imageReady.delete(image);
         return { stdout: "", stderr: `Sandbox image "${image}" is unavailable (pull failed: ${m}). Shell commands can't run until it's pulled.`, exitCode: 1 };
       }
-      container = await this.docker.createContainer({
-        Image: image,
-        Cmd: ["sh", "-c", command],
-        WorkingDir: "/workspace",
-        HostConfig: {
-          Binds: [`${session.sessionDir}:/workspace:rw`],
-          NetworkMode: "none",
-          Memory: 512 * 1024 * 1024,      // 512 MB
-          NanoCpus: 500_000_000,           // 0.5 CPU
-          ReadonlyRootfs: false,
-          AutoRemove: false,               // we remove manually after reading logs
-        },
-        AttachStdout: true,
-        AttachStderr: true,
-      });
+      container = await withTimeout(
+        this.docker.createContainer({
+          Image: image,
+          Cmd: ["sh", "-c", command],
+          WorkingDir: "/workspace",
+          HostConfig: {
+            Binds: [`${session.sessionDir}:/workspace:rw`],
+            NetworkMode: "none",
+            Memory: 512 * 1024 * 1024,      // 512 MB
+            NanoCpus: 500_000_000,           // 0.5 CPU
+            ReadonlyRootfs: false,
+            AutoRemove: false,               // we remove manually after reading logs
+          },
+          AttachStdout: true,
+          AttachStderr: true,
+        }),
+        remainingMs(),
+        `Command timed out after ${cappedTimeout}ms while creating sandbox container`,
+      );
 
-      await container.start();
+      await withTimeout(
+        container.start(),
+        remainingMs(),
+        `Command timed out after ${cappedTimeout}ms while starting sandbox container`,
+      );
 
       // Wait for container to finish (with timeout)
-      const statusCode = await Promise.race<number>([
+      const statusCode = await withTimeout(
         container.wait().then((r: { StatusCode: number }) => r.StatusCode),
-        new Promise<number>((_, reject) =>
-          setTimeout(() => reject(new Error(`Command timed out after ${cappedTimeout}ms`)), cappedTimeout),
-        ),
-      ]);
+        remainingMs(),
+        `Command timed out after ${cappedTimeout}ms`,
+      );
 
       // Collect logs
-      const logBuffer = await container.logs({ stdout: true, stderr: true, follow: false });
+      const logBuffer = await withTimeout(
+        container.logs({ stdout: true, stderr: true, follow: false }),
+        remainingMs(),
+        `Command timed out after ${cappedTimeout}ms while collecting shell logs`,
+      );
       const { stdout, stderr } = demuxDockerStream(logBuffer as Buffer);
 
       return { stdout, stderr, exitCode: statusCode };

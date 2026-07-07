@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { createHash } from "crypto";
 import { buildBuilderTools } from "../src/agent/tools/agent-tools";
 import type { BuildSessionState } from "../src/agent/orchestrator/build-orchestrator";
 
@@ -24,6 +25,10 @@ function makeSession(overrides: Partial<BuildSessionState> = {}): BuildSessionSt
 }
 
 const noopEmit = () => {};
+
+function versionHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 12);
+}
 
 describe("write_file handler — disk mirror", () => {
   let tmpDir: string;
@@ -75,5 +80,53 @@ describe("write_file handler — disk mirror", () => {
     const abs = path.join(tmpDir, "project/src/components/Button.tsx");
     const diskContent = await readFile(abs, "utf-8");
     expect(diskContent).toBe("export {};");
+  });
+
+  it("refuses to overwrite an existing file before reading the current version", async () => {
+    const session = makeSession({
+      files: new Map([["/project/app.ts", "export const value = 1;"]]),
+    });
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.write_file(
+      { path: "/project/app.ts", content: "export const value = 2;" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("refusing full overwrite");
+    expect(session.files.get("/project/app.ts")).toBe("export const value = 1;");
+  });
+
+  it("allows an existing-file full rewrite after read_file establishes the current hash", async () => {
+    const original = "export const value = 1;";
+    const session = makeSession({
+      files: new Map([["/project/app.ts", original]]),
+    });
+    const { handlers } = buildBuilderTools(session, []);
+
+    const readResult = (await handlers.read_file({ path: "/project/app.ts" }, noopEmit)) as string;
+    expect(readResult).toContain(`File version hash: ${versionHash(original)}`);
+    const result = (await handlers.write_file(
+      { path: "/project/app.ts", content: "export const value = 2;" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("File written successfully");
+    expect(session.files.get("/project/app.ts")).toBe("export const value = 2;");
+  });
+
+  it("rejects stale expected_hash when overwriting an existing file", async () => {
+    const session = makeSession({
+      files: new Map([["/project/app.ts", "export const value = 1;"]]),
+    });
+    const { handlers } = buildBuilderTools(session, []);
+
+    const result = (await handlers.write_file(
+      { path: "/project/app.ts", content: "export const value = 2;", expected_hash: "deadbeef0000" },
+      noopEmit,
+    )) as string;
+
+    expect(result).toContain("changed since the version");
+    expect(session.files.get("/project/app.ts")).toBe("export const value = 1;");
   });
 });
