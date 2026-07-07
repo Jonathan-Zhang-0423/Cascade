@@ -14,7 +14,7 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "";
 /**
  * Gate that requires an authenticated user who has redeemed an invite code.
  * Phone-verified users are exempt (they register without a code). Mounted on
- * /api/projects, /api/manager-chat, /api/build-session.
+ * /api/projects and related project data endpoints.
  */
 export async function requireInviteCode(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

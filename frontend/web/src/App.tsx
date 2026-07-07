@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
-import IDEPage from "@/pages/ide";
 import DashboardPage from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
 import SetPasswordPage from "@/pages/set-password";
@@ -16,9 +15,6 @@ import AdminLoginPage from "@/pages/admin-login";
 import AdminTotpSetupPage from "@/pages/admin-totp-setup";
 import InviteGatePage from "@/pages/invite-gate";
 import GitHubCallbackPage from "@/pages/github-callback";
-import CreateSquarePage from "@/pages/create-square";
-import AppDetailPage from "@/pages/app-detail";
-import AigcPage from "@/pages/aigc";
 import WechatCallbackPage from "@/pages/wechat-callback";
 import ProfileSettingsPage from "@/pages/profile-settings";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -30,6 +26,29 @@ const ABTestPage = lazy(() => import("@/pages/ab-test"));
 // and onboarding are pre-auth steps; admin has its own admin-secret gate; the
 // invite gate is the redirect target for authed users without a redeemed code.
 const UNGUARDED_PATHS = ["/", "/login", "/register", "/auth", "/admin/login", "/admin/setup-totp", "/invite-gate", "/github-callback", "/wechat-callback", "/BuilderSquare", "/onboarding", "/set-password"];
+
+function RemovedFeaturePage({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-background px-6">
+      <section className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
+        <a
+          className="mt-6 inline-flex h-9 items-center justify-center rounded-md bg-black px-4 text-sm font-medium text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+          href="/app"
+        >
+          返回主页
+        </a>
+      </section>
+    </main>
+  );
+}
 
 function Router() {
   return (
@@ -43,15 +62,29 @@ function Router() {
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/invite-gate" component={InviteGatePage} />
-      <Route path="/BuilderSquare" component={CreateSquarePage} />
-      <Route path="/BuilderSquare/app/:id" component={AppDetailPage} />
-      <Route path="/aigc" component={AigcPage} />
+      <Route path="/BuilderSquare">
+        <RemovedFeaturePage
+          title="创作者广场已下线"
+          description="创作者广场、应用分享、点赞评论和 fork 流程已经从当前产品面剥离。"
+        />
+      </Route>
+      <Route path="/BuilderSquare/app/:id">
+        <RemovedFeaturePage
+          title="创作者广场已下线"
+          description="公开应用详情页已经停用，当前版本只保留账号和基础工作台能力。"
+        />
+      </Route>
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin/setup-totp" component={AdminTotpSetupPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/app" component={DashboardPage} />
       <Route path="/profile" component={ProfileSettingsPage} />
-      <Route path="/project/:id" component={IDEPage} />
+      <Route path="/project/:id">
+        <RemovedFeaturePage
+          title="项目构建功能已下线"
+          description="旧 IDE、项目构建和 agent loop 已经从当前产品面剥离。"
+        />
+      </Route>
       {import.meta.env.DEV && (
         <Route path="/ab-test">
           <Suspense fallback={<div className="p-8 text-muted-foreground">Loading…</div>}>

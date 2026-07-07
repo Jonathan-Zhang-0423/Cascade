@@ -338,15 +338,6 @@ export function ChatPanel() {
           }
         }
       }
-      // POST input to the running session — do NOT restart the build
-      const sessionId = slot.build.currentSessionId;
-      if (sessionId) {
-        fetch(`/api/build-session/${sessionId}/input`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userInput: inputText.trim() }),
-        }).catch(() => {});
-      }
     },
     [addChatMessage, setPendingConfirmation, setUserConfirmationInput, slot],
   );

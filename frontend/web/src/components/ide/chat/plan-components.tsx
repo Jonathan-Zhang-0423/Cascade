@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlanCardLang, ActionLogEntry, NarrationSegment } from "./chat-types";
-import { MediaPlanCard } from "./MediaPlanCard";
 import { t, usePlanCardLang, normalizeSteps } from "./chat-utils";
 import { BuildLivePanel } from "./BuildLivePanel";
 import { ensureActiveStepActionLogEntry, latestActionLogStepNumber, shouldShowPlanActionLog } from "./plan-live-utils";
@@ -697,13 +696,11 @@ export function ManagerMessageBubble({
   }
 
   if (message.plan) {
-    // Media plan — route to AIGC card instead of code build card
     if (message.plan.mode === "media") {
       return (
-        <MediaPlanCard
-          plan={message.plan}
-          onCancel={() => onRevise?.()}
-        />
+        <div className="mx-3 my-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[13px] text-muted-foreground">
+          多媒体生成流程已下线。
+        </div>
       );
     }
     return (

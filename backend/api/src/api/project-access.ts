@@ -1,14 +1,14 @@
 import type { Request, Response } from "express";
 import { storage } from "../infra/storage";
 import type { Project } from "@cascade/database";
-import { normalizeChatSessionId as normalizeAgentChatSessionId } from "../agent/session/session-store";
 
 export function getRequestUserId(req: Request): string | undefined {
   return (req.session as any)?.userId as string | undefined;
 }
 
 export function normalizeChatSessionId(value: unknown): string {
-  return normalizeAgentChatSessionId(typeof value === "string" ? value : undefined);
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || "main";
 }
 
 export async function assertProjectAccess(

@@ -21,14 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Trash2, Pencil, FolderOpen, Send, CheckSquare, Square, CheckCheck, LogOut, Home, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2, ArrowLeft, User } from "lucide-react";
+import { Trash2, Pencil, FolderOpen, CheckSquare, Square, CheckCheck, LogOut, Home, Sun, Moon, HelpCircle, ChevronDown, Check, Languages, Gift, Copy, Bell, Wand2, ArrowLeft, User } from "lucide-react";
 import { getProjectEmoji } from "@/lib/project-emoji";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { useTheme } from "@/components/theme-provider";
@@ -524,11 +517,10 @@ const PhoneDialog = memo(forwardRef<PhoneDialogHandle, { onSuccess: () => void }
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { projects, createProject, deleteProject, renameProject, syncFromServer } = useProjectStore();
+  const { projects, deleteProject, renameProject, syncFromServer } = useProjectStore();
   const [, navigate] = useLocation();
   const { themeId, setThemeId, mode } = useTheme();
   const { lang, setLang } = useLanguageStore();
-  const [showNewDialog, setShowNewDialog] = useState(false);
 
   // logo menu
   const [logoMenuOpen, setLogoMenuOpen] = useState(false);
@@ -605,13 +597,9 @@ export default function DashboardPage() {
     syncFromServer();
   }, [syncFromServer]);
 
-  const [ideaText, setIdeaText] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [selectedFramework, setSelectedFramework] = useState<"web" | "rn-expo" | "flutter" | "kotlin" | "wechat">("web");
-  const [usePlanFirst, setUsePlanFirst] = useState(true);
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -866,24 +854,6 @@ export default function DashboardPage() {
     },
   ];
 
-  const handleCreate = async () => {
-    const idea = ideaText.trim();
-    if (!idea || isCreating) return;
-    setIsCreating(true);
-    try {
-      const emoji = getProjectEmoji(idea);
-      const initialMode = usePlanFirst ? "manager" : "build";
-      const id = await createProject(t("dashboard.newProject"), idea, emoji, selectedFramework, initialMode);
-      setIdeaText("");
-      setSelectedFramework("web");
-      setUsePlanFirst(true);
-      setShowNewDialog(false);
-      navigate(`/project/${id}`);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
   const handleDelete = () => {
     if (deleteId) {
       deleteProject(deleteId);
@@ -1001,13 +971,6 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:mr-[-26px]">
-            <Button
-              size="sm"
-              className="w-auto px-3 sm:w-[104px] shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
-              onClick={() => { window.location.href = "/BuilderSquare"; }}
-            >
-              {t("dashboard.builderSquare")}
-            </Button>
             {/* 手机端：头像圆圈（无头像则显示人像 icon 占位）；PC 端保持原有文字按钮 */}
             <button
               className="hidden sm:flex sm:h-8 sm:w-[72px] shrink-0 truncate rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors items-center justify-center"
@@ -1039,17 +1002,6 @@ export default function DashboardPage() {
             {t("dashboard.myProjects")}
           </h1>
           <div className="flex items-center gap-2 sm:mr-[-26px]">
-            {!selectMode && (
-              <Button
-                onClick={() => setShowNewDialog(true)}
-                size="sm"
-                className="w-8 px-0 sm:w-[104px] sm:px-3 h-8 shrink-0 justify-center gap-1.5 bg-black text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
-                data-testid="button-new-project"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">{t("dashboard.newProject")}</span>
-              </Button>
-            )}
             {sorted.length > 0 && !selectMode && (
               <Button
                 variant="ghost"
@@ -1073,14 +1025,6 @@ export default function DashboardPage() {
             <p className="text-muted-foreground mb-6 max-w-sm">
               {t("dashboard.noProjectsDesc")}
             </p>
-            <Button
-              onClick={() => setShowNewDialog(true)}
-              className="gap-2"
-              data-testid="button-new-project-empty"
-            >
-              <Plus className="w-4 h-4" />
-              {t("dashboard.startBuilding")}
-            </Button>
           </div>
         ) : (
           <div className="flex flex-col border border-border/40 rounded-xl overflow-hidden" data-testid="project-list">
@@ -1093,16 +1037,14 @@ export default function DashboardPage() {
               return (
                 <div
                   key={project.id}
-                  className={`group relative flex items-center gap-3 px-4 py-3 border-b border-border/40 last:border-b-0 transition-colors cursor-pointer
+                  className={`group relative flex items-center gap-3 px-4 py-3 border-b border-border/40 last:border-b-0 transition-colors
                     ${selectMode
                       ? isSelected ? "bg-primary/5" : "hover:bg-muted/30"
-                      : "hover:bg-muted/30"
+                      : ""
                     }`}
                   onClick={() => {
                     if (selectMode) {
                       toggleSelect(project.id);
-                    } else {
-                      navigate(`/project/${project.id}`);
                     }
                   }}
                   data-testid={`card-project-${project.id}`}
@@ -1232,88 +1174,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
-      <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-new-project">
-          <DialogHeader>
-            <DialogTitle className="text-lg">{t("dashboard.dialogTitle")}</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            placeholder={t("dashboard.ideaPlaceholder")}
-            value={ideaText}
-            onChange={(e) => setIdeaText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                handleCreate();
-              }
-            }}
-            autoFocus
-            className="min-h-[80px] resize-none"
-            data-testid="input-project-idea"
-          />
-
-          {/* 启动方式 — 勾选框形式，在框架上方 */}
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={() => setUsePlanFirst((v) => !v)}
-              className="flex items-start gap-2.5 w-full text-left"
-              data-testid="button-mode-plan"
-            >
-              <div
-                className={[
-                  "mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors",
-                  usePlanFirst
-                    ? "bg-[#4f82ff] border-[#4f82ff]"
-                    : "border-border",
-                ].join(" ")}
-              >
-                {usePlanFirst && <Check className="w-2.5 h-2.5 text-white" />}
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">{t("dashboard.modePlanLabel")}</div>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">{t("dashboard.framework")}</label>
-            <Select value={selectedFramework} onValueChange={(v: any) => setSelectedFramework(v)}>
-              <SelectTrigger data-testid="select-framework">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="web">{t("dashboard.frameworkWeb")}</SelectItem>
-                <SelectItem value="wechat">{t("dashboard.frameworkWechat")}</SelectItem>
-                <SelectItem value="rn-expo">{t("dashboard.frameworkRN")}</SelectItem>
-                <SelectItem value="flutter" disabled>
-                  <span className="flex items-center gap-2">
-                    {t("dashboard.frameworkFlutter")}
-                    <span className="text-xs text-muted-foreground">({t("dashboard.comingSoon")})</span>
-                  </span>
-                </SelectItem>
-                <SelectItem value="kotlin" disabled>
-                  <span className="flex items-center gap-2">
-                    {t("dashboard.frameworkKotlin")}
-                    <span className="text-xs text-muted-foreground">({t("dashboard.comingSoon")})</span>
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewDialog(false)} data-testid="button-cancel-new">
-              {t("dashboard.cancel")}
-            </Button>
-            <Button onClick={handleCreate} disabled={!ideaText.trim() || isCreating} className="gap-2" data-testid="button-create-project">
-              <Send className="w-3.5 h-3.5" />
-              {t("dashboard.letsGo")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={renameId !== null} onOpenChange={(open) => !open && setRenameId(null)}>
         <DialogContent data-testid="dialog-rename-project">

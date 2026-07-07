@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useProjectStore } from "@/stores/project-store";
 import { MobileChatPanel } from "./MobileChatPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
@@ -6,8 +6,6 @@ import { useT } from "@/lib/i18n";
 import { useTheme } from "@/components/theme-provider";
 import { CascadeLogo } from "@/assets/CascadeLogo";
 import { cn } from "@/lib/utils";
-import { PublishDialog } from "@/components/square/publish-dialog";
-import { Send } from "lucide-react";
 
 type Tab = "chat" | "preview";
 
@@ -27,20 +25,6 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
   const project = projects.find((p) => p.id === projectId);
   const t = useT();
   const { mode } = useTheme();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishedApp, setPublishedApp] = useState<any>(null);
-
-  // Fetch existing published app info (same logic as navbar.tsx)
-  useEffect(() => {
-    if (!projectId) return;
-    fetch(`/api/square/my/apps`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        const match = data?.apps?.find((a: any) => a.projectId === projectId) ?? null;
-        setPublishedApp(match);
-      })
-      .catch(() => {});
-  }, [projectId]);
 
   const TAB_LABELS: Record<Tab, string> = {
     chat: t("mobile.chatTab"),
@@ -115,22 +99,6 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
             </span>
           </div>
 
-          {/* 发布按钮（右侧绝对定位） */}
-          <div className="absolute right-3 flex items-center gap-1">
-            <button
-              className="flex items-center justify-center h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors"
-              style={{
-                color: "var(--foreground)",
-                background: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
-                border: `1px solid ${mode === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)"}`,
-              }}
-              onClick={() => setPublishOpen(true)}
-              aria-label="发布"
-            >
-              <Send className="w-3 h-3 mr-1" />
-              发布
-            </button>
-          </div>
         </div>
       )}
 
@@ -175,16 +143,6 @@ export function MobileIDE({ projectId }: MobileIDEProps) {
         </div>
       </div>
 
-      {/* ── 发布弹窗 ── */}
-      <PublishDialog
-        open={publishOpen}
-        onClose={() => setPublishOpen(false)}
-        projectId={projectId}
-        projectName={project?.name ?? ""}
-        existing={publishedApp}
-        onPublished={(app) => { setPublishedApp((prev: any) => ({ ...prev, ...app })); setPublishOpen(false); }}
-        onUnpublished={() => { setPublishedApp(null); }}
-      />
     </div>
   );
 }

@@ -90,7 +90,7 @@ e2e/                        # Playwright 浏览器端
 所有会真实打到 AI 厂商（Doubao / GLM / Kimi / MiniMax）的路径都被 **mock**：
 
 - vitest 侧：`_helpers/ai-mock.ts` 用 `vi.spyOn` 替换每个 provider 单例的 `chat.completions.create`，可配置流式分片、每片延迟（用于饱和信号量）、报错（测重试/降级）。
-- E2E 侧：`e2e/_helpers/mock-api.ts` 在浏览器网络层拦截 `/api/manager-chat` 等，直接吐出脚本化的 SSE 帧。
+- E2E 侧：`e2e/_helpers/mock-api.ts` 在浏览器网络层拦截保留的基础 API，避免依赖真实外部服务。
 
 因此测试**确定、离线、零成本**，且可放心做高并发/高频压测。
 

@@ -361,24 +361,11 @@ export function PreviewPanel({
         if (["log", "warn", "error", "info"].includes(level)) {
           addConsoleEntry({ level: level as "log" | "warn" | "error" | "info", message });
         }
-        // Forward errors/warnings to the active build session so the verifier can see them
-        if ((level === "error" || level === "warn") && projectId) {
-          try {
-            const sessionId = localStorage.getItem(`cascade-build-session-${projectId}-${currentSessionId || "main"}`);
-            if (sessionId) {
-              fetch(`/api/build-session/${sessionId}/console-event`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ level, message }),
-              }).catch(() => {});
-            }
-          } catch {}
-        }
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addConsoleEntry, projectId, currentSessionId]);
+  }, [addConsoleEntry]);
 
   const handleRefresh = () => {
     clearConsole();
