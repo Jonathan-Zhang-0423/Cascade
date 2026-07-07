@@ -45,6 +45,16 @@ export function useActiveStream() {
     slot.manager.state.subscribe,
     slot.manager.state.getSnapshot,
   );
+  const mgrIsActive =
+    slot.manager.isActive ||
+    mgrState.preparingPlan ||
+    mgrState.isReconnecting ||
+    Boolean(mgrState.sessionId);
+
+  useEffect(() => {
+    if (!projectId) return;
+    useIDEStore.getState().setManagerResponding(mgrIsActive, currentSessionId ?? "main");
+  }, [projectId, currentSessionId, mgrIsActive]);
 
   // ─── Build stream state ──────────────────────────────────────────────
   const buildState = useSyncExternalStore<BuildStreamState>(
@@ -114,6 +124,7 @@ export function useActiveStream() {
       mgrLiveNarrationText: mgrState.narrationText,
       mgrLiveActionLog: mgrState.actionLog,
       isMgrReconnecting: mgrState.isReconnecting,
+      mgrIsActive,
       autoExecutePlanRef: { current: slot.manager.autoExecutePlan },
       resetLiveState: resetManagerLiveState,
       clearLiveState: clearManagerLiveState,

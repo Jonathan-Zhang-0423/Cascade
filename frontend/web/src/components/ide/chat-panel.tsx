@@ -74,6 +74,7 @@ export function ChatPanel() {
     mgrLiveThinkingText,
     mgrLiveNarrationText,
     mgrLiveActionLog,
+    mgrIsActive,
     autoExecutePlanRef,
     clearLiveState: clearManagerLiveState,
   } = manager;
@@ -119,6 +120,7 @@ export function ChatPanel() {
   useEffect(() => {
     if (!mountedRef.current && !userTriggeredRef.current) return;
     const shouldShow =
+      mgrIsActive ||
       isManagerResponding ||
       mgrPreparingPlan ||
       buildPhase === "thinking";
@@ -127,17 +129,18 @@ export function ChatPanel() {
     } else {
       setShowThinking(false);
     }
-  }, [isManagerResponding, mgrPreparingPlan, buildPhase, mountedTick]);
+  }, [mgrIsActive, isManagerResponding, mgrPreparingPlan, buildPhase, mountedTick]);
   // When chat panel becomes visible again (e.g. user navigates back),
   // re-evaluate showThinking immediately from current store state.
   useEffect(() => {
     if (activeTool !== "chat") return;
     const shouldShow =
+      mgrIsActive ||
       isManagerResponding ||
       mgrPreparingPlan ||
       buildPhase === "thinking";
     setShowThinking(shouldShow);
-  }, [activeTool]);
+  }, [activeTool, mgrIsActive, isManagerResponding, mgrPreparingPlan, buildPhase]);
   // Hide once actual action log entries arrive (not just thinking tokens) — this
   // ensures the TypingIndicator stays visible until BuildLivePanel has real content,
   // eliminating the 1-3s gap between prompt send and first visible live content.
@@ -281,7 +284,7 @@ export function ChatPanel() {
     const curLen = chatMessages.length + managerMessages.length;
     prevChatLen.current = curLen;
     // AI 没在输出，不主动触碰滚动位置
-    if (!isAiResponding && !isManagerResponding) return;
+    if (!isAiResponding && !isManagerResponding && !mgrIsActive) return;
     if (userScrolling.current) return;   // 用户正在滚动，绝不抢底
     if (userScrolledUp.current) return;  // 用户已上滑浏览，不打扰
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -298,10 +301,12 @@ export function ChatPanel() {
     mgrLiveActionLog,
     isAiResponding,
     isManagerResponding,
+    mgrIsActive,
   ]);
 
   useEffect(() => {
-    if (isManagerResponding) {
+    const managerBusy = isManagerResponding || mgrIsActive || mgrPreparingPlan;
+    if (managerBusy) {
       if (planningStartRef.current === null) {
         planningStartRef.current = Date.now();
         setPlanningElapsed(0);
@@ -314,7 +319,7 @@ export function ChatPanel() {
       planningStartRef.current = null;
       setPlanningElapsed(0);
     }
-  }, [isManagerResponding]);
+  }, [isManagerResponding, mgrIsActive, mgrPreparingPlan]);
 
   const handleContinueExecution = useCallback(
     (userInput?: string) => {
@@ -353,14 +358,14 @@ export function ChatPanel() {
     const prev = prevProjectIdRef.current;
     const curr = projectId;
     if (prev && curr && prev !== curr) {
-      clearManagerLiveState();
-      resetBuildLiveState();
+      if (!slot.manager.isActive) clearManagerLiveState();
+      if (!slot.build.isActive) resetBuildLiveState();
     }
     prevProjectIdRef.current = curr;
-  }, [projectId, clearManagerLiveState, resetBuildLiveState]);
+  }, [projectId, slot, clearManagerLiveState, resetBuildLiveState]);
 
   useEffect(() => {
-    if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && messagesReady) {
+    if (pendingPrompt && !pendingHandled.current && !isAiResponding && !isManagerResponding && !mgrIsActive && messagesReady) {
       // Guard: ensure the stream slot has already switched to the current project.
       // useMemo for slot updates in the same render cycle as projectId, but
       // handleManagerSend/handleDirectBuild close over the previous render's slot
@@ -380,14 +385,14 @@ export function ChatPanel() {
         handleManagerSend(prompt);
       }
     }
-  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, messagesReady, projectId, slot, clearPendingPrompt, handleManagerSend, handleDirectBuild, setChatMode]);
+  }, [pendingPrompt, pendingPromptMode, isAiResponding, isManagerResponding, mgrIsActive, messagesReady, projectId, slot, clearPendingPrompt, handleManagerSend, handleDirectBuild, setChatMode]);
 
   useEffect(() => {
-    if (!isManagerResponding && autoExecutePlanRef.current) {
+    if (!isManagerResponding && !mgrIsActive && autoExecutePlanRef.current) {
       autoExecutePlanRef.current = false;
       handleExecutePlan();
     }
-  }, [isManagerResponding, handleExecutePlan, autoExecutePlanRef]);
+  }, [isManagerResponding, mgrIsActive, handleExecutePlan, autoExecutePlanRef]);
 
   const isExecuting = executingTaskIndex !== null || buildPhase !== null;
   const showStandaloneBuildLog =
@@ -397,8 +402,9 @@ export function ChatPanel() {
   // Derive a single AgentStatus from all the boolean flags — highest priority wins
   const agentStatus: AgentStatus = (() => {
     if (isReconnecting) return "reconnecting";
+    if (mgrIsActive && !mgrLiveActionLog.length && !mgrLiveThinkingText && !mgrLiveNarrationText) return "preparing";
     if (mgrPreparingPlan) return "preparing";
-    if (isManagerResponding) return "planning";
+    if (isManagerResponding || mgrIsActive) return "planning";
     if (buildPhase === "thinking") return "thinking";
     if (buildPhase === "working") return "working";
     if (buildPhase === "verifying") return "verifying";
@@ -471,7 +477,7 @@ export function ChatPanel() {
       });
       return;
     }
-    const busy = isAiResponding || isManagerResponding;
+    const busy = isAiResponding || isManagerResponding || mgrIsActive || mgrPreparingPlan;
     if (chatMode === "build") {
       if (!input.trim() || busy || isExecuting) {
         if (input.trim()) toast({ description: tGlobal("chat.busy"), duration: 1500 });
@@ -501,13 +507,13 @@ export function ChatPanel() {
       sendInFlightRef.current = false;
       setSendPending(false);
     });
-  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding]);
+  }, [handleManagerSend, handleDirectBuild, pendingConfirmation, input, handleContinueExecution, chatMode, managerPlan, isExecuting, handleExecutePlan, toast, tGlobal, isAiResponding, isManagerResponding, mgrIsActive, mgrPreparingPlan]);
 
   const handleToggleMode = useCallback(() => {
     setChatMode(chatMode === "manager" ? "build" : "manager");
   }, [chatMode, setChatMode]);
 
-  const isBusy = sendPending || isAiResponding || isManagerResponding || isExecuting || mgrPreparingPlan;
+  const isBusy = sendPending || isAiResponding || isManagerResponding || mgrIsActive || isExecuting || mgrPreparingPlan;
 
   return (
     <div className="h-full flex flex-col relative" style={{ background: "var(--panel-mid-bg)" }} data-testid="chat-panel">

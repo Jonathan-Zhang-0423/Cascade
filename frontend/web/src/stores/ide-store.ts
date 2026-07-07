@@ -1286,10 +1286,14 @@ export const useIDEStore = create<IDEState>((set, get) => ({
     const restoredSessionId: string = (saved?.currentSessionId && typeof saved.currentSessionId === "string")
       ? saved.currentSessionId
       : "main";
-    // 如果需要恢复非主会话，立即更新 store（不等消息加载）
-    if (restoredSessionId !== "main") {
-      set({ currentSessionId: restoredSessionId });
-    }
+    // Always restore the target project's chat session immediately. Without
+    // this, switching from a project whose currentSessionId is non-main back to
+    // a project last used on main leaves the store subscribed to the wrong
+    // stream slot, so in-flight manager state appears to vanish.
+    set((state) => ({
+      currentSessionId: restoredSessionId,
+      isManagerResponding: state.sessionManagerResponding[restoredSessionId] ?? false,
+    }));
 
     // Migrate legacy localStorage messages → DB (one-time per project).
     // Older clients persisted full chatMessages / managerMessages arrays into
